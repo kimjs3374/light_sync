@@ -286,17 +286,23 @@
         <div class="text-center mb-4">
             <small style="color: #94a3b8;">{{ session.user_group }}</small><br>
             <strong>👤 {{ session.full_name }}</strong> 님
+            <a href="{{ url_for('notification.notification_list') }}" class="text-white text-decoration-none position-relative ms-2" id="notiBtn">
+                🔔<span class="badge bg-danger rounded-pill position-absolute" id="notiBadge" style="display:none; top:-8px; right:-12px; font-size:.6rem;">0</span>
+            </a>
             <br><a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-danger mt-2 py-0" style="display:inline-block; width:80px;">로그아웃</a>
+            <button class="btn btn-sm btn-outline-light mt-1" style="display:inline-block; width:80px;" data-bs-toggle="modal" data-bs-target="#changePasswordModal">비번변경</button>
         </div>
         <hr style="border-color: #334155;">
 
         <a href="{{ url_for('dashboard.dashboard_view') }}">메인 현황판</a>
+        <a href="{{ url_for('overview.project_overview') }}">종합현황</a>
         <a href="{{ url_for('project.project_list') }}">설계관리</a>
         <a href="{{ url_for('project.contract_list') }}">계약관리</a>
         <a href="{{ url_for('sales.sales_list') }}">영업관리</a>
         <a href="{{ url_for('material.material_management') }}">자재관리</a>
         <a href="{{ url_for('production.production_management') }}">생산관리</a>
         <a href="{{ url_for('delivery.delivery_management') }}">납품관리</a>
+        <a href="{{ url_for('warranty.warranty_list') }}">하자보증/AS</a>
         <a href="{{ url_for('drawing.drawings_index') }}">도면관리</a>
 
         {% if session.role == 'admin' %}
@@ -453,6 +459,22 @@
             }
             return _send.apply(this, arguments);
         };
+    })();
+    </script>
+    {% include 'components/change_password_modal.html' %}
+
+    <script>
+    (function(){
+        function checkNoti(){
+            fetch('/api/notifications/unread-count').then(function(r){return r.json()}).then(function(d){
+                var badge=document.getElementById('notiBadge');
+                if(!badge)return;
+                if(d.count>0){badge.textContent=d.count>99?'99+':d.count;badge.style.display='';}
+                else{badge.style.display='none';}
+            }).catch(function(){});
+        }
+        checkNoti();
+        setInterval(checkNoti,30000);
     })();
     </script>
 </body>

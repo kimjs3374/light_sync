@@ -2,6 +2,10 @@
 
 {% block content %}
 <h2 class="mb-4">👑 시스템 및 권한 관리</h2>
+<div class="mb-4">
+    <a href="{{ url_for('catalog.catalog_list') }}" class="btn btn-outline-primary btn-sm">📦 품목관리</a>
+    <a href="{{ url_for('dashboard.dashboard_notice_admin') }}" class="btn btn-outline-secondary btn-sm">📢 공지관리</a>
+</div>
 <div class="card shadow-sm border-0 mb-5">
     <div class="card-header bg-warning text-dark fw-bold">📝 가입 승인 대기</div>
     <div class="card-body p-0 table-responsive">

@@ -1,0 +1,273 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    .status-progress {
+        display: flex;
+        gap: 0;
+        align-items: center;
+    }
+    .status-progress .step {
+        flex: 1;
+        text-align: center;
+        padding: .5rem .25rem;
+        font-size: .85rem;
+        font-weight: 600;
+        background: #e2e8f0;
+        color: #64748b;
+        position: relative;
+    }
+    .status-progress .step:first-child {
+        border-radius: .5rem 0 0 .5rem;
+    }
+    .status-progress .step:last-child {
+        border-radius: 0 .5rem .5rem 0;
+    }
+    .status-progress .step.active {
+        background: #3b82f6;
+        color: #fff;
+    }
+    .status-progress .step.done {
+        background: #22c55e;
+        color: #fff;
+    }
+    .timeline-item {
+        border-left: 3px solid #e2e8f0;
+        padding-left: 1rem;
+        margin-bottom: 1rem;
+        position: relative;
+    }
+    .timeline-item::before {
+        content: '';
+        position: absolute;
+        left: -7px;
+        top: 4px;
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: #94a3b8;
+    }
+    .timeline-item.type-status_change::before { background: #3b82f6; }
+    .timeline-item.type-note::before { background: #64748b; }
+    .timeline-item.type-visit::before { background: #06b6d4; }
+</style>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">{{ case.case_no }} 상세</h2>
+    <a href="{{ url_for('warranty.warranty_list') }}" class="btn btn-outline-secondary">&larr; 목록으로</a>
+</div>
+
+<!-- AS 기본 정보 -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-bold">AS 기본 정보</div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <small class="text-muted">현장명</small>
+                <div class="fw-bold">
+                    {% if case.warranty and case.warranty.project %}
+                        {{ case.warranty.project.temp_name }}
+                    {% elif case.project %}
+                        {{ case.project.temp_name }}
+                    {% elif case.manual_site_name %}
+                        {{ case.manual_site_name }} <span class="badge bg-warning text-dark">수기</span>
+                    {% else %}-{% endif %}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <small class="text-muted">계약명</small>
+                <div>
+                    {% if case.warranty and case.warranty.contract %}
+                        {{ case.warranty.contract.contract_name }}
+                    {% elif case.manual_contract_name %}
+                        {{ case.manual_contract_name }} <span class="badge bg-warning text-dark">수기</span>
+                    {% else %}-{% endif %}
+                </div>
+            </div>
+            {% if case.manual_model_name %}
+            <div class="col-md-6">
+                <small class="text-muted">모델명 (수기)</small>
+                <div>{{ case.manual_model_name }}</div>
+            </div>
+            {% endif %}
+            {% if case.manual_delivery_date %}
+            <div class="col-md-6">
+                <small class="text-muted">납품일 (수기)</small>
+                <div>{{ case.manual_delivery_date }}</div>
+            </div>
+            {% endif %}
+            <div class="col-md-6">
+                <small class="text-muted">하자유형</small>
+                <div>{% for code, label in defect_types %}{% if code == case.defect_type %}{{ label }}{% endif %}{% endfor %}</div>
+            </div>
+            <div class="col-md-6">
+                <small class="text-muted">담당기사</small>
+                <div>{{ case.assigned_to or '-' }}</div>
+            </div>
+            <div class="col-12">
+                <small class="text-muted">증상</small>
+                <div>{{ case.symptom or '-' }}</div>
+            </div>
+            <div class="col-md-4">
+                <small class="text-muted">접수일</small>
+                <div>{{ case.reported_date or '-' }}</div>
+            </div>
+            <div class="col-md-4">
+                <small class="text-muted">현장확인일</small>
+                <div>{{ case.site_visit_date or '-' }}</div>
+            </div>
+            <div class="col-md-4">
+                <small class="text-muted">완료일</small>
+                <div>{{ case.completed_date or '-' }}</div>
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <small class="text-muted d-block mb-2">진행 상태</small>
+            <div class="status-progress">
+                {% set found_current = [false] %}
+                {% for step in status_steps %}
+                <div class="step {% if case.status == step %}active{% elif not found_current[0] %}done{% endif %}">
+                    {{ step }}
+                </div>
+                {% if case.status == step %}{% if found_current.append(true) %}{% endif %}{% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 상태 변경 -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-bold">상태 변경</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('warranty.warranty_detail', case_id=case.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="update_status">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">새 상태</label>
+                    <select class="form-select" name="new_status" id="newStatusSelect" required>
+                        <option value="">-- 선택 --</option>
+                        {% for step in status_steps %}
+                            {% if step != case.status %}
+                            <option value="{{ step }}">{{ step }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4" id="siteVisitDateGroup" style="display:none;">
+                    <label class="form-label fw-bold">현장확인일</label>
+                    <input type="date" class="form-control" name="site_visit_date">
+                </div>
+                <div class="col-md-4" id="completedDateGroup" style="display:none;">
+                    <label class="form-label fw-bold">완료일</label>
+                    <input type="date" class="form-control" name="completed_date">
+                </div>
+                <div class="col-12">
+                    <label class="form-label fw-bold">메모</label>
+                    <textarea class="form-control" name="status_memo" rows="2" placeholder="상태 변경 사유"></textarea>
+                </div>
+            </div>
+            <div class="text-end mt-3">
+                <button type="submit" class="btn btn-primary fw-bold">변경</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 처리 내역 -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-bold">처리 내역</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('warranty.warranty_detail', case_id=case.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="update_detail">
+            <div class="row g-3">
+                <div class="col-12">
+                    <label class="form-label fw-bold">원인 분석</label>
+                    <textarea class="form-control" name="cause_analysis" rows="3">{{ case.cause_analysis or '' }}</textarea>
+                </div>
+                <div class="col-12">
+                    <label class="form-label fw-bold">조치 내용</label>
+                    <textarea class="form-control" name="action_taken" rows="3">{{ case.action_taken or '' }}</textarea>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">교체 부품</label>
+                    <input type="text" class="form-control" name="replaced_parts" value="{{ case.replaced_parts or '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">담당기사</label>
+                    <input type="text" class="form-control" name="assigned_to" value="{{ case.assigned_to or '' }}">
+                </div>
+            </div>
+            <div class="text-end mt-3">
+                <button type="submit" class="btn btn-primary fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 처리 이력 타임라인 -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-bold">처리 이력</div>
+    <div class="card-body">
+        {% if logs %}
+            {% for log in logs %}
+            <div class="timeline-item type-{{ log.log_type }}">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fw-bold small">
+                        {% if log.log_type == 'status_change' %}
+                            <span class="badge bg-primary">상태변경</span>
+                        {% elif log.log_type == 'note' %}
+                            <span class="badge bg-secondary">메모</span>
+                        {% elif log.log_type == 'visit' %}
+                            <span class="badge bg-info text-dark">현장방문</span>
+                        {% else %}
+                            <span class="badge bg-light text-dark">{{ log.log_type }}</span>
+                        {% endif %}
+                        {{ log.created_by or '' }}
+                    </span>
+                    <small class="text-muted">{{ log.created_at }}</small>
+                </div>
+                <div class="small">{{ log.content }}</div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-muted mb-0">처리 이력이 없습니다.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 메모 추가 -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-bold">메모 추가</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('warranty.warranty_detail', case_id=case.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="add_note">
+            <div class="mb-3">
+                <textarea class="form-control" name="note_content" rows="3" required placeholder="메모를 입력하세요."></textarea>
+            </div>
+            <div class="text-end">
+                <button type="submit" class="btn btn-primary fw-bold">등록</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var statusSelect = document.getElementById('newStatusSelect');
+    var siteVisitGroup = document.getElementById('siteVisitDateGroup');
+    var completedGroup = document.getElementById('completedDateGroup');
+
+    if (statusSelect) {
+        statusSelect.addEventListener('change', function () {
+            var val = this.value;
+            siteVisitGroup.style.display = (val === '현장확인') ? '' : 'none';
+            completedGroup.style.display = (val === '완료') ? '' : 'none';
+        });
+    }
+});
+</script>
+{% endblock %}

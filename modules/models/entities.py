@@ -481,6 +481,103 @@ class DrawingAccessLog(Base):
     share_link = relationship("DrawingShareLink", back_populates="access_logs")
 
 # -------------------------------------------------------------------
+# 🔔 알림 (Notification)
+# -------------------------------------------------------------------
+class Notification(Base):
+    __tablename__ = 'notifications'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    title = Column(String(200), nullable=False)
+    message = Column(Text, nullable=True)
+    noti_type = Column(String(30), nullable=False, default='system')
+    link = Column(String(500), nullable=True)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+    user = relationship("User")
+
+# -------------------------------------------------------------------
+# 🔧 하자보증/AS (Warranty)
+# -------------------------------------------------------------------
+DEFECT_TYPES = [
+    ('LED_MODULE', 'LED 모듈 불량'),
+    ('SMPS', 'SMPS 고장'),
+    ('HEAT', '방열 이상'),
+    ('LENS', '렌즈/리플렉터 손상'),
+    ('MOISTURE', '결로/침수'),
+    ('CONTROL', '제어 불량'),
+    ('OTHER', '기타'),
+]
+
+CASE_STATUS_STEPS = ['접수', '현장확인', '수리중', '완료', '보류']
+
+
+class Warranty(Base):
+    __tablename__ = 'warranties'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    contract_id = Column(Integer, ForeignKey('contracts.id'), unique=True, nullable=False)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    warranty_start = Column(Date, nullable=True)
+    warranty_end = Column(Date, nullable=True)
+    warranty_amount = Column(Integer, default=0)
+    insurance_no = Column(String(100), nullable=True)
+    insurance_returned = Column(Boolean, default=False)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    contract = relationship("Contract", backref="warranty")
+    project = relationship("Project")
+    cases = relationship("WarrantyCase", back_populates="warranty", cascade="all, delete-orphan")
+
+
+class WarrantyCase(Base):
+    __tablename__ = 'warranty_cases'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    warranty_id = Column(Integer, ForeignKey('warranties.id'), nullable=True)   # nullable: 수기입력 시 보증 없이 접수
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)      # nullable: 수기입력 시 프로젝트 없을 수 있음
+    case_no = Column(String(50), nullable=False)
+    defect_type = Column(String(30), nullable=False)
+    symptom = Column(Text, nullable=True)
+    status = Column(String(20), default='접수')
+    reported_by = Column(String(100), nullable=True)
+    reported_date = Column(Date, nullable=True)
+    site_visit_date = Column(Date, nullable=True)
+    completed_date = Column(Date, nullable=True)
+    cause_analysis = Column(Text, nullable=True)
+    action_taken = Column(Text, nullable=True)
+    replaced_parts = Column(String(500), nullable=True)
+    assigned_to = Column(String(100), nullable=True)
+    created_by = Column(String(50), default='사용자')
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    # 수기입력 전용 필드 (보증 연결 없이 접수할 때 사용)
+    manual_site_name = Column(String(200), nullable=True)      # 현장명 수기
+    manual_contract_name = Column(String(200), nullable=True)   # 계약명 수기
+    manual_model_name = Column(String(200), nullable=True)      # 모델명 수기
+    manual_delivery_date = Column(Date, nullable=True)          # 납품일 수기
+
+    warranty = relationship("Warranty", back_populates="cases")
+    project = relationship("Project")
+    logs = relationship("WarrantyCaseLog", back_populates="case", cascade="all, delete-orphan")
+
+
+class WarrantyCaseLog(Base):
+    __tablename__ = 'warranty_case_logs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    case_id = Column(Integer, ForeignKey('warranty_cases.id'), nullable=False)
+    log_type = Column(String(20), default='status_change')
+    old_status = Column(String(20), nullable=True)
+    new_status = Column(String(20), nullable=True)
+    content = Column(Text, nullable=True)
+    created_by = Column(String(50), default='사용자')
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+    case = relationship("WarrantyCase", back_populates="logs")
+
+
+# -------------------------------------------------------------------
 # 👑 9. 시스템 권한 및 계정 (Auth)
 # -------------------------------------------------------------------
 class GroupPermission(Base):
@@ -525,6 +622,33 @@ class UserPriorityPermission(Base):
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
     user = relationship("User", foreign_keys=[user_id], back_populates="priority_permission")
+
+
+# -------------------------------------------------------------------
+# 10. 제품 카탈로그 (나라장터 G2B 연동)
+# -------------------------------------------------------------------
+class ProductCatalog(Base):
+    __tablename__ = 'product_catalog'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    prdct_idnt_no = Column(String(30), unique=True, nullable=False)   # 물품식별번호
+    krn_prdct_nm = Column(String(300), nullable=False)                # 원본 품명 (API 전체 문자열)
+    item_name = Column(String(200), nullable=True)                    # 품목명 (LED투광등기구)
+    manufacturer = Column(String(100), nullable=True)                 # 제조사 (매그나텍)
+    model_name = Column(String(200), nullable=True)                   # 모델명 (ARENA-200S)
+    spec = Column(String(300), nullable=True)                         # 규격 (200W, 5m 등)
+    prdct_clsfc_no = Column(String(30), nullable=True)                # 물품분류번호
+    dtl_prdct_nm = Column(String(500), nullable=True)                 # 상세품명
+    unit = Column(String(20), nullable=True)                          # 단위
+    unit_price = Column(Integer, nullable=True)                       # 계약단가 (원)
+    price_source = Column(String(10), nullable=False, default='api')  # api / manual / quote
+    g2b_contract_method = Column(String(20), nullable=True)           # MAS / 제3자단가 / 수기등록 / 견적
+    g2b_cntrct_no = Column(String(50), nullable=True)                 # 계약번호
+    cntrct_bgn_date = Column(Date, nullable=True)                     # 계약시작일
+    cntrct_end_date = Column(Date, nullable=True)                     # 계약종료일
+    last_synced_at = Column(DateTime, nullable=True)                  # 마지막 동기화 시각
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
 class ProjectDeleteRequest(Base):

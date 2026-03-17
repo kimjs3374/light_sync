@@ -108,7 +108,7 @@
                                 <table class="table table-sm table-hover mb-0 text-center contract-subtable mobile-stack-table" style="font-size: 0.85rem;">
                                     <thead class="table-light">
                                         <tr>
-                                            <th>품목구분</th><th>모델명</th><th>수량</th><th>영업단계</th><th>납품희망일</th>
+                                            <th>품목구분</th><th>모델명</th><th>수량</th><th>단가</th><th>금액</th><th>영업단계</th><th>납품희망일</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -117,6 +117,20 @@
                                             <td>{{ item.category }}</td>
                                             <td><b>{{ item.model_name }}</b></td>
                                             <td>{{ item.quantity }}</td>
+                                            <td>
+                                                {% if item._catalog_price is defined and item._catalog_price.matched and item._catalog_price.unit_price %}
+                                                    {{ "{:,}".format(item._catalog_price.unit_price) }}
+                                                {% else %}
+                                                    <span class="text-muted">-</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if item._catalog_price is defined and item._catalog_price.matched and item._catalog_price.unit_price %}
+                                                    <strong>{{ "{:,}".format(item.quantity * item._catalog_price.unit_price) }}</strong>
+                                                {% else %}
+                                                    <span class="text-muted">-</span>
+                                                {% endif %}
+                                            </td>
                                             <td><span class="badge bg-light text-primary border border-primary">{{ item.status_sales }}</span></td>
                                             <td>{{ c.desired_delivery_date or '-' }}</td>
                                         </tr>
@@ -149,4 +163,5 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
+{% include 'components/pagination.html' %}
 {% endblock %}

@@ -1,0 +1,433 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    /* ===== Screen Styles ===== */
+    .report-container {
+        max-width: 900px;
+        margin: 0 auto;
+        background: #fff;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .report-controls {
+        max-width: 900px;
+        margin: 0 auto 20px;
+        background: #f1f5f9;
+        padding: 20px;
+        border-radius: 8px;
+    }
+    .report-controls label {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: #334155;
+    }
+    .report-header {
+        text-align: center;
+        border-bottom: 2px solid #1e293b;
+        padding-bottom: 16px;
+        margin-bottom: 24px;
+    }
+    .report-header .company-name {
+        font-size: 0.95rem;
+        color: #64748b;
+        margin-bottom: 4px;
+    }
+    .report-header h2 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 8px 0;
+    }
+    .report-header .report-meta {
+        font-size: 0.88rem;
+        color: #475569;
+    }
+    .report-section {
+        margin-bottom: 28px;
+    }
+    .report-section h3 {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #1e293b;
+        border-left: 4px solid #3b82f6;
+        padding-left: 10px;
+        margin-bottom: 12px;
+    }
+    .report-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88rem;
+    }
+    .report-table th,
+    .report-table td {
+        border: 1px solid #cbd5e1;
+        padding: 6px 8px;
+        text-align: center;
+        vertical-align: middle;
+    }
+    .report-table th {
+        background: #f1f5f9;
+        font-weight: 600;
+        color: #334155;
+        white-space: nowrap;
+    }
+    .report-table td {
+        color: #1e293b;
+    }
+    .report-table td.text-left {
+        text-align: left;
+    }
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 8px;
+    }
+    .summary-card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 12px;
+        text-align: center;
+    }
+    .summary-card .label {
+        font-size: 0.8rem;
+        color: #64748b;
+        margin-bottom: 4px;
+    }
+    .summary-card .value {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #1e293b;
+    }
+    .badge-urgent {
+        background: #ef4444;
+        color: #fff;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .dday-overdue { color: #dc2626; font-weight: 700; }
+    .dday-warn { color: #ea580c; font-weight: 600; }
+    .dday-normal { color: #334155; }
+    .row-overdue { background: #fef2f2 !important; }
+    .empty-notice {
+        text-align: center;
+        color: #94a3b8;
+        padding: 16px;
+        font-style: italic;
+    }
+    .activity-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .activity-list li {
+        padding: 6px 0;
+        border-bottom: 1px solid #f1f5f9;
+        font-size: 0.88rem;
+        color: #334155;
+    }
+    .activity-list li:last-child {
+        border-bottom: none;
+    }
+    .activity-date {
+        color: #64748b;
+        font-size: 0.82rem;
+        margin-right: 8px;
+    }
+    .activity-project {
+        font-weight: 600;
+        color: #1e40af;
+        margin-right: 6px;
+    }
+
+    /* ===== Print Styles ===== */
+    @media print {
+        .sidebar, .mobile-menu-btn, .sidebar-backdrop, .no-print { display: none !important; }
+        .main-content { margin-left: 0 !important; padding: 0 !important; }
+        body { background: white !important; font-size: 11pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .report-container { max-width: 100%; box-shadow: none; padding: 10px 0; border-radius: 0; }
+        .report-table { page-break-inside: auto; }
+        .report-table tr { page-break-inside: avoid; }
+        .report-table th { background: #f1f5f9 !important; }
+        .page-break { page-break-before: always; }
+        .summary-card { border: 1px solid #999; }
+        .row-overdue { background: #fef2f2 !important; }
+        .badge-urgent { background: #ef4444 !important; color: #fff !important; }
+        a { color: inherit !important; text-decoration: none !important; }
+    }
+</style>
+
+<!-- ===== Print Controls (hidden when printing) ===== -->
+<div class="no-print report-controls">
+    <form method="get" action="{{ url_for('report.weekly_report') }}" class="row g-2 align-items-end">
+        <div class="col-auto">
+            <label for="start">시작일</label>
+            <input type="date" class="form-control form-control-sm" id="start" name="start"
+                   value="{{ week_start.isoformat() }}">
+        </div>
+        <div class="col-auto">
+            <label for="end">종료일</label>
+            <input type="date" class="form-control form-control-sm" id="end" name="end"
+                   value="{{ week_end.isoformat() }}">
+        </div>
+        <div class="col-auto">
+            <label for="reporter">작성자</label>
+            <input type="text" class="form-control form-control-sm" id="reporter" name="reporter"
+                   value="{{ reporter or session.get('full_name', '') }}" placeholder="작성자명">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm">보고서 생성</button>
+        </div>
+        <div class="col-auto">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print();">인쇄</button>
+        </div>
+    </form>
+</div>
+
+<!-- ===== Report Content ===== -->
+<div class="report-container">
+
+    <!-- Header -->
+    <div class="report-header">
+        <div class="company-name">(주)매그나텍 LED조명사업부</div>
+        <h2>설계관리 주간 업무보고서</h2>
+        <div class="report-meta">
+            보고 기간: {{ week_start.strftime('%Y-%m-%d') }} ~ {{ week_end.strftime('%Y-%m-%d') }}<br>
+            작성일: {{ today.strftime('%Y-%m-%d') }}
+            {% if reporter or session.get('full_name') %}
+                &nbsp;&middot;&nbsp; 작성자: {{ reporter or session.get('full_name', '') }}
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 1. 주간 요약 -->
+    <div class="report-section">
+        <h3>1. 주간 요약</h3>
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="label">진행중 현장</div>
+                <div class="value">{{ stats.total_active }}건</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">신규 등록</div>
+                <div class="value">{{ stats.new_count }}건</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">계약 전환</div>
+                <div class="value">{{ stats.converted_count }}건</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">긴급</div>
+                <div class="value" style="color: {% if stats.urgent_count > 0 %}#dc2626{% else %}#1e293b{% endif %};">{{ stats.urgent_count }}건</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">지연</div>
+                <div class="value" style="color: {% if stats.overdue_count > 0 %}#dc2626{% else %}#1e293b{% endif %};">{{ stats.overdue_count }}건</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 진행중 현장 현황 -->
+    <div class="report-section">
+        <h3>2. 진행중 현장 현황</h3>
+        {% if active_projects %}
+        <table class="report-table no-stack-table">
+            <thead>
+                <tr>
+                    <th style="width:40px;">No</th>
+                    <th>관리번호</th>
+                    <th>현장명</th>
+                    <th>계약예정일</th>
+                    <th>D-Day</th>
+                    <th>상태</th>
+                    <th>품목요약</th>
+                    <th>비고</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in active_projects %}
+                {% set dday = calc_dday(p) %}
+                <tr class="{% if dday is not none and dday < 0 %}row-overdue{% endif %}">
+                    <td>{{ loop.index }}</td>
+                    <td>{{ p.project_no }}</td>
+                    <td class="text-left">{{ p.temp_name or p.short_name or '-' }}</td>
+                    <td>{{ p.expected_contract_date.strftime('%Y-%m-%d') if p.expected_contract_date else '-' }}</td>
+                    <td>
+                        {% if dday is not none %}
+                            {% if dday < 0 %}
+                                <span class="dday-overdue">D+{{ dday|abs }}</span>
+                            {% elif dday <= 7 %}
+                                <span class="dday-warn">D-{{ dday }}</span>
+                            {% else %}
+                                <span class="dday-normal">D-{{ dday }}</span>
+                            {% endif %}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ p.status or '설계/영업' }}</td>
+                    <td class="text-left">
+                        {% if p.materials %}
+                            {{ p.materials|length }}종
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if p.is_urgent %}<span class="badge-urgent">긴급</span> {% endif %}
+                        {% if p.contacts %}담당{{ p.contacts|length }}명{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-notice">해당 사항 없음</div>
+        {% endif %}
+    </div>
+
+    <!-- 3. 금주 신규 등록 현장 -->
+    <div class="report-section">
+        <h3>3. 금주 신규 등록 현장</h3>
+        {% if new_projects %}
+        <table class="report-table no-stack-table">
+            <thead>
+                <tr>
+                    <th style="width:40px;">No</th>
+                    <th>관리번호</th>
+                    <th>현장명</th>
+                    <th>등록일</th>
+                    <th>계약예정일</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in new_projects %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ p.project_no }}</td>
+                    <td class="text-left">{{ p.temp_name or p.short_name or '-' }}</td>
+                    <td>{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '-' }}</td>
+                    <td>{{ p.expected_contract_date.strftime('%Y-%m-%d') if p.expected_contract_date else '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-notice">해당 사항 없음</div>
+        {% endif %}
+    </div>
+
+    <!-- 4. 금주 계약 전환 현장 -->
+    <div class="report-section">
+        <h3>4. 금주 계약 전환 현장</h3>
+        {% if converted_projects %}
+        <table class="report-table no-stack-table">
+            <thead>
+                <tr>
+                    <th style="width:40px;">No</th>
+                    <th>관리번호</th>
+                    <th>현장명</th>
+                    <th>계약일</th>
+                    <th>계약건수</th>
+                    <th>예상금액</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in converted_projects %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ p.project_no }}</td>
+                    <td class="text-left">{{ p.temp_name or p.short_name or '-' }}</td>
+                    <td>{{ p.contract_date.strftime('%Y-%m-%d') if p.contract_date else '-' }}</td>
+                    <td>{{ p.contracts|length if p.contracts else 0 }}건</td>
+                    <td>{% if p._estimated_amount is defined and p._estimated_amount %}{{ "{:,}".format(p._estimated_amount) }}원{% else %}-{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-notice">해당 사항 없음</div>
+        {% endif %}
+    </div>
+
+    <!-- 5. 긴급/지연 현장 -->
+    {% if urgent_projects or overdue_projects %}
+    <div class="report-section">
+        <h3>5. 긴급/지연 현장</h3>
+        <table class="report-table no-stack-table">
+            <thead>
+                <tr>
+                    <th style="width:40px;">No</th>
+                    <th>관리번호</th>
+                    <th>현장명</th>
+                    <th>계약예정일</th>
+                    <th>D-Day</th>
+                    <th>구분</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set ns = namespace(idx=0) %}
+                {% for p in overdue_projects %}
+                {% set ns.idx = ns.idx + 1 %}
+                {% set dday = calc_dday(p) %}
+                <tr class="row-overdue">
+                    <td>{{ ns.idx }}</td>
+                    <td>{{ p.project_no }}</td>
+                    <td class="text-left">{{ p.temp_name or p.short_name or '-' }}</td>
+                    <td>{{ p.expected_contract_date.strftime('%Y-%m-%d') if p.expected_contract_date else '-' }}</td>
+                    <td><span class="dday-overdue">D+{{ dday|abs if dday is not none else '-' }}</span></td>
+                    <td><span class="dday-overdue">지연</span>{% if p.is_urgent %} <span class="badge-urgent">긴급</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+                {% for p in urgent_projects if p not in overdue_projects %}
+                {% set ns.idx = ns.idx + 1 %}
+                {% set dday = calc_dday(p) %}
+                <tr>
+                    <td>{{ ns.idx }}</td>
+                    <td>{{ p.project_no }}</td>
+                    <td class="text-left">{{ p.temp_name or p.short_name or '-' }}</td>
+                    <td>{{ p.expected_contract_date.strftime('%Y-%m-%d') if p.expected_contract_date else '-' }}</td>
+                    <td>
+                        {% if dday is not none %}
+                            <span class="dday-warn">D-{{ dday }}</span>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td><span class="badge-urgent">긴급</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="report-section">
+        <h3>5. 긴급/지연 현장</h3>
+        <div class="empty-notice">해당 사항 없음</div>
+    </div>
+    {% endif %}
+
+    <!-- 6. 금주 주요 활동 -->
+    <div class="report-section">
+        <h3>6. 금주 주요 활동</h3>
+        {% if recent_logs %}
+        <ul class="activity-list">
+            {% for log in recent_logs %}
+            <li>
+                <span class="activity-date">{{ log.created_at.strftime('%m/%d') }}</span>
+                <span class="activity-project">[{{ log.project.project_no if log.project else '-' }}]</span>
+                {{ log.content|truncate(80) }}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-notice">해당 사항 없음</div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

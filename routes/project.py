@@ -7,6 +7,7 @@ from collections import defaultdict
 from sqlalchemy.orm import joinedload
 from modules.db_context import get_db
 from modules.utils import safe_int, parse_date
+from modules.pagination import make_pagination
 from modules.spec_utils import format_spec_summary
 from modules.models import (
     Project, Material, HistoryLog, Contract, ContractItem,
@@ -123,17 +124,89 @@ def _execute_project_delete(db, project_obj):
 @project_bp.route('/project_list')
 @login_required
 def project_list():
+    q = (request.args.get('q') or '').strip().lower()
+    status_filter = request.args.get('status', 'all')
+    due_filter = request.args.get('due', 'all')
+    sort_by = request.args.get('sort', 'created_desc')
+    page = safe_int(request.args.get('page'), 1)
+    per_page = safe_int(request.args.get('per_page'), 20)
+
     with get_db() as db:
         today = datetime.date.today()
         # 관계 데이터를 미리 로드하여 세션 종료 후에도 템플릿에서 에러가 나지 않게 함
-        projects = db.query(Project).options(
+        all_projects = db.query(Project).options(
             joinedload(Project.materials),
             joinedload(Project.contacts),
             joinedload(Project.priority_override),
         ).order_by(Project.id.desc()).all()
 
+        total_count = len(all_projects)
+        overdue_count = 0
+        urgent_count = 0
+
+        # 통계 집계 (필터 전 전체 기준)
+        for p in all_projects:
+            dday = (p.expected_contract_date - today).days if p.expected_contract_date else None
+            if not p.is_contracted and dday is not None and dday < 0:
+                overdue_count += 1
+            if p.is_urgent and not p.is_contracted:
+                urgent_count += 1
+
+        # 필터링
+        filtered = []
+        for p in all_projects:
+            dday = (p.expected_contract_date - today).days if p.expected_contract_date else None
+
+            # 텍스트 검색
+            if q:
+                search_pool = [
+                    (p.project_no or '').lower(),
+                    (p.temp_name or '').lower(),
+                    (p.short_name or '').lower(),
+                ]
+                if not any(q in s for s in search_pool):
+                    continue
+
+            # 상태 필터
+            if status_filter == '진행중' and (p.is_contracted or p.is_urgent):
+                continue
+            if status_filter == '계약완료' and not p.is_contracted:
+                continue
+            if status_filter == '긴급' and not p.is_urgent:
+                continue
+
+            # D-Day 필터
+            if due_filter == 'overdue' and (p.is_contracted or dday is None or dday >= 0):
+                continue
+            if due_filter == 'week' and (p.is_contracted or dday is None or dday < 0 or dday > 7):
+                continue
+            if due_filter == 'twoweek' and (p.is_contracted or dday is None or dday < 0 or dday > 14):
+                continue
+
+            filtered.append(p)
+
+        # 정렬
+        if sort_by == 'due_asc':
+            filtered.sort(key=lambda p: (
+                p.expected_contract_date is None,
+                p.expected_contract_date or datetime.date.max,
+            ))
+        elif sort_by == 'due_desc':
+            filtered.sort(key=lambda p: (
+                p.expected_contract_date is None,
+                -(p.expected_contract_date or datetime.date.min).toordinal(),
+            ))
+        else:  # created_desc (기본)
+            filtered.sort(key=lambda p: p.created_at or datetime.datetime.min, reverse=True)
+
+        # 페이지네이션
+        pagination = make_pagination(page, per_page, len(filtered))
+        start = (pagination['page'] - 1) * per_page
+        projects_page = filtered[start:start + per_page]
+
+        # 우선순위 (페이지네이션 전 전체 filtered 대상)
         priority_projects = []
-        for p in projects:
+        for p in filtered:
             reasons = []
             dday = (p.expected_contract_date - today).days if p.expected_contract_date else None
             override = append_manual_priority_reason(reasons, p)
@@ -164,7 +237,25 @@ def project_list():
                 ))
 
         priority_projects = sort_priority_entries(priority_projects)
-        return render_template('project_list.html', projects=projects, today=today, priority_projects=priority_projects)
+        return render_template(
+            'project_list.html',
+            projects=projects_page,
+            today=today,
+            priority_projects=priority_projects,
+            filters={
+                'q': request.args.get('q', ''),
+                'status': status_filter,
+                'due': due_filter,
+                'sort': sort_by,
+            },
+            pagination=pagination,
+            stats={
+                'total': total_count,
+                'filtered': len(filtered),
+                'overdue': overdue_count,
+                'urgent': urgent_count,
+            },
+        )
 
 # -------------------------------------------------------------------
 # 2. 📋 계약관리 리스트 (실무형 필터/검색 강화)
@@ -178,6 +269,8 @@ def contract_list():
     inspection_filter = request.args.get('inspection', 'all')
     urgent_filter = request.args.get('urgent', 'all')
     sort_by = request.args.get('sort', 'due_asc')
+    page = safe_int(request.args.get('page'), 1)
+    per_page = safe_int(request.args.get('per_page'), 20)
 
     with get_db() as db:
         # 하위 계약/품목/원본자재까지 선로드
@@ -283,9 +376,14 @@ def contract_list():
 
         priority_projects = sort_priority_entries(priority_projects)
 
+        # 페이지네이션
+        pagination = make_pagination(page, per_page, len(enriched))
+        start = (pagination['page'] - 1) * per_page
+        enriched_page = enriched[start:start + per_page]
+
         return render_template(
             'contract_list.html',
-            projects=enriched,
+            projects=enriched_page,
             priority_projects=priority_projects,
             today=today,
             lighting_detail_items=LIGHTING_DETAIL_ITEMS,
@@ -296,6 +394,7 @@ def contract_list():
                 'urgent': urgent_filter,
                 'sort': sort_by,
             },
+            pagination=pagination,
             stats={
                 'total': total_contracted,
                 'filtered': len(enriched),

@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">AS 접수</h2>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <!-- 입력 모드 탭 -->
+        <ul class="nav nav-tabs mb-4" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-warranty" type="button">
+                    보증 연결 접수
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-manual" type="button">
+                    수기 입력 접수 <small class="text-muted">(이전 계약)</small>
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            <!-- 탭1: 보증 연결 접수 -->
+            <div class="tab-pane fade show active" id="tab-warranty">
+                <form method="POST" action="{{ url_for('warranty.warranty_create') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="input_mode" value="warranty">
+
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold">보증 대상 계약</label>
+                            <select class="form-select" name="warranty_id" required>
+                                <option value="">-- 보증 대상 선택 --</option>
+                                {% for w in warranties %}
+                                <option value="{{ w.id }}">
+                                    {{ w.project.project_no if w.project else '' }} - {{ w.contract.contract_name if w.contract else '' }}
+                                    (보증: {{ w.warranty_start or '?' }} ~ {{ w.warranty_end or '?' }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% if not warranties %}
+                            <small class="text-muted">보증 등록된 계약이 없습니다. 수기 입력 탭을 이용하세요.</small>
+                            {% endif %}
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">하자유형</label>
+                            <select class="form-select" name="defect_type" required>
+                                <option value="">-- 유형 선택 --</option>
+                                {% for code, label in defect_types %}
+                                <option value="{{ code }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">접수일</label>
+                            <input type="date" class="form-control" name="reported_date" value="{{ today }}">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label fw-bold">증상 설명</label>
+                            <textarea class="form-control" name="symptom" rows="3" required placeholder="하자 증상을 상세히 기술해 주세요."></textarea>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">접수자</label>
+                            <input type="text" class="form-control" name="reported_by" placeholder="발주처 담당자명">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">담당 기사</label>
+                            <input type="text" class="form-control" name="assigned_to" placeholder="담당 기사명">
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <a href="{{ url_for('warranty.warranty_list') }}" class="btn btn-outline-secondary">취소</a>
+                        <button type="submit" class="btn btn-primary fw-bold">접수</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 탭2: 수기 입력 접수 (이전 계약용) -->
+            <div class="tab-pane fade" id="tab-manual">
+                <div class="alert alert-info small mb-3">
+                    보증 등록이 안 된 이전 납품건의 AS를 접수할 때 사용합니다. 현장명/계약명을 직접 입력하세요.
+                </div>
+                <form method="POST" action="{{ url_for('warranty.warranty_create') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="input_mode" value="manual">
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">프로젝트 연결 <small class="text-muted">(선택)</small></label>
+                            <select class="form-select" name="project_id">
+                                <option value="">-- 연결 안함 (직접 입력) --</option>
+                                {% for p in projects %}
+                                <option value="{{ p.id }}">{{ p.project_no }} - {{ p.temp_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">현장명 <small class="text-muted">(수기)</small></label>
+                            <input type="text" class="form-control" name="manual_site_name" placeholder="현장명 직접 입력">
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">계약명 <small class="text-muted">(수기)</small></label>
+                            <input type="text" class="form-control" name="manual_contract_name" placeholder="계약명 직접 입력">
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">모델명 <small class="text-muted">(수기)</small></label>
+                            <input type="text" class="form-control" name="manual_model_name" placeholder="모델명 (예: ARENA-400)">
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">납품일 <small class="text-muted">(수기)</small></label>
+                            <input type="date" class="form-control" name="manual_delivery_date">
+                        </div>
+
+                        <hr>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">하자유형</label>
+                            <select class="form-select" name="defect_type" required>
+                                <option value="">-- 유형 선택 --</option>
+                                {% for code, label in defect_types %}
+                                <option value="{{ code }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">접수일</label>
+                            <input type="date" class="form-control" name="reported_date" value="{{ today }}">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label fw-bold">증상 설명</label>
+                            <textarea class="form-control" name="symptom" rows="3" required placeholder="하자 증상을 상세히 기술해 주세요."></textarea>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">접수자</label>
+                            <input type="text" class="form-control" name="reported_by" placeholder="발주처 담당자명">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">담당 기사</label>
+                            <input type="text" class="form-control" name="assigned_to" placeholder="담당 기사명">
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <a href="{{ url_for('warranty.warranty_list') }}" class="btn btn-outline-secondary">취소</a>
+                        <button type="submit" class="btn btn-warning fw-bold">수기 접수</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -18,6 +18,13 @@ from routes.production import production_bp
 from routes.delivery import delivery_bp
 from routes.material import material_bp
 from routes.barcode import barcode_bp
+from routes.notification import notification_bp
+from routes.overview import overview_bp
+from routes.warranty import warranty_bp
+from routes.report import report_bp
+from routes.catalog import catalog_bp
+from routes.api import api_bp
+from modules.pagination import pagination_query
 
 # =====================================================================
 # App 생성 및 설정
@@ -31,6 +38,7 @@ else:
     app.config.from_object(ProductionConfig)
 
 app.config["PREFERRED_URL_SCHEME"] = "https"
+app.json.ensure_ascii = False
 
 # Logging
 os.makedirs('logs', exist_ok=True)
@@ -41,6 +49,7 @@ file_handler.setFormatter(logging.Formatter(
 app.logger.addHandler(file_handler)
 app.logger.setLevel(logging.INFO)
 app.jinja_env.auto_reload = app.config.get("TEMPLATES_AUTO_RELOAD", True)
+app.jinja_env.globals['pagination_query'] = pagination_query
 
 # CSRF Protection
 csrf = CSRFProtect(app)
@@ -103,6 +112,15 @@ app.register_blueprint(tech_bp)
 app.register_blueprint(drawing_bp)
 app.register_blueprint(material_bp)
 app.register_blueprint(barcode_bp)
+app.register_blueprint(notification_bp)
+app.register_blueprint(overview_bp)
+app.register_blueprint(warranty_bp)
+app.register_blueprint(report_bp)
+app.register_blueprint(catalog_bp)
+app.register_blueprint(api_bp)
+
+# NAS 동기화 API는 외부(NAS cron)에서 호출하므로 CSRF 면제
+csrf.exempt(api_bp)
 
 
 # =====================================================================

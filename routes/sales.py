@@ -2,6 +2,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from modules.auth_decorators import login_required
 import datetime
 from sqlalchemy.orm import joinedload
+from modules.utils import safe_int
+from modules.pagination import make_pagination
 
 from modules.db_context import get_db
 from modules.models import (
@@ -18,6 +20,7 @@ from modules.priority_utils import (
     make_priority_entry,
     sort_priority_entries,
 )
+from modules.services.g2b_catalog_sync import get_catalog_price_map, match_from_price_map
 from modules.services.sales_actions import (
     handle_update_sales_item,
     handle_add_sales_comment,
@@ -42,6 +45,8 @@ def sales_list():
 
     sort_by = request.args.get('sort', 'due_asc')
     q = (request.args.get('q') or '').strip().lower()
+    page = safe_int(request.args.get('page'), 1)
+    per_page = safe_int(request.args.get('per_page'), 20)
 
     with get_db() as db:
         projects = db.query(Project).filter(Project.is_contracted == True).options(
@@ -134,6 +139,13 @@ def sales_list():
 
         priority_projects = sort_priority_entries(priority_projects)
 
+        # 제품 카탈로그 단가 매칭
+        price_map = get_catalog_price_map(db)
+        for p in enriched:
+            for c in (p.contracts or []):
+                for item in (c.items or []):
+                    item._catalog_price = match_from_price_map(price_map, item.model_name)
+
         stats = {
             'total': total_count,
             'filtered': len(enriched),
@@ -141,12 +153,17 @@ def sales_list():
             'due_7': sum(1 for p in enriched if p.dday is not None and 0 <= p.dday <= 7),
         }
 
+        pagination = make_pagination(page, per_page, len(enriched))
+        start = (pagination['page'] - 1) * per_page
+        enriched_page = enriched[start:start + per_page]
+
         return render_template(
             'sales_list.html',
-            projects=enriched,
+            projects=enriched_page,
             priority_projects=priority_projects,
             stats=stats,
             today=today,
+            pagination=pagination,
             filters={
                 'sort': sort_by,
                 'q': q,

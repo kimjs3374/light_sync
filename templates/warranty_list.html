@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    .warranty-board .table {
+        table-layout: fixed;
+        border-collapse: collapse;
+    }
+    .warranty-board th, .warranty-board td {
+        vertical-align: middle;
+        padding-top: .62rem;
+        padding-bottom: .62rem;
+        border-left: 0 !important;
+        border-right: 0 !important;
+    }
+    .warranty-board thead th {
+        background: #f8fafc !important;
+        color: #334155 !important;
+        border-top: 0 !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+    }
+    .warranty-board tbody td {
+        border-top: 1px solid #eef2f7 !important;
+        border-bottom: 1px solid #eef2f7 !important;
+    }
+    .warranty-board tbody tr {
+        cursor: pointer;
+        transition: background-color .15s ease;
+    }
+    .warranty-board tbody tr:hover {
+        background: #f8fafc !important;
+    }
+    @media (max-width: 767.98px) {
+        .warranty-header-actions,
+        .warranty-header-actions .btn {
+            width: 100%;
+        }
+    }
+</style>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">🔧 하자보증 / AS 관리</h2>
+    <div class="warranty-header-actions d-flex gap-2">
+        <a href="{{ url_for('warranty.warranty_create') }}" class="btn btn-primary fw-bold">+ AS 접수</a>
+        <a href="{{ url_for('warranty.warranty_list') }}?view=register" class="btn btn-outline-secondary fw-bold">보증등록</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body py-2">
+                <small class="text-muted">전체</small>
+                <div class="fw-bold fs-5">{{ stats.total }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body py-2">
+                <small class="text-muted">조회결과</small>
+                <div class="fw-bold fs-5">{{ stats.filtered }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-warning">
+            <div class="card-body py-2">
+                <small class="text-muted">미완료</small>
+                <div class="fw-bold fs-5 text-warning">{{ stats.open }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-info">
+            <div class="card-body py-2">
+                <small class="text-muted">하자유형별 최다</small>
+                {% set top_code = stats.defect_counts|dictsort(by='value', reverse=true)|first if stats.defect_counts else none %}
+                <div class="fw-bold fs-5 text-info">
+                    {% if top_code and top_code[1] > 0 %}
+                        {% for code, label in defect_types %}{% if code == top_code[0] %}{{ label }}({{ top_code[1] }}){% endif %}{% endfor %}
+                    {% else %}-{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form class="card border-0 shadow-sm mb-4" method="GET">
+    <div class="card-body row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="small fw-bold">검색</label>
+            <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/케이스번호">
+        </div>
+        <div class="col-md-2">
+            <label class="small fw-bold">상태</label>
+            <select class="form-select" name="status">
+                <option value="all" {% if filters.status == 'all' %}selected{% endif %}>전체</option>
+                <option value="접수" {% if filters.status == '접수' %}selected{% endif %}>접수</option>
+                <option value="현장확인" {% if filters.status == '현장확인' %}selected{% endif %}>현장확인</option>
+                <option value="수리중" {% if filters.status == '수리중' %}selected{% endif %}>수리중</option>
+                <option value="완료" {% if filters.status == '완료' %}selected{% endif %}>완료</option>
+                <option value="보류" {% if filters.status == '보류' %}selected{% endif %}>보류</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="small fw-bold">하자유형</label>
+            <select class="form-select" name="defect">
+                <option value="all" {% if filters.defect == 'all' %}selected{% endif %}>전체</option>
+                {% for code, label in defect_types %}
+                <option value="{{ code }}" {% if filters.defect == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="small fw-bold">정렬</label>
+            <select class="form-select" name="sort">
+                <option value="created_desc" {% if filters.sort == 'created_desc' %}selected{% endif %}>최신등록순</option>
+                <option value="reported_asc" {% if filters.sort == 'reported_asc' %}selected{% endif %}>접수일 오래된순</option>
+                <option value="reported_desc" {% if filters.sort == 'reported_desc' %}selected{% endif %}>접수일 최신순</option>
+            </select>
+        </div>
+        <div class="col-12 text-md-end mobile-actions">
+            <a href="{{ url_for('warranty.warranty_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+            <button class="btn btn-primary btn-sm fw-bold">검색</button>
+        </div>
+    </div>
+</form>
+
+<div class="table-responsive warranty-board">
+    <table class="table shadow-sm align-middle mobile-stack-table">
+        <thead class="text-center small">
+            <tr>
+                <th style="width: 130px;">케이스번호</th>
+                <th>현장명</th>
+                <th style="width: 110px;">하자유형</th>
+                <th style="width: 90px;">상태</th>
+                <th style="width: 110px;">접수일</th>
+                <th style="width: 110px;">완료일</th>
+                <th style="width: 100px;">담당기사</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in cases %}
+            <tr data-href="{{ url_for('warranty.warranty_detail', case_id=c.id) }}">
+                <td class="text-center fw-bold" data-label="케이스번호">{{ c.case_no }}</td>
+                <td data-label="현장명">{{ c.project.temp_name if c.project else '-' }}</td>
+                <td class="text-center" data-label="하자유형">
+                    {% for code, label in defect_types %}
+                        {% if code == c.defect_type %}{{ label }}{% endif %}
+                    {% endfor %}
+                </td>
+                <td class="text-center" data-label="상태">
+                    {% if c.status == '접수' %}
+                        <span class="badge bg-secondary">접수</span>
+                    {% elif c.status == '현장확인' %}
+                        <span class="badge bg-info text-dark">현장확인</span>
+                    {% elif c.status == '수리중' %}
+                        <span class="badge bg-warning text-dark">수리중</span>
+                    {% elif c.status == '완료' %}
+                        <span class="badge bg-success">완료</span>
+                    {% elif c.status == '보류' %}
+                        <span class="badge bg-dark">보류</span>
+                    {% else %}
+                        <span class="badge bg-light text-dark">{{ c.status }}</span>
+                    {% endif %}
+                </td>
+                <td class="text-center" data-label="접수일">{{ c.reported_date or '-' }}</td>
+                <td class="text-center" data-label="완료일">{{ c.completed_date or '-' }}</td>
+                <td class="text-center" data-label="담당기사">{{ c.assigned_to or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center py-5 text-muted">등록된 AS 케이스가 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% include 'components/pagination.html' %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.warranty-board tbody tr[data-href]').forEach(function (row) {
+        row.addEventListener('click', function (e) {
+            var interactive = e.target.closest('a, button, input, select, textarea, label, form');
+            if (interactive) return;
+
+            var href = row.dataset.href;
+            if (href) window.location.href = href;
+        });
+    });
+});
+</script>
+{% endblock %}

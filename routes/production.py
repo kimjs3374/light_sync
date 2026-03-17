@@ -6,6 +6,8 @@ from modules.auth_decorators import login_required
 
 from modules.history_board import append_history_log, get_project_history_context
 from modules.db_context import get_db
+from modules.utils import safe_int
+from modules.pagination import make_pagination
 from modules.models import (
     Project,
     Contract,
@@ -406,9 +408,15 @@ def production_management():
 
         priority_projects = sort_priority_entries(priority_projects)
 
+        page = safe_int(request.args.get('page'), 1)
+        per_page = safe_int(request.args.get('per_page'), 20)
+        pagination = make_pagination(page, per_page, len(filtered))
+        start = (pagination['page'] - 1) * per_page
+        projects_page = filtered[start:start + per_page]
+
         return render_template(
             'production_management.html',
-            projects=filtered,
+            projects=projects_page,
             priority_projects=priority_projects,
             stats={
                 'total_projects': len(projects),
@@ -418,6 +426,7 @@ def production_management():
                 'working_items': working_items,
                 'done_items': done_items,
             },
+            pagination=pagination,
             filters={'q': request.args.get('q', ''), 'status': status_filter, 'due': due_filter, 'sort': sort_by}
         )
 

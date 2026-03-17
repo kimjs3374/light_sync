@@ -7,6 +7,65 @@
 | phase-4-service-layer | Phase 4 (Service Layer) | 100% (9/9) | 2026-03-17 | 4 |
 | phase-5-full-service-layer | Phase 5 (Full Service Layer) | 95% (12/12) | 2026-03-17 | 4 |
 | phase-6-auth-error-optimization | Phase 6 (Auth Decorator + Error Handling + DB Index) | 97% (9/10) | 2026-03-17 | 4 |
+| ux-improvements-batch | UX 개선 5종 (검색/비번/페이지네이션/알림/종합현황) | 95% (20/21) | 2026-03-17 | 4 |
+| warranty-as | 하자보증/AS 관리 (관급자재 Phase 9) | 99% (11/11) | 2026-03-17 | 4 |
+| product-catalog | 품목관리 (나라장터 G2B API 단가 연동) | 98% (65/66) | 2026-03-17 | 4 |
+
+## product-catalog
+
+- **Duration**: 2026-03-17 (1 session, CTO Team Mode)
+- **Iterations**: 0 (first-pass 98%)
+- **Key Result**: 나라장터 API 267건 자동 동기화, 영업관리/주간보고서 금액 연동, 품목 분리(품목명/모델명/규격)
+- **New Modules**: services/g2b_catalog_sync.py, routes/catalog.py, templates/catalog_list.html
+- **Modified**: sales.py, report.py, sales_list.html, report_weekly.html, admin_settings.html
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [product-catalog.plan.md](product-catalog/product-catalog.plan.md) |
+| Design | [product-catalog.design.md](product-catalog/product-catalog.design.md) |
+| Analysis | [product-catalog.analysis.md](product-catalog/product-catalog.analysis.md) |
+| Report | [product-catalog.report.md](product-catalog/product-catalog.report.md) |
+
+---
+
+## warranty-as
+
+- **Duration**: 2026-03-17 (1 session)
+- **Iterations**: 0 (first-pass 99%)
+- **Key Result**: 3 new models (Warranty, WarrantyCase, WarrantyCaseLog), 7 defect types, 4-step AS workflow, 7 new files + 3 modified
+- **New Modules**: services/warranty_actions.py, routes/warranty.py, 4 templates
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [warranty-as.plan.md](warranty-as/warranty-as.plan.md) |
+| Design | [warranty-as.design.md](warranty-as/warranty-as.design.md) |
+| Analysis | [warranty-as.analysis.md](warranty-as/warranty-as.analysis.md) |
+| Report | [warranty-as.report.md](warranty-as/warranty-as.report.md) |
+
+---
+
+## ux-improvements-batch
+
+- **Duration**: 2026-03-17 (1 session)
+- **Iterations**: 1 (95% -> Gap fix)
+- **Key Result**: 5 features, 8 new files, 16 modified files, 24 total files changed
+- **New Modules**: pagination.py, notification_utils.py, notification.py, overview.py
+- **New Templates**: pagination.html, change_password_modal.html, notification_center.html, project_overview.html
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [ux-improvements-batch.plan.md](ux-improvements-batch/ux-improvements-batch.plan.md) |
+| Design | [ux-improvements-batch.design.md](ux-improvements-batch/ux-improvements-batch.design.md) |
+| Analysis | [ux-improvements-batch.analysis.md](ux-improvements-batch/ux-improvements-batch.analysis.md) |
+| Report | [ux-improvements-batch.report.md](ux-improvements-batch/ux-improvements-batch.report.md) |
+
+---
 
 ## phase-6-auth-error-optimization
 

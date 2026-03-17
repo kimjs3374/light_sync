@@ -1,6 +1,6 @@
 import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
-from modules.auth_decorators import admin_required
+from modules.auth_decorators import admin_required, login_required
 import bcrypt
 from modules.db_context import get_db
 from modules.models import User, GroupPermission, ProjectDeleteRequest, UserPriorityPermission
@@ -213,6 +213,63 @@ def reject_user(user_id):
             db.delete(user)
             db.commit()
             flash("가입 신청이 거절(삭제)되었습니다.", "warning")
+    return redirect(url_for('auth.admin_settings'))
+
+
+@auth_bp.route('/change_password', methods=['POST'])
+@login_required
+def change_password():
+    current_password = request.form.get('current_password', '')
+    new_password = request.form.get('new_password', '')
+    confirm_password = request.form.get('confirm_password', '')
+
+    if not current_password or not new_password:
+        flash("모든 항목을 입력해주세요.", "danger")
+        return redirect(request.referrer or url_for('dashboard.dashboard_view'))
+
+    if new_password != confirm_password:
+        flash("새 비밀번호가 일치하지 않습니다.", "danger")
+        return redirect(request.referrer or url_for('dashboard.dashboard_view'))
+
+    if len(new_password) < 6:
+        flash("비밀번호는 6자 이상 입력해주세요.", "danger")
+        return redirect(request.referrer or url_for('dashboard.dashboard_view'))
+
+    with get_db() as db:
+        user = db.get(User, session['user_id'])
+        if not user:
+            flash("사용자를 찾을 수 없습니다.", "danger")
+            return redirect(request.referrer or url_for('dashboard.dashboard_view'))
+
+        if not bcrypt.checkpw(current_password.encode('utf-8'), user.password_hash.encode('utf-8')):
+            flash("현재 비밀번호가 올바르지 않습니다.", "danger")
+            return redirect(request.referrer or url_for('dashboard.dashboard_view'))
+
+        hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        user.password_hash = hashed_pw
+        db.commit()
+        flash("비밀번호가 변경되었습니다.", "success")
+    return redirect(request.referrer or url_for('dashboard.dashboard_view'))
+
+
+@auth_bp.route('/reset_password/<int:user_id>', methods=['POST'])
+@admin_required
+def reset_password(user_id):
+    new_password = request.form.get('new_password', '')
+    if len(new_password) < 6:
+        flash("비밀번호는 6자 이상 입력해주세요.", "danger")
+        return redirect(url_for('auth.admin_settings'))
+
+    with get_db() as db:
+        user = db.get(User, user_id)
+        if not user:
+            flash("사용자를 찾을 수 없습니다.", "danger")
+            return redirect(url_for('auth.admin_settings'))
+
+        hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        user.password_hash = hashed_pw
+        db.commit()
+        flash(f"{user.full_name} 비밀번호가 초기화되었습니다.", "success")
     return redirect(url_for('auth.admin_settings'))
 
 

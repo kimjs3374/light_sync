@@ -1,0 +1,44 @@
+{% if pagination and pagination.total_pages > 1 %}
+<nav class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+    <small class="text-muted">
+        전체 {{ pagination.total }}건 / {{ pagination.page }} of {{ pagination.total_pages }} 페이지
+    </small>
+    <ul class="pagination pagination-sm mb-0">
+        {% if pagination.has_prev %}
+        <li class="page-item">
+            <a class="page-link" href="?{{ pagination_query(pagination.prev_page) }}">‹</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">‹</span></li>
+        {% endif %}
+
+        {% if pagination.show_first %}
+        <li class="page-item">
+            <a class="page-link" href="?{{ pagination_query(1) }}">1</a>
+        </li>
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+
+        {% for p in pagination.page_range %}
+        <li class="page-item {% if p == pagination.page %}active{% endif %}">
+            <a class="page-link" href="?{{ pagination_query(p) }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+
+        {% if pagination.show_last %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        <li class="page-item">
+            <a class="page-link" href="?{{ pagination_query(pagination.total_pages) }}">{{ pagination.total_pages }}</a>
+        </li>
+        {% endif %}
+
+        {% if pagination.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?{{ pagination_query(pagination.next_page) }}">›</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">›</span></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}

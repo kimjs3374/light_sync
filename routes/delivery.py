@@ -5,6 +5,8 @@ import os
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, abort, send_file
 from modules.auth_decorators import login_required
 from sqlalchemy.orm import joinedload
+from modules.utils import safe_int
+from modules.pagination import make_pagination
 
 from modules.history_board import append_history_log, get_project_history_context
 from modules.db_context import get_db
@@ -218,11 +220,18 @@ def delivery_management():
 
         priority_projects = sort_priority_entries(priority_projects)
 
+        page = safe_int(request.args.get('page'), 1)
+        per_page = safe_int(request.args.get('per_page'), 20)
+        pagination = make_pagination(page, per_page, len(filtered))
+        start = (pagination['page'] - 1) * per_page
+        projects_page = filtered[start:start + per_page]
+
         return render_template(
             "delivery_management.html",
-            projects=filtered,
+            projects=projects_page,
             priority_projects=priority_projects,
             stats=stats,
+            pagination=pagination,
             filters={"q": request.args.get("q", ""), "status": status_filter, "sort": sort_by},
             status_labels=STATUS_LABELS,
             status_badge=_status_badge,
