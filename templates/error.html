@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-5">
+    <div class="text-center">
+        <h1 class="display-1 fw-bold text-muted">{{ error_code }}</h1>
+        <p class="fs-4 text-secondary mb-4">{{ error_message }}</p>
+        <a href="{{ url_for('dashboard.dashboard_view') }}" class="btn btn-primary">대시보드로 이동</a>
+    </div>
+</div>
+{% endblock %}

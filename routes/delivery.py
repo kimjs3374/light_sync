@@ -7,8 +7,8 @@ from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 
 from modules.history_board import append_history_log, get_project_history_context
+from modules.db_context import get_db
 from modules.models import (
-    SessionLocal,
     Project,
     Contract,
     Contact,
@@ -158,8 +158,7 @@ def delivery_management():
     if "user_id" not in session:
         return redirect(url_for("auth.login"))
 
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         current_user = session.get("full_name") or "사용자"
         if request.method == "POST" and request.form.get("action") == "sync_deliveries":
             _sync_deliveries(db)
@@ -295,8 +294,6 @@ def delivery_management():
             status_labels=STATUS_LABELS,
             status_badge=_status_badge,
         )
-    finally:
-        db.close()
 
 
 @delivery_bp.route("/delivery_management/<int:project_id>", methods=["GET", "POST"])
@@ -304,8 +301,7 @@ def delivery_detail(project_id):
     if "user_id" not in session:
         return redirect(url_for("auth.login"))
 
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         project = db.query(Project).options(
             joinedload(Project.contacts),
             joinedload(Project.contracts).joinedload(Contract.items),
@@ -569,8 +565,6 @@ def delivery_detail(project_id):
             history_counts=history_counts,
             today=today,
         )
-    finally:
-        db.close()
 
 
 @delivery_bp.route("/delivery/photo/<int:photo_id>/view")
@@ -578,8 +572,7 @@ def view_delivery_photo(photo_id):
     if "user_id" not in session:
         return redirect(url_for("auth.login"))
 
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         photo = db.query(DeliveryPhoto).get(photo_id)
         if not photo:
             abort(404)
@@ -593,5 +586,3 @@ def view_delivery_photo(photo_id):
         elif ext == ".webp":
             mimetype = "image/webp"
         return send_file(io.BytesIO(data), mimetype=mimetype)
-    finally:
-        db.close()

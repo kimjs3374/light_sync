@@ -6,7 +6,8 @@ from flask import Blueprint, render_template, session, redirect, url_for, reques
 from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 
-from modules.models import SessionLocal, Project, Material, User, HistoryLog, Contract, ContractItem, DashboardNotice, DashboardSetting, Delivery
+from modules.db_context import get_db
+from modules.models import Project, Material, User, HistoryLog, Contract, ContractItem, DashboardNotice, DashboardSetting, Delivery
 from modules.priority_utils import (
     append_due_priority_reason,
     append_manual_priority_reason,
@@ -496,8 +497,7 @@ def dashboard_notice_admin():
     if not _is_admin():
         return redirect(url_for('dashboard.dashboard_view'))
 
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         if request.method == 'POST':
             action = (request.form.get('action') or '').strip()
 
@@ -571,8 +571,6 @@ def dashboard_notice_admin():
             auto_notice_items=auto_notice_items,
             global_display_seconds=global_display_seconds,
         )
-    finally:
-        db.close()
 
 
 @dashboard_bp.route('/dashboard')
@@ -581,9 +579,7 @@ def dashboard_view():
     if 'user_id' not in session:
         return redirect(url_for('auth.login'))
 
-    db = SessionLocal()
-
-    try:
+    with get_db() as db:
         today = datetime.date.today()
         week_later = today + datetime.timedelta(days=7)
         month_start = today.replace(day=1)
@@ -917,5 +913,3 @@ def dashboard_view():
             workflow_nodes=workflow_nodes,
             action_tabs=action_tabs,
         )
-    finally:
-        db.close()

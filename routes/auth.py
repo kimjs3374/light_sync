@@ -1,9 +1,15 @@
 import datetime
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
 import bcrypt
-from modules.models import SessionLocal, User, GroupPermission, ProjectDeleteRequest, UserPriorityPermission
+from modules.db_context import get_db
+from modules.models import User, GroupPermission, ProjectDeleteRequest, UserPriorityPermission
 
 auth_bp = Blueprint('auth', __name__)
+
+
+def _get_limiter():
+    """app.py에서 생성한 limiter 참조"""
+    return current_app.extensions.get("limiter")
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
@@ -11,8 +17,7 @@ def login():
     if 'user_id' in session:
         return redirect(url_for('dashboard.dashboard_view'))
 
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         if request.method == 'POST':
             login_id = request.form.get('username')
             login_pw = request.form.get('password')
@@ -50,8 +55,6 @@ def login():
 
         groups = [g.group_name for g in db.query(GroupPermission).filter(GroupPermission.group_name != "최고관리자").all()]
         return render_template('login.html', groups=groups)
-    finally:
-        db.close()
 
 
 @auth_bp.route('/register', methods=['POST'])
@@ -76,26 +79,24 @@ def register():
             flash(e, "danger")
         return redirect(url_for('auth.login'))
 
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         # 중복 체크
         if db.query(User).filter(User.username == username).first():
             flash("이미 존재하는 아이디입니다.", "danger")
             return redirect(url_for('auth.login'))
 
-        hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-        db.add(User(
-            username=username, password_hash=hashed_pw,
-            full_name=fullname, phone_number=phone,
-            user_group=group, is_approved=False
-        ))
-        db.commit()
-        flash("가입 신청 완료!", "success")
-    except Exception:
-        db.rollback()
-        flash("가입 처리 중 오류가 발생했습니다.", "danger")
-    finally:
-        db.close()
+        try:
+            hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            db.add(User(
+                username=username, password_hash=hashed_pw,
+                full_name=fullname, phone_number=phone,
+                user_group=group, is_approved=False
+            ))
+            db.commit()
+            flash("가입 신청 완료!", "success")
+        except Exception:
+            db.rollback()
+            flash("가입 처리 중 오류가 발생했습니다.", "danger")
     return redirect(url_for('auth.login'))
 
 
@@ -103,8 +104,7 @@ def register():
 def admin_settings():
     if session.get('role') != 'admin':
         return redirect(url_for('dashboard.dashboard_view'))
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         pending = db.query(User).filter(User.is_approved == False).all()
         users = db.query(User).filter(User.is_approved == True).order_by(User.created_at.desc()).all()
         priority_permissions = db.query(UserPriorityPermission).filter(UserPriorityPermission.is_active.is_(True)).all()
@@ -113,8 +113,6 @@ def admin_settings():
             user.can_manage_priority = bool(user.role == 'admin' or user.id in priority_user_ids)
         delete_requests = db.query(ProjectDeleteRequest).order_by(ProjectDeleteRequest.created_at.desc()).all()
         return render_template('admin_settings.html', pending=pending, users=users, delete_requests=delete_requests)
-    finally:
-        db.close()
 
 
 @auth_bp.route('/toggle_delete_approver/<int:user_id>', methods=['POST'])
@@ -122,16 +120,13 @@ def toggle_delete_approver(user_id):
     if session.get('role') != 'admin':
         return redirect(url_for('dashboard.dashboard_view'))
 
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         user = db.get(User, user_id)
         if user:
             target = request.form.get('can_approve_delete') == '1'
             user.can_approve_delete = bool(target)
             db.commit()
             flash(f"{user.full_name} 삭제승인 권한이 {'활성화' if target else '해제'}되었습니다.", 'success')
-    finally:
-        db.close()
     return redirect(url_for('auth.admin_settings'))
 
 
@@ -140,8 +135,7 @@ def toggle_priority_manager(user_id):
     if session.get('role') != 'admin':
         return redirect(url_for('dashboard.dashboard_view'))
 
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         user = db.get(User, user_id)
         if user:
             if user.role == 'admin':
@@ -162,8 +156,6 @@ def toggle_priority_manager(user_id):
                     ))
                 db.commit()
                 flash(f"{user.full_name} 우선순위 지정 권한이 {'활성화' if target else '해제'}되었습니다.", 'success')
-    finally:
-        db.close()
     return redirect(url_for('auth.admin_settings'))
 
 
@@ -172,8 +164,7 @@ def toggle_user_active(user_id):
     if session.get('role') != 'admin':
         return redirect(url_for('dashboard.dashboard_view'))
 
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         user = db.get(User, user_id)
         if not user:
             flash("사용자를 찾을 수 없습니다.", "warning")
@@ -200,8 +191,6 @@ def toggle_user_active(user_id):
             flash(f"{user.full_name} 계정이 비활성화되었습니다.", "warning")
 
         db.commit()
-    finally:
-        db.close()
     return redirect(url_for('auth.admin_settings'))
 
 
@@ -210,15 +199,12 @@ def approve_user(user_id):
     if session.get('role') != 'admin':
         flash("권한이 없습니다.", "danger")
         return redirect(url_for('dashboard.dashboard_view'))
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         user = db.get(User, user_id)
         if user:
             user.is_approved = True
             db.commit()
             flash(f"{user.full_name} 계정이 승인되었습니다.", "success")
-    finally:
-        db.close()
     return redirect(url_for('auth.admin_settings'))
 
 
@@ -226,15 +212,12 @@ def approve_user(user_id):
 def reject_user(user_id):
     if session.get('role') != 'admin':
         return redirect(url_for('dashboard.dashboard_view'))
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         user = db.get(User, user_id)
         if user and user.role != 'admin':
             db.delete(user)
             db.commit()
             flash("가입 신청이 거절(삭제)되었습니다.", "warning")
-    finally:
-        db.close()
     return redirect(url_for('auth.admin_settings'))
 
 

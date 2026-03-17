@@ -1,5 +1,5 @@
 import os
-from flask import Flask, redirect, url_for, request, session
+from flask import Flask, redirect, url_for, request, session, render_template
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -63,6 +63,12 @@ def force_locked_domain():
 
 
 # =====================================================================
+# Rate Limiting (엔드포인트별)
+# =====================================================================
+limiter.limit("10 per minute")(auth_bp)
+
+
+# =====================================================================
 # Blueprint 등록
 # =====================================================================
 app.register_blueprint(auth_bp)
@@ -74,6 +80,22 @@ app.register_blueprint(production_bp)
 app.register_blueprint(delivery_bp)
 app.register_blueprint(tech_bp)
 app.register_blueprint(drawing_bp)
+
+
+# =====================================================================
+# Error Handlers
+# =====================================================================
+@app.errorhandler(404)
+def not_found(e):
+    return render_template('error.html', error_code=404, error_message='페이지를 찾을 수 없습니다.'), 404
+
+@app.errorhandler(500)
+def server_error(e):
+    return render_template('error.html', error_code=500, error_message='서버 내부 오류가 발생했습니다.'), 500
+
+@app.errorhandler(403)
+def forbidden(e):
+    return render_template('error.html', error_code=403, error_message='접근 권한이 없습니다.'), 403
 
 
 @app.route('/')
