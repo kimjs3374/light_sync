@@ -107,6 +107,7 @@
     <div class="d-flex flex-wrap gap-2 contract-detail-header-actions">
         {% if session.user_group != '생산부' %}
         <form method="POST" action="{{ url_for('project.project_delete_request', project_id=project.id) }}" class="d-inline" data-project-name="{{ project.temp_name }}" onsubmit="return submitDeleteRequest(this);">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="next" value="{{ url_for('project.contract_list') }}">
             <input type="hidden" name="delete_reason" value="">
             <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">🗑 현장 삭제요청</button>
@@ -176,6 +177,7 @@
         <div id="contract-{{ c.id }}" class="card mb-3 shadow-sm border-0 border-start border-4 contract-card {% if c.is_urgent_prod %}border-danger{% else %}border-primary{% endif %}">
             <div class="card-header bg-white">
                 <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" class="row g-2 align-items-end auto-contract-form" data-contract-id="{{ c.id }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="update_contract">
                     <input type="hidden" name="contract_id" value="{{ c.id }}">
                     <div class="col-md-4">
@@ -230,6 +232,7 @@
                         {% for item in c.items %}
                         <tr id="item-{{ item.id }}">
                             <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                 <input type="hidden" name="action" value="update_contract_item">
                                 <input type="hidden" name="item_id" value="{{ item.id }}">
                                 <td>
@@ -284,6 +287,7 @@
                             </form>
                             <td class="text-center">
                                 <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" onsubmit="return confirm('해당 품목을 삭제할까요?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <input type="hidden" name="action" value="delete_contract_item">
                                     <input type="hidden" name="item_id" value="{{ item.id }}">
                                     <button class="btn btn-xs btn-outline-danger">삭제</button>
@@ -294,6 +298,7 @@
 
                         <tr class="table-warning">
                             <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                 <input type="hidden" name="action" value="add_contract_item">
                                 <input type="hidden" name="contract_id" value="{{ c.id }}">
                                 <td>
@@ -343,6 +348,7 @@
                                     <div class="tab-content">
                                         <div class="tab-pane fade show active" id="manual-{{ item.id }}" role="tabpanel">
                                             <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                                 <input type="hidden" name="action" value="update_contract_item_barcodes_manual">
                                                 <input type="hidden" name="item_id" value="{{ item.id }}">
                                                 <div class="row g-2 mb-2">
@@ -374,6 +380,7 @@
 
                                         <div class="tab-pane fade" id="upload-{{ item.id }}" role="tabpanel">
                                             <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" enctype="multipart/form-data">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                                 <input type="hidden" name="action" value="upload_contract_item_barcodes">
                                                 <input type="hidden" name="item_id" value="{{ item.id }}">
                                                 <label class="small fw-bold">XLSX 파일 업로드</label>
@@ -434,6 +441,7 @@
                                                     </td>
                                                     <td>
                                                         <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" onsubmit="return confirm('해당 바코드를 삭제할까요?');">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                                             <input type="hidden" name="action" value="delete_contract_item_barcode">
                                                             <input type="hidden" name="barcode_id" value="{{ bc.id }}">
                                                             <button class="btn btn-xs btn-outline-danger">삭제</button>
@@ -467,6 +475,7 @@
                                         <div class="card-header bg-white fw-bold">PDF 업로드 (신규/버전업)</div>
                                         <div class="card-body">
                                             <form method="POST" action="{{ url_for('drawing.upload_drawing', project_id=project.id) }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                                 <input type="hidden" name="next" value="{{ next_url }}">
                                                 <input type="hidden" name="contract_item_id" value="{{ item.id }}">
                                                 <div class="col-md-3">
@@ -566,6 +575,7 @@
             <div class="card-header bg-success-subtle fw-bold">+ 계약 추가</div>
             <div class="card-body">
                 <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" class="row g-2 align-items-end">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="add_contract">
                     <div class="col-md-4">
                         <label class="small fw-bold text-muted">계약명</label>
@@ -660,6 +670,7 @@
 <div class="modal fade" id="addContactModal" tabindex="-1">
     <div class="modal-dialog">
         <form class="modal-content border-0 shadow" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="add_contact">
             <div class="modal-header bg-dark text-white">
                 <h5 class="modal-title fw-bold">👤 담당자 추가</h5>
@@ -682,6 +693,7 @@
 <div class="modal fade" id="editContactModal" tabindex="-1">
     <div class="modal-dialog">
         <form class="modal-content border-0 shadow" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="update_contact">
             <input type="hidden" name="contact_id" id="edit_contact_id">
             <div class="modal-header bg-secondary text-white">
@@ -705,6 +717,7 @@
 <div class="modal fade" id="editProjectModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <form class="modal-content border-0 shadow" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="update_project">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title fw-bold">⚙️ 계약 현장 정보 수정</h5>
@@ -749,6 +762,7 @@
 <div class="modal fade" id="editDesignBasisModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <form class="modal-content border-0 shadow" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="update_design_basis">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title fw-bold">📝 설계 기준 수정</h5>
@@ -770,6 +784,7 @@
 <div class="modal fade" id="editWorkPathModal" tabindex="-1">
     <div class="modal-dialog">
         <form class="modal-content border-0 shadow" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="update_work_path">
             <div class="modal-header bg-dark text-white">
                 <h5 class="modal-title fw-bold">📂 작업 경로 수정</h5>
@@ -789,6 +804,7 @@
 <div class="modal fade" id="barcodeEditModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <form class="modal-content" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="update_contract_item_barcode_meta">
             <input type="hidden" name="barcode_id" id="edit_barcode_id">
             <div class="modal-header bg-secondary text-white">

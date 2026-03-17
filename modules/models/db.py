@@ -291,11 +291,13 @@ def init_db():
         admin_exists = db.query(User).filter_by(username="admin").first()
         if not admin_exists:
             import bcrypt
-            hashed_pw = bcrypt.hashpw("admin1234".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            import os
+            admin_pw = os.environ.get('ADMIN_DEFAULT_PASSWORD', 'admin1234')
+            hashed_pw = bcrypt.hashpw(admin_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             db.add(User(username="admin", password_hash=hashed_pw, full_name="최고관리자",
                         phone_number="010-0000-0000", user_group="최고관리자", role="admin", is_approved=True))
             db.commit()
-    except:
+    except Exception:
         db.rollback()
     finally:
         db.close()

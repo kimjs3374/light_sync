@@ -101,6 +101,7 @@
                                     <div class="card-header bg-white fw-bold">PDF 업로드 (신규/버전업)</div>
                                     <div class="card-body">
                                         <form method="POST" action="{{ url_for('drawing.upload_drawing', project_id=project.id) }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <input type="hidden" name="next" value="{{ next_url }}">
                                             <input type="hidden" name="contract_item_id" value="{{ item.id }}">
                                             <div class="col-md-3">
@@ -195,6 +196,7 @@
                 <div class="d-none">
                     {% for item in c.items %}
                     <form id="sales_form_{{ item.id }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="update_sales_item">
                         <input type="hidden" name="item_id" value="{{ item.id }}">
                         <input type="hidden" name="planned_delivery_date">
@@ -257,6 +259,7 @@
 <div class="modal fade" id="addContactModal" tabindex="-1">
     <div class="modal-dialog">
         <form class="modal-content border-0 shadow" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="add_contact">
             <div class="modal-header bg-dark text-white">
                 <h5 class="modal-title fw-bold">👤 담당자 추가</h5>
@@ -279,6 +282,7 @@
 <div class="modal fade" id="editContactModal" tabindex="-1">
     <div class="modal-dialog">
         <form class="modal-content border-0 shadow" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="update_contact">
             <input type="hidden" name="contact_id" id="edit_contact_id">
             <div class="modal-header bg-secondary text-white">

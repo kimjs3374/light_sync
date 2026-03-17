@@ -7,11 +7,13 @@
     <div class="d-flex flex-wrap gap-2">
         {% if not project.is_contracted and session.user_group != '생산부' %}
             <form method="POST" action="{{ url_for('project.convert_to_contract', project_id=project.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button type="submit" class="btn btn-sm btn-primary fw-bold" onclick="return confirm('실제 계약 리스트로 전환하시겠습니까?')">📋 계약 전환</button>
             </form>
         {% endif %}
         {% if session.user_group != '생산부' %}
         <form method="POST" action="{{ url_for('project.project_delete_request', project_id=project.id) }}" class="d-inline" data-project-name="{{ project.temp_name }}" onsubmit="return submitDeleteRequest(this);">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="next" value="{{ url_for('project.project_list') }}">
             <input type="hidden" name="delete_reason" value="">
             <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">🗑 현장 삭제요청</button>
@@ -115,6 +117,7 @@
                             {% for mat in project.materials %}
                             <tr>
                                 <form method="POST">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <input type="hidden" name="action" value="update_material">
                                     <input type="hidden" name="material_id" value="{{ mat.id }}">
                                     <td>
@@ -136,6 +139,7 @@
                                 </form>
                                 <td class="text-center">
                                     <form method="POST" onsubmit="return confirm('해당 품목을 삭제할까요?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                         <input type="hidden" name="action" value="delete_material">
                                         <input type="hidden" name="material_id" value="{{ mat.id }}">
                                         <button type="submit" class="btn btn-link text-danger p-0">삭제</button>
@@ -178,6 +182,7 @@
 </div></div></div>
 
 <div class="modal fade" id="editDesignBasisModal" tabindex="-1"><div class="modal-dialog modal-lg"><form class="modal-content border-0 shadow" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="action" value="update_design_basis">
     <div class="modal-header bg-primary text-white"><h5 class="modal-title fw-bold">📝 설계 기준 수정</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
     <div class="modal-body p-4">
@@ -188,6 +193,7 @@
 </form></div></div>
 
 <div class="modal fade" id="editWorkPathModal" tabindex="-1"><div class="modal-dialog"><form class="modal-content border-0 shadow" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="action" value="update_work_path">
     <div class="modal-header bg-dark text-white"><h5 class="modal-title fw-bold">📂 작업 경로 수정</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
     <div class="modal-body p-4">
@@ -197,6 +203,7 @@
 </form></div></div>
 
 <div class="modal fade" id="editProjectModal" tabindex="-1"><div class="modal-dialog modal-lg"><form class="modal-content" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="action" value="update_project">
     <div class="modal-header bg-secondary text-white"><h5 class="modal-title">⚙️ 현장 기본정보 수정</h5></div>
     <div class="modal-body p-4">
@@ -210,6 +217,7 @@
 </form></div></div>
 
 <div class="modal fade" id="addContactModal" tabindex="-1"><div class="modal-dialog"><form class="modal-content" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="action" value="add_contact">
     <div class="modal-header"><h5>👤 담당자 추가</h5></div>
     <div class="modal-body p-4">
@@ -222,6 +230,7 @@
 </form></div></div>
 
 <div class="modal fade" id="editContactModal" tabindex="-1"><div class="modal-dialog"><form class="modal-content" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="action" value="update_contact">
     <input type="hidden" name="contact_id" id="edit_contact_id">
     <div class="modal-header"><h5>👤 담당자 수정</h5></div>
@@ -235,6 +244,7 @@
 </form></div></div>
 
 <div class="modal fade" id="addMaterialModal" tabindex="-1"><div class="modal-dialog"><form class="modal-content" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="action" value="add_material">
     <div class="modal-header"><h5>📦 품목 추가</h5></div>
     <div class="modal-body p-4">
@@ -252,7 +262,8 @@
     <div class="modal-footer"><button type="submit" class="btn btn-primary">목록에 추가</button></div>
 </form></div></div>
 
-<form id="delForm" method="POST" style="display:none;"><input type="hidden" name="action" value="delete_contact"><input type="hidden" name="contact_id" id="did"><input type="hidden" name="delete_reason" id="dr"></form>
+<form id="delForm" method="POST" style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/><input type="hidden" name="action" value="delete_contact"><input type="hidden" name="contact_id" id="did"><input type="hidden" name="delete_reason" id="dr"></form>
 
 <script>
     function copyPath() { navigator.clipboard.writeText(document.getElementById('workPathText').innerText).then(() => alert('복사 완료!')); }

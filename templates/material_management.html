@@ -31,6 +31,7 @@
     <h2 class="text-primary fw-bold">📦 자재관리 리스트</h2>
     <div class="material-header-actions">
         <form method="POST" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="sync_material_orders">
             <button class="btn btn-primary fw-bold">자재 자동생성/동기화</button>
         </form>

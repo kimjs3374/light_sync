@@ -12,6 +12,7 @@
     </p>
 
     <form method="POST" action="{{ url_for('contract.contract_create') }}" id="contractCreateForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-light fw-bold">1) 현장 기본 정보</div>
             <div class="card-body">

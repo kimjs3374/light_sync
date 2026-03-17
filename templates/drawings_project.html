@@ -14,6 +14,7 @@
     <div class="card-header bg-white fw-bold">PDF 업로드 (신규/버전업)</div>
     <div class="card-body">
         <form method="POST" action="{{ url_for('drawing.upload_drawing', project_id=project.id) }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="col-md-3">
                 <label class="small fw-bold">기존 도면 선택(버전업)</label>
                 <select class="form-select form-select-sm" name="drawing_id">
@@ -92,6 +93,7 @@
                         {% endif %}
                         {% if can_write %}
                         <form method="POST" action="{{ url_for('drawing.delete_drawing_version', version_id=v.id) }}" class="d-inline" onsubmit="return confirm('v{{ v.version_no }} 버전을 삭제할까요?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                             <button class="btn btn-sm btn-outline-danger">삭제</button>
                         </form>
                         {% endif %}

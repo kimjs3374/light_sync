@@ -30,6 +30,7 @@
     <h2 class="text-primary fw-bold">🏭 생산관리 리스트</h2>
     <div class="prod-header-actions">
         <form method="POST" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="sync_production_processes">
             <button class="btn btn-primary fw-bold">생산공정 자동생성/동기화</button>
         </form>

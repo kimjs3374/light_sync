@@ -388,6 +388,7 @@
             <div class="delivery-actions">
                 <a href="{{ url_for('delivery.delivery_management') }}" class="btn btn-light btn-sm fw-bold">목록으로</a>
                 <form method="POST" class="m-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="sync_deliveries">
                     <button class="btn btn-warning btn-sm fw-bold">동기화</button>
                 </form>
@@ -452,6 +453,7 @@
                                 {{ status_labels.get(d.delivery_status, d.delivery_status) }}
                             </span>
                             <form method="POST" class="m-0">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                 <input type="hidden" name="action" value="assign_me">
                                 <input type="hidden" name="delivery_id" value="{{ d.id }}">
                                 <button class="btn btn-sm btn-outline-dark">내가 담당</button>
@@ -503,6 +505,7 @@
                                             <div class="d-flex gap-1 flex-wrap justify-content-end">
                                                 <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editSplit{{ s.id }}">수정</button>
                                                 <form method="POST" class="m-0" onsubmit="return confirm('해당 회차를 삭제할까요?')">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                                     <input type="hidden" name="action" value="delete_split">
                                                     <input type="hidden" name="split_id" value="{{ s.id }}">
                                                     <button class="btn btn-sm btn-outline-danger">삭제</button>
@@ -526,6 +529,7 @@
                                         <div class="collapse mt-3" id="editSplit{{ s.id }}">
                                             <div class="editor-surface">
                                                 <form method="POST" class="row g-2">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                                     <input type="hidden" name="action" value="update_split">
                                                     <input type="hidden" name="split_id" value="{{ s.id }}">
                                                     <div class="col-md-2">
@@ -583,6 +587,7 @@
                                             <span class="small text-muted">현재 {{ d.splits|length }}개 회차</span>
                                         </div>
                                         <form method="POST" class="row g-2">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <input type="hidden" name="action" value="add_split">
                                             <input type="hidden" name="delivery_id" value="{{ d.id }}">
                                             <div class="col-md-2">
@@ -809,6 +814,7 @@
 <div class="modal fade" id="assignOwnerModal{{ d.id }}" tabindex="-1">
     <div class="modal-dialog">
         <form method="POST" class="modal-content border-0 shadow">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="assign_delivery_owner">
             <input type="hidden" name="delivery_id" value="{{ d.id }}">
             <div class="modal-header bg-primary text-white">
@@ -836,6 +842,7 @@
 <div class="modal fade" id="addPhotoModal{{ d.id }}" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <form method="POST" enctype="multipart/form-data" class="modal-content border-0 shadow">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="add_photo">
             <input type="hidden" name="delivery_id" value="{{ d.id }}">
             <div class="modal-header bg-success text-white">
@@ -912,6 +919,7 @@
                             <div class="d-flex flex-wrap gap-2 mt-3">
                                 <a href="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" target="_blank" class="btn btn-sm btn-outline-dark">원본 보기</a>
                                 <form method="POST" class="d-inline" onsubmit="return confirm('이 사진을 삭제할까요?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <input type="hidden" name="action" value="delete_photo">
                                     <input type="hidden" name="photo_id" value="{{ ph.id }}">
                                     <button class="btn btn-sm btn-outline-danger">삭제</button>
@@ -932,6 +940,7 @@
 <div class="modal fade" id="addContactModal" tabindex="-1">
     <div class="modal-dialog">
         <form class="modal-content border-0 shadow" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="add_contact">
             <div class="modal-header bg-dark text-white">
                 <h5 class="modal-title fw-bold">담당자 추가</h5>
@@ -954,6 +963,7 @@
 <div class="modal fade" id="editContactModal" tabindex="-1">
     <div class="modal-dialog">
         <form class="modal-content border-0 shadow" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="update_contact">
             <input type="hidden" name="contact_id" id="edit_contact_id">
             <div class="modal-header bg-secondary text-white">

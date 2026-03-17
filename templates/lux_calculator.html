@@ -6,6 +6,7 @@
     <div class="col-md-8">
         <div class="card shadow-sm border-0 p-4">
             <form method="POST" action="{{ url_for('tech.lux_calculator') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="calc_id" value="{{ edit_data.id if edit_data else '' }}">
                 
                 <div class="row g-3 mb-4">

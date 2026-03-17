@@ -16,6 +16,7 @@
     <div class="card-header bg-dark text-white fw-bold">⏱ 전광판 전역 노출시간 설정</div>
     <div class="card-body">
         <form method="POST" action="{{ url_for('dashboard.dashboard_notice_admin') }}" class="row g-2 align-items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="update_global_seconds">
             <div class="col-md-4">
                 <label class="form-label small fw-bold">전역 노출시간(초)</label>
@@ -65,6 +66,7 @@
     <div class="card-header bg-primary text-white fw-bold">+ 전광판 공지 등록</div>
     <div class="card-body">
         <form method="POST" action="{{ url_for('dashboard.dashboard_notice_admin') }}" class="row g-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="create_notice">
             <div class="col-md-2">
                 <label class="form-label small fw-bold">타이틀</label>
@@ -123,6 +125,7 @@
                 {% for n in notices %}
                 <tr>
                     <form method="POST" action="{{ url_for('dashboard.dashboard_notice_admin') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="update_notice">
                         <input type="hidden" name="notice_id" value="{{ n.id }}">
                         <td class="text-center">{{ n.id }}</td>
@@ -146,6 +149,7 @@
                                 <button class="btn btn-sm btn-outline-primary">저장</button>
                     </form>
                                 <form method="POST" action="{{ url_for('dashboard.dashboard_notice_admin') }}" onsubmit="return confirm('해당 공지를 삭제할까요?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <input type="hidden" name="action" value="delete_notice">
                                     <input type="hidden" name="notice_id" value="{{ n.id }}">
                                     <button class="btn btn-sm btn-outline-danger">삭제</button>

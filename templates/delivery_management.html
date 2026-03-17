@@ -27,6 +27,7 @@
     <h2 class="text-primary fw-bold">🚚 납품관리 리스트</h2>
     <div class="delivery-header-actions">
         <form method="POST" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="sync_deliveries">
             <button class="btn btn-primary fw-bold">납품 자동동기화</button>
         </form>

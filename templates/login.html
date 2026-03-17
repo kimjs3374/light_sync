@@ -39,6 +39,7 @@
         <div class="tab-content">
             <div class="tab-pane fade show active" id="login" role="tabpanel">
                 <form method="POST" action="{{ url_for('auth.login') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="mb-3">
                         <label class="form-label text-muted small fw-bold">아이디</label>
                         <input type="text" name="username" class="form-control" required>
@@ -53,6 +54,7 @@
 
             <div class="tab-pane fade" id="register" role="tabpanel">
                 <form method="POST" action="{{ url_for('auth.register') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="mb-2">
                         <label class="form-label text-muted small fw-bold">아이디</label>
                         <input type="text" name="new_username" class="form-control form-control-sm" required>

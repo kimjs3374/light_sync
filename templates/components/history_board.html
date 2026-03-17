@@ -40,6 +40,7 @@
 </div>
 
 <form method="POST" {% if history_post_url %}action="{{ history_post_url }}"{% endif %} class="mb-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="action" value="{{ history_post_action or 'add_chat' }}">
     <div class="input-group shadow-sm">
         <textarea name="chat_message" class="form-control" rows="2" placeholder="메모 입력..." required></textarea>
@@ -95,6 +96,7 @@
                         <button type="button" class="btn btn-xs btn-outline-secondary" onclick="toggleReplyForm('reply_form_{{ log.id }}')">답글</button>
                     </div>
                     <form id="reply_form_{{ log.id }}" method="POST" {% if history_post_url %}action="{{ history_post_url }}"{% endif %} class="mt-1 d-none">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="add_history_reply">
                         <input type="hidden" name="parent_log_id" value="{{ log.id }}">
                         <div class="input-group input-group-sm">

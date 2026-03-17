@@ -5,6 +5,7 @@
     <h2 class="mb-4">📐 신규 설계현장 등록</h2>
     
     <form method="POST" action="{{ url_for('project.project_create') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <div class="row mb-3">
             <div class="col-md-12">
                 <label class="form-label fw-bold">현장 가칭 (필수)</label>

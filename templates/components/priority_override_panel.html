@@ -28,6 +28,7 @@
 
         {% if can_manage_priority %}
         <form method="POST" class="row g-2 align-items-end mt-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="update_priority_override">
             <input type="hidden" name="priority_mode" value="set" class="priority-mode-input">
             <div class="col-12 col-md-8">

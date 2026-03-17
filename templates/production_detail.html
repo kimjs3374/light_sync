@@ -68,6 +68,7 @@
     <div class="d-flex gap-2">
         <a href="{{ url_for('production.production_management') }}" class="btn btn-outline-secondary btn-sm">목록으로</a>
         <form method="POST" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="sync_production_processes">
             <button class="btn btn-dark btn-sm fw-bold">공정 동기화</button>
         </form>
@@ -318,6 +319,7 @@
         <div class="modal fade" id="procModal{{ p.id }}" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog">
                 <form method="POST" class="modal-content">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="update_process_modal">
                     <input type="hidden" name="process_id" value="{{ p.id }}">
                     <div class="modal-header bg-dark text-white">
