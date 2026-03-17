@@ -32,9 +32,12 @@ def _can_read_drawings():
 
 
 def _safe_next_url(default_endpoint: str, **default_kwargs):
+    from urllib.parse import urlparse
     next_url = (request.form.get('next') or request.args.get('next') or '').strip()
-    if next_url.startswith('/') and not next_url.startswith('//'):
-        return next_url
+    if next_url:
+        parsed = urlparse(next_url)
+        if not parsed.scheme and not parsed.netloc and next_url.startswith('/'):
+            return next_url
     return url_for(default_endpoint, **default_kwargs)
 
 
