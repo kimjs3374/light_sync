@@ -1,4 +1,6 @@
 import os
+import logging
+from logging.handlers import RotatingFileHandler
 from flask import Flask, redirect, url_for, request, session, render_template
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
@@ -27,6 +29,15 @@ else:
     app.config.from_object(ProductionConfig)
 
 app.config["PREFERRED_URL_SCHEME"] = "https"
+
+# Logging
+os.makedirs('logs', exist_ok=True)
+file_handler = RotatingFileHandler('logs/light_sync.log', maxBytes=10_000_000, backupCount=5)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s [%(name)s] %(message)s'
+))
+app.logger.addHandler(file_handler)
+app.logger.setLevel(logging.INFO)
 app.jinja_env.auto_reload = app.config.get("TEMPLATES_AUTO_RELOAD", True)
 
 # CSRF Protection
@@ -72,6 +83,12 @@ limiter.limit("10 per minute")(auth_bp)
 # Blueprint 등록
 # =====================================================================
 app.register_blueprint(auth_bp)
+
+# 개별 엔드포인트 rate limit (Blueprint 등록 후 적용)
+with app.app_context():
+    view_func = app.view_functions.get('auth.register')
+    if view_func:
+        app.view_functions['auth.register'] = limiter.limit("3 per minute")(view_func)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(project_bp)
 app.register_blueprint(contract_bp)
@@ -91,6 +108,7 @@ def not_found(e):
 
 @app.errorhandler(500)
 def server_error(e):
+    app.logger.error(f"Internal error: {e}")
     return render_template('error.html', error_code=500, error_message='서버 내부 오류가 발생했습니다.'), 500
 
 @app.errorhandler(403)

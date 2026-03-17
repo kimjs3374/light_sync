@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 
 from modules.history_board import append_history_log, get_project_history_context
 from modules.db_context import get_db
+from modules.utils import validate_upload
 from modules.models import (
     Project,
     Contract,
@@ -401,6 +402,10 @@ def delivery_detail(project_id):
                 contract_item_id = _to_int(request.form.get("contract_item_id"), 0) or None
                 photo_type = _normalize_photo_type(request.form.get("photo_type") or "etc")
                 file = request.files.get("photo_file")
+                valid, upload_msg = validate_upload(file)
+                if not valid:
+                    flash(upload_msg, "warning")
+                    return redirect(url_for("delivery.delivery_detail", project_id=project_id))
                 delivery = db.query(Delivery).filter(Delivery.id == delivery_id, Delivery.project_id == project_id).first()
                 if delivery and file and file.filename:
                     safe_name = secure_filename(file.filename) or f"photo_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"

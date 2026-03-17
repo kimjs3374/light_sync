@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
 from modules.db_context import get_db
+from modules.utils import validate_upload
 from modules.models import (
     Project,
     Drawing,
@@ -106,8 +107,9 @@ def upload_drawing(project_id):
     drawing_type = (request.form.get('drawing_type') or '').strip()
     drawing_id_raw = request.form.get('drawing_id')
 
-    if not file or not file.filename:
-        flash('PDF 파일을 선택해 주세요.', 'warning')
+    valid, msg = validate_upload(file)
+    if not valid:
+        flash(msg, 'warning')
         return redirect(_safe_next_url('drawing.drawings_project', project_id=project_id))
 
     if not file.filename.lower().endswith('.pdf'):
