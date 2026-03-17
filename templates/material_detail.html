@@ -13,7 +13,7 @@
         <div class="text-muted small">{{ project.project_no }} · {{ project.temp_name }}</div>
     </div>
     <div class="d-flex gap-2">
-        <a href="{{ url_for('project.material_management') }}" class="btn btn-outline-secondary">목록으로</a>
+        <a href="{{ url_for('material.material_management') }}" class="btn btn-outline-secondary">목록으로</a>
         <form method="POST" class="m-0">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="sync_material_orders">
@@ -176,7 +176,7 @@
     <div class="col-lg-4">
         {% set history_board_title = '📜 자재 히스토리 보드' %}
         {% set history_post_action = 'add_chat' %}
-        {% set history_post_url = url_for('project.material_detail', project_id=project.id) %}
+        {% set history_post_url = url_for('material.material_detail', project_id=project.id) %}
         {% set history_board_id = 'material-history-board-detail' %}
         {% set history_default_filter = 'material' %}
         {% include 'components/history_board.html' %}

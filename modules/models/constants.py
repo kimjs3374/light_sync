@@ -124,3 +124,9 @@ PRIORITY_BADGE_STYLES = {
     "delivery_today": {"label": "금일회차", "css_class": "bg-warning text-dark"},
     "delivery_unassigned": {"label": "담당자미배정", "css_class": "bg-dark"},
 }
+
+
+# ─── 워크플로우 상태 스텝 ──────────────────────────
+SALES_STATUS_STEPS = ['계약확인', '상세협의중', '협의완료']
+ADMIN_STATUS_STEPS = ['자재확인중', '발주진행중', '발주완료', '입고진행중', '입고완료']
+PROD_STATUS_STEPS = ['자재대기중', '생산대기중', '생산중', '생산완료']

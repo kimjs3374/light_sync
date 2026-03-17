@@ -1,16 +1,16 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from modules.auth_decorators import login_required
 import datetime
-import json
 from sqlalchemy.orm import joinedload
 
 from modules.db_context import get_db
-from modules.utils import safe_int
 from modules.models import (
-    Project, Contract, ContractItem, HistoryLog, Contact,
-    DETAIL_ITEM_OPTIONS, LIGHTING_DETAIL_ITEMS, normalize_detail_item,
-    CONTRACT_ITEM_SPEC_SCHEMA, Drawing, DRAWING_TYPE_OPTIONS
+    Project, Contract, ContractItem,
+    DETAIL_ITEM_OPTIONS, LIGHTING_DETAIL_ITEMS,
+    CONTRACT_ITEM_SPEC_SCHEMA, Drawing, DRAWING_TYPE_OPTIONS,
+    SALES_STATUS_STEPS,
 )
-from modules.history_board import append_history_log, get_project_history_context
+from modules.history_board import get_project_history_context
 from modules.priority_utils import (
     append_due_priority_reason,
     append_manual_priority_reason,
@@ -18,149 +18,27 @@ from modules.priority_utils import (
     make_priority_entry,
     sort_priority_entries,
 )
+from modules.services.sales_actions import (
+    handle_update_sales_item,
+    handle_add_sales_comment,
+    handle_add_contact,
+    handle_update_contact,
+    handle_add_history_reply,
+)
 
 sales_bp = Blueprint('sales', __name__)
 
-SALES_STATUS_STEPS = ['계약확인', '상세협의중', '협의완료']
-TRUE_VALUES = {'1', 'true', 'True', 'on', 'yes', 'Y'}
-BOOLEAN_SPEC_FIELDS = {'has_stabilizer_box', 'is_integrated', 'is_painted'}
-
-
-def _is_true_value(value):
-    return str(value).strip() in TRUE_VALUES
-
-
-def _parse_date(value):
-    value = (value or '').strip()
-    if not value:
-        return None
-    try:
-        return datetime.datetime.strptime(value, '%Y-%m-%d').date()
-    except Exception:
-        return None
-
-
-def _extract_item_spec(form, category):
-    category = normalize_detail_item(category, default=DETAIL_ITEM_OPTIONS[0])
-    schema = CONTRACT_ITEM_SPEC_SCHEMA.get(category, {})
-    required = schema.get('required', [])
-    conditional = schema.get('conditional_required', {})
-
-    spec = {}
-    for field in required:
-        if f'spec_{field}' not in form:
-            if field in BOOLEAN_SPEC_FIELDS:
-                spec[field] = False
-            continue
-        val = form.get(f'spec_{field}')
-        if field in BOOLEAN_SPEC_FIELDS:
-            val = _is_true_value(val)
-        spec[field] = val.strip() if isinstance(val, str) else val
-
-    for trigger, rule in conditional.items():
-        current = spec.get(trigger)
-        expected = rule.get('equals')
-        current_cmp = _is_true_value(current) if isinstance(expected, bool) else current
-        if current_cmp == expected:
-            for field in rule.get('fields', []):
-                if f'spec_{field}' not in form:
-                    if field in BOOLEAN_SPEC_FIELDS:
-                        spec[field] = False
-                    continue
-                val = form.get(f'spec_{field}')
-                if field in BOOLEAN_SPEC_FIELDS:
-                    val = _is_true_value(val)
-                spec[field] = val.strip() if isinstance(val, str) else val
-
-    for key, val in list(spec.items()):
-        if key in BOOLEAN_SPEC_FIELDS:
-            spec[key] = _is_true_value(val)
-        elif key == 'lamp_count':
-            try:
-                spec[key] = int(val)
-            except Exception:
-                spec[key] = 0
-        elif val is None:
-            spec[key] = ''
-    return spec
-
-
-def _validate_item_spec(category, spec):
-    category = normalize_detail_item(category, default=DETAIL_ITEM_OPTIONS[0])
-    schema = CONTRACT_ITEM_SPEC_SCHEMA.get(category, {})
-    required = list(schema.get('required', []))
-    conditional = schema.get('conditional_required', {})
-
-    for trigger, rule in conditional.items():
-        expected = rule.get('equals')
-        current = spec.get(trigger)
-        current_cmp = _is_true_value(current) if isinstance(expected, bool) else current
-        if current_cmp == expected:
-            required.extend(rule.get('fields', []))
-
-    missing = []
-    for field in sorted(set(required)):
-        val = spec.get(field)
-        if field in BOOLEAN_SPEC_FIELDS and val is False:
-            continue
-        if val in (None, '', []):
-            missing.append(field)
-    return missing
-
-
-def _diff_spec(old_spec, new_spec):
-    old_spec = old_spec or {}
-    new_spec = new_spec or {}
-    changed = []
-    for k in sorted(set(list(old_spec.keys()) + list(new_spec.keys()))):
-        if old_spec.get(k) != new_spec.get(k):
-            changed.append(f"{k}: {old_spec.get(k)} → {new_spec.get(k)}")
-    return changed
-
-
-def _is_filled_value(field, value):
-    if field in BOOLEAN_SPEC_FIELDS:
-        return value is not None
-    return value not in (None, '')
-
-
-def _required_fields_for_status(category, spec):
-    category = normalize_detail_item(category, default=DETAIL_ITEM_OPTIONS[0])
-    schema = CONTRACT_ITEM_SPEC_SCHEMA.get(category, {})
-    fields = list(schema.get('required', []))
-    conditional = schema.get('conditional_required', {})
-
-    for trigger, rule in conditional.items():
-        expected = rule.get('equals')
-        current = spec.get(trigger)
-        current_cmp = _is_true_value(current) if isinstance(expected, bool) else current
-        if current_cmp == expected:
-            fields.extend(rule.get('fields', []))
-    return sorted(set(fields))
-
-
-def _derive_sales_status(category, spec):
-    spec = spec or {}
-    req_fields = _required_fields_for_status(category, spec)
-    if not req_fields:
-        return '계약확인'
-
-    filled_count = 0
-    for field in req_fields:
-        if _is_filled_value(field, spec.get(field)):
-            filled_count += 1
-
-    if filled_count == 0:
-        return '계약확인'
-    if filled_count == len(req_fields):
-        return '협의완료'
-    return '상세협의중'
-
+ACTION_HANDLERS = {
+    'update_sales_item': handle_update_sales_item,
+    'add_sales_comment': handle_add_sales_comment,
+    'add_contact': handle_add_contact,
+    'update_contact': handle_update_contact,
+    'add_history_reply': handle_add_history_reply,
+}
 
 @sales_bp.route('/sales_management')
+@login_required
 def sales_list():
-    if 'user_id' not in session:
-        return redirect(url_for('auth.login'))
 
     sort_by = request.args.get('sort', 'due_asc')
     q = (request.args.get('q') or '').strip().lower()
@@ -275,11 +153,9 @@ def sales_list():
             }
         )
 
-
 @sales_bp.route('/sales_management/<int:project_id>', methods=['GET', 'POST'])
+@login_required
 def sales_detail(project_id):
-    if 'user_id' not in session:
-        return redirect(url_for('auth.login'))
 
     with get_db() as db:
         project = db.query(Project).options(
@@ -300,154 +176,13 @@ def sales_detail(project_id):
             action = request.form.get('action')
             user_name = session.get('full_name') or '사용자'
 
-            if action == 'update_sales_item':
-                item_id = safe_int(request.form.get('item_id'))
-                item = db.query(ContractItem).get(item_id)
-                if item and item.contract and item.contract.project_id == project_id:
-                    old_status = item.status_sales or '계약확인'
-                    old_spec = dict(item.item_spec or {})
-
-                    spec_payload_raw = (request.form.get('spec_payload') or '').strip()
-                    spec = {}
-                    if spec_payload_raw:
-                        try:
-                            parsed_payload = json.loads(spec_payload_raw)
-                            if isinstance(parsed_payload, dict):
-                                spec = parsed_payload
-                        except Exception:
-                            spec = {}
-                    if not spec:
-                        spec = _extract_item_spec(request.form, item.category)
-                    merged_spec = dict(old_spec)
-                    merged_spec.update(spec)
-                    item.item_spec = merged_spec
-                    item.status_sales = _derive_sales_status(item.category, merged_spec)
-
-                    contract = item.contract
-                    planned_delivery = _parse_date(request.form.get('planned_delivery_date'))
-                    old_planned_delivery = contract.desired_delivery_date if contract else None
-                    if contract:
-                        contract.desired_delivery_date = planned_delivery
-
-                    changed_lines = []
-                    if old_status != item.status_sales:
-                        changed_lines.append(f"영업단계: {old_status} → {item.status_sales}")
-                    spec_changes = _diff_spec(old_spec, merged_spec)
-                    if spec_changes:
-                        changed_lines.append('협의내용 변경: ' + '; '.join(spec_changes))
-                    if contract and old_planned_delivery != contract.desired_delivery_date:
-                        changed_lines.append(f"납품예정일: {old_planned_delivery or '-'} → {contract.desired_delivery_date or '-'}")
-
-                    if changed_lines:
-                        append_history_log(
-                            db,
-                            project_id=project_id,
-                            user_name='시스템 🤖',
-                            content=(
-                                f"[영업관리] {user_name}님이 협의내용 수정\n"
-                                f"대상: {item.category}/{item.model_name}({item.quantity})\n"
-                                + "\n".join(changed_lines)
-                            ),
-                            scope='sales'
-                        )
-
-                    if changed_lines:
-                        flash('협의내용이 저장되었습니다.', 'success')
-                    else:
-                        flash('저장되었습니다. (변경값 없음)', 'success')
-
-            elif action == 'add_sales_comment':
-                msg = (request.form.get('chat_message') or '').strip()
-                if msg:
-                    append_history_log(
-                        db,
-                        project_id=project_id,
-                        user_name=user_name,
-                        content=msg,
-                        scope='common',
-                        kind='comment'
-                    )
-                    flash('코멘트가 등록되었습니다.', 'success')
-
-            elif action == 'add_contact':
-                category = (request.form.get('contact_category') or '').strip()
-                name = (request.form.get('name') or '').strip()
-                phone = (request.form.get('phone') or '').strip()
-                email = (request.form.get('email') or '').strip()
-
-                if not category or not name:
-                    flash('담당자 구분과 이름은 필수입니다.', 'warning')
-                else:
-                    new_contact = Contact(
-                        project_id=project_id,
-                        category=category,
-                        name=name,
-                        phone=phone,
-                        email=email
-                    )
-                    db.add(new_contact)
-                    append_history_log(
-                        db,
-                        project_id=project_id,
-                        user_name='시스템 🤖',
-                        content=f"[영업관리] {user_name}님이 담당자 추가: {name} ({category})",
-                        scope='sales'
-                    )
-                    flash('담당자가 추가되었습니다.', 'success')
-
-            elif action == 'update_contact':
-                contact_id_raw = request.form.get('contact_id')
-                if contact_id_raw:
-                    contact = db.query(Contact).get(int(contact_id_raw))
-                    if contact and contact.project_id == project_id:
-                        old_info = f"{contact.category or '-'} / {contact.name or '-'} / {contact.phone or '-'} / {contact.email or '-'}"
-
-                        contact.category = (request.form.get('contact_category') or '').strip()
-                        contact.name = (request.form.get('name') or '').strip()
-                        contact.phone = (request.form.get('phone') or '').strip()
-                        contact.email = (request.form.get('email') or '').strip()
-
-                        new_info = f"{contact.category or '-'} / {contact.name or '-'} / {contact.phone or '-'} / {contact.email or '-'}"
-                        if old_info != new_info:
-                            append_history_log(
-                                db,
-                                project_id=project_id,
-                                user_name='시스템 🤖',
-                                content=f"[영업관리] {user_name}님이 담당자 수정\n변경 전: {old_info}\n변경 후: {new_info}",
-                                scope='sales'
-                            )
-                        flash('담당자 정보가 수정되었습니다.', 'success')
-
-            elif action == 'add_history_reply':
-                parent_id_raw = request.form.get('parent_log_id')
-                reply_message = (request.form.get('reply_message') or '').strip()
-                if parent_id_raw and reply_message:
-                    parent = db.query(HistoryLog).get(int(parent_id_raw))
-                    if parent and parent.project_id == project_id:
-                        origin_full = (parent.content or '').strip()
-                        origin_snapshot = origin_full
-                        if len(origin_snapshot) > 220:
-                            origin_snapshot = origin_snapshot[:220] + '...'
-                        append_history_log(
-                            db,
-                            project_id=project_id,
-                            user_name=user_name,
-                            content=reply_message,
-                            scope=parent.log_scope or ('common' if (parent.log_kind or '') == 'comment' else 'sales'),
-                            kind='reply',
-                            parent_log_id=parent.id,
-                            root_log_id=parent.root_log_id or parent.id,
-                            origin_snapshot=origin_snapshot
-                        )
-                        append_history_log(
-                            db,
-                            project_id=project_id,
-                            user_name=user_name,
-                            content=f"[대댓글]\n답글:\n{reply_message}\n---원글---\n{origin_full}",
-                            scope='common',
-                            kind='comment'
-                        )
-                        flash('대댓글이 등록되었습니다.', 'success')
+            handler = ACTION_HANDLERS.get(action)
+            if handler:
+                result = handler(db, project, request.form, user_name)
+                if result.get('flash'):
+                    flash(*result['flash'])
+                for f in result.get('flashes', []):
+                    flash(*f)
 
             db.commit()
             return redirect(url_for('sales.sales_detail', project_id=project_id))

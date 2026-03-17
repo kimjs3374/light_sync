@@ -1,32 +1,13 @@
 import json
 import os
-from pathlib import Path
 from typing import List, Optional, Tuple
 from urllib.parse import quote
 
 import requests
 
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-
-
 def _read_env_value(key: str, default: Optional[str] = None) -> Optional[str]:
-    value = os.getenv(key)
-    if value:
-        return value
-
-    for env_file in [BASE_DIR / ".env", BASE_DIR / "supabase" / ".env", BASE_DIR / "storage" / ".env"]:
-        if not env_file.exists():
-            continue
-        for line in env_file.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            if k.strip() == key:
-                return v.strip()
-
-    return default
+    return os.getenv(key, default)
 
 
 def _normalize_path(path: str) -> str:

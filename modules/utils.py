@@ -22,6 +22,13 @@ def safe_int(value, default=0):
         return default
 
 
+def date_to_dt_start(d):
+    """date -> datetime(00:00) 변환. None이면 None 반환."""
+    if not d:
+        return None
+    return datetime.datetime.combine(d, datetime.time.min)
+
+
 def is_true_value(value):
     """폼 데이터의 truthy 체크"""
     return str(value).lower() in ('1', 'true', 'on', 'yes') if value else False

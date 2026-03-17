@@ -1,5 +1,6 @@
 import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
+from modules.auth_decorators import admin_required
 import bcrypt
 from modules.db_context import get_db
 from modules.models import User, GroupPermission, ProjectDeleteRequest, UserPriorityPermission
@@ -96,14 +97,14 @@ def register():
             flash("가입 신청 완료!", "success")
         except Exception:
             db.rollback()
+            current_app.logger.exception('register failed for username=%s', username)
             flash("가입 처리 중 오류가 발생했습니다.", "danger")
     return redirect(url_for('auth.login'))
 
 
 @auth_bp.route('/admin_settings')
+@admin_required
 def admin_settings():
-    if session.get('role') != 'admin':
-        return redirect(url_for('dashboard.dashboard_view'))
     with get_db() as db:
         pending = db.query(User).filter(User.is_approved == False).all()
         users = db.query(User).filter(User.is_approved == True).order_by(User.created_at.desc()).all()
@@ -116,9 +117,8 @@ def admin_settings():
 
 
 @auth_bp.route('/toggle_delete_approver/<int:user_id>', methods=['POST'])
+@admin_required
 def toggle_delete_approver(user_id):
-    if session.get('role') != 'admin':
-        return redirect(url_for('dashboard.dashboard_view'))
 
     with get_db() as db:
         user = db.get(User, user_id)
@@ -131,9 +131,8 @@ def toggle_delete_approver(user_id):
 
 
 @auth_bp.route('/toggle_priority_manager/<int:user_id>', methods=['POST'])
+@admin_required
 def toggle_priority_manager(user_id):
-    if session.get('role') != 'admin':
-        return redirect(url_for('dashboard.dashboard_view'))
 
     with get_db() as db:
         user = db.get(User, user_id)
@@ -160,9 +159,8 @@ def toggle_priority_manager(user_id):
 
 
 @auth_bp.route('/toggle_user_active/<int:user_id>', methods=['POST'])
+@admin_required
 def toggle_user_active(user_id):
-    if session.get('role') != 'admin':
-        return redirect(url_for('dashboard.dashboard_view'))
 
     with get_db() as db:
         user = db.get(User, user_id)
@@ -195,10 +193,8 @@ def toggle_user_active(user_id):
 
 
 @auth_bp.route('/approve_user/<int:user_id>', methods=['POST'])
+@admin_required
 def approve_user(user_id):
-    if session.get('role') != 'admin':
-        flash("권한이 없습니다.", "danger")
-        return redirect(url_for('dashboard.dashboard_view'))
     with get_db() as db:
         user = db.get(User, user_id)
         if user:
@@ -209,9 +205,8 @@ def approve_user(user_id):
 
 
 @auth_bp.route('/reject_user/<int:user_id>', methods=['POST'])
+@admin_required
 def reject_user(user_id):
-    if session.get('role') != 'admin':
-        return redirect(url_for('dashboard.dashboard_view'))
     with get_db() as db:
         user = db.get(User, user_id)
         if user and user.role != 'admin':

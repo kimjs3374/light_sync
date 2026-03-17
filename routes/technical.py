@@ -1,5 +1,6 @@
 # C:\light_sync\routes\technical.py
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
+from modules.auth_decorators import login_required
 import json
 from sqlalchemy.orm import joinedload
 from modules.db_context import get_db
@@ -9,8 +10,8 @@ from modules.models import Project, SportsModule
 tech_bp = Blueprint('tech', __name__)
 
 @tech_bp.route('/lux_calculator', methods=['GET', 'POST'])
+@login_required
 def lux_calculator():
-    if 'user_id' not in session: return redirect(url_for('auth.login'))
     with get_db() as db:
         # 1번 수정: 수정 모드 (기존 데이터 불러오기)
         edit_id = request.args.get('edit_id')
@@ -46,7 +47,9 @@ def lux_calculator():
                 flash(f"✅ 저장 완료 (달성률: {round(achievement_rate, 1)}%)", "success")
                 return redirect(url_for('tech.lux_calculator'))
             except Exception as e:
-                db.rollback(); flash(f"오류: {e}", "danger")
+                db.rollback()
+                current_app.logger.exception('lux_calculator save failed')
+                flash('저장 처리 중 오류가 발생했습니다.', 'danger')
 
         projects = db.query(Project).all()
         recent = db.query(SportsModule).options(joinedload(SportsModule.project)).order_by(SportsModule.id.desc()).all()

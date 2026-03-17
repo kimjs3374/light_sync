@@ -8,7 +8,7 @@ load_dotenv()
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
-    DEBUG = False
+    DEBUG = True
 
     # Session security
     SESSION_COOKIE_HTTPONLY = True

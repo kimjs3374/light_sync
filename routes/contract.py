@@ -1,4 +1,5 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
+from modules.auth_decorators import login_required
 import datetime
 from modules.db_context import get_db
 from modules.utils import safe_int
@@ -12,8 +13,8 @@ from modules.kakaowork_notifier import post_contract_summary
 contract_bp = Blueprint('contract', __name__)
 
 @contract_bp.route('/contract_create', methods=['GET', 'POST'])
+@login_required
 def contract_create():
-    if 'user_id' not in session: return redirect(url_for('auth.login'))
     if session.get('user_group') == '생산부':
         flash('생산부는 계약 현장 등록 권한이 없습니다.', 'danger')
         return redirect(url_for('project.contract_list'))
@@ -104,7 +105,9 @@ def contract_create():
 
                 return redirect(url_for('project.contract_list'))
             except Exception as e:
-                db.rollback(); flash(f"등록 실패: {e}", "danger")
+                db.rollback()
+                current_app.logger.exception('contract_create failed')
+                flash('등록 처리 중 오류가 발생했습니다.', 'danger')
         return render_template('contract_create.html', detail_item_options=DETAIL_ITEM_OPTIONS)
 
 # 계약 리스트/상세는 project_bp에서 단일 처리 (중복 라우팅 방지)

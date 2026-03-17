@@ -77,7 +77,7 @@
             </select>
         </div>
         <div class="col-12 col-md-2 text-md-end mobile-actions">
-            <a href="{{ url_for('project.material_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+            <a href="{{ url_for('material.material_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
             <button class="btn btn-primary btn-sm fw-bold">검색</button>
         </div>
     </div>
@@ -109,7 +109,7 @@
                 </td>
                 <td class="text-center"><b>{{ p.project_no }}</b></td>
                 <td class="ps-3 fw-bold text-dark">
-                    <a href="{{ url_for('project.material_detail', project_id=p.id) }}" class="text-dark text-decoration-none">{{ p.temp_name }}</a>
+                    <a href="{{ url_for('material.material_detail', project_id=p.id) }}" class="text-dark text-decoration-none">{{ p.temp_name }}</a>
                     {% set ps = p._purchase_status or '자재확인중' %}
                     <span class="badge ms-1
                         {% if ps == '입고완료' %}bg-success
@@ -153,7 +153,7 @@
                                             </thead>
                                             <tbody>
                                                 {% for item in c._matched_items %}
-                                                <tr class="clickable-item-row" data-href="{{ url_for('project.material_detail', project_id=p.id) }}">
+                                                <tr class="clickable-item-row" data-href="{{ url_for('material.material_detail', project_id=p.id) }}">
                                                     <td>{{ item.category }}</td>
                                                     <td class="text-start">{{ item.model_name }}</td>
                                                     <td>{{ item._matched_orders|length }}</td>

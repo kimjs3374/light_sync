@@ -1,8 +1,8 @@
 import datetime
 import io
-import traceback
 from pathlib import Path, PurePosixPath
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, send_file, abort
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, send_file, abort, current_app
+from modules.auth_decorators import login_required
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
 from modules.db_context import get_db
@@ -53,9 +53,8 @@ def _log_access(db, access_type='VIEW'):
 
 
 @drawing_bp.route('/drawings')
+@login_required
 def drawings_index():
-    if 'user_id' not in session:
-        return redirect(url_for('auth.login'))
     if not _can_read_drawings():
         flash('도면 열람 권한이 없습니다.', 'danger')
         return redirect(url_for('dashboard.dashboard_view'))
@@ -66,9 +65,8 @@ def drawings_index():
 
 
 @drawing_bp.route('/drawings/project/<int:project_id>')
+@login_required
 def drawings_project(project_id):
-    if 'user_id' not in session:
-        return redirect(url_for('auth.login'))
     if not _can_read_drawings():
         flash('도면 열람 권한이 없습니다.', 'danger')
         return redirect(url_for('dashboard.dashboard_view'))
@@ -95,9 +93,8 @@ def drawings_project(project_id):
 
 
 @drawing_bp.route('/drawings/project/<int:project_id>/upload', methods=['POST'])
+@login_required
 def upload_drawing(project_id):
-    if 'user_id' not in session:
-        return redirect(url_for('auth.login'))
     if not _can_write_drawings():
         flash('도면 업로드/수정 권한은 영업부(RW)만 가능합니다.', 'danger')
         return redirect(_safe_next_url('drawing.drawings_project', project_id=project_id))
@@ -214,15 +211,14 @@ def upload_drawing(project_id):
             return redirect(_safe_next_url('drawing.drawings_project', project_id=project_id))
         except Exception as e:
             db.rollback()
-            print('[upload_drawing] ERROR:', traceback.format_exc())
-            flash(f'업로드 오류: {str(e)}', 'danger')
+            current_app.logger.exception('upload_drawing failed project=%s', project_id)
+            flash('업로드 처리 중 오류가 발생했습니다.', 'danger')
             return redirect(url_for('drawing.drawings_project', project_id=project_id))
 
 
 @drawing_bp.route('/drawings/version/<int:version_id>/view')
+@login_required
 def view_pdf(version_id):
-    if 'user_id' not in session:
-        return redirect(url_for('auth.login'))
     if not _can_read_drawings():
         abort(403)
 
@@ -244,9 +240,8 @@ def view_pdf(version_id):
 
 
 @drawing_bp.route('/drawings/version/<int:version_id>/download')
+@login_required
 def download_pdf(version_id):
-    if 'user_id' not in session:
-        return redirect(url_for('auth.login'))
     if not _can_read_drawings():
         abort(403)
 
@@ -269,9 +264,8 @@ def download_pdf(version_id):
 
 
 @drawing_bp.route('/drawings/version/<int:version_id>/delete', methods=['POST'])
+@login_required
 def delete_drawing_version(version_id):
-    if 'user_id' not in session:
-        return redirect(url_for('auth.login'))
     if not _can_write_drawings():
         flash('도면 삭제 권한은 영업부/관리자만 가능합니다.', 'danger')
         return redirect(_safe_next_url('drawing.drawings_index'))
@@ -328,7 +322,8 @@ def delete_drawing_version(version_id):
             return redirect(_safe_next_url('drawing.drawings_project', project_id=project_id))
         except Exception as e:
             db.rollback()
-            flash(f'삭제 오류: {str(e)}', 'danger')
+            current_app.logger.exception('delete_drawing_version failed version=%s', version_id)
+            flash('삭제 처리 중 오류가 발생했습니다.', 'danger')
             return redirect(_safe_next_url('drawing.drawings_index'))
 
 

@@ -1,79 +1,19 @@
 import datetime as dt
 import os
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import requests
 
 
-ENV_FILE_PATH = Path("kakaowork/.env")
-
-
-def _read_env_file(path: Path) -> Dict[str, str]:
-    if not path.exists():
-        return {}
-    values: Dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip().strip('"').strip("'")
-    return values
-
-
-def _pick_first(values: Dict[str, str], keys: List[str]) -> Optional[str]:
-    for key in keys:
-        value = values.get(key)
-        if value:
-            return value
-    return None
-
-
-def _find_by_keywords(values: Dict[str, str], include_keywords: List[str]) -> Optional[str]:
-    lowered = [k.lower() for k in include_keywords]
-    for k, v in values.items():
-        key_l = k.lower()
-        if all(word in key_l for word in lowered) and v:
-            return v
-    return None
-
-
 def load_kakaowork_config() -> Dict[str, str]:
-    env_map = _read_env_file(ENV_FILE_PATH)
-    merged_env = {**env_map, **dict(os.environ)}
-
-    token = _pick_first(
-        merged_env,
-        [
-            "KAKAOWORK_BOT_TOKEN",
-            "KAKAOWORK_BOT_ACCESS_TOKEN",
-            "BOT_TOKEN",
-            "KAKAOWORK_TOKEN",
-            "KAKAO_WORK_BOT_TOKEN",
-        ],
-    )
-    if not token:
-        token = _find_by_keywords(merged_env, ["kakao", "token"])
-
-    workboard_id = _pick_first(
-        merged_env,
-        [
-            "KAKAOWORK_WORKBOARD_ID",
-            "KAKAOWORK_BOARD_ID",
-            "WORKBOARD_ID",
-            "WORK_BOARD_ID",
-        ],
-    )
-    if not workboard_id:
-        workboard_id = _find_by_keywords(merged_env, ["work", "board", "id"])
-
-    api_base_url = merged_env.get("KAKAOWORK_API_BASE_URL", "https://api.kakaowork.com")
-    post_path_template = merged_env.get("KAKAOWORK_WORKBOARD_POST_PATH", "/v1/workboards/{workboard_id}/posts")
+    token = os.environ.get("KAKAOWORK_BOT_TOKEN", "")
+    workboard_id = os.environ.get("KAKAOWORK_WORKBOARD_ID", "")
+    api_base_url = os.environ.get("KAKAOWORK_API_BASE_URL", "https://api.kakaowork.com")
+    post_path_template = os.environ.get("KAKAOWORK_WORKBOARD_POST_PATH", "/v1/workboards/{workboard_id}/posts")
 
     return {
-        "token": token or "",
-        "workboard_id": str(workboard_id or ""),
+        "token": token,
+        "workboard_id": workboard_id,
         "api_base_url": api_base_url.rstrip("/"),
         "post_path_template": post_path_template,
     }

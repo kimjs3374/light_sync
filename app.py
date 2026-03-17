@@ -16,6 +16,8 @@ from routes.drawing import drawing_bp
 from routes.sales import sales_bp
 from routes.production import production_bp
 from routes.delivery import delivery_bp
+from routes.material import material_bp
+from routes.barcode import barcode_bp
 
 # =====================================================================
 # App 생성 및 설정
@@ -64,7 +66,9 @@ LOCKED_DOMAIN = app.config.get("DOMAIN", "work.mgnt.kr")
 
 @app.before_request
 def force_locked_domain():
-    """운영 도메인 강제: 다른 Host로 접근 시 work.mgnt.kr로 리다이렉트"""
+    """운영 도메인 강제: 다른 Host로 접근 시 work.mgnt.kr로 리다이렉트 (개발환경에서는 비활성화)"""
+    if os.environ.get('FLASK_ENV') != 'production':
+        return None
     host_only = (request.host or '').split(':')[0].lower()
     if host_only and host_only not in {LOCKED_DOMAIN, 'localhost', '127.0.0.1'}:
         target = f"https://{LOCKED_DOMAIN}{request.full_path}"
@@ -97,6 +101,8 @@ app.register_blueprint(production_bp)
 app.register_blueprint(delivery_bp)
 app.register_blueprint(tech_bp)
 app.register_blueprint(drawing_bp)
+app.register_blueprint(material_bp)
+app.register_blueprint(barcode_bp)
 
 
 # =====================================================================
@@ -125,5 +131,5 @@ if __name__ == '__main__':
     init_db()
     host = app.config.get("HOST", "0.0.0.0")
     port = app.config.get("PORT", 8501)
-    debug = app.config.get("DEBUG", False)
+    debug = app.config.get("DEBUG", True)
     app.run(host=host, debug=debug, port=port, use_reloader=debug)
