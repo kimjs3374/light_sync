@@ -1,0 +1,1224 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    :root {
+        --cmd-bg: #f3f6fb;
+        --cmd-surface: #ffffff;
+        --cmd-surface-soft: #f8fbff;
+        --cmd-border: #dbe3ef;
+        --cmd-ink: #0f172a;
+        --cmd-muted: #64748b;
+        --cmd-primary: #0d6efd;
+        --cmd-success: #198754;
+        --cmd-warning: #ffc107;
+        --cmd-danger: #dc3545;
+        --cmd-shadow: 0 18px 40px rgba(15, 23, 42, 0.07);
+    }
+
+    .command-center {
+        display: flex;
+        flex-direction: column;
+        gap: .85rem;
+        color: var(--cmd-ink);
+    }
+
+    .min-w-0 {
+        min-width: 0;
+    }
+
+    .command-header {
+        background: linear-gradient(135deg, #ffffff 0%, #eef4ff 55%, #f8fbff 100%);
+        border: 1px solid var(--cmd-border);
+        border-radius: 18px;
+        box-shadow: var(--cmd-shadow);
+        padding: .8rem .95rem;
+    }
+
+    .command-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: .45rem;
+        padding: .22rem .52rem;
+        border-radius: 999px;
+        background: rgba(13, 110, 253, 0.08);
+        color: var(--cmd-primary);
+        font-size: .66rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+    }
+
+    .command-title {
+        font-size: clamp(1.2rem, 1.55vw, 1.6rem);
+        font-weight: 800;
+        letter-spacing: -.03em;
+        line-height: 1.15;
+    }
+
+    .command-subtitle {
+        color: var(--cmd-muted);
+        max-width: 760px;
+        font-size: .84rem;
+        line-height: 1.45;
+    }
+
+    .command-status-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .35rem;
+    }
+
+    .command-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        padding: .24rem .52rem;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, .3);
+        background: rgba(255, 255, 255, .9);
+        color: var(--cmd-ink);
+        font-size: .7rem;
+        font-weight: 600;
+    }
+
+    .command-chip strong {
+        font-weight: 800;
+    }
+
+    .command-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .4rem;
+    }
+
+    .command-actions .btn {
+        border-radius: 10px;
+        padding: .34rem .68rem;
+        font-size: .78rem;
+        white-space: nowrap;
+    }
+
+    .global-ticker {
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        min-height: 60px;
+        padding: .68rem .9rem;
+        border-radius: 16px;
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, .08);
+        box-shadow: var(--cmd-shadow);
+    }
+
+    .global-ticker::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(120deg, rgba(255,255,255,.12), transparent 35%, transparent 65%, rgba(255,255,255,.08));
+        pointer-events: none;
+    }
+
+    .global-ticker.level-info {
+        background: linear-gradient(90deg, #0f172a 0%, #123761 45%, #0b5ed7 100%);
+    }
+
+    .global-ticker.level-warning {
+        background: linear-gradient(90deg, #422006 0%, #7c4a03 45%, #d97706 100%);
+    }
+
+    .global-ticker.level-danger {
+        background: linear-gradient(90deg, #3f0d12 0%, #7f1d1d 45%, #dc3545 100%);
+        animation: tickerPulse 2.2s ease-in-out infinite;
+    }
+
+    .ticker-left {
+        min-width: 0;
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: .8rem;
+        z-index: 1;
+    }
+
+    .ticker-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 72px;
+        padding: .3rem .58rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, .14);
+        font-weight: 800;
+        font-size: .68rem;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        border: 1px solid rgba(255,255,255,.14);
+    }
+
+    .ticker-track {
+        position: relative;
+        width: 100%;
+        overflow: hidden;
+    }
+
+    .ticker-message {
+        display: inline-block;
+        min-width: 100%;
+        white-space: nowrap;
+        padding-left: 100%;
+        font-size: .88rem;
+        font-weight: 700;
+        line-height: 1.2;
+        transform: translateX(0);
+        opacity: .98;
+    }
+
+    .ticker-message.is-rolling {
+        animation-name: tickerRoll;
+        animation-timing-function: linear;
+        animation-iteration-count: infinite;
+    }
+
+    .ticker-actions {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: .55rem;
+        flex-shrink: 0;
+    }
+
+    .ticker-actions .btn {
+        border-radius: 10px;
+        padding: .34rem .62rem;
+        font-size: .76rem;
+        white-space: nowrap;
+    }
+
+    .panel-shell {
+        background: var(--cmd-surface);
+        border: 1px solid var(--cmd-border);
+        border-radius: 18px;
+        box-shadow: var(--cmd-shadow);
+        padding: .95rem;
+        height: 100%;
+    }
+
+    .section-kicker {
+        font-size: .67rem;
+        font-weight: 800;
+        letter-spacing: .08em;
+        color: var(--cmd-primary);
+        text-transform: uppercase;
+        margin-bottom: .22rem;
+    }
+
+    .section-title {
+        font-size: .98rem;
+        font-weight: 800;
+        margin-bottom: .12rem;
+    }
+
+    .section-subtitle {
+        color: var(--cmd-muted);
+        font-size: .8rem;
+    }
+
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: .7rem;
+    }
+
+    .kpi-card {
+        display: block;
+        height: 100%;
+        padding: .82rem .82rem .82rem .92rem;
+        border-radius: 14px;
+        border: 1px solid #e6edf7;
+        border-left: 6px solid var(--cmd-primary);
+        background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        text-decoration: none;
+        color: inherit;
+        transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    }
+
+    .kpi-card:hover {
+        color: inherit;
+        transform: translateY(-3px);
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.09);
+    }
+
+    .kpi-card.tone-primary { border-left-color: var(--cmd-primary); }
+    .kpi-card.tone-warning { border-left-color: var(--cmd-warning); }
+    .kpi-card.tone-danger { border-left-color: var(--cmd-danger); }
+    .kpi-card.tone-success { border-left-color: var(--cmd-success); }
+
+    .kpi-label {
+        color: var(--cmd-muted);
+        font-size: .74rem;
+        font-weight: 700;
+        margin-bottom: .3rem;
+    }
+
+    .kpi-value {
+        font-size: clamp(1.45rem, 1.9vw, 2rem);
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -.04em;
+        margin-bottom: .28rem;
+    }
+
+    .kpi-card.tone-primary .kpi-value { color: var(--cmd-primary); }
+    .kpi-card.tone-warning .kpi-value { color: #c98a00; }
+    .kpi-card.tone-danger .kpi-value { color: var(--cmd-danger); }
+    .kpi-card.tone-success .kpi-value { color: var(--cmd-success); }
+
+    .kpi-footnote {
+        font-size: .72rem;
+        color: var(--cmd-muted);
+    }
+
+    .workflow-board {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: .7rem;
+        align-items: stretch;
+    }
+
+    .workflow-node {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: .6rem;
+        min-height: 158px;
+        padding: .82rem;
+        border-radius: 16px;
+        border: 1px solid #e2e8f0;
+        background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+        text-decoration: none;
+        color: inherit;
+        overflow: visible;
+        transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    }
+
+    .workflow-node:hover {
+        color: inherit;
+        transform: translateY(-3px);
+        box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+    }
+
+    .workflow-node:not(:last-child)::after {
+        content: "➜";
+        position: absolute;
+        right: -.72rem;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 1.45rem;
+        height: 1.45rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: #fff;
+        border: 1px solid var(--cmd-border);
+        color: #94a3b8;
+        font-size: .8rem;
+        z-index: 2;
+    }
+
+    .workflow-node.tone-primary { border-top: 5px solid var(--cmd-primary); }
+    .workflow-node.tone-warning { border-top: 5px solid var(--cmd-warning); }
+    .workflow-node.tone-success { border-top: 5px solid var(--cmd-success); }
+    .workflow-node.tone-danger { border-top: 5px solid var(--cmd-danger); }
+
+    .workflow-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: .5rem;
+    }
+
+    .workflow-name {
+        font-weight: 800;
+        font-size: .92rem;
+    }
+
+    .workflow-subtitle {
+        color: var(--cmd-muted);
+        font-size: .72rem;
+        line-height: 1.35;
+    }
+
+    .workflow-count {
+        font-size: 1.55rem;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -.04em;
+    }
+
+    .workflow-node.tone-primary .workflow-count { color: var(--cmd-primary); }
+    .workflow-node.tone-warning .workflow-count { color: #c98a00; }
+    .workflow-node.tone-success .workflow-count { color: var(--cmd-success); }
+    .workflow-node.tone-danger .workflow-count { color: var(--cmd-danger); }
+
+    .workflow-foot {
+        margin-top: auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: .45rem;
+        flex-wrap: wrap;
+    }
+
+    .hot-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .38rem .7rem;
+        border-radius: 999px;
+        font-size: .74rem;
+        font-weight: 800;
+        border: 1px solid transparent;
+    }
+
+    .hot-badge.is-calm {
+        background: rgba(25, 135, 84, .1);
+        color: var(--cmd-success);
+        border-color: rgba(25, 135, 84, .18);
+    }
+
+    .hot-badge.is-hot {
+        background: rgba(220, 53, 69, .12);
+        color: var(--cmd-danger);
+        border-color: rgba(220, 53, 69, .18);
+        animation: pulseBadge 1.55s ease-in-out infinite;
+    }
+
+    .workflow-link {
+        font-size: .82rem;
+        font-weight: 700;
+        color: var(--cmd-muted);
+    }
+
+    .workflow-legend {
+        margin-top: .7rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: .4rem;
+    }
+
+    .legend-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .28rem .55rem;
+        border-radius: 999px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        color: var(--cmd-muted);
+        font-size: .69rem;
+        font-weight: 700;
+    }
+
+    .legend-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    .legend-dot.danger { background: var(--cmd-danger); }
+    .legend-dot.warning { background: var(--cmd-warning); }
+    .legend-dot.success { background: var(--cmd-success); }
+    .legend-dot.primary { background: var(--cmd-primary); }
+
+    .command-tabs {
+        border-bottom: none;
+        gap: .55rem;
+        flex-wrap: wrap;
+    }
+
+    .command-tabs .nav-link {
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: var(--cmd-muted);
+        border-radius: 14px;
+        padding: .54rem .8rem;
+        font-weight: 800;
+        font-size: .82rem;
+    }
+
+    .command-tabs .nav-link.active {
+        color: #fff;
+        background: #0f172a;
+        border-color: #0f172a;
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+    }
+
+    .tab-count {
+        margin-left: .35rem;
+        font-size: .74rem;
+        opacity: .9;
+    }
+
+    .action-list {
+        display: flex;
+        flex-direction: column;
+        gap: .65rem;
+    }
+
+    .action-item {
+        border: 1px solid #e5edf7;
+        border-left: 5px solid #cbd5e1;
+        border-radius: 14px;
+        padding: .82rem;
+        background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        transition: transform .18s ease, box-shadow .18s ease;
+    }
+
+    .action-item:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+    }
+
+    .action-item.is-primary { border-left-color: var(--cmd-primary); }
+    .action-item.is-warning { border-left-color: var(--cmd-warning); }
+    .action-item.is-danger { border-left-color: var(--cmd-danger); background: linear-gradient(180deg, #ffffff 0%, #fff7f8 100%); }
+    .action-item.is-success { border-left-color: var(--cmd-success); }
+
+    .action-title {
+        font-size: .9rem;
+        font-weight: 800;
+        margin-bottom: .15rem;
+    }
+
+    .action-subtitle {
+        color: var(--cmd-muted);
+        font-size: .79rem;
+    }
+
+    .action-meta {
+        color: #475569;
+        font-size: .73rem;
+        margin-top: .26rem;
+    }
+
+    .status-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .24rem .52rem;
+        border-radius: 999px;
+        font-size: .68rem;
+        font-weight: 800;
+        border: 1px solid transparent;
+    }
+
+    .status-chip.primary {
+        background: rgba(13, 110, 253, .1);
+        color: var(--cmd-primary);
+        border-color: rgba(13, 110, 253, .18);
+    }
+
+    .status-chip.warning {
+        background: rgba(255, 193, 7, .14);
+        color: #9a6700;
+        border-color: rgba(255, 193, 7, .18);
+    }
+
+    .status-chip.danger {
+        background: rgba(220, 53, 69, .12);
+        color: var(--cmd-danger);
+        border-color: rgba(220, 53, 69, .18);
+        animation: pulseBadge 1.65s ease-in-out infinite;
+    }
+
+    .status-chip.success {
+        background: rgba(25, 135, 84, .12);
+        color: var(--cmd-success);
+        border-color: rgba(25, 135, 84, .18);
+    }
+
+    .action-empty {
+        padding: .95rem;
+        border: 1px dashed #cbd5e1;
+        border-radius: 14px;
+        background: #f8fafc;
+        text-align: center;
+        color: var(--cmd-muted);
+    }
+
+    .calendar-card,
+    .timeline-card-shell {
+        display: flex;
+        flex-direction: column;
+        gap: .8rem;
+    }
+
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: .35rem;
+    }
+
+    .calendar-weekday {
+        text-align: center;
+        font-size: .75rem;
+        font-weight: 800;
+        color: var(--cmd-muted);
+        padding-bottom: .1rem;
+    }
+
+    .calendar-cell {
+        min-height: 72px;
+        padding: .42rem;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        display: flex;
+        flex-direction: column;
+        gap: .42rem;
+    }
+
+    .calendar-cell.is-muted {
+        opacity: .42;
+    }
+
+    .calendar-cell.is-today {
+        border-color: rgba(13, 110, 253, .35);
+        background: rgba(13, 110, 253, .08);
+    }
+
+    .calendar-cell.is-urgent {
+        box-shadow: inset 0 0 0 1px rgba(220, 53, 69, .18);
+        background: rgba(220, 53, 69, .05);
+    }
+
+    .calendar-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: .3rem;
+    }
+
+    .calendar-day {
+        font-size: .78rem;
+        font-weight: 800;
+    }
+
+    .calendar-count {
+        min-width: 16px;
+        height: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, .09);
+        color: var(--cmd-ink);
+        font-size: .62rem;
+        font-weight: 800;
+    }
+
+    .calendar-dots {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .calendar-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #cbd5e1;
+    }
+
+    .calendar-dot.is-normal { background: var(--cmd-primary); }
+    .calendar-dot.is-warning { background: var(--cmd-warning); }
+    .calendar-dot.is-danger { background: var(--cmd-danger); animation: pulseBadge 1.5s ease-in-out infinite; }
+
+    .calendar-more {
+        font-size: .62rem;
+        color: var(--cmd-muted);
+        font-weight: 700;
+    }
+
+    .upcoming-list {
+        display: flex;
+        flex-direction: column;
+        gap: .55rem;
+    }
+
+    .upcoming-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .75rem;
+        padding: .65rem .72rem;
+        border-radius: 14px;
+        border: 1px solid #e5edf7;
+        background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        text-decoration: none;
+        color: inherit;
+    }
+
+    .upcoming-item:hover {
+        color: inherit;
+        border-color: #c6d5ea;
+        box-shadow: 0 10px 18px rgba(15, 23, 42, 0.05);
+    }
+
+    .upcoming-date {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 46px;
+        height: 46px;
+        border-radius: 12px;
+        background: #eff6ff;
+        color: var(--cmd-primary);
+        font-weight: 900;
+        font-size: .9rem;
+        flex-shrink: 0;
+    }
+
+    .upcoming-title {
+        font-size: .86rem;
+        font-weight: 800;
+        margin-bottom: .1rem;
+    }
+
+    .upcoming-meta {
+        font-size: .72rem;
+        color: var(--cmd-muted);
+    }
+
+    .live-timeline {
+        position: relative;
+        padding-left: 1rem;
+        max-height: 640px;
+        overflow-y: auto;
+    }
+
+    .live-timeline::before {
+        content: "";
+        position: absolute;
+        top: .2rem;
+        bottom: .2rem;
+        left: .3rem;
+        width: 2px;
+        background: linear-gradient(180deg, rgba(148, 163, 184, .25), rgba(148, 163, 184, .55), rgba(148, 163, 184, .15));
+    }
+
+    .live-item {
+        position: relative;
+        padding-left: 1.15rem;
+        margin-bottom: .7rem;
+    }
+
+    .live-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .live-dot {
+        position: absolute;
+        left: -.06rem;
+        top: .9rem;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--cmd-primary);
+        box-shadow: 0 0 0 4px rgba(13, 110, 253, .12);
+    }
+
+    .live-item.is-system .live-dot {
+        background: var(--cmd-primary);
+    }
+
+    .live-item.is-issue .live-dot {
+        background: var(--cmd-danger);
+        box-shadow: 0 0 0 4px rgba(220, 53, 69, .14);
+        animation: pulseBadge 1.55s ease-in-out infinite;
+    }
+
+    .live-body {
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        padding: .78rem .84rem;
+    }
+
+    .live-item.is-issue .live-body {
+        background: linear-gradient(180deg, #ffffff 0%, #fff6f7 100%);
+        border-color: rgba(220, 53, 69, .18);
+    }
+
+    .live-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: .6rem;
+    }
+
+    .live-user {
+        font-size: .78rem;
+        font-weight: 800;
+    }
+
+    .live-user span {
+        color: var(--cmd-muted);
+        font-weight: 600;
+    }
+
+    .live-time {
+        font-size: .66rem;
+        font-weight: 800;
+        background: #f1f5f9;
+        color: #334155;
+        padding: .22rem .42rem;
+        border-radius: 999px;
+    }
+
+    .live-content {
+        margin-top: .42rem;
+        color: #334155;
+        font-size: .76rem;
+        line-height: 1.48;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .live-link {
+        margin-top: .45rem;
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        font-size: .74rem;
+        font-weight: 800;
+        color: var(--cmd-primary);
+        text-decoration: none;
+    }
+
+    .live-link:hover {
+        color: #0a58ca;
+    }
+
+    @keyframes tickerRoll {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-100%); }
+    }
+
+    @keyframes tickerPulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, .18), var(--cmd-shadow); }
+        50% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0), var(--cmd-shadow); }
+    }
+
+    @keyframes pulseBadge {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, .18); }
+        50% { transform: scale(1.03); box-shadow: 0 0 0 8px rgba(220, 53, 69, 0); }
+    }
+
+    @media (max-width: 1399.98px) {
+        .kpi-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .workflow-board {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .workflow-node:nth-child(3)::after,
+        .workflow-node:last-child::after {
+            content: none;
+        }
+    }
+
+    @media (max-width: 991.98px) {
+        .command-header,
+        .panel-shell,
+        .global-ticker {
+            border-radius: 20px;
+        }
+
+        .command-header {
+            padding: 1.1rem;
+        }
+
+        .global-ticker {
+            flex-direction: column;
+            align-items: stretch;
+            gap: .8rem;
+        }
+
+        .ticker-left {
+            width: 100%;
+        }
+
+        .ticker-actions {
+            width: 100%;
+            justify-content: flex-end;
+        }
+
+        .workflow-board {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .workflow-node::after {
+            content: none !important;
+        }
+
+        .live-timeline {
+            max-height: none;
+        }
+    }
+
+    @media (max-width: 767.98px) {
+        .kpi-grid,
+        .workflow-board,
+        .calendar-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .calendar-weekday {
+            display: none;
+        }
+
+        .calendar-cell {
+            min-height: auto;
+        }
+
+        .command-actions .btn,
+        .ticker-actions .btn {
+            width: 100%;
+        }
+
+        .ticker-actions {
+            flex-direction: column;
+        }
+    }
+</style>
+
+{% set action_tab_meta = [
+    {'key': 'sales', 'label': '영업', 'desc': '협의 미완료 / 선행 위험'},
+    {'key': 'material', 'label': '자재', 'desc': '발주 / 입고 확인 필요'},
+    {'key': 'production', 'label': '생산', 'desc': '납기 임박 / 생산 병목'},
+    {'key': 'delivery', 'label': '납품', 'desc': '담당 배정 / 완료사진 / 일정'}
+] %}
+
+<div class="command-center">
+    <section class="command-header">
+        <div class="d-flex flex-column flex-xl-row justify-content-between gap-2 align-items-xl-center">
+            <div>
+                <div class="command-eyebrow mb-2">Operation Command Center</div>
+                <div class="command-title mb-2">⚡ Light-Sync 전사 업무 지휘소</div>
+                <div class="command-subtitle">
+                    {{ today.strftime('%Y.%m.%d') }} 기준 · 전체 업무 흐름과 지금 바로 처리해야 할 액션을 한눈에 파악하는 실행 중심 메인 대시보드
+                </div>
+            </div>
+            <div class="command-actions">
+                <a href="{{ url_for('project.contract_list') }}" class="btn btn-primary btn-sm">계약관리</a>
+                <a href="{{ url_for('project.material_management') }}" class="btn btn-outline-secondary btn-sm">자재관리</a>
+                <a href="{{ url_for('production.production_management') }}" class="btn btn-outline-secondary btn-sm">생산관리</a>
+                <a href="{{ url_for('delivery.delivery_management') }}" class="btn btn-outline-secondary btn-sm">납품관리</a>
+                <a href="{{ url_for('project.project_create') }}" class="btn btn-outline-dark btn-sm">+ 신규 현장</a>
+            </div>
+        </div>
+        <div class="command-status-chips mt-2">
+            <span class="command-chip">진행 현장 <strong>{{ kpi.contracted_count }}</strong></span>
+            <span class="command-chip">납품 임박 <strong>{{ kpi.urgent_delivery_count }}</strong></span>
+            <span class="command-chip">대기/지연 <strong>{{ kpi.waiting_delay_site_count }}</strong></span>
+            <span class="command-chip">미해결 이슈 <strong>{{ kpi.as_issue_count }}</strong></span>
+            <span class="command-chip">승인 대기 <strong>{{ kpi.pending_users }}</strong></span>
+        </div>
+    </section>
+
+    <section id="globalTicker" class="global-ticker level-info">
+        <div class="ticker-left">
+            <span id="tickerTitle" class="ticker-pill">공지</span>
+            <div class="ticker-track">
+                <div id="tickerMessage" class="ticker-message">전광판 공지를 불러오는 중입니다...</div>
+            </div>
+        </div>
+        <div class="ticker-actions">
+            {% if session.role == 'admin' %}
+            <a href="{{ url_for('dashboard.dashboard_notice_admin') }}" class="btn btn-sm btn-outline-light">전광판 관리</a>
+            {% endif %}
+            <a id="tickerLink" href="{{ url_for('project.contract_list') }}" class="btn btn-sm btn-light">상세 보기</a>
+        </div>
+    </section>
+
+    <div class="row g-3 align-items-stretch">
+        <div class="col-12 col-xl-8">
+            <div class="d-flex flex-column gap-3 h-100">
+                <section class="panel-shell">
+                    {% include 'components/dashboard_priority_brief.html' %}
+                </section>
+
+                <section class="panel-shell">
+                    <div class="section-kicker">Flow Tracking</div>
+                    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
+                        <div>
+                            <div class="section-title">파이프라인 워크플로우 보드</div>
+                            <div class="section-subtitle">영업 → 자재 → 생산 → 출고 → 납품 흐름에서 병목이 생기는 지점을 즉시 식별합니다.</div>
+                        </div>
+                    </div>
+
+                    <div class="workflow-board">
+                        {% for node in workflow_nodes %}
+                        <a href="{{ node.action_url }}" class="workflow-node tone-{{ node.tone }}">
+                            <div class="workflow-top">
+                                <div>
+                                    <div class="workflow-name">{{ node.title }}</div>
+                                    <div class="workflow-subtitle">{{ node.subtitle }}</div>
+                                </div>
+                            </div>
+                            <div class="workflow-count">{{ node.count }}</div>
+                            <div class="workflow-subtitle">현재 단계에 머물러 있는 현장 수</div>
+                            <div class="workflow-foot">
+                                {% if node.hot_count > 0 %}
+                                <span class="hot-badge is-hot">병목 {{ node.hot_count }}건</span>
+                                {% else %}
+                                <span class="hot-badge is-calm">병목 없음</span>
+                                {% endif %}
+                                <span class="workflow-link">바로 가기</span>
+                            </div>
+                        </a>
+                        {% endfor %}
+                    </div>
+
+                    <div class="workflow-legend">
+                        <span class="legend-pill"><span class="legend-dot primary"></span>정상 진행</span>
+                        <span class="legend-pill"><span class="legend-dot warning"></span>주의 / 일정 임박</span>
+                        <span class="legend-pill"><span class="legend-dot danger"></span>병목 / 긴급 대응</span>
+                        <span class="legend-pill"><span class="legend-dot success"></span>완료 / 출고 가능</span>
+                    </div>
+                </section>
+
+                <section class="panel-shell">
+                    <div class="section-kicker">Action Center</div>
+                    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
+                        <div>
+                            <div class="section-title">오늘의 할 일</div>
+                            <div class="section-subtitle">부서별 우선순위 액션을 카드 리스트 형태로 묶어 즉시 처리 가능한 화면으로 구성했습니다.</div>
+                        </div>
+                    </div>
+
+                    <ul class="nav command-tabs" id="actionTabs" role="tablist">
+                        {% for tab in action_tab_meta %}
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link {% if loop.first %}active{% endif %}" id="{{ tab.key }}-tab" data-bs-toggle="tab" data-bs-target="#{{ tab.key }}-pane" type="button" role="tab" aria-controls="{{ tab.key }}-pane" aria-selected="{{ 'true' if loop.first else 'false' }}">
+                                {{ tab.label }}
+                                <span class="tab-count">{{ action_tabs[tab.key]|length }}</span>
+                            </button>
+                        </li>
+                        {% endfor %}
+                    </ul>
+
+                    <div class="tab-content pt-3">
+                        {% for tab in action_tab_meta %}
+                        <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="{{ tab.key }}-pane" role="tabpanel" aria-labelledby="{{ tab.key }}-tab" tabindex="0">
+                            <div class="section-subtitle mb-3">{{ tab.desc }}</div>
+                            <div class="action-list">
+                                {% for item in action_tabs[tab.key] %}
+                                <div class="action-item is-{{ item.chip_class }}">
+                                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                                        <div class="flex-grow-1">
+                                            <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                                                <div class="action-title">{{ item.title }}</div>
+                                                <span class="badge text-bg-{{ item.badge_class }}">{{ item.badge_text }}</span>
+                                                <span class="status-chip {{ item.chip_class }}">{{ item.chip_text }}</span>
+                                            </div>
+                                            <div class="action-subtitle">{{ item.subtitle }}</div>
+                                            <div class="action-meta">{{ item.meta }} · {{ item.project_no }}</div>
+                                        </div>
+                                        <div class="d-flex align-items-center">
+                                            <a href="{{ item.action_url }}" class="btn btn-sm btn-outline-primary">{{ item.action_label }}</a>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <div class="action-empty">
+                                    <div class="fw-semibold mb-1">현재 처리할 우선 액션이 없습니다.</div>
+                                    <div class="small">이 탭은 정상 상태입니다. 다른 부서 액션이나 실시간 피드를 확인해 주세요.</div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="d-flex flex-column gap-3 h-100">
+                <section class="panel-shell calendar-card">
+                    <div>
+                        <div class="section-kicker">Schedule Radar</div>
+                        <div class="section-title">납품 캘린더</div>
+                        <div class="section-subtitle">{{ calendar_month_label }} 기준 납품 일정이 있는 날짜를 점 마커로 표시합니다.</div>
+                    </div>
+
+                    <div class="calendar-grid">
+                        {% for weekday in calendar_weekdays %}
+                        <div class="calendar-weekday">{{ weekday }}</div>
+                        {% endfor %}
+
+                        {% for week in calendar_weeks %}
+                            {% for cell in week %}
+                            <div class="calendar-cell {% if not cell.in_month %}is-muted{% endif %} {% if cell.is_today %}is-today{% endif %} {% if cell.is_urgent %}is-urgent{% endif %}">
+                                <div class="calendar-head">
+                                    <span class="calendar-day">{{ cell.day }}</span>
+                                    {% if cell['items'] %}
+                                    <span class="calendar-count">{{ cell['items']|length }}</span>
+                                    {% endif %}
+                                </div>
+                                {% if cell['items'] %}
+                                <div class="calendar-dots">
+                                    {% for item in cell['items'][:3] %}
+                                    <span class="calendar-dot {% if item.dday is not none and item.dday <= 3 %}is-danger{% elif item.dday is not none and item.dday <= 7 %}is-warning{% else %}is-normal{% endif %}" title="{{ item.project_name }} · {{ item.contract_name }}"></span>
+                                    {% endfor %}
+                                </div>
+                                {% if cell['items']|length > 3 %}
+                                <div class="calendar-more">+{{ cell['items']|length - 3 }}건</div>
+                                {% endif %}
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        {% endfor %}
+                    </div>
+
+                    <div>
+                        <div class="section-title mb-2" style="font-size:1rem;">다가오는 일정</div>
+                        <div class="upcoming-list">
+                            {% for item in mini_calendar_items[:5] %}
+                            <a href="{{ item.detail_url }}" class="upcoming-item">
+                                <div class="d-flex align-items-center gap-3 min-w-0">
+                                    <div class="upcoming-date">{{ item.date.strftime('%d') }}</div>
+                                    <div class="min-w-0">
+                                        <div class="upcoming-title">{{ item.project_name }}</div>
+                                        <div class="upcoming-meta">{{ item.project_no }} · {{ item.contract_name }}</div>
+                                    </div>
+                                </div>
+                                <span class="badge text-bg-{% if item.dday is not none and item.dday <= 3 %}danger{% elif item.dday is not none and item.dday <= 7 %}warning{% else %}primary{% endif %}">
+                                    {% if item.dday is none %}
+                                        일정미정
+                                    {% elif item.dday < 0 %}
+                                        D+{{ -item.dday }}
+                                    {% elif item.dday == 0 %}
+                                        D-Day
+                                    {% else %}
+                                        D-{{ item.dday }}
+                                    {% endif %}
+                                </span>
+                            </a>
+                            {% else %}
+                            <div class="action-empty">
+                                <div class="fw-semibold mb-1">이번 달 납품 일정이 없습니다.</div>
+                                <div class="small">새로운 일정이 등록되면 여기에서 바로 확인할 수 있습니다.</div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel-shell timeline-card-shell">
+                    <div>
+                        <div class="section-kicker">Live Feed</div>
+                        <div class="section-title">실시간 업무 타임라인</div>
+                        <div class="section-subtitle">최근 변경, 코멘트, 이슈 로그를 세로 타임라인으로 표시합니다.</div>
+                    </div>
+
+                    <div class="live-timeline">
+                        {% for item in timeline_items %}
+                        <div class="live-item {% if item.is_issue %}is-issue{% elif item.is_system %}is-system{% endif %}">
+                            <div class="live-dot"></div>
+                            <div class="live-body">
+                                <div class="live-header">
+                                    <div class="live-user">{{ item.user_name }} <span>· {{ item.project_name }} ({{ item.project_no }})</span></div>
+                                    <div class="live-time">{{ item.created_at.strftime('%m/%d %H:%M') if item.created_at else '-' }}</div>
+                                </div>
+                                <div class="live-content">{{ item.content }}</div>
+                                <a href="{{ item.detail_url }}" class="live-link">상세 보기 →</a>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="action-empty">
+                            <div class="fw-semibold mb-1">최근 업무 이력이 없습니다.</div>
+                            <div class="small">계약/생산/납품 관련 활동이 발생하면 실시간으로 표시됩니다.</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script id="billboardData" type="application/json">{{ billboard_items|tojson }}</script>
+<script>
+(() => {
+    const dataEl = document.getElementById('billboardData');
+    if (!dataEl) return;
+
+    let items = [];
+    try {
+        items = JSON.parse(dataEl.textContent || '[]');
+    } catch (error) {
+        return;
+    }
+
+    if (!items.length) return;
+
+    const tickerEl = document.getElementById('globalTicker');
+    const titleEl = document.getElementById('tickerTitle');
+    const messageEl = document.getElementById('tickerMessage');
+    const linkEl = document.getElementById('tickerLink');
+    if (!tickerEl || !titleEl || !messageEl || !linkEl) return;
+
+    const validLevels = ['info', 'warning', 'danger'];
+    let currentIndex = 0;
+    let timerId = null;
+
+    function restartRolling(messageText) {
+        const duration = Math.max(10, Math.min(24, Math.ceil((messageText || '').length / 4)));
+        messageEl.classList.remove('is-rolling');
+        messageEl.style.animationDuration = `${duration}s`;
+        void messageEl.offsetWidth;
+        messageEl.classList.add('is-rolling');
+    }
+
+    function render(index) {
+        const item = items[index] || items[0];
+        const level = validLevels.includes(item.level) ? item.level : 'info';
+        tickerEl.classList.remove('level-info', 'level-warning', 'level-danger');
+        tickerEl.classList.add(`level-${level}`);
+
+        titleEl.textContent = item.title || '공지';
+        messageEl.textContent = item.message || '-';
+        linkEl.href = item.detail_url || '{{ url_for("project.contract_list") }}';
+
+        restartRolling(item.message || '');
+
+        if (timerId) {
+            clearTimeout(timerId);
+        }
+        const seconds = Math.max(2, Number(item.display_seconds || 6));
+        timerId = setTimeout(() => {
+            currentIndex = (currentIndex + 1) % items.length;
+            render(currentIndex);
+        }, seconds * 1000);
+    }
+
+    render(currentIndex);
+})();
+</script>
+{% endblock %}

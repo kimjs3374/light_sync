@@ -1,0 +1,123 @@
+<style>
+    .dashboard-priority-board .brief-list {
+        display: flex;
+        flex-direction: column;
+        gap: .7rem;
+    }
+    .dashboard-priority-board .brief-item {
+        border: 1px solid #e5edf7;
+        border-left: 5px solid #cbd5e1;
+        border-radius: 14px;
+        background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        overflow: hidden;
+    }
+    .dashboard-priority-board .brief-item.tone-manual { border-left-color: #dc3545; background: linear-gradient(180deg, #ffffff 0%, #fff1f2 100%); }
+    .dashboard-priority-board .brief-item.tone-danger { border-left-color: #ef4444; background: linear-gradient(180deg, #ffffff 0%, #fff7f7 100%); }
+    .dashboard-priority-board .brief-item.tone-warning { border-left-color: #f59e0b; background: linear-gradient(180deg, #ffffff 0%, #fffbeb 100%); }
+    .dashboard-priority-board .brief-item.tone-info { border-left-color: #0ea5e9; background: linear-gradient(180deg, #ffffff 0%, #f0f9ff 100%); }
+    .dashboard-priority-board .brief-item.tone-muted { border-left-color: #94a3b8; }
+    .dashboard-priority-board .brief-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: .8rem;
+        padding: .82rem;
+    }
+    .dashboard-priority-board .brief-toggle {
+        min-width: 40px;
+    }
+    .dashboard-priority-board .brief-title {
+        font-size: .9rem;
+        font-weight: 800;
+        margin-bottom: .1rem;
+    }
+    .dashboard-priority-board .brief-subtitle {
+        font-size: .74rem;
+        color: #64748b;
+    }
+    .dashboard-priority-board .brief-meta {
+        font-size: .74rem;
+        color: #475569;
+        line-height: 1.45;
+    }
+</style>
+
+<section class="panel-shell dashboard-priority-board">
+    <div class="section-kicker">Priority Briefing</div>
+    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
+        <div>
+            <div class="section-title">오늘의 최우선</div>
+            <div class="section-subtitle">수동 최우선과 시스템 우선순위를 합쳐 지금 가장 먼저 확인해야 할 현장만 축약해서 보여줍니다.</div>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <span class="badge text-bg-danger">{{ dashboard_priority['total'] }}건</span>
+            <a href="{{ url_for('project.contract_list') }}" class="btn btn-sm btn-outline-secondary">전체 보기</a>
+        </div>
+    </div>
+
+    {% if dashboard_priority['items'] %}
+    <div class="brief-list">
+        {% for item in dashboard_priority['items'] %}
+        <div class="brief-item tone-{{ item.tone|default('muted') }}">
+            <div class="brief-head">
+                <div class="d-flex gap-2 min-w-0 flex-grow-1">
+                    <button class="btn btn-sm btn-outline-secondary brief-toggle"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#dashboard_priority_{{ item.project_id }}_{{ loop.index }}"
+                            aria-expanded="false"
+                            aria-controls="dashboard_priority_{{ item.project_id }}_{{ loop.index }}">
+                        ▼
+                    </button>
+                    <div class="min-w-0 flex-grow-1">
+                        <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                            <div class="brief-title">{{ item.title }}</div>
+                            <span class="small text-muted">{{ item.project_no }}</span>
+                            {% if item.dday is not none %}
+                            <span class="badge {% if item.dday < 0 %}bg-danger{% elif item.dday == 0 %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">
+                                {% if item.dday < 0 %}
+                                    D+{{ -item.dday }}
+                                {% elif item.dday == 0 %}
+                                    D-Day
+                                {% else %}
+                                    D-{{ item.dday }}
+                                {% endif %}
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div class="brief-subtitle mb-2">{{ item.subtitle }}</div>
+                        <div class="d-flex flex-wrap gap-1">
+                            {% for reason in item.reasons[:4] %}
+                            <span class="badge {{ reason.css_class }}">{{ reason.label }}{% if reason.detail %} · {{ reason.detail }}{% endif %}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <a href="{{ item.detail_url }}" class="btn btn-sm btn-outline-primary">바로가기</a>
+            </div>
+            <div class="collapse" id="dashboard_priority_{{ item.project_id }}_{{ loop.index }}">
+                <div class="px-3 pb-3 brief-meta">
+                    {% if item.override_note %}
+                    <div class="fw-bold text-danger mb-2">수동 메모: {{ item.override_note }}</div>
+                    {% endif %}
+                    {% for meta in item.meta_lines %}
+                        {% if not (item.override_note and '수동 사유:' in meta) %}
+                        <div class="mb-1">• {{ meta }}</div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if dashboard_priority['more_count'] > 0 %}
+    <div class="mt-3 small text-muted">외 {{ dashboard_priority['more_count'] }}건은 각 관리 리스트 또는 전체 현장에서 확인할 수 있습니다.</div>
+    {% endif %}
+    {% else %}
+    <div class="action-empty">
+        <div class="fw-semibold mb-1">현재 최우선 브리핑 대상이 없습니다.</div>
+        <div class="small">수동 최우선 또는 시스템 우선순위 조건이 생기면 이 영역에 바로 표시됩니다.</div>
+    </div>
+    {% endif %}
+</section>

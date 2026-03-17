@@ -1,0 +1,145 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2 class="mb-4">🏟️ 스포츠 조도 계산기</h2>
+<div class="row">
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0 p-4">
+            <form method="POST" action="{{ url_for('tech.lux_calculator') }}">
+                <input type="hidden" name="calc_id" value="{{ edit_data.id if edit_data else '' }}">
+                
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="fw-bold">현장 선택</label>
+                        <select name="project_id" class="form-select" required>
+                            <option value="">현장을 선택하세요...</option>
+                            {% for p in projects %}
+                            <option value="{{ p.id }}" {% if edit_data and edit_data.project_id == p.id %}selected{% endif %}>{{ p.temp_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="fw-bold">설계 목표 (lx)</label>
+                        <input type="number" id="designLux" name="design_lux" class="form-control" value="{{ edit_data.design_lux if edit_data else '300' }}" onchange="calc()">
+                    </div>
+                </div>
+
+                <div id="compareBar" class="alert alert-dark border-0 d-flex justify-content-around text-center py-3 mb-4" style="display:none !important;">
+                    <div><small class="opacity-75">평균 조도</small><br><strong id="resAvg" class="fs-4">0</strong> lx</div>
+                    <div class="vr"></div>
+                    <div><small class="opacity-75">목표 달성률</small><br><strong id="resRate" class="fs-4 text-warning">0%</strong></div>
+                    <div class="vr"></div>
+                    <div><small class="opacity-75">균제도(U1)</small><br><strong id="resU1" class="fs-4">0</strong></div>
+                </div>
+
+                <div class="row g-2 mb-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="small fw-bold">행 (Rows)</label>
+                        <input type="number" id="rows" name="grid_rows" class="form-control" value="{{ edit_data.grid_layout.split('x')[0] if edit_data else '3' }}" min="1">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small fw-bold">열 (Cols)</label>
+                        <input type="number" id="cols" name="grid_cols" class="form-control" value="{{ edit_data.grid_layout.split('x')[1] if edit_data else '3' }}" min="1">
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <button type="button" class="btn btn-dark fw-bold" onclick="generateGrid()">⚡ 그리드 생성 / 재설정</button>
+                    </div>
+                </div>
+
+                <div id="gridContainer" class="table-responsive mb-4">
+                    <table class="table table-bordered text-center align-middle" id="luxTable"></table>
+                </div>
+                
+                <button type="submit" class="btn btn-primary w-100 py-3 fw-bold" id="saveBtn" style="display:none;">📁 조도 데이터 저장하기</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <h5 class="fw-bold mb-3">⏱️ 최근 계산 이력</h5>
+        <div style="max-height: 700px; overflow-y: auto;">
+            {% for r in recent %}
+            <div class="card mb-2 border-0 shadow-sm p-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong class="text-primary">{{ r.project.temp_name }}</strong><br>
+                        <small class="text-muted">설계: {{ r.design_lux }} / 평균: {{ r.avg_lux }}</small>
+                    </div>
+                    <a href="{{ url_for('tech.lux_calculator', edit_id=r.id) }}" class="btn btn-xs btn-outline-secondary fw-bold">수정</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+    // 페이지 로드 시 수정 데이터가 있으면 자동 그리드 생성
+    window.onload = function() {
+        {% if edit_data %}
+            generateGrid();
+            // 💡 문자열 형태로 들어오는 JSON 데이터를 안전하게 JS 배열로 변환
+            try {
+                const savedData = JSON.parse('{{ edit_data.measured_lux_data | safe }}');
+                const inputs = document.querySelectorAll('.lux-input');
+                inputs.forEach((input, index) => {
+                    if(savedData[index] !== undefined) input.value = savedData[index];
+                });
+                calc();
+            } catch(e) { console.error("데이터 로딩 실패:", e); }
+        {% endif %}
+    };
+
+    function generateGrid() {
+        const rows = parseInt(document.getElementById('rows').value) || 3;
+        const cols = parseInt(document.getElementById('cols').value) || 3;
+        const table = document.getElementById('luxTable');
+        
+        table.innerHTML = '';
+        for (let r = 0; r < rows; r++) {
+            let tr = document.createElement('tr');
+            for (let c = 0; c < cols; c++) {
+                let td = document.createElement('td');
+                td.innerHTML = `<input type="number" name="lux_data[]" class="form-control form-control-sm text-center lux-input" value="0" step="0.1" onchange="calc()">`;
+                tr.appendChild(td);
+            }
+            table.appendChild(tr);
+        }
+        
+        document.getElementById('saveBtn').style.display = 'block';
+        // 'compareBar'의 display를 flex로 명시적 변경
+        const cb = document.getElementById('compareBar');
+        cb.style.setProperty('display', 'flex', 'important');
+        calc();
+    }
+
+    function calc() {
+        const inputs = document.querySelectorAll('.lux-input');
+        const designLux = parseFloat(document.getElementById('designLux').value) || 1;
+        let vals = [];
+        
+        inputs.forEach(i => {
+            const v = parseFloat(i.value);
+            if (!isNaN(v)) vals.push(v);
+        });
+
+        if (vals.length > 0) {
+            const sum = vals.reduce((a, b) => a + b, 0);
+            const avg = sum / vals.length;
+            const min = Math.min(...vals);
+            const rate = (avg / designLux) * 100;
+            const u1 = min / avg;
+
+            document.getElementById('resAvg').innerText = avg.toFixed(1);
+            document.getElementById('resRate').innerText = rate.toFixed(1) + '%';
+            document.getElementById('resU1').innerText = (u1 || 0).toFixed(2);
+            
+            // 달성률에 따른 색상 피드백
+            const rateEl = document.getElementById('resRate');
+            if (rate >= 100) rateEl.className = 'fs-4 text-success';
+            else if (rate >= 90) rateEl.className = 'fs-4 text-warning';
+            else rateEl.className = 'fs-4 text-danger';
+        }
+    }
+</script>
+{% endblock %}

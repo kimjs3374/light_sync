@@ -1,0 +1,191 @@
+{% set hb_id = history_board_id or 'history-board' %}
+<style>
+    .history-wrap { max-height: 60vh; overflow-y: auto; }
+    .scope-chip-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap:.45rem; }
+    .scope-chip { border:1px solid #dbe2ea; background:#fff; color:#334155; border-radius:.8rem; padding:.42rem .5rem; font-size:.76rem; font-weight:700; }
+    .scope-chip .badge { font-size:.65rem; }
+    .scope-chip.active { color:#fff; border-color:#2563eb; background:linear-gradient(135deg,#3b82f6,#1d4ed8); box-shadow:0 6px 16px rgba(37,99,235,.25); }
+    .history-card { background:#fff; border:1px solid #e2e8f0; border-left:4px solid #cbd5e1; border-radius:.5rem; }
+    .history-card.system { border-left-color:#3b82f6; }
+    .history-card.comment { border-left-color:#f59e0b; background:#fffbeb; }
+    .history-reply { margin-left: 1rem; border-left: 2px solid #e2e8f0; padding-left: .75rem; }
+    .origin-quote { background:#f8fafc; border:1px dashed #cbd5e1; border-radius:.4rem; padding:.35rem .5rem; }
+    .reply-pill { display:inline-block; font-size:.67rem; font-weight:700; color:#4338ca; background:#eef2ff; border:1px solid #c7d2fe; border-radius:999px; padding:.08rem .45rem; }
+    .comment-primary { white-space:pre-wrap; font-weight:600; color:#1f2937; }
+    .quote-box { margin-top:.45rem; border-left:3px solid #cbd5e1; background:#f8fafc; border-radius:.35rem; padding:.45rem .55rem; }
+    .quote-label { font-size:.68rem; color:#64748b; font-weight:700; margin-bottom:.2rem; }
+    .quote-text { white-space:pre-wrap; color:#475569; font-size:.78rem; line-height:1.35; }
+    .quote-text.clamped {
+        display:-webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow:hidden;
+    }
+    .quote-toggle { font-size:.7rem; color:#475569; border:0; background:transparent; padding:0; margin-top:.2rem; font-weight:700; }
+</style>
+
+<div id="{{ hb_id }}" class="history-board-component">
+<h6 class="fw-bold mb-3">{{ history_board_title or '📜 통합 히스토리 보드' }}</h6>
+<div class="scope-chip-grid mb-2" data-history-tabs>
+    <button type="button" class="scope-chip" data-history-filter="all">✨ 전체 <span class="badge bg-secondary ms-1">{{ history_counts.all or 0 }}</span></button>
+    <button type="button" class="scope-chip" data-history-filter="design">🧩 설계 <span class="badge bg-secondary ms-1">{{ history_counts.design or 0 }}</span></button>
+    <button type="button" class="scope-chip" data-history-filter="contract">📋 계약 <span class="badge bg-secondary ms-1">{{ history_counts.contract or 0 }}</span></button>
+    <button type="button" class="scope-chip" data-history-filter="sales">💼 영업 <span class="badge bg-secondary ms-1">{{ history_counts.sales or 0 }}</span></button>
+    <button type="button" class="scope-chip" data-history-filter="material">📦 자재 <span class="badge bg-secondary ms-1">{{ history_counts.material or 0 }}</span></button>
+    <button type="button" class="scope-chip" data-history-filter="production">🏭 생산 <span class="badge bg-secondary ms-1">{{ history_counts.production or 0 }}</span></button>
+    <button type="button" class="scope-chip" data-history-filter="delivery">🚚 납품 <span class="badge bg-secondary ms-1">{{ history_counts.delivery or 0 }}</span></button>
+    <button type="button" class="scope-chip" data-history-filter="drawing">📐 도면 <span class="badge bg-secondary ms-1">{{ history_counts.drawing or 0 }}</span></button>
+    <button type="button" class="scope-chip" data-history-filter="technical">🛠 기술 <span class="badge bg-secondary ms-1">{{ history_counts.technical or 0 }}</span></button>
+    <button type="button" class="scope-chip" data-history-filter="comments">💬 코멘트 <span class="badge bg-secondary ms-1">{{ history_counts.comments or 0 }}</span></button>
+</div>
+
+<form method="POST" {% if history_post_url %}action="{{ history_post_url }}"{% endif %} class="mb-2">
+    <input type="hidden" name="action" value="{{ history_post_action or 'add_chat' }}">
+    <div class="input-group shadow-sm">
+        <textarea name="chat_message" class="form-control" rows="2" placeholder="메모 입력..." required></textarea>
+        <button class="btn btn-warning fw-bold">등록</button>
+    </div>
+</form>
+
+<div class="card shadow-sm border-0" style="height:min(560px, 62vh); background-color:#f1f5f9;">
+    <div class="card-body p-2 h-100">
+        <div id="historyBoard" class="history-wrap h-100" style="overflow-y:auto;">
+            {% for log in history %}
+            {% set scope = log.log_scope or 'common' %}
+            {% set kind = log.log_kind or ('system' if '시스템' in log.user_name else 'comment') %}
+            <div class="history-entry mb-2" data-scope="{{ scope }}" data-kind="{{ kind }}">
+                <div class="history-card {{ 'system' if kind != 'comment' else 'comment' }} small p-2 shadow-sm">
+                    <div>
+                        <b>{{ log.user_name }}</b>
+                        <span class="text-muted float-end">{{ log.created_at.strftime('%y/%m/%d %H:%M:%S') }}</span>
+                    </div>
+                    {% set _content = log.content or '' %}
+                    {% set _is_reply_comment = (kind == 'comment' and _content.startswith('[대댓글]')) %}
+                    {% if _is_reply_comment %}
+                        {% set ns = namespace(reply_text='', origin_text='') %}
+                        {% set body = _content.replace('[대댓글]', '', 1).strip() %}
+                        {% if '---원글---' in body %}
+                            {% set parts = body.split('---원글---', 1) %}
+                            {% set ns.reply_text = parts[0].replace('답글:', '', 1).strip() %}
+                            {% set ns.origin_text = parts[1].strip() %}
+                        {% else %}
+                            {% for ln in body.split('\n') %}
+                                {% if ln.startswith('답글:') %}
+                                    {% set ns.reply_text = ln.replace('답글:', '', 1).strip() %}
+                                {% elif ln.startswith('원글:') %}
+                                    {% set ns.origin_text = ln.replace('원글:', '', 1).strip() %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                        <div class="mt-1">
+                            <span class="reply-pill">↪ 답글</span>
+                        </div>
+                        <div class="comment-primary mt-1">{{ ns.reply_text or _content }}</div>
+                        {% if ns.origin_text %}
+                        <div class="quote-box">
+                            <div class="quote-label">원글 인용</div>
+                            <div class="quote-text clamped" data-quote-text>{{ ns.origin_text }}</div>
+                            <button type="button" class="quote-toggle" data-quote-toggle>더보기</button>
+                        </div>
+                        {% endif %}
+                    {% else %}
+                    <div style="white-space: pre-wrap;">{{ _content }}</div>
+                    {% endif %}
+                    <div class="text-end mt-1">
+                        <button type="button" class="btn btn-xs btn-outline-secondary" onclick="toggleReplyForm('reply_form_{{ log.id }}')">답글</button>
+                    </div>
+                    <form id="reply_form_{{ log.id }}" method="POST" {% if history_post_url %}action="{{ history_post_url }}"{% endif %} class="mt-1 d-none">
+                        <input type="hidden" name="action" value="add_history_reply">
+                        <input type="hidden" name="parent_log_id" value="{{ log.id }}">
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="reply_message" class="form-control" placeholder="대댓글 입력..." required>
+                            <button class="btn btn-outline-primary">등록</button>
+                        </div>
+                    </form>
+
+                    {% if log.thread_replies %}
+                    <div class="history-reply mt-2">
+                        {% for r in log.thread_replies %}
+                        <div class="mb-2">
+                            <div class="origin-quote small text-muted mb-1">원글 인용: {{ r.origin_snapshot or log.content }}</div>
+                            <div class="small">
+                                <b>{{ r.user_name }}</b>
+                                <span class="text-muted float-end">{{ r.created_at.strftime('%y/%m/%d %H:%M:%S') }}</span>
+                            </div>
+                            <div style="white-space: pre-wrap;">{{ r.content }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="text-muted small">히스토리가 없습니다.</div>
+            {% endfor %}
+            <div class="text-muted small d-none" data-history-empty-state>선택한 탭의 로그가 없습니다.</div>
+        </div>
+    </div>
+</div>
+</div>
+
+<script>
+(() => {
+    const root = document.getElementById('{{ hb_id }}');
+    if (!root || root.dataset.initialized === '1') return;
+    root.dataset.initialized = '1';
+
+    if (typeof window.toggleReplyForm !== 'function') {
+        window.toggleReplyForm = function (formId) {
+            const el = document.getElementById(formId);
+            if (!el) return;
+            el.classList.toggle('d-none');
+        };
+    }
+
+    const defaultFilter = '{{ history_default_filter or "all" }}';
+    const entries = root.querySelectorAll('.history-entry');
+    const emptyState = root.querySelector('[data-history-empty-state]');
+    const chips = root.querySelectorAll('[data-history-filter]');
+
+    const applyHistoryFilter = (scope) => {
+        let visible = 0;
+        entries.forEach(el => {
+            const s = el.dataset.scope;
+            const kind = el.dataset.kind;
+            let show = false;
+            if (scope === 'all') show = true;
+            else if (scope === 'comments') show = (kind === 'comment');
+            else show = (kind !== 'comment' && s === scope);
+            el.classList.toggle('d-none', !show);
+            if (show) visible += 1;
+        });
+
+        if (emptyState) emptyState.classList.toggle('d-none', visible > 0);
+        chips.forEach(btn => btn.classList.toggle('active', btn.dataset.historyFilter === scope));
+    };
+
+    chips.forEach(btn => {
+        btn.addEventListener('click', () => applyHistoryFilter(btn.dataset.historyFilter));
+    });
+
+    root.querySelectorAll('[data-quote-toggle]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const quote = btn.closest('.quote-box')?.querySelector('[data-quote-text]');
+            if (!quote) return;
+            const isExpanded = !quote.classList.contains('clamped');
+            quote.classList.toggle('clamped', isExpanded);
+            btn.textContent = isExpanded ? '더보기' : '접기';
+        });
+    });
+
+    root.querySelectorAll('.quote-box').forEach(box => {
+        const quote = box.querySelector('[data-quote-text]');
+        const btn = box.querySelector('[data-quote-toggle]');
+        if (!quote || !btn) return;
+        const shouldToggle = quote.scrollHeight > quote.clientHeight + 2;
+        btn.style.display = shouldToggle ? 'inline-block' : 'none';
+    });
+
+    applyHistoryFilter(defaultFilter);
+})();
+</script>

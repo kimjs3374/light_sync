@@ -1,0 +1,1329 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .contract-detail-header-actions {
+        justify-content: flex-end;
+    }
+    .contract-item-table { min-width: 980px; }
+    .contact-mini-table { min-width: 420px; }
+    .status-action-btn { font-size: 0.78rem; padding: 0.3rem 0.35rem; white-space: nowrap; }
+    .contract-detail-meta {
+        font-size: 0.9rem;
+    }
+    .contract-card .card-header {
+        overflow: hidden;
+    }
+    .contract-card .form-check {
+        margin-bottom: .25rem;
+    }
+    .contract-item-table input,
+    .contract-item-table select,
+    .contract-item-table textarea,
+    .contact-mini-table td,
+    .contact-mini-table th {
+        min-width: 0;
+    }
+
+    @media (max-width: 991.98px) {
+        .contract-detail-main,
+        .contract-detail-side {
+            width: 100%;
+        }
+        .contract-detail-header-actions {
+            width: 100%;
+            justify-content: stretch;
+        }
+        .contract-detail-header-actions > * {
+            flex: 1 1 auto;
+        }
+        .contract-card .card-header form .col-md-4,
+        .contract-card .card-header form .col-md-2 {
+            width: 100%;
+        }
+        .contract-card .card-header .d-flex.gap-3 {
+            flex-wrap: wrap;
+        }
+        .contract-card .card-body {
+            padding: .75rem;
+        }
+    }
+
+    @media (max-width: 767.98px) {
+        .contract-detail-title {
+            font-size: 1.15rem;
+            line-height: 1.45;
+        }
+        .contract-detail-title .fs-5 {
+            display: block;
+            margin-top: .25rem;
+            font-size: .92rem !important;
+        }
+        .contract-detail-meta {
+            font-size: .82rem;
+            line-height: 1.55;
+        }
+        .contract-detail-header-actions {
+            flex-direction: column;
+        }
+        .contract-detail-header-actions > * {
+            width: 100%;
+        }
+        .contract-item-table,
+        .contact-mini-table {
+            min-width: 0;
+        }
+        .contract-item-table td[data-label="바코드"] .btn,
+        .contract-item-table td[data-label="저장"] .btn,
+        .contract-item-table td[data-label="삭제"] .btn {
+            width: 100%;
+        }
+        .contract-card .card-header,
+        .contract-card .card-body,
+        .contract-card .card-footer {
+            padding-left: .75rem;
+            padding-right: .75rem;
+        }
+        .contract-card .card-header .text-end,
+        .contract-card .card-header .d-flex.gap-3 {
+            text-align: left !important;
+            justify-content: flex-start;
+        }
+        .contact-panel-header {
+            flex-direction: column;
+            align-items: stretch !important;
+        }
+        .contact-panel-header .btn {
+            width: 100%;
+        }
+    }
+</style>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
+    <h3 class="m-0 text-primary contract-detail-title">📋 [계약현장] {{ project.temp_name }} 
+        <span class="fs-5 text-muted">({{ project.project_no }})</span>
+        {% if project.is_urgent %}<span class="badge bg-danger ms-2" style="font-size: 0.5em; vertical-align: middle;">🚨 긴급</span>{% endif %}
+    </h3>
+    <div class="d-flex flex-wrap gap-2 contract-detail-header-actions">
+        {% if session.user_group != '생산부' %}
+        <form method="POST" action="{{ url_for('project.project_delete_request', project_id=project.id) }}" class="d-inline" data-project-name="{{ project.temp_name }}" onsubmit="return submitDeleteRequest(this);">
+            <input type="hidden" name="next" value="{{ url_for('project.contract_list') }}">
+            <input type="hidden" name="delete_reason" value="">
+            <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">🗑 현장 삭제요청</button>
+        </form>
+        {% endif %}
+        <button class="btn btn-sm btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#editProjectModal">⚙️ 전체 정보 수정</button>
+        <a href="{{ url_for('project.contract_list') }}" class="btn btn-sm btn-secondary">목록으로</a>
+    </div>
+</div>
+
+<p class="text-muted mb-4 contract-detail-meta">
+    <strong>현장주소:</strong> {{ project.site_address or '미입력' }} | 
+    <strong>납품주소:</strong> {{ project.shipping_address or '미입력' }} | 
+    <strong>약칭:</strong> {{ project.short_name or '없음' }}
+</p>
+
+{% include 'components/priority_override_panel.html' %}
+
+<div class="row mb-4">
+    <div class="col-md-8 contract-detail-main">
+        <div class="card shadow-sm border-start border-4 border-primary h-100">
+            <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                <span>📋 설계 기준 및 주요 요청사항</span>
+                <button class="btn btn-xs btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#editDesignBasisModal">수정</button>
+            </div>
+            <div class="card-body bg-white">
+                <p class="text-dark m-0" style="white-space: pre-wrap; font-size: 0.95rem;">{{ project.design_basis or '기준 미입력' }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 contract-detail-side">
+        <div class="card shadow-sm border-0 bg-light h-100">
+            <div class="card-header bg-transparent fw-bold d-flex justify-content-between align-items-center pb-0">
+                <span class="badge bg-dark">📂 작업 경로</span>
+                <button class="btn btn-xs btn-link p-0 fw-bold" data-bs-toggle="modal" data-bs-target="#editWorkPathModal" style="text-decoration:none;">수정</button>
+            </div>
+            <div class="card-body">
+                <code class="text-dark small d-block mb-2" id="workPathText">{{ project.work_path or '경로 미설정' }}</code>
+                {% if project.work_path %}
+                <button class="btn btn-xs btn-outline-primary w-100 fw-bold" onclick="copyPath()">📋 경로 복사</button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if lux %}
+<div class="card border-0 shadow-sm mb-4 bg-dark text-white text-center">
+    <div class="card-body d-flex flex-column flex-md-row justify-content-around align-items-center py-2 gap-2">
+        <div><small class="opacity-50 text-secondary">목표 설계조도</small><br><b class="fs-5">{{ lux.design_lux }}lx</b></div>
+        <div class="fs-4 opacity-25">➡️</div>
+        <div><small class="opacity-50 text-secondary">최근 실측평균</small><br><b class="fs-5 text-warning">{{ lux.avg_lux }}lx</b></div>
+        <div><small class="opacity-50 text-secondary">목표 달성률</small><br>
+            <span class="badge {% if (lux.avg_lux/lux.design_lux*100) >= 100 %}bg-success{% elif (lux.avg_lux/lux.design_lux*100) >= 90 %}bg-primary{% else %}bg-danger{% endif %} fs-6">
+                {{ (lux.avg_lux / lux.design_lux * 100) | round(1) }}%
+            </span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-md-8">
+        <h5 class="fw-bold mb-3">🌳 계약 트리 기반 상세/수정</h5>
+
+        {% for c in project.contracts %}
+        <div id="contract-{{ c.id }}" class="card mb-3 shadow-sm border-0 border-start border-4 contract-card {% if c.is_urgent_prod %}border-danger{% else %}border-primary{% endif %}">
+            <div class="card-header bg-white">
+                <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" class="row g-2 align-items-end auto-contract-form" data-contract-id="{{ c.id }}">
+                    <input type="hidden" name="action" value="update_contract">
+                    <input type="hidden" name="contract_id" value="{{ c.id }}">
+                    <div class="col-md-4">
+                        <label class="small fw-bold text-muted">계약명</label>
+                        <input type="text" class="form-control form-control-sm" name="contract_name" value="{{ c.contract_name }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small fw-bold text-muted">상세품목</label>
+                        <select class="form-select form-select-sm" name="item_group" required>
+                            {% for opt in detail_item_options %}
+                            <option value="{{ opt }}" {% if (c.item_group or detail_item_options[0]) == opt %}selected{% endif %}>{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small fw-bold text-muted">계약일</label>
+                        <input type="date" class="form-control form-control-sm" name="contract_date" value="{{ c.contract_date.strftime('%Y-%m-%d') if c.contract_date else '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small fw-bold text-muted">납품기일</label>
+                        <input type="date" class="form-control form-control-sm" name="delivery_due_date" value="{{ c.delivery_due_date.strftime('%Y-%m-%d') if c.delivery_due_date else '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small fw-bold text-muted">납품희망일</label>
+                        <input type="date" class="form-control form-control-sm" name="desired_delivery_date" value="{{ c.desired_delivery_date.strftime('%Y-%m-%d') if c.desired_delivery_date else '' }}">
+                    </div>
+                    <div class="col-12 text-end">
+                        <small class="save-status text-muted">변경 시 자동 저장됩니다.</small>
+                    </div>
+                    <div class="col-12 d-flex gap-3 mobile-actions">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="is_prof_inspection" value="1" id="prof_{{ c.id }}" {% if c.is_prof_inspection %}checked{% endif %}>
+                            <label class="form-check-label small" for="prof_{{ c.id }}">전문검수</label>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="is_urgent_prod" value="1" id="urgent_{{ c.id }}" {% if c.is_urgent_prod %}checked{% endif %}>
+                            <label class="form-check-label small" for="urgent_{{ c.id }}">긴급제작</label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card-body bg-light p-2">
+                <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-2 bg-white contract-item-table mobile-stack-table">
+                    <thead class="table-light text-center">
+                        <tr>
+                            <th>상세품목</th><th>모델명</th><th>수량</th><th>바코드</th><th>영업현황</th><th>구매현황</th><th>생산현황</th><th>저장</th><th>삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in c.items %}
+                        <tr id="item-{{ item.id }}">
+                            <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+                                <input type="hidden" name="action" value="update_contract_item">
+                                <input type="hidden" name="item_id" value="{{ item.id }}">
+                                <td>
+                                    <select name="category" class="form-select form-select-sm" required>
+                                        {% for opt in detail_item_options %}
+                                        <option value="{{ opt }}" {% if (item.category or c.item_group or detail_item_options[0]) == opt %}selected{% endif %}>{{ opt }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td><input type="text" name="model_name" class="form-control form-control-sm" value="{{ item.model_name or '' }}"></td>
+                                <td><input type="number" name="quantity" class="form-control form-control-sm" value="{{ item.quantity or 0 }}"></td>
+                                <td class="text-center">
+                                    {% set current_category = (item.category or c.item_group or detail_item_options[0]) %}
+                                    {% set drawing_only_items = ['조명타워', '철제가로등주(보안등주)', '스텐가로등주(보안등주)'] %}
+                                    {% set can_barcode = current_category in lighting_detail_items %}
+                                    {% set is_drawing_only = current_category in drawing_only_items %}
+                                    {% if can_barcode %}
+                                        <div class="small mb-1">
+                                            <span class="badge {% if item.barcodes|length == (item.quantity or 0) %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                                                {{ item.barcodes|length }}/{{ item.quantity or 0 }}
+                                            </span>
+                                        </div>
+                                        <button type="button" class="btn btn-xs btn-outline-primary" data-bs-toggle="modal" data-bs-target="#barcodeModal-{{ item.id }}">관리</button>
+                                    {% elif is_drawing_only %}
+                                        <div class="small mb-1">
+                                            <span class="badge bg-info-subtle text-dark border border-info">도면</span>
+                                        </div>
+                                        <button type="button" class="btn btn-xs btn-outline-info" data-bs-toggle="modal" data-bs-target="#drawingModal-{{ item.id }}">도면탭</button>
+                                    {% else %}
+                                        <span class="text-muted small">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <input type="hidden" name="status_sales" id="sales_status_{{ item.id }}" value="{{ item.status_sales or '계약확인' }}">
+                                    <div class="text-center">
+                                        <span class="badge bg-light text-primary border border-primary" id="sales_status_badge_{{ item.id }}">{{ item.status_sales or '계약확인' }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <input type="hidden" name="status_admin" id="admin_status_{{ item.id }}" value="{{ item.status_admin or '자재확인중' }}">
+                                    <div class="text-center">
+                                        <span class="badge bg-light text-success border border-success" id="admin_status_badge_{{ item.id }}">{{ item.status_admin or '자재확인중' }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <input type="hidden" name="status_prod" id="prod_status_{{ item.id }}" value="{{ item.status_prod or '자재대기중' }}">
+                                    <div class="text-center">
+                                        <span class="badge bg-light text-dark border border-dark" id="prod_status_badge_{{ item.id }}">{{ item.status_prod or '자재대기중' }}</span>
+                                    </div>
+                                </td>
+                                <td class="text-center"><button class="btn btn-xs btn-outline-dark">저장</button></td>
+                            </form>
+                            <td class="text-center">
+                                <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" onsubmit="return confirm('해당 품목을 삭제할까요?');">
+                                    <input type="hidden" name="action" value="delete_contract_item">
+                                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                                    <button class="btn btn-xs btn-outline-danger">삭제</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+
+                        <tr class="table-warning">
+                            <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+                                <input type="hidden" name="action" value="add_contract_item">
+                                <input type="hidden" name="contract_id" value="{{ c.id }}">
+                                <td>
+                                    <select name="category" class="form-select form-select-sm" required>
+                                        {% for opt in detail_item_options %}
+                                        <option value="{{ opt }}" {% if (c.item_group or detail_item_options[0]) == opt %}selected{% endif %}>{{ opt }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td><input type="text" name="model_name" class="form-control form-control-sm" placeholder="신규 모델"></td>
+                                <td><input type="number" name="quantity" class="form-control form-control-sm" value="1"></td>
+                                <td><input type="text" name="barcode_id" class="form-control form-control-sm" placeholder="조명기구 계열만 입력"></td>
+                                <td colspan="3" class="text-muted small align-middle text-center">해당 계약의 상세품목만 추가 가능</td>
+                                <td colspan="2" class="text-center"><button class="btn btn-xs btn-dark fw-bold">+ 품목추가</button></td>
+                            </form>
+                        </tr>
+                    </tbody>
+                </table>
+
+                {% for item in c.items %}
+                    {% set current_category = (item.category or c.item_group or detail_item_options[0]) %}
+                    {% set drawing_only_items = ['조명타워', '철제가로등주(보안등주)', '스텐가로등주(보안등주)'] %}
+                    {% set can_barcode = current_category in lighting_detail_items %}
+                    {% set is_drawing_only = current_category in drawing_only_items %}
+                    {% if can_barcode %}
+                    <div class="modal fade" id="barcodeModal-{{ item.id }}" tabindex="-1">
+                        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                            <div class="modal-content border-0 shadow">
+                                <div class="modal-header bg-dark text-white">
+                                    <h5 class="modal-title fw-bold">🏷️ 바코드 관리 - {{ item.model_name or '-' }}</h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p class="small mb-2">
+                                        현재 <b>{{ item.barcodes|length }}</b> / 목표수량 <b>{{ item.quantity or 0 }}</b>
+                                    </p>
+
+                                    <ul class="nav nav-tabs mb-3" role="tablist">
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#manual-{{ item.id }}" type="button" role="tab">수기 입력</button>
+                                        </li>
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#upload-{{ item.id }}" type="button" role="tab">파일 업로드(XLSX)</button>
+                                        </li>
+                                    </ul>
+
+                                    <div class="tab-content">
+                                        <div class="tab-pane fade show active" id="manual-{{ item.id }}" role="tabpanel">
+                                            <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+                                                <input type="hidden" name="action" value="update_contract_item_barcodes_manual">
+                                                <input type="hidden" name="item_id" value="{{ item.id }}">
+                                                <div class="row g-2 mb-2">
+                                                    <div class="col-md-4"><label class="small">현장명</label><input type="text" class="form-control form-control-sm" name="site_name" value="{{ project.temp_name }}"></div>
+                                                    <div class="col-md-4"><label class="small">모델명</label><input type="text" class="form-control form-control-sm" name="model_name" value="{{ item.model_name or '' }}"></div>
+                                                    <div class="col-md-4"><label class="small">생산자</label><input type="text" class="form-control form-control-sm" name="producer"></div>
+                                                    <div class="col-md-4"><label class="small">렌즈각도</label><input type="text" class="form-control form-control-sm" name="lens_angle"></div>
+                                                    <div class="col-md-4"><label class="small">PCB사양</label><input type="text" class="form-control form-control-sm" name="pcb_spec"></div>
+                                                    <div class="col-md-4"><label class="small">색온도</label><input type="text" class="form-control form-control-sm" name="pcb_cct"></div>
+                                                    <div class="col-md-4"><label class="small">칩사양</label><input type="text" class="form-control form-control-sm" name="pcb_chip_spec"></div>
+                                                    <div class="col-md-4"><label class="small">제조일자</label><input type="text" class="form-control form-control-sm" name="pcb_mfg_date" placeholder="yy/mm/dd"></div>
+                                                    <div class="col-md-4"><label class="small">SMPS 모델명</label><input type="text" class="form-control form-control-sm" name="smps_model"></div>
+                                                    <div class="col-md-3"><label class="small">SMPS 수량</label><input type="number" class="form-control form-control-sm" name="smps_qty" value="0"></div>
+                                                    <div class="col-md-3"><label class="small">SMPS세팅값</label><input type="text" class="form-control form-control-sm" name="smps_setting"></div>
+                                                    <div class="col-md-3"><label class="small">세팅전압(VDC)</label><input type="text" class="form-control form-control-sm" name="smps_vdc"></div>
+                                                    <div class="col-md-3"><label class="small">세팅전류(ADC)</label><input type="text" class="form-control form-control-sm" name="smps_adc"></div>
+                                                    <div class="col-md-4"><label class="small">이격거리</label><input type="text" class="form-control form-control-sm" name="spacing_distance"></div>
+                                                    <div class="col-md-4"><label class="small">교체전 바코드(A/S)</label><input type="text" class="form-control form-control-sm" name="replaced_from_barcode"></div>
+                                                    <div class="col-md-4"><label class="small">교체사유</label><input type="text" class="form-control form-control-sm" name="replaced_reason"></div>
+                                                </div>
+                                                <label class="small fw-bold">바코드 리스트 (한 줄 1개)</label>
+                                                <textarea name="barcode_lines" class="form-control form-control-sm" rows="8" placeholder="바코드 한 줄씩 입력">{% for bc in item.barcodes %}{{ bc.barcode }}{% if not loop.last %}
+{% endif %}{% endfor %}</textarea>
+                                                <div class="text-end mt-2">
+                                                    <button class="btn btn-sm btn-primary fw-bold">수기 저장</button>
+                                                </div>
+                                            </form>
+                                        </div>
+
+                                        <div class="tab-pane fade" id="upload-{{ item.id }}" role="tabpanel">
+                                            <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" enctype="multipart/form-data">
+                                                <input type="hidden" name="action" value="upload_contract_item_barcodes">
+                                                <input type="hidden" name="item_id" value="{{ item.id }}">
+                                                <label class="small fw-bold">XLSX 파일 업로드</label>
+                                                <input type="file" name="barcode_file" class="form-control form-control-sm" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+                                                <div class="small text-muted mt-1">
+                                                    헤더 예시: barcode(또는 바코드번호), 현장명, 모델명, 생산자, 렌즈각도, PCB사양, 색온도, 칩사양, 제조일자,
+                                                    SMPS 모델명, SMPS 수량, SMPS세팅값, 세팅전압(VDC), 세팅전류(ADC), 이격거리, 교체전바코드, 교체사유
+                                                </div>
+                                                <div class="mt-2">
+                                                    <a href="{{ url_for('project.download_barcode_template') }}" class="btn btn-sm btn-outline-secondary">
+                                                        ⬇️ 샘플 템플릿 다운로드
+                                                    </a>
+                                                </div>
+                                                <div class="text-end mt-2">
+                                                    <button class="btn btn-sm btn-dark fw-bold">업로드 반영</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+
+                                    <hr>
+                                    <h6 class="fw-bold">등록된 바코드</h6>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-0">
+                                            <thead class="table-light"><tr><th style="width:70px;">순번</th><th>바코드</th><th>모델명</th><th>생산자</th><th style="width:80px;">수정</th><th style="width:80px;">삭제</th></tr></thead>
+                                            <tbody>
+                                            {% for bc in item.barcodes %}
+                                                <tr>
+                                                    <td>{{ bc.seq }}</td>
+                                                    <td><code>{{ bc.barcode }}</code></td>
+                                                    <td>{{ bc.model_name or '-' }}</td>
+                                                    <td>{{ bc.producer or '-' }}</td>
+                                                    <td>
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-xs btn-outline-secondary"
+                                                            data-barcode-id="{{ bc.id }}"
+                                                            data-barcode="{{ bc.barcode or '' }}"
+                                                            data-site-name="{{ bc.site_name or project.temp_name or '' }}"
+                                                            data-model-name="{{ bc.model_name or item.model_name or '' }}"
+                                                            data-producer="{{ bc.producer or '' }}"
+                                                            data-lens-angle="{{ bc.lens_angle or '' }}"
+                                                            data-pcb-spec="{{ bc.pcb_spec or '' }}"
+                                                            data-pcb-cct="{{ bc.pcb_cct or '' }}"
+                                                            data-pcb-chip-spec="{{ bc.pcb_chip_spec or '' }}"
+                                                            data-pcb-mfg-date="{{ bc.pcb_mfg_date or '' }}"
+                                                            data-smps-model="{{ bc.smps_model or '' }}"
+                                                            data-smps-qty="{{ bc.smps_qty or 0 }}"
+                                                            data-smps-setting="{{ bc.smps_setting or '' }}"
+                                                            data-smps-vdc="{{ bc.smps_vdc or '' }}"
+                                                            data-smps-adc="{{ bc.smps_adc or '' }}"
+                                                            data-spacing-distance="{{ bc.spacing_distance or '' }}"
+                                                            data-replaced-from-barcode="{{ bc.replaced_from_barcode or '' }}"
+                                                            data-replaced-reason="{{ bc.replaced_reason or '' }}"
+                                                            onclick="openBarcodeEditFromBtn(this)">
+                                                            수정
+                                                        </button>
+                                                    </td>
+                                                    <td>
+                                                        <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" onsubmit="return confirm('해당 바코드를 삭제할까요?');">
+                                                            <input type="hidden" name="action" value="delete_contract_item_barcode">
+                                                            <input type="hidden" name="barcode_id" value="{{ bc.id }}">
+                                                            <button class="btn btn-xs btn-outline-danger">삭제</button>
+                                                        </form>
+                                                    </td>
+                                                </tr>
+                                            {% else %}
+                                                <tr><td colspan="6" class="text-muted text-center">등록된 바코드가 없습니다.</td></tr>
+                                            {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% elif is_drawing_only %}
+                    <div class="modal fade" id="drawingModal-{{ item.id }}" tabindex="-1">
+                        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                            <div class="modal-content border-0 shadow">
+                                <div class="modal-header bg-info text-dark">
+                                    <h5 class="modal-title fw-bold">📐 도면탭 - {{ item.model_name or '-' }}</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    {% set next_url = url_for('project.contract_detail', project_id=project.id) ~ '#item-' ~ item.id %}
+
+                                    {% if can_write_drawings %}
+                                    <div class="card border-0 shadow-sm mb-3">
+                                        <div class="card-header bg-white fw-bold">PDF 업로드 (신규/버전업)</div>
+                                        <div class="card-body">
+                                            <form method="POST" action="{{ url_for('drawing.upload_drawing', project_id=project.id) }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+                                                <input type="hidden" name="next" value="{{ next_url }}">
+                                                <input type="hidden" name="contract_item_id" value="{{ item.id }}">
+                                                <div class="col-md-3">
+                                                    <label class="small fw-bold">기존 도면(버전업)</label>
+                                                    <select class="form-select form-select-sm" name="drawing_id">
+                                                        <option value="">신규 등록</option>
+                                                        {% for d in item.drawings %}
+                                                        <option value="{{ d.id }}">{{ d.title }} ({{ d.drawing_type }})</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="small fw-bold">도면명(신규 시)</label>
+                                                    <input type="text" class="form-control form-control-sm" name="title" placeholder="예: {{ item.model_name or '도면명' }}">
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <label class="small fw-bold">도면유형</label>
+                                                    <select class="form-select form-select-sm" name="drawing_type">
+                                                        {% for opt in drawing_type_options %}
+                                                        <option value="{{ opt }}">{{ opt }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="small fw-bold">PDF 파일</label>
+                                                    <input type="file" class="form-control form-control-sm" name="pdf_file" accept=".pdf,application/pdf" required>
+                                                </div>
+                                                <div class="col-md-1 d-grid">
+                                                    <button class="btn btn-sm btn-primary fw-bold">업로드</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>도면명</th>
+                                                    <th style="width:110px;">유형</th>
+                                                    <th style="width:80px;">버전</th>
+                                                    <th style="width:110px;">상태</th>
+                                                    <th>메시지</th>
+                                                    <th style="width:320px;">동작</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% set ns = namespace(has_rows=false) %}
+                                                {% for d in item.drawings %}
+                                                    {% for v in d.versions %}
+                                                    {% set ns.has_rows = true %}
+                                                    <tr>
+                                                        <td>{{ d.title }}</td>
+                                                        <td><span class="badge bg-info text-dark">{{ d.drawing_type }}</span></td>
+                                                        <td>v{{ v.version_no }} {% if v.is_latest %}<span class="badge bg-dark">latest</span>{% endif %}</td>
+                                                        <td>
+                                                            {% if v.convert_status == 'SUCCESS' %}
+                                                                <span class="badge bg-success">완료</span>
+                                                            {% elif v.convert_status == 'FAILED' %}
+                                                                <span class="badge bg-danger">실패</span>
+                                                            {% elif v.convert_status == 'PROCESSING' %}
+                                                                <span class="badge bg-warning text-dark">처리중</span>
+                                                            {% else %}
+                                                                <span class="badge bg-secondary">업로드됨</span>
+                                                            {% endif %}
+                                                        </td>
+                                                        <td class="small">{{ v.convert_message or '-' }}</td>
+                                                        <td class="d-flex flex-wrap gap-1">
+                                                            {% if v.convert_status == 'SUCCESS' and v.pdf_path %}
+                                                                <a class="btn btn-sm btn-outline-dark" target="_blank" href="{{ url_for('drawing.view_pdf', version_id=v.id) }}">보기</a>
+                                                                <a class="btn btn-sm btn-outline-success" href="{{ url_for('drawing.download_pdf', version_id=v.id) }}">다운로드</a>
+                                                            {% endif %}
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                {% endfor %}
+
+                                                {% if not ns.has_rows %}
+                                                <tr><td colspan="6" class="text-center text-muted py-3">등록된 도면이 없습니다.</td></tr>
+                                                {% endif %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        <div class="card mb-3 border-0 shadow-sm border-start border-4 border-success contract-card">
+            <div class="card-header bg-success-subtle fw-bold">+ 계약 추가</div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" class="row g-2 align-items-end">
+                    <input type="hidden" name="action" value="add_contract">
+                    <div class="col-md-4">
+                        <label class="small fw-bold text-muted">계약명</label>
+                        <input type="text" class="form-control form-control-sm" name="contract_name" placeholder="예: 2차 납품 계약" required>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small fw-bold text-muted">상세품목</label>
+                        <select class="form-select form-select-sm" name="item_group" required>
+                            {% for opt in detail_item_options %}
+                            <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small fw-bold text-muted">계약일</label>
+                        <input type="date" class="form-control form-control-sm" name="contract_date">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small fw-bold text-muted">납품기일</label>
+                        <input type="date" class="form-control form-control-sm" name="delivery_due_date">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small fw-bold text-muted">납품희망일</label>
+                        <input type="date" class="form-control form-control-sm" name="desired_delivery_date">
+                    </div>
+                    <div class="col-md-2 text-end">
+                        <button type="submit" class="btn btn-sm btn-success fw-bold w-100">계약추가</button>
+                    </div>
+                    <div class="col-12 d-flex gap-3 mobile-actions">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="is_prof_inspection" value="1" id="new_prof">
+                            <label class="form-check-label small" for="new_prof">전문검수</label>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="is_urgent_prod" value="1" id="new_urgent">
+                            <label class="form-check-label small" for="new_urgent">긴급제작</label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4 contract-detail-side">
+        <div class="d-flex justify-content-between align-items-center mb-3 contact-panel-header">
+            <h5 class="fw-bold m-0">👥 현장 담당자 연락처</h5>
+            <button class="btn btn-xs btn-dark fw-bold" data-bs-toggle="modal" data-bs-target="#addContactModal">+ 담당자 추가</button>
+        </div>
+
+        <div class="card shadow-sm border-0 mb-3">
+            <div class="card-body p-2" style="max-height: 220px; overflow-y: auto;">
+                <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle contact-mini-table">
+                    <thead class="table-light">
+                        <tr><th>구분</th><th>이름</th><th>연락처</th><th>이메일</th><th>수정</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for con in project.contacts %}
+                        <tr>
+                            <td><small>{{ con.category or '-' }}</small></td>
+                            <td><b>{{ con.name }}</b></td>
+                            <td><small>{{ con.phone or '-' }}</small></td>
+                            <td><small>{{ con.email or '-' }}</small></td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                                        data-id="{{ con.id }}"
+                                        data-category="{{ con.category or '' }}"
+                                        data-name="{{ con.name or '' }}"
+                                        data-phone="{{ con.phone or '' }}"
+                                        data-email="{{ con.email or '' }}"
+                                        onclick="openContactEditFromBtn(this)">수정</button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted">등록된 연락처 없음</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+
+        {% set history_board_title = '📜 통합 히스토리 보드' %}
+        {% set history_post_action = 'add_chat' %}
+        {% set history_post_url = url_for('project.contract_detail', project_id=project.id) %}
+        {% set history_board_id = 'contract-history-board' %}
+        {% set history_default_filter = 'all' %}
+        {% include 'components/history_board.html' %}
+    </div>
+</div>
+
+<div class="modal fade" id="addContactModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content border-0 shadow" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="action" value="add_contact">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold">👤 담당자 추가</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-2"><label class="small fw-bold">구분</label><input type="text" class="form-control" name="contact_category" placeholder="감독관/업체/감리 등" required></div>
+                <div class="mb-2"><label class="small fw-bold">이름</label><input type="text" class="form-control" name="name" required></div>
+                <div class="mb-2"><label class="small fw-bold">연락처</label><input type="text" class="form-control" name="phone"></div>
+                <div class="mb-2"><label class="small fw-bold">이메일</label><input type="email" class="form-control" name="email"></div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-dark fw-bold">담당자 저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="editContactModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content border-0 shadow" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="action" value="update_contact">
+            <input type="hidden" name="contact_id" id="edit_contact_id">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title fw-bold">👤 담당자 수정</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-2"><label class="small fw-bold">구분</label><input type="text" name="contact_category" id="edit_contact_category" class="form-control" required></div>
+                <div class="mb-2"><label class="small fw-bold">이름</label><input type="text" name="name" id="edit_contact_name" class="form-control" required></div>
+                <div class="mb-2"><label class="small fw-bold">연락처</label><input type="text" name="phone" id="edit_contact_phone" class="form-control"></div>
+                <div class="mb-2"><label class="small fw-bold">이메일</label><input type="email" name="email" id="edit_contact_email" class="form-control"></div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-primary fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="editProjectModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <form class="modal-content border-0 shadow" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="action" value="update_project">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold">⚙️ 계약 현장 정보 수정</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="row g-3 mb-3">
+                    <div class="col-md-8">
+                        <label class="form-label fw-bold small">현장명</label>
+                        <input type="text" name="temp_name" class="form-control" value="{{ project.temp_name }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small">관리약칭</label>
+                        <input type="text" name="short_name" class="form-control" value="{{ project.short_name or '' }}">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">현장 주소</label>
+                    <input type="text" name="site_address" class="form-control" value="{{ project.site_address or '' }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">납품지 주소</label>
+                    <input type="text" name="shipping_address" class="form-control" value="{{ project.shipping_address or '' }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">최종 메모</label>
+                    <textarea name="site_memo" class="form-control" rows="4">{{ project.site_memo or '' }}</textarea>
+                </div>
+                <div class="form-check form-switch mt-3">
+                    <input class="form-check-input" type="checkbox" name="is_urgent" value="1" id="uSwitch" {% if project.is_urgent %}checked{% endif %}>
+                    <label class="form-check-label text-danger fw-bold" for="uSwitch">🚨 긴급 현장으로 유지</label>
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-primary fw-bold px-4">정보 업데이트</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="editDesignBasisModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <form class="modal-content border-0 shadow" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="action" value="update_design_basis">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold">📝 설계 기준 수정</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <label class="small fw-bold">설계 기준</label>
+                <textarea name="design_basis" class="form-control mb-3" rows="10" required>{{ project.design_basis or '' }}</textarea>
+                <label class="small fw-bold text-danger">⚠️ 수정 사유 (필수)</label>
+                <input type="text" name="edit_reason" class="form-control" required>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-primary fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="editWorkPathModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content border-0 shadow" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="action" value="update_work_path">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold">📂 작업 경로 수정</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <label class="small fw-bold">폴더 경로</label>
+                <input type="text" name="work_path" class="form-control" value="{{ project.work_path or '' }}">
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-dark fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="barcodeEditModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <form class="modal-content" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="action" value="update_contract_item_barcode_meta">
+            <input type="hidden" name="barcode_id" id="edit_barcode_id">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title">바코드 상세 수정</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2">
+                    <div class="col-md-4"><label class="small">바코드번호</label><input type="text" class="form-control form-control-sm" name="barcode" id="edit_barcode" required></div>
+                    <div class="col-md-4"><label class="small">현장명</label><input type="text" class="form-control form-control-sm" name="site_name" id="edit_site_name"></div>
+                    <div class="col-md-4"><label class="small">모델명</label><input type="text" class="form-control form-control-sm" name="model_name" id="edit_model_name"></div>
+                    <div class="col-md-4"><label class="small">생산자</label><input type="text" class="form-control form-control-sm" name="producer" id="edit_producer"></div>
+                    <div class="col-md-4"><label class="small">렌즈각도</label><input type="text" class="form-control form-control-sm" name="lens_angle" id="edit_lens_angle"></div>
+                    <div class="col-md-4"><label class="small">PCB사양</label><input type="text" class="form-control form-control-sm" name="pcb_spec" id="edit_pcb_spec"></div>
+                    <div class="col-md-4"><label class="small">색온도</label><input type="text" class="form-control form-control-sm" name="pcb_cct" id="edit_pcb_cct"></div>
+                    <div class="col-md-4"><label class="small">칩사양</label><input type="text" class="form-control form-control-sm" name="pcb_chip_spec" id="edit_pcb_chip_spec"></div>
+                    <div class="col-md-4"><label class="small">제조일자</label><input type="text" class="form-control form-control-sm" name="pcb_mfg_date" id="edit_pcb_mfg_date"></div>
+                    <div class="col-md-4"><label class="small">SMPS 모델명</label><input type="text" class="form-control form-control-sm" name="smps_model" id="edit_smps_model"></div>
+                    <div class="col-md-2"><label class="small">SMPS 수량</label><input type="number" class="form-control form-control-sm" name="smps_qty" id="edit_smps_qty"></div>
+                    <div class="col-md-3"><label class="small">SMPS세팅값</label><input type="text" class="form-control form-control-sm" name="smps_setting" id="edit_smps_setting"></div>
+                    <div class="col-md-3"><label class="small">세팅전압(VDC)</label><input type="text" class="form-control form-control-sm" name="smps_vdc" id="edit_smps_vdc"></div>
+                    <div class="col-md-3"><label class="small">세팅전류(ADC)</label><input type="text" class="form-control form-control-sm" name="smps_adc" id="edit_smps_adc"></div>
+                    <div class="col-md-4"><label class="small">이격거리</label><input type="text" class="form-control form-control-sm" name="spacing_distance" id="edit_spacing_distance"></div>
+                    <div class="col-md-4"><label class="small">교체전 바코드(A/S)</label><input type="text" class="form-control form-control-sm" name="replaced_from_barcode" id="edit_replaced_from_barcode"></div>
+                    <div class="col-md-4"><label class="small">교체사유</label><input type="text" class="form-control form-control-sm" name="replaced_reason" id="edit_replaced_reason"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button class="btn btn-primary fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="salesStatusModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content" onsubmit="return applySalesStatusFromModal();">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">영업현황 단계 선택</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="sales_modal_item_id">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="sales_step_1">
+                    <label class="form-check-label" for="sales_step_1">계약확인</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="sales_step_2">
+                    <label class="form-check-label" for="sales_step_2">상세협의중</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="sales_step_3">
+                    <label class="form-check-label" for="sales_step_3">협의완료</label>
+                </div>
+                <div class="small text-muted mt-3">※ 전 단계 체크 완료 시 다음 단계 체크가 가능합니다.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-primary fw-bold">적용</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="adminStatusModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content" onsubmit="return applyAdminStatusFromModal();">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">구매현황 선택</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="admin_modal_item_id">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="admin_step_1">
+                    <label class="form-check-label" for="admin_status_1">자재확인중</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="admin_step_2">
+                    <label class="form-check-label" for="admin_status_2">자재발주</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="admin_step_3">
+                    <label class="form-check-label" for="admin_status_3">입고완료</label>
+                </div>
+                <div class="small text-muted mt-3">※ 전 단계 체크 완료 시 다음 단계 체크가 가능합니다.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-success fw-bold">적용</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="prodStatusModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content" onsubmit="return applyProdStatusFromModal();">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">생산현황 선택</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="prod_modal_item_id">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="prod_step_1">
+                    <label class="form-check-label" for="prod_status_1">자재대기중</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="prod_step_2">
+                    <label class="form-check-label" for="prod_status_2">생산대기중</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="prod_step_3">
+                    <label class="form-check-label" for="prod_status_3">생산중</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="prod_step_4">
+                    <label class="form-check-label" for="prod_status_4">생산완료</label>
+                </div>
+                <div class="small text-muted mt-3">※ 전 단계 체크 완료 시 다음 단계 체크가 가능합니다.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-dark fw-bold">적용</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function copyPath() {
+    navigator.clipboard.writeText(document.getElementById('workPathText').innerText).then(() => alert('복사 완료!'));
+}
+
+function submitDeleteRequest(form) {
+    const name = form.getAttribute('data-project-name') || '현장';
+    const reason = prompt(`[${name}] 삭제요청 사유를 입력해 주세요.\n(사유 없이는 요청할 수 없습니다)`);
+    if (!reason || !reason.trim()) {
+        alert('삭제 사유는 필수입니다.');
+        return false;
+    }
+    form.querySelector('input[name="delete_reason"]').value = reason.trim();
+    return confirm('삭제요청을 등록할까요?\n최고관리자/승인권자 승인 후 실제 삭제됩니다.');
+}
+
+function setupContractAutoSave() {
+    document.querySelectorAll('form.auto-contract-form').forEach((form) => {
+        const statusEl = form.querySelector('.save-status');
+        let timer = null;
+        let submitting = false;
+
+        const setStatus = (text, cls) => {
+            if (!statusEl) return;
+            statusEl.className = `save-status ${cls}`;
+            statusEl.textContent = text;
+        };
+
+        const submitAjax = () => {
+            if (submitting) return;
+            submitting = true;
+            setStatus('저장 중...', 'text-warning');
+            const actionUrl = form.getAttribute('action');
+
+            fetch(actionUrl, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: new FormData(form)
+            })
+            .then(async (res) => {
+                if (!res.ok) throw new Error('http error');
+                const contentType = res.headers.get('content-type') || '';
+                if (!contentType.includes('application/json')) {
+                    throw new Error('non-json response');
+                }
+                return res.json();
+            })
+            .then(data => {
+                if (!data.ok) throw new Error('save failed');
+                setStatus('자동 저장 완료', 'text-success');
+                appendSystemLog(data.log);
+            })
+            .catch(() => {
+                setStatus('자동 저장 실패 (다시 시도해 주세요)', 'text-danger');
+            })
+            .finally(() => {
+                submitting = false;
+            });
+        };
+
+        const scheduleSave = () => {
+            clearTimeout(timer);
+            timer = setTimeout(submitAjax, 350);
+        };
+
+        form.querySelectorAll('input, select, textarea').forEach((el) => {
+            if (el.type === 'hidden') return;
+            el.addEventListener('change', scheduleSave);
+            if (el.tagName === 'INPUT' && ['text', 'date', 'number'].includes(el.type)) {
+                el.addEventListener('blur', scheduleSave);
+            }
+        });
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            submitAjax();
+        });
+    });
+}
+
+function appendSystemLog(log) {
+    if (!log) return;
+    const board = document.getElementById('systemLogBoard');
+    if (!board) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'mb-2 p-2 rounded shadow-sm bg-white border-start border-4 border-primary small log-entry-system';
+    wrap.innerHTML = `<b>${log.user_name}</b> <span class="text-muted float-end">${log.created_at}</span><br><div style="white-space: pre-wrap;">${(log.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+    board.prepend(wrap);
+}
+
+function openContactEdit(id, category, name, phone, email) {
+    const idEl = document.getElementById('edit_contact_id');
+    const catEl = document.getElementById('edit_contact_category');
+    const nameEl = document.getElementById('edit_contact_name');
+    const phoneEl = document.getElementById('edit_contact_phone');
+    const emailEl = document.getElementById('edit_contact_email');
+
+    if (!idEl || !catEl || !nameEl || !phoneEl || !emailEl) return;
+
+    idEl.value = id || '';
+    catEl.value = category || '';
+    nameEl.value = name || '';
+    phoneEl.value = phone || '';
+    emailEl.value = email || '';
+
+    new bootstrap.Modal(document.getElementById('editContactModal')).show();
+}
+
+function openContactEditFromBtn(btn) {
+    openContactEdit(
+        btn.dataset.id,
+        btn.dataset.category,
+        btn.dataset.name,
+        btn.dataset.phone,
+        btn.dataset.email
+    );
+}
+
+function openBarcodeEditFromBtn(btn) {
+    const map = [
+        ['edit_barcode_id', 'barcodeId'],
+        ['edit_barcode', 'barcode'],
+        ['edit_site_name', 'siteName'],
+        ['edit_model_name', 'modelName'],
+        ['edit_producer', 'producer'],
+        ['edit_lens_angle', 'lensAngle'],
+        ['edit_pcb_spec', 'pcbSpec'],
+        ['edit_pcb_cct', 'pcbCct'],
+        ['edit_pcb_chip_spec', 'pcbChipSpec'],
+        ['edit_pcb_mfg_date', 'pcbMfgDate'],
+        ['edit_smps_model', 'smpsModel'],
+        ['edit_smps_qty', 'smpsQty'],
+        ['edit_smps_setting', 'smpsSetting'],
+        ['edit_smps_vdc', 'smpsVdc'],
+        ['edit_smps_adc', 'smpsAdc'],
+        ['edit_spacing_distance', 'spacingDistance'],
+        ['edit_replaced_from_barcode', 'replacedFromBarcode'],
+        ['edit_replaced_reason', 'replacedReason'],
+    ];
+
+    map.forEach(([id, key]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.value = btn.dataset[key] ?? '';
+    });
+
+    new bootstrap.Modal(document.getElementById('barcodeEditModal')).show();
+}
+
+function statusToSteps(status) {
+    if (status === '협의완료') return [true, true, true];
+    if (status === '상세협의중') return [true, true, false];
+    return [true, false, false];
+}
+
+function stepsToStatus() {
+    const s1 = document.getElementById('sales_step_1')?.checked;
+    const s2 = document.getElementById('sales_step_2')?.checked;
+    const s3 = document.getElementById('sales_step_3')?.checked;
+    if (s1 && s2 && s3) return '협의완료';
+    if (s1 && s2) return '상세협의중';
+    return '계약확인';
+}
+
+function enforceSalesStepRule() {
+    const s1 = document.getElementById('sales_step_1');
+    const s2 = document.getElementById('sales_step_2');
+    const s3 = document.getElementById('sales_step_3');
+    if (!s1 || !s2 || !s3) return;
+
+    if (!s1.checked) {
+        s2.checked = false;
+        s3.checked = false;
+    }
+    if (!s2.checked) {
+        s3.checked = false;
+    }
+
+    s2.disabled = !s1.checked;
+    s3.disabled = !(s1.checked && s2.checked);
+}
+
+function openSalesStatusModalFromBtn(btn) {
+    const itemId = btn.dataset.itemId;
+    const current = btn.dataset.currentStatus || '계약확인';
+    const [s1, s2, s3] = statusToSteps(current);
+
+    const itemIdEl = document.getElementById('sales_modal_item_id');
+    const step1 = document.getElementById('sales_step_1');
+    const step2 = document.getElementById('sales_step_2');
+    const step3 = document.getElementById('sales_step_3');
+    if (!itemIdEl || !step1 || !step2 || !step3) return;
+
+    itemIdEl.value = itemId;
+    step1.checked = s1;
+    step2.checked = s2;
+    step3.checked = s3;
+    enforceSalesStepRule();
+
+    new bootstrap.Modal(document.getElementById('salesStatusModal')).show();
+}
+
+function applySalesStatusFromModal() {
+    const itemId = document.getElementById('sales_modal_item_id')?.value;
+    if (!itemId) return false;
+
+    const status = stepsToStatus();
+    const hidden = document.getElementById(`sales_status_${itemId}`);
+    const btn = document.querySelector(`button[data-item-id="${itemId}"]`);
+    const badge = document.getElementById(`sales_status_badge_${itemId}`);
+    if (hidden) hidden.value = status;
+    if (btn) {
+        btn.dataset.currentStatus = status;
+    }
+    if (badge) {
+        badge.textContent = status;
+    }
+
+    bootstrap.Modal.getInstance(document.getElementById('salesStatusModal'))?.hide();
+    return false;
+}
+
+function openAdminStatusModalFromBtn(btn) {
+    const itemId = btn.dataset.itemId;
+    const current = btn.dataset.currentStatus || '자재확인중';
+    const itemIdEl = document.getElementById('admin_modal_item_id');
+    const [s1, s2, s3] = adminStatusToSteps(current);
+    if (!itemIdEl) return;
+    itemIdEl.value = itemId;
+
+    const step1 = document.getElementById('admin_step_1');
+    const step2 = document.getElementById('admin_step_2');
+    const step3 = document.getElementById('admin_step_3');
+    if (!step1 || !step2 || !step3) return;
+
+    step1.checked = s1;
+    step2.checked = s2;
+    step3.checked = s3;
+    enforceAdminStepRule();
+
+    new bootstrap.Modal(document.getElementById('adminStatusModal')).show();
+}
+
+function applyAdminStatusFromModal() {
+    const itemId = document.getElementById('admin_modal_item_id')?.value;
+    if (!itemId) return false;
+
+    const selected = adminStepsToStatus();
+
+    const hidden = document.getElementById(`admin_status_${itemId}`);
+    const btn = document.querySelector(`button[onclick="openAdminStatusModalFromBtn(this)"][data-item-id="${itemId}"]`);
+    const badge = document.getElementById(`admin_status_badge_${itemId}`);
+    if (hidden) hidden.value = selected;
+    if (btn) btn.dataset.currentStatus = selected;
+    if (badge) badge.textContent = selected;
+
+    bootstrap.Modal.getInstance(document.getElementById('adminStatusModal'))?.hide();
+    return false;
+}
+
+function openProdStatusModalFromBtn(btn) {
+    const itemId = btn.dataset.itemId;
+    const current = btn.dataset.currentStatus || '자재대기중';
+    const itemIdEl = document.getElementById('prod_modal_item_id');
+    const [s1, s2, s3, s4] = prodStatusToSteps(current);
+    if (!itemIdEl) return;
+    itemIdEl.value = itemId;
+
+    const step1 = document.getElementById('prod_step_1');
+    const step2 = document.getElementById('prod_step_2');
+    const step3 = document.getElementById('prod_step_3');
+    const step4 = document.getElementById('prod_step_4');
+    if (!step1 || !step2 || !step3 || !step4) return;
+
+    step1.checked = s1;
+    step2.checked = s2;
+    step3.checked = s3;
+    step4.checked = s4;
+    enforceProdStepRule();
+
+    new bootstrap.Modal(document.getElementById('prodStatusModal')).show();
+}
+
+function applyProdStatusFromModal() {
+    const itemId = document.getElementById('prod_modal_item_id')?.value;
+    if (!itemId) return false;
+
+    const selected = prodStepsToStatus();
+
+    const hidden = document.getElementById(`prod_status_${itemId}`);
+    const btn = document.querySelector(`button[onclick="openProdStatusModalFromBtn(this)"][data-item-id="${itemId}"]`);
+    const badge = document.getElementById(`prod_status_badge_${itemId}`);
+    if (hidden) hidden.value = selected;
+    if (btn) btn.dataset.currentStatus = selected;
+    if (badge) badge.textContent = selected;
+
+    bootstrap.Modal.getInstance(document.getElementById('prodStatusModal'))?.hide();
+    return false;
+}
+
+function adminStatusToSteps(status) {
+    if (status === '입고완료') return [true, true, true];
+    if (status === '자재발주') return [true, true, false];
+    return [true, false, false];
+}
+
+function adminStepsToStatus() {
+    const s1 = document.getElementById('admin_step_1')?.checked;
+    const s2 = document.getElementById('admin_step_2')?.checked;
+    const s3 = document.getElementById('admin_step_3')?.checked;
+    if (s1 && s2 && s3) return '입고완료';
+    if (s1 && s2) return '자재발주';
+    return '자재확인중';
+}
+
+function enforceAdminStepRule() {
+    const s1 = document.getElementById('admin_step_1');
+    const s2 = document.getElementById('admin_step_2');
+    const s3 = document.getElementById('admin_step_3');
+    if (!s1 || !s2 || !s3) return;
+
+    if (!s1.checked) {
+        s2.checked = false;
+        s3.checked = false;
+    }
+    if (!s2.checked) {
+        s3.checked = false;
+    }
+
+    s2.disabled = !s1.checked;
+    s3.disabled = !(s1.checked && s2.checked);
+}
+
+function prodStatusToSteps(status) {
+    if (status === '생산완료') return [true, true, true, true];
+    if (status === '생산중') return [true, true, true, false];
+    if (status === '생산대기중') return [true, true, false, false];
+    return [true, false, false, false];
+}
+
+function prodStepsToStatus() {
+    const s1 = document.getElementById('prod_step_1')?.checked;
+    const s2 = document.getElementById('prod_step_2')?.checked;
+    const s3 = document.getElementById('prod_step_3')?.checked;
+    const s4 = document.getElementById('prod_step_4')?.checked;
+    if (s1 && s2 && s3 && s4) return '생산완료';
+    if (s1 && s2 && s3) return '생산중';
+    if (s1 && s2) return '생산대기중';
+    return '자재대기중';
+}
+
+function enforceProdStepRule() {
+    const s1 = document.getElementById('prod_step_1');
+    const s2 = document.getElementById('prod_step_2');
+    const s3 = document.getElementById('prod_step_3');
+    const s4 = document.getElementById('prod_step_4');
+    if (!s1 || !s2 || !s3 || !s4) return;
+
+    if (!s1.checked) {
+        s2.checked = false;
+        s3.checked = false;
+        s4.checked = false;
+    }
+    if (!s2.checked) {
+        s3.checked = false;
+        s4.checked = false;
+    }
+    if (!s3.checked) {
+        s4.checked = false;
+    }
+
+    s2.disabled = !s1.checked;
+    s3.disabled = !(s1.checked && s2.checked);
+    s4.disabled = !(s1.checked && s2.checked && s3.checked);
+}
+
+// contract_list에서 전달한 앵커 타겟 강조
+document.addEventListener('DOMContentLoaded', function () {
+    setupContractAutoSave();
+
+    ['sales_step_1', 'sales_step_2', 'sales_step_3'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', enforceSalesStepRule);
+    });
+
+    ['admin_step_1', 'admin_step_2', 'admin_step_3'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', enforceAdminStepRule);
+    });
+
+    ['prod_step_1', 'prod_step_2', 'prod_step_3', 'prod_step_4'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', enforceProdStepRule);
+    });
+
+    const hash = window.location.hash;
+    if (!hash) return;
+    const target = document.querySelector(hash);
+    if (!target) return;
+    target.classList.add('border', 'border-warning', 'border-3');
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+});
+</script>
+{% endblock %}

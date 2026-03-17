@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Light-Sync ERP</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8fafc; overflow-x: hidden; }
+        .main-content {
+            min-width: 0;
+        }
+        .sidebar { height: 100vh; background-color: #0f172a; color: white; padding-top: 20px; position: fixed; width: 250px; }
+        .sidebar a { color: #cbd5e1; text-decoration: none; padding: 10px 20px; display: block; border-radius: 5px; margin: 5px 15px; }
+        .sidebar a:hover { background-color: #1e293b; color: white; }
+        .sidebar a.menu-disabled { opacity: 0.65; cursor: not-allowed; }
+        .sidebar a.menu-disabled:hover { background-color: transparent; color: #cbd5e1; }
+        .sidebar-brand:hover { opacity: 0.8; transition: 0.3s; }
+        .main-content { margin-left: 250px; padding: 30px; }
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            z-index: 1060;
+        }
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.45);
+            z-index: 1040;
+        }
+
+        .main-content .table-responsive {
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .main-content .card,
+        .main-content .modal-content,
+        .main-content .alert,
+        .main-content .table-responsive {
+            max-width: 100%;
+        }
+
+        .main-content .badge {
+            max-width: 100%;
+            white-space: normal;
+        }
+
+        .main-content pre,
+        .main-content code {
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        .main-content .btn-group,
+        .main-content .input-group {
+            max-width: 100%;
+        }
+
+        .btn-xs {
+            --bs-btn-padding-y: .2rem;
+            --bs-btn-padding-x: .42rem;
+            --bs-btn-font-size: .74rem;
+            --bs-btn-border-radius: .35rem;
+            line-height: 1.2;
+        }
+
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.25s ease;
+                z-index: 1050;
+            }
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            .mobile-menu-btn {
+                display: inline-flex;
+            }
+            .sidebar-backdrop.show {
+                display: block;
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 64px 14px 16px;
+            }
+            .main-content h2 {
+                font-size: 1.3rem;
+            }
+            .main-content .card,
+            .main-content .panel-card,
+            .main-content .dashboard-header {
+                border-radius: 12px;
+            }
+            .main-content .btn {
+                white-space: nowrap;
+            }
+            .main-content .table {
+                font-size: .88rem;
+            }
+            .main-content .card-body form .text-md-end,
+            .main-content form .text-md-end {
+                text-align: left !important;
+            }
+            .main-content .row {
+                --bs-gutter-x: 1rem;
+            }
+            .main-content .modal-dialog {
+                margin: .75rem;
+            }
+            .main-content .card-header,
+            .main-content .card-body,
+            .main-content .card-footer {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+            .main-content .d-flex {
+                min-width: 0;
+            }
+        }
+
+        @media (max-width: 1199.98px) {
+            .main-content .btn {
+                white-space: normal;
+            }
+            .main-content .table-responsive {
+                overflow-x: visible !important;
+            }
+            .main-content table.mobile-stack-table {
+                width: 100% !important;
+                min-width: 0 !important;
+                table-layout: auto !important;
+                border: 0 !important;
+            }
+            .main-content table.mobile-stack-table thead {
+                display: none;
+            }
+            .main-content table.mobile-stack-table tbody,
+            .main-content table.mobile-stack-table tr,
+            .main-content table.mobile-stack-table td {
+                display: block;
+                width: 100%;
+            }
+            .main-content table.mobile-stack-table tbody tr {
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                background: #fff;
+                padding: 8px 10px;
+                margin-bottom: 10px;
+            }
+            .main-content table.mobile-stack-table tbody tr:last-child {
+                margin-bottom: 0;
+            }
+            .main-content table.mobile-stack-table td {
+                border: 0 !important;
+                padding: 6px 0 !important;
+                text-align: left !important;
+                display: grid;
+                grid-template-columns: 96px minmax(0, 1fr);
+                align-items: start;
+                column-gap: 10px;
+                row-gap: 6px;
+                white-space: normal !important;
+                word-break: break-word;
+                overflow-wrap: anywhere;
+            }
+            .main-content table.mobile-stack-table td::before {
+                content: attr(data-label);
+                color: #64748b;
+                font-weight: 600;
+                max-width: 96px;
+                font-size: .78rem;
+                line-height: 1.2;
+                padding-top: 2px;
+            }
+
+            .main-content table.mobile-stack-table td > * {
+                min-width: 0;
+                max-width: 100%;
+            }
+
+            .main-content table.mobile-stack-table td code,
+            .main-content table.mobile-stack-table td .badge,
+            .main-content table.mobile-stack-table td small,
+            .main-content table.mobile-stack-table td span,
+            .main-content table.mobile-stack-table td a {
+                overflow-wrap: anywhere;
+                word-break: break-word;
+            }
+
+            .main-content table.mobile-stack-table td .form-control,
+            .main-content table.mobile-stack-table td .form-select,
+            .main-content table.mobile-stack-table td .input-group,
+            .main-content table.mobile-stack-table td textarea,
+            .main-content table.mobile-stack-table td .btn,
+            .main-content table.mobile-stack-table td .btn-group,
+            .main-content table.mobile-stack-table td form,
+            .main-content table.mobile-stack-table td .d-flex,
+            .main-content table.mobile-stack-table td .d-inline-flex {
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+
+            .main-content table.mobile-stack-table td form,
+            .main-content table.mobile-stack-table td .d-flex,
+            .main-content table.mobile-stack-table td .d-inline-flex {
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+
+            .main-content table.mobile-stack-table td .btn {
+                white-space: normal !important;
+            }
+
+            .main-content table.mobile-stack-table td.mobile-full-row {
+                display: block;
+                padding: 0 !important;
+            }
+            .main-content table.mobile-stack-table td.mobile-full-row::before {
+                content: none;
+            }
+
+            .main-content .d-flex.gap-2 {
+                flex-wrap: wrap;
+            }
+
+            .main-content .mobile-actions,
+            .main-content .mobile-actions > * {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 767.98px) {
+            .mobile-menu-btn {
+                top: 10px;
+                left: 10px;
+                padding: .45rem .7rem;
+                font-size: .92rem;
+            }
+            .main-content {
+                padding: 60px 12px 16px;
+            }
+            .main-content table.mobile-stack-table td {
+                grid-template-columns: 86px minmax(0, 1fr);
+                column-gap: 8px;
+            }
+            .main-content table.mobile-stack-table td::before {
+                max-width: 86px;
+                font-size: .74rem;
+            }
+            .main-content .btn,
+            .main-content .form-control,
+            .main-content .form-select {
+                font-size: .92rem;
+            }
+            .btn-xs {
+                --bs-btn-font-size: .78rem;
+            }
+            .main-content .btn-group,
+            .main-content .input-group,
+            .main-content .d-flex.gap-2,
+            .main-content .d-flex.gap-3 {
+                flex-wrap: wrap;
+            }
+            .main-content .d-flex.gap-2 > .btn,
+            .main-content .d-flex.gap-3 > .btn,
+            .main-content .d-flex.gap-2 > a.btn,
+            .main-content .d-flex.gap-3 > a.btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="btn btn-dark mobile-menu-btn" type="button" id="mobileMenuBtn">☰ 메뉴</button>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <div class="sidebar">
+        <a href="{{ url_for('dashboard.dashboard_view') }}" class="sidebar-brand text-decoration-none">
+            <h4 class="text-center text-white mb-4">⚡ Light-Sync</h4>
+        </a>
+        <div class="text-center mb-4">
+            <small style="color: #94a3b8;">{{ session.user_group }}</small><br>
+            <strong>👤 {{ session.full_name }}</strong> 님
+            <br><a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-danger mt-2 py-0" style="display:inline-block; width:80px;">로그아웃</a>
+        </div>
+        <hr style="border-color: #334155;">
+
+        <a href="{{ url_for('dashboard.dashboard_view') }}">메인 현황판</a>
+        <a href="{{ url_for('project.project_list') }}">설계관리</a>
+        <a href="{{ url_for('project.contract_list') }}">계약관리</a>
+        <a href="{{ url_for('sales.sales_list') }}">영업관리</a>
+        <a href="{{ url_for('project.material_management') }}">자재관리</a>
+        <a href="{{ url_for('production.production_management') }}">생산관리</a>
+        <a href="{{ url_for('delivery.delivery_management') }}">납품관리</a>
+        <a href="{{ url_for('drawing.drawings_index') }}">도면관리</a>
+
+        {% if session.role == 'admin' %}
+            <a href="{{ url_for('auth.admin_settings') }}">시스템관리</a>
+        {% endif %}
+    </div>
+
+    <div class="main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        (function() {
+            const sidebar = document.querySelector('.sidebar');
+            const menuBtn = document.getElementById('mobileMenuBtn');
+            const backdrop = document.getElementById('sidebarBackdrop');
+
+            if (!sidebar || !menuBtn || !backdrop) return;
+
+            function closeSidebar() {
+                sidebar.classList.remove('show');
+                backdrop.classList.remove('show');
+            }
+
+            menuBtn.addEventListener('click', function() {
+                sidebar.classList.toggle('show');
+                backdrop.classList.toggle('show');
+            });
+
+            backdrop.addEventListener('click', closeSidebar);
+
+            sidebar.querySelectorAll('a').forEach(function(link) {
+                link.addEventListener('click', function() {
+                    if (window.innerWidth <= 991.98) closeSidebar();
+                });
+            });
+
+            window.addEventListener('resize', function() {
+                if (window.innerWidth > 991.98) closeSidebar();
+            });
+        })();
+
+        (function () {
+            function markStackTables(root) {
+                (root || document).querySelectorAll('.main-content table.table').forEach(function (table) {
+                    if (table.classList.contains('no-stack-table')) return;
+                    table.classList.add('mobile-stack-table');
+                });
+            }
+
+            function hydrateMobileTableLabels(root) {
+                (root || document).querySelectorAll('table.mobile-stack-table').forEach(function (table) {
+                    const headers = Array.from(table.querySelectorAll('thead th')).map(function (th) {
+                        return (th.textContent || '').replace(/\s+/g, ' ').trim();
+                    });
+
+                    table.querySelectorAll('tbody tr').forEach(function (row) {
+                        Array.from(row.children).forEach(function (cell, index) {
+                            if (!cell || cell.tagName !== 'TD') return;
+
+                            const colspan = Number(cell.getAttribute('colspan') || '1');
+                            if (colspan > 1) {
+                                cell.classList.add('mobile-full-row');
+                                cell.setAttribute('data-label', '');
+                                return;
+                            }
+
+                            if (!cell.getAttribute('data-label')) {
+                                cell.setAttribute('data-label', headers[index] || ('항목 ' + (index + 1)));
+                            }
+                        });
+                    });
+                });
+            }
+
+            markStackTables(document);
+            hydrateMobileTableLabels(document);
+
+            document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    window.requestAnimationFrame(function () {
+                        markStackTables(document);
+                        hydrateMobileTableLabels(document);
+                    });
+                });
+            });
+
+            document.addEventListener('shown.bs.collapse', function () {
+                markStackTables(document);
+                hydrateMobileTableLabels(document);
+            });
+
+            document.addEventListener('shown.bs.modal', function () {
+                markStackTables(document);
+                hydrateMobileTableLabels(document);
+            });
+
+            document.addEventListener('shown.bs.tab', function () {
+                markStackTables(document);
+                hydrateMobileTableLabels(document);
+            });
+
+            window.addEventListener('resize', function () {
+                if (window.innerWidth <= 1199.98) {
+                    markStackTables(document);
+                    hydrateMobileTableLabels(document);
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

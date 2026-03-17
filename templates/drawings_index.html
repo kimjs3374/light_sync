@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .drawing-list-table .clickable-row { cursor: pointer; }
+    .drawing-list-table .clickable-row:hover { background: #f1f5f9; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="m-0">📐 도면관리</h3>
+    <span class="text-muted small">프로젝트 선택 후 PDF 업로드/열람/공유를 진행하세요.</span>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white fw-bold">프로젝트 목록</div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0 drawing-list-table">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:120px;">관리번호</th>
+                    <th>현장명</th>
+                    <th style="width:120px;">도면건수</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in projects %}
+                <tr class="clickable-row" data-href="{{ url_for('drawing.drawings_project', project_id=p.id) }}">
+                    <td>{{ p.project_no }}</td>
+                    <td>
+                        <a href="{{ url_for('drawing.drawings_project', project_id=p.id) }}" class="text-dark text-decoration-none fw-bold">
+                            {{ p.temp_name }}
+                        </a>
+                    </td>
+                    <td>{{ p.drawings|length }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" class="text-center text-muted py-4">등록된 프로젝트가 없습니다.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.drawing-list-table .clickable-row').forEach((row) => {
+        row.addEventListener('click', function (e) {
+            const interactive = e.target.closest('a, button, input, select, textarea, label, form');
+            if (interactive) return;
+
+            const href = row.dataset.href;
+            if (href) window.location.href = href;
+        });
+    });
+});
+</script>
+{% endblock %}

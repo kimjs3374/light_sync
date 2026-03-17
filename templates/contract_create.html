@@ -1,0 +1,266 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid bg-white p-3 p-md-4 rounded shadow-sm">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
+        <h2 class="m-0">📋 신규 계약현장 등록</h2>
+        <a href="{{ url_for('project.contract_list') }}" class="btn btn-outline-secondary btn-sm">목록으로</a>
+    </div>
+
+    <p class="text-muted small mb-4">
+        계약관리 상세페이지와 동일한 데이터 구조로 등록됩니다. (현장 1건 + 계약 1~9건)
+    </p>
+
+    <form method="POST" action="{{ url_for('contract.contract_create') }}" id="contractCreateForm">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-light fw-bold">1) 현장 기본 정보</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">현장 가칭 <span class="text-danger">*</span></label>
+                        <input type="text" name="temp_name" class="form-control" placeholder="예: OO시 체육공원 조명개선" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">관리 약칭</label>
+                        <input type="text" name="short_name" class="form-control" placeholder="예: OO체육공원">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">작업 경로</label>
+                        <input type="text" name="work_path" class="form-control" placeholder="예: \\server\project\...">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">현장 주소</label>
+                        <input type="text" name="site_address" id="site_address" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">납품지 주소</label>
+                        <input type="text" name="shipping_address" id="shipping_address" class="form-control">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" value="1" id="is_shipping_same" name="is_shipping_same" checked>
+                            <label class="form-check-label small" for="is_shipping_same">현장 주소와 동일</label>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label fw-bold">설계 기준 및 주요 요청사항</label>
+                        <textarea name="design_basis" rows="4" class="form-control" placeholder="계약관리 상세의 설계기준 영역에 표시됩니다."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="m-0 fw-bold">2) 계약 정보 (최대 9건)</h5>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="addContractBtn">+ 계약 추가</button>
+        </div>
+
+        <div id="contractsWrap"></div>
+
+        <div class="d-grid mt-4">
+            <button type="submit" class="btn btn-primary btn-lg fw-bold">🚀 계약현장 등록</button>
+        </div>
+    </form>
+</div>
+
+<template id="contractTemplate">
+    <div class="card border-0 shadow-sm mb-3 contract-block" data-index="__IDX__">
+        <div class="card-header bg-primary-subtle d-flex justify-content-between align-items-center">
+            <span class="fw-bold">계약 <span class="contract-no">__NO__</span></span>
+            <button type="button" class="btn btn-sm btn-outline-danger remove-contract-btn">삭제</button>
+        </div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <label class="small fw-bold">계약명 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control form-control-sm" name="contract_name___IDX__" placeholder="예: 1차 납품 계약" required>
+                </div>
+                <div class="col-md-2">
+                    <label class="small fw-bold">상세품목 <span class="text-danger">*</span></label>
+                    <select class="form-select form-select-sm item-group-select" name="item_group___IDX__" required>
+                        {% for opt in detail_item_options %}
+                        <option value="{{ opt }}">{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="small fw-bold">계약일 <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control form-control-sm" name="contract_date___IDX__" required>
+                </div>
+                <div class="col-md-2">
+                    <label class="small fw-bold">납품기일 <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control form-control-sm" name="delivery_due___IDX__" required>
+                </div>
+                <div class="col-md-2">
+                    <label class="small fw-bold">납품희망일</label>
+                    <input type="date" class="form-control form-control-sm" name="desired_delivery___IDX__">
+                </div>
+
+                <div class="col-12 d-flex gap-3 mt-1">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="is_prof___IDX__" value="1" id="prof___IDX__">
+                        <label class="form-check-label small" for="prof___IDX__">전문검수</label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="is_urgent___IDX__" value="1" id="urgent___IDX__">
+                        <label class="form-check-label small" for="urgent___IDX__">긴급제작</label>
+                    </div>
+                </div>
+            </div>
+
+            <hr>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="small fw-bold m-0">상세 품목 (최소 1개)</label>
+                <button type="button" class="btn btn-sm btn-outline-dark add-item-btn">+ 품목추가</button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-0">
+                    <thead class="table-light text-center">
+                        <tr>
+                            <th style="width: 28%;">상세품목</th>
+                            <th>모델명</th>
+                            <th style="width: 120px;">수량</th>
+                            <th style="width: 60px;">삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody class="item-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</template>
+
+<template id="itemTemplate">
+    <tr>
+        <td>
+            <select class="form-select form-select-sm item-category-select" name="item_category___IDX__[]">
+                {% for opt in detail_item_options %}
+                <option value="{{ opt }}">{{ opt }}</option>
+                {% endfor %}
+            </select>
+        </td>
+        <td><input type="text" name="item_model___IDX__[]" class="form-control form-control-sm" placeholder="모델명 입력"></td>
+        <td><input type="number" name="item_qty___IDX__[]" class="form-control form-control-sm" value="1" min="0"></td>
+        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger remove-item-btn">X</button></td>
+    </tr>
+</template>
+
+<script>
+    const contractsWrap = document.getElementById('contractsWrap');
+    const contractTpl = document.getElementById('contractTemplate').innerHTML;
+    const itemTpl = document.getElementById('itemTemplate').innerHTML;
+    const addContractBtn = document.getElementById('addContractBtn');
+
+    function contractCount() {
+        return contractsWrap.querySelectorAll('.contract-block').length;
+    }
+
+    function getNextIndex() {
+        const used = new Set(
+            Array.from(contractsWrap.querySelectorAll('.contract-block')).map((el) => Number(el.dataset.index))
+        );
+        for (let i = 1; i <= 9; i++) {
+            if (!used.has(i)) return i;
+        }
+        return null;
+    }
+
+    function updateContractNumbers() {
+        contractsWrap.querySelectorAll('.contract-block').forEach((block, idx) => {
+            const noEl = block.querySelector('.contract-no');
+            if (noEl) noEl.textContent = idx + 1;
+        });
+    }
+
+    function syncAllItemCategoryWithGroup(block) {
+        const groupVal = block.querySelector('.item-group-select')?.value;
+        block.querySelectorAll('.item-category-select').forEach((el) => {
+            el.value = groupVal;
+        });
+    }
+
+    function addItemRow(block) {
+        const idx = block.dataset.index;
+        const tbody = block.querySelector('.item-tbody');
+        const html = itemTpl.replaceAll('__IDX__', idx);
+        tbody.insertAdjacentHTML('beforeend', html);
+        syncAllItemCategoryWithGroup(block);
+
+        const lastRow = tbody.lastElementChild;
+        lastRow.querySelector('.remove-item-btn').addEventListener('click', () => {
+            if (tbody.querySelectorAll('tr').length <= 1) {
+                alert('품목은 최소 1개 필요합니다.');
+                return;
+            }
+            lastRow.remove();
+        });
+    }
+
+    function bindContractEvents(block) {
+        const addItemBtn = block.querySelector('.add-item-btn');
+        const removeBtn = block.querySelector('.remove-contract-btn');
+        const groupSelect = block.querySelector('.item-group-select');
+
+        addItemBtn.addEventListener('click', () => addItemRow(block));
+        removeBtn.addEventListener('click', () => {
+            if (contractCount() <= 1) {
+                alert('계약은 최소 1건 필요합니다.');
+                return;
+            }
+            block.remove();
+            updateContractNumbers();
+        });
+        groupSelect.addEventListener('change', () => syncAllItemCategoryWithGroup(block));
+    }
+
+    function addContract(index) {
+        if (contractCount() >= 9) {
+            alert('계약은 최대 9건까지 등록 가능합니다.');
+            return;
+        }
+
+        const html = contractTpl
+            .replaceAll('__IDX__', index)
+            .replaceAll('__NO__', contractCount() + 1);
+        contractsWrap.insertAdjacentHTML('beforeend', html);
+
+        const block = contractsWrap.lastElementChild;
+        bindContractEvents(block);
+        addItemRow(block);
+
+        const today = new Date().toISOString().slice(0, 10);
+        block.querySelector(`input[name="contract_date_${index}"]`).value = today;
+    }
+
+    addContractBtn.addEventListener('click', () => {
+        const nextIdx = getNextIndex();
+        if (!nextIdx) {
+            alert('계약은 최대 9건까지 등록 가능합니다.');
+            return;
+        }
+        addContract(nextIdx);
+    });
+
+    // 주소 동일 체크
+    const sameChk = document.getElementById('is_shipping_same');
+    const siteAddr = document.getElementById('site_address');
+    const shipAddr = document.getElementById('shipping_address');
+
+    function applySameAddress() {
+        if (sameChk.checked) {
+            shipAddr.value = siteAddr.value;
+            shipAddr.setAttribute('readonly', 'readonly');
+        } else {
+            shipAddr.removeAttribute('readonly');
+        }
+    }
+    sameChk.addEventListener('change', applySameAddress);
+    siteAddr.addEventListener('input', () => {
+        if (sameChk.checked) shipAddr.value = siteAddr.value;
+    });
+
+    // 최초 1건 기본 생성
+    addContract(1);
+    applySameAddress();
+</script>
+{% endblock %}

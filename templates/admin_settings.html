@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2 class="mb-4">👑 시스템 및 권한 관리</h2>
+<div class="card shadow-sm border-0 mb-5">
+    <div class="card-header bg-warning text-dark fw-bold">📝 가입 승인 대기</div>
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead>
+                <tr><th class="ps-4">이름</th><th>아이디</th><th>희망 부서</th><th class="text-end pe-4">액션</th></tr>
+            </thead>
+            <tbody>
+                {% for u in pending %}
+                <tr>
+                    <td class="ps-4"><b>{{ u.full_name }}</b></td>
+                    <td>{{ u.username }}</td>
+                    <td><span class="badge bg-secondary">{{ u.user_group }}</span></td>
+                    <td class="text-end pe-4">
+                        <a href="{{ url_for('auth.approve_user', user_id=u.id) }}" class="btn btn-sm btn-success">승인</a>
+                        <a href="{{ url_for('auth.reject_user', user_id=u.id) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('삭제하시겠습니까?')">거절</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-center py-4 text-muted">대기자 없음</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-dark text-white fw-bold">👤 소속 직원 목록</div>
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead class="table-light"><tr><th class="ps-4">이름</th><th>부서</th><th>권한</th><th>계정상태</th><th>우선순위권</th><th>삭제승인권</th><th>퇴사/복구</th></tr></thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td class="ps-4">{{ u.full_name }}</td>
+                    <td>{{ u.user_group }}</td>
+                    <td>{{ u.role }}</td>
+                    <td>
+                        {% if u.role == 'admin' %}
+                            <span class="badge bg-primary">관리자</span>
+                        {% elif u.is_active %}
+                            <span class="badge bg-success">활성</span>
+                        {% else %}
+                            <span class="badge bg-secondary">퇴사/비활성</span>
+                            {% if u.deactivated_at %}
+                                <div class="small text-muted mt-1">{{ (u.deactivated_at|string)[:19] }}</div>
+                            {% endif %}
+                            {% if u.deactivated_reason %}
+                                <div class="small text-muted">사유: {{ u.deactivated_reason }}</div>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if u.role == 'admin' %}
+                            <span class="badge bg-primary">기본허용(admin)</span>
+                        {% else %}
+                            <form method="POST" action="{{ url_for('auth.toggle_priority_manager', user_id=u.id) }}" class="d-inline">
+                                <input type="hidden" name="can_manage_priority" value="{{ '0' if u.can_manage_priority else '1' }}">
+                                <button class="btn btn-sm {{ 'btn-danger' if u.can_manage_priority else 'btn-outline-secondary' }}">
+                                    {{ '허용됨' if u.can_manage_priority else '미허용' }}
+                                </button>
+                            </form>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if u.role == 'admin' %}
+                            <span class="badge bg-primary">기본허용(admin)</span>
+                        {% else %}
+                            <form method="POST" action="{{ url_for('auth.toggle_delete_approver', user_id=u.id) }}" class="d-inline">
+                                <input type="hidden" name="can_approve_delete" value="{{ '0' if u.can_approve_delete else '1' }}">
+                                <button class="btn btn-sm {{ 'btn-success' if u.can_approve_delete else 'btn-outline-secondary' }}">
+                                    {{ '허용됨' if u.can_approve_delete else '미허용' }}
+                                </button>
+                            </form>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if u.role == 'admin' %}
+                            <span class="text-muted small">-</span>
+                        {% else %}
+                            <form method="POST" action="{{ url_for('auth.toggle_user_active', user_id=u.id) }}" class="d-inline" data-current-active="{{ '1' if u.is_active else '0' }}" onsubmit="return submitToggleUserActive(this);">
+                                <input type="hidden" name="is_active" value="{{ '0' if u.is_active else '1' }}">
+                                <input type="hidden" name="deactivated_reason" value="">
+                                <button class="btn btn-sm {{ 'btn-outline-danger' if u.is_active else 'btn-outline-success' }}">
+                                    {{ '퇴사처리' if u.is_active else '복구' }}
+                                </button>
+                            </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mt-4">
+    <div class="card-header bg-danger text-white fw-bold">🗑 현장 삭제요청 관리</div>
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-3">요청일시</th>
+                    <th>현장</th>
+                    <th>요청자</th>
+                    <th>삭제사유</th>
+                    <th>상태</th>
+                    <th>승인자/처리시각</th>
+                    <th class="text-end pe-3">처리</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in delete_requests %}
+                <tr>
+                    <td class="ps-3"><small>{{ (r.created_at|string)[:19] }}</small></td>
+                    <td>
+                        <div class="fw-bold">{{ r.project_name_snapshot or '-' }}</div>
+                        <small class="text-muted">{{ r.project_no_snapshot or '-' }}</small>
+                    </td>
+                    <td>
+                        <div>{{ r.requester_name }}</div>
+                        <small class="text-muted">{{ r.requester_group or '-' }}</small>
+                    </td>
+                    <td style="white-space: pre-wrap; max-width: 280px;">{{ r.request_reason }}</td>
+                    <td>
+                        {% if r.status == 'PENDING' %}
+                            <span class="badge bg-warning text-dark">대기</span>
+                        {% elif r.status == 'APPROVED' %}
+                            <span class="badge bg-success">승인/삭제완료</span>
+                        {% elif r.status == 'REJECTED' %}
+                            <span class="badge bg-secondary">반려</span>
+                        {% else %}
+                            <span class="badge bg-light text-dark">{{ r.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div>{{ r.approved_by_name or '-' }}</div>
+                        <small class="text-muted">{{ (r.approved_at|string)[:19] if r.approved_at else '-' }}</small>
+                        {% if r.reject_reason %}
+                        <div class="small text-danger mt-1">반려사유: {{ r.reject_reason }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="text-end pe-3">
+                        {% if r.status == 'PENDING' %}
+                        <div class="d-flex justify-content-end gap-1">
+                            <form method="POST" action="{{ url_for('project.approve_project_delete_request', req_id=r.id) }}" class="d-inline" onsubmit="return confirm('해당 삭제요청을 승인하고 즉시 삭제할까요?');">
+                                <button class="btn btn-sm btn-success">승인</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('project.reject_project_delete_request', req_id=r.id) }}" class="d-inline" onsubmit="return submitRejectReason(this);">
+                                <input type="hidden" name="reject_reason" value="">
+                                <button class="btn btn-sm btn-outline-danger">반려</button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-center py-4 text-muted">삭제요청 내역이 없습니다.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function submitRejectReason(form) {
+    const reason = prompt('반려 사유를 입력하세요. (선택)');
+    if (reason !== null) {
+        form.querySelector('input[name="reject_reason"]').value = reason.trim();
+    }
+    return confirm('삭제요청을 반려할까요?');
+}
+
+function submitToggleUserActive(form) {
+    const isCurrentlyActive = form.getAttribute('data-current-active') === '1';
+    if (isCurrentlyActive) {
+        const reason = prompt('퇴사/비활성 사유를 입력하세요. (선택)');
+        if (reason === null) return false;
+        form.querySelector('input[name="deactivated_reason"]').value = (reason || '').trim();
+        return confirm('해당 계정을 비활성화(로그인 차단)할까요?');
+    }
+    return confirm('해당 계정을 재활성화할까요?');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,692 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .prod-shell { background: #f3f6fb; border: 1px solid #e2e8f0; border-radius: 16px; padding: 14px; }
+    .prod-kpi { border: 1px solid #e5e7eb; border-radius: 12px; background:#fff; }
+    .prod-kpi .value { font-size: 1.35rem; font-weight: 800; line-height: 1; }
+    .contract-block { border: 1px solid #dbe2ec; border-radius: 14px; overflow: hidden; background:#fff; }
+    .contract-head { background: linear-gradient(95deg, #0f172a, #1e293b); color: #fff; }
+    .item-panel { border: 1px solid #e6edf5; border-radius: 12px; background: #fff; }
+    .proc-table { margin-bottom: 0; }
+    .proc-table thead th {
+        background: #f8fafc !important;
+        border-top: 0;
+        border-bottom: 1px solid #dbe5f0;
+        color: #334155;
+        font-size: .78rem;
+    }
+    .proc-table td { vertical-align: middle; border-color: #edf2f7; }
+    .proc-name { font-weight: 700; color:#111827; }
+    .proc-name-sub { color: #64748b; font-size: .74rem; }
+    .status-chip { font-size: .72rem; padding: .34rem .48rem; border-radius: 999px; font-weight: 700; }
+    .status-wait { background:#f1f5f9; color:#334155; }
+    .status-working { background:#fff7ed; color:#9a3412; }
+    .status-done { background:#ecfdf5; color:#166534; }
+    .toggle-wrap { display:flex; justify-content:center; }
+    .form-switch .form-check-input { width: 2.35rem; height: 1.2rem; cursor:pointer; }
+    .autosave-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    .dot-idle { background:#cbd5e1; }
+    .dot-saving { background:#f59e0b; animation:pulse 1s infinite; }
+    .dot-saved { background:#10b981; }
+    .dot-error { background:#ef4444; }
+    .summary-chip {
+        display:inline-flex; align-items:center; gap:.25rem; padding:.28rem .55rem;
+        border-radius:999px; font-size:.72rem; font-weight:700; border:1px solid #dbe2ec; background:#fff;
+        color:#334155;
+    }
+    .summary-chip-row { display:flex; flex-wrap:wrap; gap:.35rem; justify-content:flex-start; }
+    .summary-chip.danger { background:#fef2f2; border-color:#fecaca; color:#b91c1c; }
+    .summary-chip.warning { background:#fff7ed; border-color:#fed7aa; color:#c2410c; }
+    .summary-chip.info { background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }
+    .summary-chip.success { background:#ecfdf5; border-color:#bbf7d0; color:#15803d; }
+    .prod-item-top { display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem; }
+    .prod-item-top-left { flex:1 1 auto; min-width:0; }
+    .prod-item-top-right { flex:0 0 auto; min-width:170px; }
+    .prod-mini-actions { display:flex; gap:.35rem; flex-wrap:wrap; margin-top:.55rem; }
+    .prod-mini-actions .btn { --bs-btn-padding-y:.2rem; --bs-btn-padding-x:.45rem; --bs-btn-font-size:.74rem; }
+    .panel-section { border:1px solid #e5e7eb; border-radius:12px; padding:.85rem; background:#fff; }
+    .panel-kv { display:grid; grid-template-columns:130px 1fr; gap:.35rem .65rem; font-size:.9rem; }
+    .panel-kv .key { color:#64748b; font-weight:700; }
+    .warning-badge { display:inline-flex; align-items:center; gap:.3rem; padding:.32rem .55rem; border-radius:999px; font-size:.75rem; font-weight:700; }
+    .warning-badge.danger { background:#fef2f2; color:#b91c1c; }
+    .warning-badge.warning { background:#fff7ed; color:#c2410c; }
+    .summary-chip.has-help { cursor: help; }
+    @keyframes pulse { 0%{opacity:.3;} 50%{opacity:1;} 100%{opacity:.3;} }
+
+    @media (max-width: 767.98px) {
+        .prod-item-top { flex-direction:column; }
+        .prod-item-top-right { width:100%; }
+    }
+</style>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
+    <div>
+        <h2 class="fw-bold mb-1" style="color:#0f172a;">🏭 생산관리 상세</h2>
+        <div class="text-muted small">{{ project.project_no }} · {{ project.temp_name }} · 계약 {{ project.contracts|length }}건</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('production.production_management') }}" class="btn btn-outline-secondary btn-sm">목록으로</a>
+        <form method="POST" class="m-0">
+            <input type="hidden" name="action" value="sync_production_processes">
+            <button class="btn btn-dark btn-sm fw-bold">공정 동기화</button>
+        </form>
+    </div>
+</div>
+
+<div class="prod-shell mb-3">
+    {% set ns = namespace(total_proc=0, working=0, done=0) %}
+    {% for c in project.contracts %}
+        {% for item in c.items %}
+            {% for p in item.production_processes %}
+                {% set ns.total_proc = ns.total_proc + 1 %}
+                {% if p.status == '진행중' %}{% set ns.working = ns.working + 1 %}{% endif %}
+                {% if p.status in ['완료', '스킵'] %}{% set ns.done = ns.done + 1 %}{% endif %}
+            {% endfor %}
+        {% endfor %}
+    {% endfor %}
+    <div class="row g-2">
+        <div class="col-md-3 col-6"><div class="prod-kpi p-2"><div class="small text-muted">총 공정</div><div class="value">{{ ns.total_proc }}</div></div></div>
+        <div class="col-md-3 col-6"><div class="prod-kpi p-2"><div class="small text-muted">진행중</div><div class="value text-warning">{{ ns.working }}</div></div></div>
+        <div class="col-md-3 col-6"><div class="prod-kpi p-2"><div class="small text-muted">완료/스킵</div><div class="value text-success">{{ ns.done }}</div></div></div>
+        <div class="col-md-3 col-6"><div class="prod-kpi p-2"><div class="small text-muted">전체 완료율</div><div class="value text-primary">{{ ((ns.done / ns.total_proc * 100) if ns.total_proc else 0)|round(1) }}%</div></div></div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        {% for c in project.contracts %}
+        <div class="contract-block shadow-sm mb-3">
+            <div class="contract-head p-2 d-flex justify-content-between align-items-center">
+                <span class="fw-bold">{{ c.contract_name }}</span>
+                <span class="badge bg-light text-dark">{{ c.items|length }}개 품목</span>
+            </div>
+            <div class="p-2">
+                {% for item in c.items %}
+                {% set last_process = item.production_processes[-1] if item.production_processes else None %}
+                {% set can_toggle_item_complete = last_process and last_process.status in ['진행중', '완료'] %}
+                <div class="item-panel p-2 mb-2">
+                    <div class="prod-item-top mb-2">
+                        <div class="prod-item-top-left">
+                            <div class="fw-bold">{{ item.model_name or '-' }}</div>
+                            <div class="small text-muted">{{ item.category }} · 수량 {{ item.quantity or 0 }}</div>
+                            <div class="summary-chip-row mt-2">
+                                {% set sales_status = item.status_sales or '계약확인' %}
+                                <span class="summary-chip info">영업 {{ sales_status }}</span>
+                                {% if item._panel_payload.contract_summary.dday is none %}
+                                    <span class="summary-chip">계약납기 -</span>
+                                {% elif item._panel_payload.contract_summary.dday < 0 %}
+                                    <span class="summary-chip danger">납기 D+{{ -item._panel_payload.contract_summary.dday }}</span>
+                                {% elif item._panel_payload.contract_summary.dday == 0 %}
+                                    <span class="summary-chip warning">납기 D-Day</span>
+                                {% else %}
+                                    <span class="summary-chip info">납기 D-{{ item._panel_payload.contract_summary.dday }}</span>
+                                {% endif %}
+                                {% if c.is_urgent_prod %}<span class="summary-chip danger">긴급</span>{% endif %}
+                                {% if c.is_prof_inspection %}<span class="summary-chip warning">검수</span>{% endif %}
+                                <span class="summary-chip success">스펙 {{ item._spec_completion.filled }}/{{ item._spec_completion.total }}</span>
+                                {% if item._warning_count %}
+                                <span
+                                    class="summary-chip danger has-help"
+                                    data-bs-toggle="tooltip"
+                                    data-bs-placement="top"
+                                    data-bs-html="true"
+                                    title="{% for warning in item._panel_payload.warnings %}• {{ warning.label }}{% if not loop.last %}<br>{% endif %}{% endfor %}"
+                                >경고 {{ item._warning_count }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="prod-mini-actions">
+                                <button type="button" class="btn btn-outline-primary btn-sm js-open-prod-panel" data-item-id="{{ item.id }}" data-focus-tab="sales">협의보기</button>
+                                <button type="button" class="btn btn-outline-dark btn-sm js-open-prod-panel" data-item-id="{{ item.id }}" data-focus-tab="contract">계약보기</button>
+                            </div>
+                        </div>
+                        <div class="text-end prod-item-top-right">
+                            <span id="item_status_{{ item.id }}" class="badge {% if item.status_prod == '생산완료' %}bg-success{% elif item.status_prod == '생산중' %}bg-warning text-dark{% elif item.status_prod == '생산대기중' %}bg-primary{% else %}bg-secondary{% endif %}">{{ item.status_prod }}</span>
+                            <div class="d-flex align-items-center justify-content-end gap-2 mt-1">
+                                <span class="small text-muted">생산완료</span>
+                                <div class="form-check form-switch m-0">
+                                    <input
+                                        class="form-check-input item-complete-toggle"
+                                        type="checkbox"
+                                        data-item-id="{{ item.id }}"
+                                        data-last-process-id="{{ last_process.id if last_process else '' }}"
+                                        {% if item.status_prod == '생산완료' %}checked{% endif %}
+                                        {% if not can_toggle_item_complete %}disabled{% endif %}
+                                    >
+                                </div>
+                            </div>
+                            {% if not can_toggle_item_complete %}
+                            <div class="small text-muted">(마지막 공정이 진행중/완료일 때 활성화)</div>
+                            {% endif %}
+                            <div><small class="text-muted">공정률 {{ item._prod_progress }}%</small></div>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm proc-table" style="min-width: 860px;">
+                            <thead class="text-center">
+                                <tr>
+                                    <th style="width: 60px;">순서</th>
+                                    <th>공정명</th>
+                                    <th style="width: 110px;">상태</th>
+                                    <th style="width: 90px;">누적수량</th>
+                                    <th style="width: 90px;">공정률</th>
+                                    <th style="width: 120px;">제작상태</th>
+                                    <th style="width: 92px;">상세</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for p in item.production_processes %}
+                                <tr>
+                                    <td class="text-center">{{ p.step_order }}</td>
+                                    <td>
+                                        <div class="proc-name">{% if p.parent_process_id %}↳ {% endif %}{{ p.process_name }}</div>
+                                        <div class="proc-name-sub">{{ item.model_name or '-' }} {% if p.is_forced %}· 강제진행{% endif %}</div>
+                                        {% if p.is_forced %}<span class="badge bg-danger ms-1">강제</span>{% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <span id="proc_status_{{ p.id }}" class="status-chip {% if p.status == '완료' %}status-done{% elif p.status == '진행중' %}status-working{% else %}status-wait{% endif %}">{{ p.status }}</span>
+                                    </td>
+                                    <td id="proc_qty_{{ p.id }}" class="text-end">{{ p.progress_qty or 0 }}</td>
+                                    <td id="proc_pct_{{ p.id }}" class="text-end">{{ p.progress_percent or 0 }}%</td>
+                                    <td class="text-center">
+                                        <div class="toggle-wrap">
+                                            <div class="form-check form-switch m-0">
+                                                <input
+                                                    class="form-check-input proc-toggle"
+                                                    type="checkbox"
+                                                    data-process-id="{{ p.id }}"
+                                                    {% if p.status in ['진행중', '완료', '스킵'] %}checked{% endif %}
+                                                >
+                                            </div>
+                                        </div>
+                                        <div class="small mt-1"><span id="save_dot_{{ p.id }}" class="autosave-dot dot-idle"></span></div>
+                                    </td>
+                                    <td class="text-center">
+                                        <button class="btn btn-sm btn-outline-dark" type="button" data-bs-toggle="modal" data-bs-target="#procModal{{ p.id }}">상세</button>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="7" class="text-center text-muted py-2">공정이 없습니다. 동기화를 실행해 주세요.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="col-lg-4">
+        {% set history_board_title = '📜 생산 히스토리 보드' %}
+        {% set history_post_action = 'add_chat' %}
+        {% set history_post_url = url_for('production.production_detail', project_id=project.id) %}
+        {% set history_board_id = 'production-history-board-detail' %}
+        {% set history_default_filter = 'production' %}
+        {% include 'components/history_board.html' %}
+    </div>
+</div>
+
+<script type="application/json" id="prodPanelPayloadMap">
+{
+{% set payload_ns = namespace(first=true) %}
+{% for c in project.contracts %}
+    {% for item in c.items %}
+    {% if not payload_ns.first %},{% endif %}
+    "{{ item.id }}": {{ item._panel_payload|tojson }}
+    {% set payload_ns.first = false %}
+    {% endfor %}
+{% endfor %}
+}
+</script>
+
+<div class="offcanvas offcanvas-end" tabindex="-1" id="prodInfoPanel" aria-labelledby="prodInfoPanelLabel" style="width:min(560px, 100vw);">
+    <div class="offcanvas-header border-bottom">
+        <div>
+            <h5 class="offcanvas-title fw-bold" id="prodInfoPanelLabel">생산 참고 상세</h5>
+            <div class="small text-muted" id="prodInfoPanelSub">품목 정보를 불러오는 중...</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body bg-light">
+        <div class="panel-section mb-3">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <div>
+                    <div class="fw-bold" id="panelItemTitle">-</div>
+                    <div class="small text-muted" id="panelItemMeta">-</div>
+                </div>
+                <span class="badge bg-secondary" id="panelProdStatus">-</span>
+            </div>
+            <div class="summary-chip-row" id="panelWarningSummary"></div>
+        </div>
+
+        <ul class="nav nav-tabs mb-3" role="tablist">
+            <li class="nav-item" role="presentation"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#prod-tab-summary" type="button" role="tab">요약</button></li>
+            <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#prod-tab-sales" type="button" role="tab">협의내용</button></li>
+            <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#prod-tab-contract" type="button" role="tab">계약내용</button></li>
+            <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#prod-tab-source" type="button" role="tab">원문</button></li>
+        </ul>
+
+        <div class="tab-content d-flex flex-column gap-3">
+            <div class="tab-pane fade show active" id="prod-tab-summary" role="tabpanel">
+                <div class="panel-section mb-3">
+                    <div class="fw-bold mb-2">생산 핵심 요약</div>
+                    <div class="panel-kv" id="panelSummaryKv"></div>
+                </div>
+                <div class="panel-section">
+                    <div class="fw-bold mb-2">비교 포인트</div>
+                    <div id="panelWarnings"></div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="prod-tab-sales" role="tabpanel">
+                <div class="panel-section mb-3">
+                    <div class="fw-bold mb-2">협의 진행 상태</div>
+                    <div class="panel-kv" id="panelSalesKv"></div>
+                </div>
+                <div class="panel-section">
+                    <div class="fw-bold mb-2">협의 스펙</div>
+                    <div id="panelSalesSpecs"></div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="prod-tab-contract" role="tabpanel">
+                <div class="panel-section">
+                    <div class="fw-bold mb-2">계약 기준 정보</div>
+                    <div class="panel-kv" id="panelContractKv"></div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="prod-tab-source" role="tabpanel">
+                <div class="panel-section">
+                    <div class="fw-bold mb-2">원문 바로가기</div>
+                    <div class="d-grid gap-2">
+                        <a class="btn btn-outline-primary" id="panelSalesLink" href="#">협의 원문 열기</a>
+                        <a class="btn btn-outline-dark" id="panelContractLink" href="#">계약 원문 열기</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% for c in project.contracts %}
+    {% for item in c.items %}
+        {% for p in item.production_processes %}
+        <div class="modal fade" id="procModal{{ p.id }}" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <form method="POST" class="modal-content">
+                    <input type="hidden" name="action" value="update_process_modal">
+                    <input type="hidden" name="process_id" value="{{ p.id }}">
+                    <div class="modal-header bg-dark text-white">
+                        <h5 class="modal-title">공정 상세관리 - {{ p.process_name }}</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-2 form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="is_forced" id="force_modal_{{ p.id }}" {% if p.is_forced %}checked{% endif %}>
+                            <label class="form-check-label" for="force_modal_{{ p.id }}">강제진행 허용</label>
+                        </div>
+                        <hr>
+                        <div class="mb-2">
+                            <label class="small fw-bold">작업일</label>
+                            <input type="date" name="work_date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}">
+                        </div>
+                        <div class="mb-2">
+                            <label class="small fw-bold">진행량 추가(수량)</label>
+                            <input type="number" name="daily_qty" class="form-control" value="0" min="0">
+                        </div>
+                        <div class="mb-2">
+                            <label class="small fw-bold">메모</label>
+                            <textarea name="memo" class="form-control" rows="3" placeholder="작업 특이사항"></textarea>
+                        </div>
+                        <div class="small text-muted mt-2">
+                            시작일시: {{ p.started_at.strftime('%Y-%m-%d %H:%M') if p.started_at else '-' }}<br>
+                            완료일시: {{ p.completed_at.strftime('%Y-%m-%d %H:%M') if p.completed_at else '-' }}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                        <button class="btn btn-dark fw-bold">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    {% endfor %}
+{% endfor %}
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const historyRoot = document.getElementById('production-history-board-detail');
+    const historyBoard = historyRoot ? historyRoot.querySelector('#historyBoard') : null;
+    const panelEl = document.getElementById('prodInfoPanel');
+    const panel = (panelEl && window.bootstrap) ? bootstrap.Offcanvas.getOrCreateInstance(panelEl) : null;
+    const payloadMapEl = document.getElementById('prodPanelPayloadMap');
+    let payloadMap = {};
+    try {
+        payloadMap = JSON.parse(payloadMapEl?.textContent || '{}');
+    } catch (err) {
+        payloadMap = {};
+        console.error('생산 참고 payload 파싱 실패', err);
+    }
+
+    const setHtml = (id, html) => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+    };
+
+    const escapeHtml = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const fmtDate = (value) => value || '-';
+    const fmtDday = (value) => {
+        if (value === null || value === undefined) return '-';
+        if (value < 0) return `D+${Math.abs(value)}`;
+        if (value === 0) return 'D-Day';
+        return `D-${value}`;
+    };
+
+    const renderKv = (rows) => rows.map(row => `
+        <div class="key">${escapeHtml(row[0])}</div>
+        <div>${escapeHtml(row[1])}</div>
+    `).join('');
+
+    const openPayloadPanel = (payload, focusTab) => {
+        if (!payload || !panelEl || !panel) return;
+
+        document.getElementById('prodInfoPanelSub').textContent = `${payload.project_no} · ${payload.project_name} · ${payload.contract_name}`;
+        document.getElementById('panelItemTitle').textContent = payload.item_model_name || '-';
+        document.getElementById('panelItemMeta').textContent = `${payload.item_category || '-'} · 수량 ${payload.item_quantity || 0}EA`;
+        document.getElementById('panelProdStatus').textContent = payload.prod_status || '-';
+
+        const warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
+        setHtml('panelWarningSummary', warnings.length
+            ? warnings.map(w => `<span class="warning-badge ${escapeHtml(w.level || 'warning')}" data-bs-toggle="tooltip" data-bs-placement="top" title="${escapeHtml(w.detail || '')}">${escapeHtml(w.label)}</span>`).join('')
+            : '<span class="summary-chip success">비교 경고 없음</span>');
+
+        setHtml('panelSummaryKv', renderKv([
+            ['영업단계', payload.sales_summary?.status || '-'],
+            ['생산상태', payload.prod_status || '-'],
+            ['공정률', `${payload.prod_progress ?? 0}%`],
+            ['계약 납기', fmtDate(payload.contract_summary?.delivery_due_date)],
+            ['D-Day', fmtDday(payload.contract_summary?.dday)],
+            ['긴급/검수', `${payload.contract_summary?.is_urgent_prod ? '긴급제작' : '-'} / ${payload.contract_summary?.is_prof_inspection ? '전문검수' : '-'}`],
+            ['스펙 작성률', `${payload.sales_summary?.spec_completion?.filled ?? 0}/${payload.sales_summary?.spec_completion?.total ?? 0} (${payload.sales_summary?.spec_completion?.rate ?? 0}%)`],
+        ]));
+
+        setHtml('panelWarnings', warnings.length
+            ? warnings.map(w => `
+                <div class="border rounded-3 p-2 mb-2 bg-white">
+                    <div class="fw-bold text-${w.level === 'danger' ? 'danger' : 'warning'}">${escapeHtml(w.label)}</div>
+                    <div class="small text-muted">${escapeHtml(w.detail || '')}</div>
+                </div>
+            `).join('')
+            : '<div class="text-muted small">현재 감지된 충돌/누락이 없습니다.</div>');
+
+        setHtml('panelSalesKv', renderKv([
+            ['영업단계', payload.sales_summary?.status || '-'],
+            ['납품희망일', fmtDate(payload.sales_summary?.desired_delivery_date)],
+            ['협의스펙 완료율', `${payload.sales_summary?.spec_completion?.filled ?? 0}/${payload.sales_summary?.spec_completion?.total ?? 0}`],
+        ]));
+
+        const salesSpecs = Array.isArray(payload.sales_summary?.spec_entries) ? payload.sales_summary.spec_entries : [];
+        setHtml('panelSalesSpecs', salesSpecs.length
+            ? salesSpecs.map(spec => `
+                <div class="d-flex justify-content-between align-items-center border-bottom py-2 gap-2">
+                    <div class="fw-semibold">${escapeHtml(spec.label)}</div>
+                    <div class="small ${spec.is_missing ? 'text-danger fw-bold' : 'text-muted'}">${escapeHtml(spec.value)}</div>
+                </div>
+            `).join('')
+            : '<div class="text-muted small">표시할 협의 스펙이 없습니다.</div>');
+
+        setHtml('panelContractKv', renderKv([
+            ['계약명', payload.contract_summary?.contract_name || '-'],
+            ['계약일', fmtDate(payload.contract_summary?.contract_date)],
+            ['계약 납기', fmtDate(payload.contract_summary?.delivery_due_date)],
+            ['납품희망일', fmtDate(payload.contract_summary?.desired_delivery_date)],
+            ['전문검수', payload.contract_summary?.is_prof_inspection ? '예' : '아니오'],
+            ['긴급제작', payload.contract_summary?.is_urgent_prod ? '예' : '아니오'],
+            ['현장 긴급', payload.contract_summary?.is_project_urgent ? '예' : '아니오'],
+            ['현장주소', payload.contract_summary?.project_site_address || '-'],
+            ['납품주소', payload.contract_summary?.project_shipping_address || '-'],
+            ['설계기준', payload.contract_summary?.design_basis || '-'],
+        ]));
+
+        const salesLink = document.getElementById('panelSalesLink');
+        const contractLink = document.getElementById('panelContractLink');
+        if (salesLink) salesLink.href = payload.source_links?.sales || '#';
+        if (contractLink) contractLink.href = payload.source_links?.contract || '#';
+
+        if (focusTab) {
+            const tabButton = document.querySelector(`[data-bs-target="#prod-tab-${focusTab}"]`);
+            if (tabButton && window.bootstrap) bootstrap.Tab.getOrCreateInstance(tabButton).show();
+        }
+
+        if (window.bootstrap) {
+            panelEl.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
+                bootstrap.Tooltip.getOrCreateInstance(el);
+            });
+        }
+
+        panel.show();
+    };
+
+    const prependHistoryLog = (log) => {
+        if (!historyBoard || !log) return;
+
+        const emptyMsg = historyBoard.querySelector('.text-muted.small:not([data-history-empty-state])');
+        if (emptyMsg && emptyMsg.textContent.includes('히스토리가 없습니다')) emptyMsg.remove();
+
+        const entry = document.createElement('div');
+        const kind = (log.kind || 'system');
+        const scope = (log.scope || 'common');
+        entry.className = 'history-entry mb-2';
+        entry.dataset.scope = scope;
+        entry.dataset.kind = kind;
+
+        const card = document.createElement('div');
+        card.className = `history-card ${kind !== 'comment' ? 'system' : 'comment'} small p-2 shadow-sm`;
+        card.style.whiteSpace = 'pre-wrap';
+        card.style.backgroundColor = '#ecfeff';
+
+        const head = document.createElement('div');
+        const user = document.createElement('b');
+        user.textContent = log.user_name || '시스템 🤖';
+        const time = document.createElement('span');
+        time.className = 'text-muted float-end';
+        time.textContent = log.created_at || '';
+        head.appendChild(user);
+        head.appendChild(time);
+
+        const body = document.createElement('div');
+        body.textContent = log.content || '';
+
+        card.appendChild(head);
+        card.appendChild(body);
+        entry.appendChild(card);
+
+        historyBoard.prepend(entry);
+        setTimeout(() => { card.style.backgroundColor = ''; }, 900);
+
+        const activeChip = historyRoot?.querySelector('[data-history-filter].active');
+        const currentFilter = activeChip?.dataset.historyFilter || 'production';
+        let visible = false;
+        if (currentFilter === 'all') visible = true;
+        else if (currentFilter === 'comments') visible = (kind === 'comment');
+        else visible = (kind !== 'comment' && scope === currentFilter);
+        entry.classList.toggle('d-none', !visible);
+    };
+
+    const updateStatusChip = (el, status) => {
+        if (!el) return;
+        el.textContent = status;
+        el.classList.remove('status-wait', 'status-working', 'status-done');
+        if (status === '완료' || status === '스킵') el.classList.add('status-done');
+        else if (status === '진행중') el.classList.add('status-working');
+        else el.classList.add('status-wait');
+    };
+
+    const updateItemStatusBadge = (el, status) => {
+        if (!el) return;
+        el.textContent = status;
+        el.classList.remove('bg-success', 'bg-warning', 'text-dark', 'bg-primary', 'bg-secondary');
+        if (status === '생산완료') {
+            el.classList.add('bg-success');
+        } else if (status === '생산중') {
+            el.classList.add('bg-warning', 'text-dark');
+        } else if (status === '생산대기중') {
+            el.classList.add('bg-primary');
+        } else {
+            el.classList.add('bg-secondary');
+        }
+    };
+
+    const setDot = (id, state) => {
+        const dot = document.getElementById(`save_dot_${id}`);
+        if (!dot) return;
+        dot.className = 'autosave-dot';
+        if (state === 'saving') dot.classList.add('dot-saving');
+        else if (state === 'saved') dot.classList.add('dot-saved');
+        else if (state === 'error') dot.classList.add('dot-error');
+        else dot.classList.add('dot-idle');
+    };
+
+    document.querySelectorAll('.proc-toggle').forEach((toggle) => {
+        toggle.addEventListener('change', async (e) => {
+            const processId = e.target.dataset.processId;
+            const checked = e.target.checked;
+            const onoffText = checked ? 'ON' : 'OFF';
+
+            if (checked) {
+                const ok = confirm('제작상태를 ON으로 변경하시겠습니까?\n(시작일시가 현재 시각으로 기록됩니다)');
+                if (!ok) {
+                    e.target.checked = false;
+                    return;
+                }
+                alert('제작상태 ON 처리 진행합니다.');
+            }
+
+            let offReason = '';
+            if (!checked) {
+                offReason = prompt('제작상태 OFF 사유를 입력해 주세요.\n(입력한 사유는 히스토리에 기록됩니다)') || '';
+                if (!offReason.trim()) {
+                    alert('OFF 사유가 없어서 취소되었습니다.');
+                    e.target.checked = true;
+                    return;
+                }
+            }
+
+            const formData = new FormData();
+            formData.append('action', 'toggle_process_active');
+            formData.append('process_id', processId);
+            formData.append('is_active', checked ? '1' : '0');
+            if (!checked) formData.append('off_reason', offReason.trim());
+
+            setDot(processId, 'saving');
+            e.target.disabled = true;
+            try {
+                const res = await fetch(window.location.pathname, {
+                    method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData,
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    throw new Error(data.message || '저장 실패');
+                }
+
+                const statusEl = document.getElementById(`proc_status_${processId}`);
+                const qtyEl = document.getElementById(`proc_qty_${processId}`);
+                const pctEl = document.getElementById(`proc_pct_${processId}`);
+                updateStatusChip(statusEl, data.status || '대기');
+                if (qtyEl) qtyEl.textContent = data.progress_qty ?? 0;
+                if (pctEl) pctEl.textContent = `${data.progress_percent ?? 0}%`;
+                if (data.history_log) prependHistoryLog(data.history_log);
+
+                setDot(processId, 'saved');
+                setTimeout(() => setDot(processId, 'idle'), 1000);
+                console.log(`제작상태 ${onoffText} 저장완료`, data);
+            } catch (err) {
+                e.target.checked = !checked;
+                setDot(processId, 'error');
+                setTimeout(() => setDot(processId, 'idle'), 1400);
+                alert(err.message || '저장 중 오류가 발생했습니다.');
+            } finally {
+                e.target.disabled = false;
+            }
+        });
+    });
+
+    document.querySelectorAll('.item-complete-toggle').forEach((toggle) => {
+        toggle.addEventListener('change', async (e) => {
+            const itemId = e.target.dataset.itemId;
+            const isComplete = e.target.checked;
+            const onoffText = isComplete ? 'ON' : 'OFF';
+
+            const ok = confirm(`생산완료를 ${onoffText}으로 변경하시겠습니까?`);
+            if (!ok) {
+                e.target.checked = !isComplete;
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('action', 'toggle_item_complete');
+            formData.append('item_id', itemId);
+            formData.append('is_complete', isComplete ? '1' : '0');
+
+            e.target.disabled = true;
+            try {
+                const res = await fetch(window.location.pathname, {
+                    method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData,
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    throw new Error(data.message || '저장 실패');
+                }
+
+                const itemStatusEl = document.getElementById(`item_status_${itemId}`);
+                updateItemStatusBadge(itemStatusEl, data.item_status || '생산중');
+
+                if (data.last_process_id) {
+                    const procStatusEl = document.getElementById(`proc_status_${data.last_process_id}`);
+                    updateStatusChip(procStatusEl, data.last_process_status || '진행중');
+                }
+                if (data.history_log) prependHistoryLog(data.history_log);
+            } catch (err) {
+                e.target.checked = !isComplete;
+                alert(err.message || '저장 중 오류가 발생했습니다.');
+            } finally {
+                if (!toggle.hasAttribute('disabled')) {
+                    e.target.disabled = false;
+                }
+            }
+        });
+    });
+
+    document.querySelectorAll('.js-open-prod-panel').forEach((btn) => {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const itemId = btn.dataset.itemId;
+            const payload = itemId ? payloadMap[itemId] : null;
+            openPayloadPanel(payload, btn.dataset.focusTab || 'summary');
+        });
+    });
+
+    if (window.bootstrap) {
+        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
+            bootstrap.Tooltip.getOrCreateInstance(el);
+        });
+    }
+});
+</script>
+{% endblock %}

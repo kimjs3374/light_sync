@@ -1,0 +1,375 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .mat-item-card { border: 1px solid #e2e8f0; border-radius: .6rem; background: #fff; }
+    .mat-order-table th, .mat-order-table td { vertical-align: middle; }
+    .bulk-bar { position: sticky; top: 72px; z-index: 50; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="text-primary fw-bold mb-1">📦 자재관리 상세</h2>
+        <div class="text-muted small">{{ project.project_no }} · {{ project.temp_name }}</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('project.material_management') }}" class="btn btn-outline-secondary">목록으로</a>
+        <form method="POST" class="m-0">
+            <input type="hidden" name="action" value="sync_material_orders">
+            <button class="btn btn-primary fw-bold">동기화</button>
+        </form>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <form method="POST" class="card border-0 shadow-sm mb-3 bulk-bar" id="bulkApplyForm">
+            <div class="card-body">
+                <input type="hidden" name="action" value="bulk_update_material_orders">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="fw-bold">⚡ 선택 자재 일괄적용</div>
+                    <span class="badge bg-dark" id="selectedCountBadge">선택 0건</span>
+                </div>
+                <div class="row g-2">
+                    <div class="col-md-3">
+                        <label class="small fw-bold">발주상태</label>
+                        <select name="bulk_order_status" class="form-select form-select-sm">
+                            <option value="">변경안함</option>
+                            <option value="발주대기">발주대기</option>
+                            <option value="발주완료">발주완료</option>
+                            <option value="입고완료">입고완료</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small fw-bold">발주일</label>
+                        <input type="date" name="bulk_order_date" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small fw-bold">입고예정일</label>
+                        <input type="date" name="bulk_expected_in_date" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small fw-bold">입고확인</label>
+                        <select name="bulk_in_confirmed" class="form-select form-select-sm">
+                            <option value="">변경안함</option>
+                            <option value="yes">확인처리</option>
+                            <option value="no">확인해제</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small fw-bold">입고확인일</label>
+                        <input type="date" name="bulk_in_confirmed_date" class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="small fw-bold">외주상태(외주만 적용)</label>
+                        <select name="bulk_outsourcing_status" class="form-select form-select-sm">
+                            <option value="">변경안함</option>
+                            <option value="외주입고대기">외주입고대기</option>
+                            <option value="외주입고">외주입고</option>
+                            <option value="가공중">가공중</option>
+                            <option value="본사입고완료">본사입고완료</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small fw-bold">메모모드</label>
+                        <select name="bulk_note_mode" class="form-select form-select-sm">
+                            <option value="append">뒤에추가</option>
+                            <option value="replace">덮어쓰기</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="small fw-bold">메모</label>
+                        <input type="text" name="bulk_note_text" class="form-control form-control-sm" placeholder="선택건 메모 일괄반영">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end justify-content-end">
+                        <button type="submit" class="btn btn-primary btn-sm fw-bold" id="bulkApplyBtn" disabled>선택건 적용</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        {% for c in project.contracts %}
+        <div class="card shadow-sm border-0 mb-3">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <span class="fw-bold">{{ c.contract_name }}</span>
+                <span class="badge bg-light text-dark">{{ c.items|length }}개 품목</span>
+            </div>
+            <div class="card-body p-2">
+                {% for item in c.items %}
+                <div class="mat-item-card p-2 mb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <div class="fw-bold">{{ item.model_name or '-' }}</div>
+                            <div class="small text-muted">{{ item.category }} · 수량 {{ item.quantity or 0 }}</div>
+                        </div>
+                        <span class="badge bg-secondary">자재 {{ item.material_orders|length }}건</span>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm mat-order-table mb-0" style="min-width: 780px;">
+                            <thead class="table-light text-center small">
+                                <tr>
+                                    <th style="width: 40px;">
+                                        <input type="checkbox"
+                                               class="form-check-input select-all-orders"
+                                               data-group="item-{{ item.id }}"
+                                               title="품목 전체선택">
+                                    </th>
+                                    <th>자재명</th>
+                                    <th>수량</th>
+                                    <th>발주상태</th>
+                                    <th>외주상태</th>
+                                    <th>발주일</th>
+                                    <th>입고예정</th>
+                                    <th>입고확인</th>
+                                    <th>입고확인일</th>
+                                    <th>관리</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for o in item.material_orders %}
+                                <tr>
+                                    <td class="text-center">
+                                        <input type="checkbox"
+                                               class="form-check-input order-check"
+                                               data-group="item-{{ item.id }}"
+                                               name="selected_order_ids"
+                                               value="{{ o.id }}"
+                                               form="bulkApplyForm">
+                                    </td>
+                                    <td class="fw-bold">{{ o.material_name }}</td>
+                                    <td class="text-end">{{ o.quantity }}</td>
+                                    <td class="text-center">
+                                        <span class="badge {% if o.order_status == '입고완료' %}bg-success{% elif o.order_status == '발주완료' %}bg-primary{% else %}bg-secondary{% endif %}">{{ o.order_status }}</span>
+                                    </td>
+                                    <td class="text-center">
+                                        {% if o.is_outsourcing %}
+                                            <span class="badge bg-warning text-dark">{{ o.outsourcing_status or '외주입고대기' }}</span>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">{{ o.order_date.strftime('%Y-%m-%d') if o.order_date else '-' }}</td>
+                                    <td class="text-center">{{ o.expected_in_date.strftime('%Y-%m-%d') if o.expected_in_date else '-' }}</td>
+                                    <td class="text-center">{{ '완료' if o.in_confirmed else '-' }}</td>
+                                    <td class="text-center">{{ o.in_confirmed_at.strftime('%Y-%m-%d') if o.in_confirmed_at else '-' }}</td>
+                                    <td class="text-center">
+                                        <button class="btn btn-sm btn-outline-dark" type="button" data-bs-toggle="modal" data-bs-target="#matOrderModal{{ o.id }}">수정</button>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="10" class="text-center text-muted py-2">자재 정보가 없습니다.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="col-lg-4">
+        {% set history_board_title = '📜 자재 히스토리 보드' %}
+        {% set history_post_action = 'add_chat' %}
+        {% set history_post_url = url_for('project.material_detail', project_id=project.id) %}
+        {% set history_board_id = 'material-history-board-detail' %}
+        {% set history_default_filter = 'material' %}
+        {% include 'components/history_board.html' %}
+    </div>
+</div>
+
+{# 모달은 테이블 밖에 배치해 배경/포커스 깨짐 방지 #}
+{% for c in project.contracts %}
+    {% for item in c.items %}
+        {% for o in item.material_orders %}
+        <div class="modal fade" id="matOrderModal{{ o.id }}" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <form method="POST" class="modal-content">
+                    <input type="hidden" name="action" value="update_material_order">
+                    <input type="hidden" name="material_order_id" value="{{ o.id }}">
+                    <div class="modal-header bg-dark text-white">
+                        <h5 class="modal-title">자재 수정 - {{ item.model_name or '-' }} / {{ o.material_name }}</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="small fw-bold">발주상태</label>
+                                <select name="order_status" class="form-select">
+                                    <option value="발주대기" {% if o.order_status == '발주대기' %}selected{% endif %}>발주대기</option>
+                                    <option value="발주완료" {% if o.order_status == '발주완료' %}selected{% endif %}>발주완료</option>
+                                    <option value="입고완료" {% if o.order_status == '입고완료' %}selected{% endif %}>입고완료</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="small fw-bold">발주일</label>
+                                <input type="date" class="form-control" name="order_date" value="{{ o.order_date.strftime('%Y-%m-%d') if o.order_date else '' }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="small fw-bold">입고예정일</label>
+                                <input type="date" class="form-control" name="expected_in_date" value="{{ o.expected_in_date.strftime('%Y-%m-%d') if o.expected_in_date else '' }}">
+                            </div>
+
+                            {% if o.is_outsourcing %}
+                            <div class="col-md-6">
+                                <label class="small fw-bold">외주상태</label>
+                                <select name="outsourcing_status" class="form-select">
+                                    <option value="외주입고대기" {% if o.outsourcing_status == '외주입고대기' %}selected{% endif %}>외주입고대기</option>
+                                    <option value="외주입고" {% if o.outsourcing_status == '외주입고' %}selected{% endif %}>외주입고</option>
+                                    <option value="가공중" {% if o.outsourcing_status == '가공중' %}selected{% endif %}>가공중</option>
+                                    <option value="본사입고완료" {% if o.outsourcing_status == '본사입고완료' %}selected{% endif %}>본사입고완료</option>
+                                </select>
+                            </div>
+                            {% endif %}
+
+                            <div class="col-12"></div>
+
+                            <div class="col-md-6 d-flex align-items-end">
+                                <div class="form-check form-switch mb-1">
+                                    <input class="form-check-input" type="checkbox" name="in_confirmed" id="in_confirmed_d{{ o.id }}" {% if o.in_confirmed %}checked{% endif %}>
+                                    <label class="form-check-label" for="in_confirmed_d{{ o.id }}">입고확인</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="small fw-bold">입고확인일</label>
+                                <input type="date" class="form-control" name="in_confirmed_date" value="{{ o.in_confirmed_at.strftime('%Y-%m-%d') if o.in_confirmed_at else '' }}">
+                            </div>
+
+                            <div class="col-12">
+                                <label class="small fw-bold">메모</label>
+                                <textarea class="form-control" name="note" rows="3">{{ o.note or '' }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer bg-light">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                        <button class="btn btn-primary fw-bold">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    {% endfor %}
+{% endfor %}
+
+<script>
+    (function () {
+        function todayYmd() {
+            const d = new Date();
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
+        // 자재수정 모달: 발주상태를 발주완료로 바꾸면 발주일 자동입력(빈 값일 때)
+        document.querySelectorAll('form input[name="action"][value="update_material_order"]').forEach(actionInput => {
+            const form = actionInput.closest('form');
+            if (!form) return;
+
+            const statusEl = form.querySelector('select[name="order_status"]');
+            const orderDateEl = form.querySelector('input[name="order_date"]');
+            const inConfirmedEl = form.querySelector('input[name="in_confirmed"]');
+            const inConfirmedDateEl = form.querySelector('input[name="in_confirmed_date"]');
+            if (!statusEl || !orderDateEl) return;
+
+            statusEl.addEventListener('change', function () {
+                if (statusEl.value === '발주완료' && !orderDateEl.value) {
+                    orderDateEl.value = todayYmd();
+                }
+            });
+
+            if (inConfirmedEl && inConfirmedDateEl) {
+                inConfirmedEl.addEventListener('change', function () {
+                    if (inConfirmedEl.checked && !inConfirmedDateEl.value) {
+                        inConfirmedDateEl.value = todayYmd();
+                    }
+                    if (!inConfirmedEl.checked) {
+                        inConfirmedDateEl.value = '';
+                    }
+                });
+            }
+        });
+
+        const bulkStatusEl = document.querySelector('#bulkApplyForm select[name="bulk_order_status"]');
+        const bulkOrderDateEl = document.querySelector('#bulkApplyForm input[name="bulk_order_date"]');
+        if (bulkStatusEl && bulkOrderDateEl) {
+            bulkStatusEl.addEventListener('change', function () {
+                if (bulkStatusEl.value === '발주완료' && !bulkOrderDateEl.value) {
+                    bulkOrderDateEl.value = todayYmd();
+                }
+            });
+        }
+
+        const bulkInConfirmedEl = document.querySelector('#bulkApplyForm select[name="bulk_in_confirmed"]');
+        const bulkInConfirmedDateEl = document.querySelector('#bulkApplyForm input[name="bulk_in_confirmed_date"]');
+        if (bulkInConfirmedEl && bulkInConfirmedDateEl) {
+            bulkInConfirmedEl.addEventListener('change', function () {
+                if (bulkInConfirmedEl.value === 'yes' && !bulkInConfirmedDateEl.value) {
+                    bulkInConfirmedDateEl.value = todayYmd();
+                }
+                if (bulkInConfirmedEl.value === 'no') {
+                    bulkInConfirmedDateEl.value = '';
+                }
+            });
+        }
+
+        const checks = Array.from(document.querySelectorAll('.order-check'));
+        const selectAllBoxes = Array.from(document.querySelectorAll('.select-all-orders'));
+        const countBadge = document.getElementById('selectedCountBadge');
+        const bulkBtn = document.getElementById('bulkApplyBtn');
+
+        function getChecksByGroup(group) {
+            return checks.filter(ch => ch.dataset.group === group);
+        }
+
+        function refreshSelectedCount() {
+            const selected = checks.filter(ch => ch.checked).length;
+            if (countBadge) countBadge.textContent = `선택 ${selected}건`;
+            if (bulkBtn) bulkBtn.disabled = selected === 0;
+        }
+
+        function syncGroupHeader(group) {
+            const groupChecks = getChecksByGroup(group);
+            const header = selectAllBoxes.find(h => h.dataset.group === group);
+            if (!header || !groupChecks.length) return;
+            header.checked = groupChecks.every(ch => ch.checked);
+        }
+
+        checks.forEach(ch => {
+            ch.addEventListener('change', function () {
+                syncGroupHeader(ch.dataset.group);
+                refreshSelectedCount();
+            });
+        });
+
+        selectAllBoxes.forEach(allBox => {
+            allBox.addEventListener('change', function () {
+                const group = allBox.dataset.group;
+                const groupChecks = getChecksByGroup(group);
+                groupChecks.forEach(ch => { ch.checked = allBox.checked; });
+                refreshSelectedCount();
+            });
+        });
+
+        const bulkForm = document.getElementById('bulkApplyForm');
+        if (bulkForm) {
+            bulkForm.addEventListener('submit', function (e) {
+                const selected = checks.filter(ch => ch.checked).length;
+                if (!selected) {
+                    e.preventDefault();
+                    return;
+                }
+                const ok = confirm(`선택한 ${selected}건에 일괄적용 하시겠습니까?`);
+                if (!ok) e.preventDefault();
+            });
+        }
+
+        selectAllBoxes.forEach(h => syncGroupHeader(h.dataset.group));
+        refreshSelectedCount();
+    })();
+</script>
+{% endblock %}

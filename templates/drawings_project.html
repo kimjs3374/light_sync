@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
+    <div>
+        <h3 class="m-0">📐 도면관리 - {{ project.temp_name }}</h3>
+        <small class="text-muted">{{ project.project_no }}</small>
+    </div>
+    <a href="{{ url_for('drawing.drawings_index') }}" class="btn btn-sm btn-secondary">프로젝트 목록</a>
+</div>
+
+{% if can_write %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white fw-bold">PDF 업로드 (신규/버전업)</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('drawing.upload_drawing', project_id=project.id) }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="small fw-bold">기존 도면 선택(버전업)</label>
+                <select class="form-select form-select-sm" name="drawing_id">
+                    <option value="">신규 도면으로 등록</option>
+                    {% for d in drawings %}
+                    <option value="{{ d.id }}">{{ d.title }} ({{ d.drawing_type }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="small fw-bold">도면명(신규일 때 필수)</label>
+                <input type="text" class="form-control form-control-sm" name="title" placeholder="예: 주경기장 배치도">
+            </div>
+            <div class="col-md-2">
+                <label class="small fw-bold">도면유형</label>
+                <select class="form-select form-select-sm" name="drawing_type">
+                    {% for opt in drawing_type_options %}
+                    <option value="{{ opt }}">{{ opt }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="small fw-bold">PDF 파일</label>
+                <input type="file" class="form-control form-control-sm" name="pdf_file" accept=".pdf,application/pdf" required>
+            </div>
+            <div class="col-md-1 d-grid">
+                <button class="btn btn-sm btn-primary fw-bold">업로드</button>
+            </div>
+        </form>
+        <div class="small text-muted mt-2">※ 권한: 영업부/관리자만 업로드 가능</div>
+    </div>
+</div>
+{% endif %}
+
+{% for d in drawings %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <div>
+            <b>{{ d.title }}</b>
+            <span class="badge bg-info text-dark ms-1">{{ d.drawing_type }}</span>
+        </div>
+        <small class="text-muted">최근수정: {{ (d.updated_at or d.created_at).strftime('%y/%m/%d %H:%M') }}</small>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:70px;">버전</th>
+                    <th>PDF</th>
+                    <th style="width:120px;">상태</th>
+                    <th>메시지</th>
+                    <th style="width:280px;">동작</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in d.versions %}
+                <tr>
+                    <td>v{{ v.version_no }} {% if v.is_latest %}<span class="badge bg-dark">latest</span>{% endif %}</td>
+                    <td><code>{{ v.pdf_path or v.dwg_path }}</code></td>
+                    <td>
+                        {% if v.convert_status == 'SUCCESS' %}
+                            <span class="badge bg-success">완료</span>
+                        {% elif v.convert_status == 'FAILED' %}
+                            <span class="badge bg-danger">실패</span>
+                        {% elif v.convert_status == 'PROCESSING' %}
+                            <span class="badge bg-warning text-dark">처리중</span>
+                        {% else %}
+                            <span class="badge bg-secondary">업로드됨</span>
+                        {% endif %}
+                    </td>
+                    <td class="small">{{ v.convert_message or '-' }}</td>
+                    <td class="d-flex flex-wrap gap-1">
+                        {% if v.convert_status == 'SUCCESS' and v.pdf_path %}
+                            <a class="btn btn-sm btn-outline-dark" target="_blank" href="{{ url_for('drawing.view_pdf', version_id=v.id) }}">보기</a>
+                            <a class="btn btn-sm btn-outline-success" href="{{ url_for('drawing.download_pdf', version_id=v.id) }}">다운로드</a>
+                        {% endif %}
+                        {% if can_write %}
+                        <form method="POST" action="{{ url_for('drawing.delete_drawing_version', version_id=v.id) }}" class="d-inline" onsubmit="return confirm('v{{ v.version_no }} 버전을 삭제할까요?');">
+                            <button class="btn btn-sm btn-outline-danger">삭제</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-light border text-muted">등록된 도면이 없습니다.</div>
+{% endfor %}
+
+{% endblock %}

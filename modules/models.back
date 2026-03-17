@@ -1,0 +1,211 @@
+# 파일 위치: C:\light_sync\modules\models.py
+import os
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, Date, Text, Float, ForeignKey, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
+import datetime
+
+Base = declarative_base()
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_DIR = os.path.join(BASE_DIR, 'DB')
+if not os.path.exists(DB_DIR):
+    os.makedirs(DB_DIR)
+DB_PATH = os.path.join(DB_DIR, 'light_sync.db')
+
+# -------------------------------------------------------------------
+# 1. 마스터 현장 (Projects) - 설계와 계약의 공통 마스터
+# -------------------------------------------------------------------
+class Project(Base):
+    __tablename__ = 'projects'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_no = Column(String(50), unique=True, nullable=False) # 관리번호
+    
+    temp_name = Column(String(100), nullable=False) # 현장 가칭
+    short_name = Column(String(50))                 # 약칭
+    
+    # 💡 주소 관리 강화 (현장 vs 납품주소)
+    site_address = Column(String(500))      # 현장 주소
+    shipping_address = Column(String(500))  # 실제 납품 주소
+    is_shipping_same = Column(Boolean, default=True) # 현장주소와 동일 체크박스용
+    
+    site_memo = Column(Text) # 현장 특이사항 및 메모
+    
+    # 💡 [추가] 작업 경로 및 설계기준 저장용
+    work_path = Column(String(500)) 
+    design_basis = Column(Text)
+
+    status = Column(String(50), default="설계/영업")
+    is_urgent = Column(Boolean, default=False) # 긴급 현장 여부
+    
+    is_contracted = Column(Boolean, default=False) # 계약 체결 여부
+    contract_date = Column(Date, nullable=True) # 설계에서 넘어올 때의 기준일
+    
+    # 관계 설정
+    # 설계 단계 자재
+    materials = relationship("Material", back_populates="project", cascade="all, delete-orphan")
+    # 💡 [신규] 계약 정보 (1현장 : N계약)
+    contracts = relationship("Contract", back_populates="project", cascade="all, delete-orphan")
+    
+    sports_modules = relationship("SportsModule", back_populates="project", cascade="all, delete-orphan")
+    history_logs = relationship("HistoryLog", back_populates="project", cascade="all, delete-orphan")
+    contacts = relationship("Contact", back_populates="project", cascade="all, delete-orphan")
+
+# -------------------------------------------------------------------
+# 💡 2. [신규] 계약 정보 (Contracts) - 한 현장당 1~9건
+# -------------------------------------------------------------------
+class Contract(Base):
+    __tablename__ = 'contracts'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    
+    contract_name = Column(String(200), nullable=False) # 계약명
+    contract_date = Column(Date)                       # 계약일
+    delivery_due_date = Column(Date)                   # 납품기일 (D-Day 계산용)
+    
+    is_prof_inspection = Column(Boolean, default=False) # 전문기관검수여부 (💡 체크 시 파란 음영)
+    is_urgent_prod = Column(Boolean, default=False)     # 긴급제작건 여부 (💡 체크 시 빨간 음영)
+    
+    project = relationship("Project", back_populates="contracts")
+    # 💡 계약별 품목 (1계약 : N품목)
+    items = relationship("ContractItem", back_populates="contract", cascade="all, delete-orphan")
+
+# -------------------------------------------------------------------
+# 💡 3. [신규] 계약별 상세 품목 (ContractItems)
+# -------------------------------------------------------------------
+class ContractItem(Base):
+    __tablename__ = 'contract_items'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    contract_id = Column(Integer, ForeignKey('contracts.id'), nullable=False)
+    
+    category = Column(String(50), nullable=False) # 품목구분 (조명기구, 타워 등)
+    model_name = Column(String(200))             # 모델명
+    quantity = Column(Integer, default=0)         # 수량
+    
+    barcode_id = Column(String(100), nullable=True) # 바코드 (💡 조명기구만 입력)
+    
+    # 부서별 진행 단계
+    status_sales = Column(String(50), default="계약확인")
+    status_admin = Column(String(50), default="자재확인중")
+    status_prod = Column(String(50), default="자재입고대기")
+    
+    contract = relationship("Contract", back_populates="items")
+
+# -------------------------------------------------------------------
+# 💡 4. 담당자 연락처 (Contacts)
+# -------------------------------------------------------------------
+class Contact(Base):
+    __tablename__ = 'contacts'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    
+    name = Column(String(50), nullable=False)    # 이름
+    phone = Column(String(50))                   # 연락처
+    email = Column(String(100))                  # 이메일
+    category = Column(String(50))                # 구분 (감독관, 업체, 감리, 배송 등)
+    
+    project = relationship("Project", back_populates="contacts")
+
+# -------------------------------------------------------------------
+# 5. 설계 단계 자재/품목 (Materials) - 설계관리에서 사용
+# -------------------------------------------------------------------
+class Material(Base):
+    __tablename__ = 'materials'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    
+    category = Column(String(50), nullable=False) 
+    contract_name = Column(String(200)) 
+    model_name = Column(String(200))    
+    quantity = Column(String(50))       
+    
+    barcode_id = Column(String(100), unique=True, nullable=True) 
+    expected_arrival_date = Column(Date, nullable=True)          
+    
+    status_sales = Column(String(50), default="계약확인")      
+    status_admin = Column(String(50), default="자재확인중")    
+    status_prod = Column(String(50), default="자재입고대기")   
+    
+    project = relationship("Project", back_populates="materials")
+
+# -------------------------------------------------------------------
+# 6. 스포츠 조도 계산 모듈 (Sports Lux)
+# -------------------------------------------------------------------
+class SportsModule(Base):
+    __tablename__ = 'sports_modules'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    
+    grid_layout = Column(String(50)) 
+    design_lux = Column(Float, default=0.0) 
+    measured_lux_data = Column(Text) 
+    
+    avg_lux = Column(Float, default=0.0) 
+    u1_uniformity = Column(Float, default=0.0) 
+    
+    project = relationship("Project", back_populates="sports_modules")
+
+# -------------------------------------------------------------------
+# 7. 업무 히스토리 로그 (Feed)
+# -------------------------------------------------------------------
+class HistoryLog(Base):
+    __tablename__ = 'history_logs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    
+    user_name = Column(String(50), default="사용자")
+    content = Column(Text, nullable=False)           
+    created_at = Column(DateTime, default=datetime.datetime.now) 
+    
+    project = relationship("Project", back_populates="history_logs")
+
+# -------------------------------------------------------------------
+# 👑 8. 시스템 권한 및 계정 (Auth)
+# -------------------------------------------------------------------
+class GroupPermission(Base):
+    __tablename__ = 'group_permissions'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    group_name = Column(String(50), unique=True, nullable=False)
+    allowed_menus = Column(Text, nullable=False)
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), unique=True, nullable=False)
+    password_hash = Column(String(200), nullable=False)
+    full_name = Column(String(50), nullable=False)
+    phone_number = Column(String(20), nullable=False)
+    user_group = Column(String(50), ForeignKey('group_permissions.group_name'))
+    role = Column(String(20), default="user") 
+    is_approved = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+# -------------------------------------------------------------------
+# DB 연결 및 초기화
+# -------------------------------------------------------------------
+engine = create_engine(f'sqlite:///{DB_PATH}')
+SessionLocal = sessionmaker(bind=engine)
+
+def init_db():
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        if not db.query(GroupPermission).first():
+            all_menus = "🏠 메인 현황판,📐 설계관리 리스트,📋 계약관리 리스트,🏟️ 스포츠 조도 계산기"
+            db.add(GroupPermission(group_name="최고관리자", allowed_menus=all_menus + ",👑 시스템 및 권한 관리"))
+            db.add(GroupPermission(group_name="영업부", allowed_menus=all_menus))
+            db.add(GroupPermission(group_name="관리부", allowed_menus=all_menus))
+            db.add(GroupPermission(group_name="생산부", allowed_menus=all_menus))
+            db.commit()
+
+        admin_exists = db.query(User).filter_by(username="admin").first()
+        if not admin_exists:
+            import bcrypt
+            hashed_pw = bcrypt.hashpw("admin1234".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            db.add(User(username="admin", password_hash=hashed_pw, full_name="최고관리자",
+                        phone_number="010-0000-0000", user_group="최고관리자", role="admin", is_approved=True))
+            db.commit()
+    except:
+        db.rollback()
+    finally:
+        db.close()

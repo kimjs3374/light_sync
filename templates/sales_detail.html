@@ -1,0 +1,425 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .contract-item-table { width: 100%; min-width: 0; }
+    .contact-mini-table { min-width: 420px; }
+    .readonly-cell { background: #f8fafc; }
+    .spec-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:.55rem; padding:.55rem; min-width: 260px; }
+    .spec-grid { display:grid; grid-template-columns:repeat(2, minmax(130px, 1fr)); gap:.45rem; }
+    .sales-table { table-layout: fixed; }
+    .sales-table th, .sales-table td { padding-top: .62rem; padding-bottom: .62rem; vertical-align: middle; }
+</style>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
+    <h3 class="m-0 text-primary">💼 [영업관리] {{ project.temp_name }} <span class="fs-5 text-muted">({{ project.project_no }})</span></h3>
+    <a href="{{ url_for('sales.sales_list') }}" class="btn btn-sm btn-secondary">목록으로</a>
+</div>
+
+<p class="text-muted mb-3" style="font-size:.9rem;">
+    계약관리 상세와 동일한 구조를 유지하며, 이 화면에서는 <b>협의내용(영업단계/납품예정일/품목 스펙)</b>만 수정 가능합니다.
+</p>
+
+<div class="row">
+    <div class="col-md-8">
+        <h5 class="fw-bold mb-3">🌳 계약 트리 기반 상세 (영업 수정 전용)</h5>
+
+        {% for c in project.contracts %}
+        <div class="card mb-3 shadow-sm border-0 border-start border-4 border-primary">
+            <div class="card-header bg-white small fw-bold">
+                계약명 : {{ c.contract_name }} / 계약일 : {{ c.contract_date or '-' }} / 납품기일 : {{ c.delivery_due_date or '-' }}
+            </div>
+
+            <div class="card-body bg-light p-2">
+                {% for item in c.items %}
+                <div class="card mb-2 border-0 shadow-sm">
+                    <div class="card-body p-2">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle mb-0 bg-white contract-item-table sales-table">
+                                <thead class="table-light text-center">
+                                    <tr>
+                                        <th style="width:16%;">모델명</th>
+                                        <th style="width:12%;">상태라벨</th>
+                                        <th style="width:38%;">협의스펙(수정)</th>
+                                        <th style="width:10%;">도면탭</th>
+                                        <th style="width:14%;">납품예정일</th>
+                                        <th style="width:10%;">저장</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="text-center">
+                                            <div class="fw-bold text-dark">{{ item.model_name or '-' }}</div>
+                                            <div class="small text-muted">{{ item.category or c.item_group or '-' }} / {{ item.quantity or 0 }}EA</div>
+                                        </td>
+                                        <td class="text-center">
+                                            {% set st = item.status_sales or '계약확인' %}
+                                            <span class="badge {% if st == '협의완료' %}bg-success{% elif st == '상세협의중' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ st }}</span>
+                                        </td>
+                                        <td>
+                                            <div id="spec_container_{{ item.id }}" class="spec-box"
+                                                 data-category="{{ item.category or c.item_group }}"
+                                                 data-spec='{{ (item.item_spec or {}) | tojson | e }}'></div>
+                                        </td>
+                                        <td class="text-center">
+                                            {% set current_category = (item.category or c.item_group) %}
+                                            {% set drawing_only_items = ['조명타워', '철제가로등주', '철제가로등주(보안등주)', '스텐가로등주', '스텐가로등주(보안등주)'] %}
+                                            {% if current_category in drawing_only_items %}
+                                            <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#drawingModal-{{ item.id }}">도면탭</button>
+                                            {% else %}
+                                            <span class="text-muted small">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <input type="date" class="form-control form-control-sm" name="planned_delivery_date" form="sales_form_{{ item.id }}" value="{{ c.desired_delivery_date.strftime('%Y-%m-%d') if c.desired_delivery_date else '' }}">
+                                        </td>
+                                        <td class="text-center">
+                                            <button class="btn btn-sm btn-primary" type="submit" form="sales_form_{{ item.id }}">저장</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                {% set current_category = (item.category or c.item_group) %}
+                {% set drawing_only_items = ['조명타워', '철제가로등주', '철제가로등주(보안등주)', '스텐가로등주', '스텐가로등주(보안등주)'] %}
+                {% if current_category in drawing_only_items %}
+                <div class="modal fade" id="drawingModal-{{ item.id }}" tabindex="-1">
+                    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                        <div class="modal-content border-0 shadow">
+                            <div class="modal-header bg-info text-dark">
+                                <h5 class="modal-title fw-bold">📐 도면탭 - {{ item.model_name or '-' }}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                {% set next_url = url_for('sales.sales_detail', project_id=project.id) ~ '#item-' ~ item.id %}
+
+                                {% if can_write_drawings %}
+                                <div class="card border-0 shadow-sm mb-3">
+                                    <div class="card-header bg-white fw-bold">PDF 업로드 (신규/버전업)</div>
+                                    <div class="card-body">
+                                        <form method="POST" action="{{ url_for('drawing.upload_drawing', project_id=project.id) }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+                                            <input type="hidden" name="next" value="{{ next_url }}">
+                                            <input type="hidden" name="contract_item_id" value="{{ item.id }}">
+                                            <div class="col-md-3">
+                                                <label class="small fw-bold">기존 도면(버전업)</label>
+                                                <select class="form-select form-select-sm" name="drawing_id">
+                                                    <option value="">신규 등록</option>
+                                                    {% for d in item.drawings %}
+                                                    <option value="{{ d.id }}">{{ d.title }} ({{ d.drawing_type }})</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="small fw-bold">도면명(신규 시)</label>
+                                                <input type="text" class="form-control form-control-sm" name="title" placeholder="예: {{ item.model_name or '도면명' }}">
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label class="small fw-bold">도면유형</label>
+                                                <select class="form-select form-select-sm" name="drawing_type">
+                                                    {% for opt in drawing_type_options %}
+                                                    <option value="{{ opt }}">{{ opt }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="small fw-bold">PDF 파일</label>
+                                                <input type="file" class="form-control form-control-sm" name="pdf_file" accept=".pdf,application/pdf" required>
+                                            </div>
+                                            <div class="col-md-1 d-grid">
+                                                <button class="btn btn-sm btn-primary fw-bold">업로드</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>도면명</th>
+                                                <th style="width:110px;">유형</th>
+                                                <th style="width:80px;">버전</th>
+                                                <th style="width:110px;">상태</th>
+                                                <th>메시지</th>
+                                                <th style="width:320px;">동작</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% set ns = namespace(has_rows=false) %}
+                                            {% for d in item.drawings %}
+                                                {% for v in d.versions %}
+                                                {% set ns.has_rows = true %}
+                                                <tr>
+                                                    <td>{{ d.title }}</td>
+                                                    <td><span class="badge bg-info text-dark">{{ d.drawing_type }}</span></td>
+                                                    <td>v{{ v.version_no }} {% if v.is_latest %}<span class="badge bg-dark">latest</span>{% endif %}</td>
+                                                    <td>
+                                                        {% if v.convert_status == 'SUCCESS' %}
+                                                            <span class="badge bg-success">완료</span>
+                                                        {% elif v.convert_status == 'FAILED' %}
+                                                            <span class="badge bg-danger">실패</span>
+                                                        {% elif v.convert_status == 'PROCESSING' %}
+                                                            <span class="badge bg-warning text-dark">처리중</span>
+                                                        {% else %}
+                                                            <span class="badge bg-secondary">업로드됨</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td class="small">{{ v.convert_message or '-' }}</td>
+                                                    <td class="d-flex flex-wrap gap-1">
+                                                        {% if v.convert_status == 'SUCCESS' and v.pdf_path %}
+                                                            <a class="btn btn-sm btn-outline-dark" target="_blank" href="{{ url_for('drawing.view_pdf', version_id=v.id) }}">보기</a>
+                                                            <a class="btn btn-sm btn-outline-success" href="{{ url_for('drawing.download_pdf', version_id=v.id) }}">다운로드</a>
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            {% endfor %}
+
+                                            {% if not ns.has_rows %}
+                                            <tr><td colspan="6" class="text-center text-muted py-3">등록된 도면이 없습니다.</td></tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+
+                <div class="d-none">
+                    {% for item in c.items %}
+                    <form id="sales_form_{{ item.id }}" method="POST">
+                        <input type="hidden" name="action" value="update_sales_item">
+                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                        <input type="hidden" name="planned_delivery_date">
+                        <input type="hidden" name="spec_payload" value="{}">
+                    </form>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="col-md-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold m-0">👥 현장 담당자 연락처</h5>
+            <button class="btn btn-xs btn-dark fw-bold" data-bs-toggle="modal" data-bs-target="#addContactModal">+ 담당자 추가</button>
+        </div>
+
+        <div class="card shadow-sm border-0 mb-3">
+            <div class="card-body p-2" style="max-height: 220px; overflow-y: auto;">
+                <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle contact-mini-table">
+                    <thead class="table-light">
+                        <tr><th>구분</th><th>이름</th><th>연락처</th><th>이메일</th><th>수정</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for con in project.contacts %}
+                        <tr>
+                            <td><small>{{ con.category or '-' }}</small></td>
+                            <td><b>{{ con.name }}</b></td>
+                            <td><small>{{ con.phone or '-' }}</small></td>
+                            <td><small>{{ con.email or '-' }}</small></td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                                        data-id="{{ con.id }}"
+                                        data-category="{{ con.category or '' }}"
+                                        data-name="{{ con.name or '' }}"
+                                        data-phone="{{ con.phone or '' }}"
+                                        data-email="{{ con.email or '' }}"
+                                        onclick="openContactEditFromBtn(this)">수정</button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted">등록된 연락처 없음</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+
+        {% set history_board_title = '📜 통합 히스토리 보드' %}
+        {% set history_post_action = 'add_sales_comment' %}
+        {% set history_board_id = 'sales-history-board' %}
+        {% set history_default_filter = 'all' %}
+        {% include 'components/history_board.html' %}
+    </div>
+</div>
+
+<div class="modal fade" id="addContactModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content border-0 shadow" method="POST">
+            <input type="hidden" name="action" value="add_contact">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold">👤 담당자 추가</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-2"><label class="small fw-bold">구분</label><input type="text" class="form-control" name="contact_category" placeholder="감독관/업체/감리 등" required></div>
+                <div class="mb-2"><label class="small fw-bold">이름</label><input type="text" class="form-control" name="name" required></div>
+                <div class="mb-2"><label class="small fw-bold">연락처</label><input type="text" class="form-control" name="phone"></div>
+                <div class="mb-2"><label class="small fw-bold">이메일</label><input type="email" class="form-control" name="email"></div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-dark fw-bold">담당자 저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="editContactModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content border-0 shadow" method="POST">
+            <input type="hidden" name="action" value="update_contact">
+            <input type="hidden" name="contact_id" id="edit_contact_id">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title fw-bold">👤 담당자 수정</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-2"><label class="small fw-bold">구분</label><input type="text" name="contact_category" id="edit_contact_category" class="form-control" required></div>
+                <div class="mb-2"><label class="small fw-bold">이름</label><input type="text" name="name" id="edit_contact_name" class="form-control" required></div>
+                <div class="mb-2"><label class="small fw-bold">연락처</label><input type="text" name="phone" id="edit_contact_phone" class="form-control"></div>
+                <div class="mb-2"><label class="small fw-bold">이메일</label><input type="email" name="email" id="edit_contact_email" class="form-control"></div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-primary fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script type="application/json" id="salesSpecSchema">{{ (contract_item_spec_schema or {}) | tojson }}</script>
+<script>
+const SALES_SPEC_SCHEMA = JSON.parse(document.getElementById('salesSpecSchema')?.textContent || '{}');
+const SALES_SPEC_META = {
+    lens_angle: { label: '렌즈각도', type: 'text' },
+    spacing_distance: { label: '이격거리', type: 'text' },
+    body_type: { label: '일체형/분리형', type: 'select', options: ['일체형', '분리형'] },
+    has_stabilizer_box: { label: '안정기함 유무', type: 'boolean' },
+    stabilizer_vendor_contact: { label: '안정기함 업체 연락처', type: 'text' },
+    stabilizer_address: { label: '주소', type: 'text' },
+    smps_shipment_schedule: { label: 'SMPS 발송 일정', type: 'date' },
+    is_integrated: { label: '일체형 여부', type: 'boolean' },
+    tower_height: { label: '조명타워 높이', type: 'text' },
+    lamp_count: { label: '몇등용인지(수량)', type: 'number' },
+    replace_or_new: { label: '교체/신설 여부', type: 'select', options: ['교체', '신설'] },
+    anchor_spacing: { label: '기초앙카간격', type: 'text' },
+    arm_type: { label: '암대타입', type: 'text' },
+    is_painted: { label: '도장 여부', type: 'boolean' },
+    paint_color: { label: '도장 색상', type: 'text' },
+    stainless_finish_type: { label: '광택/도장 여부', type: 'select', options: ['광택', '도장'] },
+};
+
+function specInput(name, value, formId) {
+    const meta = SALES_SPEC_META[name] || { label: name, type: 'text' };
+    const n = `spec_${name}`;
+    const v = value ?? '';
+    const formAttr = formId ? ` form="${formId}"` : '';
+    if (meta.type === 'select') {
+        const opts = (meta.options || []).map(o => `<option value="${o}" ${String(v) === String(o) ? 'selected' : ''}>${o}</option>`).join('');
+        return `<label class="small fw-bold d-block mb-0">${meta.label}</label><select name="${n}" class="form-select form-select-sm"${formAttr}>${opts}</select>`;
+    }
+    if (meta.type === 'boolean') {
+        return `<div class="form-check form-switch mt-3"><input class="form-check-input" type="checkbox" name="${n}" value="1" ${v ? 'checked' : ''}${formAttr}><label class="form-check-label small">${meta.label}</label></div>`;
+    }
+    return `<label class="small fw-bold d-block mb-0">${meta.label}</label><input type="${meta.type || 'text'}" name="${n}" class="form-control form-control-sm" value="${v}"${formAttr}>`;
+}
+
+function renderSpec(container, category, specData = {}, formId = '') {
+    const schema = SALES_SPEC_SCHEMA[category] || {};
+    const fields = [...(schema.required || [])];
+    const cond = schema.conditional_required || {};
+    Object.entries(cond).forEach(([trigger, rule]) => {
+        const currentVal = Object.prototype.hasOwnProperty.call(specData, trigger) ? specData[trigger] : null;
+        if (currentVal === rule.equals) (rule.fields || []).forEach(f => fields.push(f));
+    });
+    const unique = [...new Set(fields)];
+    container.innerHTML = unique.length
+        ? `<div class="spec-grid">${unique.map(f => `<div>${specInput(f, specData[f], formId)}</div>`).join('')}</div>`
+        : '<span class="text-muted small">스펙 없음</span>';
+
+    container.querySelectorAll('input[type="checkbox"], select').forEach(el => {
+        el.addEventListener('change', () => {
+            const latest = {};
+            container.querySelectorAll('[name^="spec_"]').forEach(i => {
+                latest[i.name.replace('spec_', '')] = i.type === 'checkbox' ? i.checked : i.value;
+            });
+            renderSpec(container, category, latest, formId);
+        });
+    });
+}
+
+document.querySelectorAll('[id^="spec_container_"]').forEach(container => {
+    const category = container.dataset.category;
+    const itemId = (container.id || '').replace('spec_container_', '');
+    const formId = `sales_form_${itemId}`;
+    let spec = {};
+    try { spec = JSON.parse(container.dataset.spec || '{}'); } catch (e) {}
+    renderSpec(container, category, spec, formId);
+});
+
+document.querySelectorAll('form[id^="sales_form_"]').forEach(form => {
+    const payloadInput = form.querySelector('input[name="spec_payload"]');
+    if (!payloadInput) return;
+
+    form.addEventListener('submit', () => {
+        const itemIdInput = form.querySelector('input[name="item_id"]');
+        const itemId = itemIdInput ? itemIdInput.value : '';
+        const container = document.getElementById(`spec_container_${itemId}`);
+        const payload = {};
+        (container || form).querySelectorAll('[name^="spec_"]').forEach(el => {
+            const key = el.name.replace('spec_', '');
+            payload[key] = el.type === 'checkbox' ? el.checked : el.value;
+        });
+        payloadInput.value = JSON.stringify(payload);
+
+        const row = document.querySelector(`button[form="${form.id}"]`)?.closest('tr');
+        const plannedInput = row ? row.querySelector('input[name="planned_delivery_date"]') : null;
+        if (plannedInput) {
+            const hiddenPlanned = form.querySelector('input[name="planned_delivery_date"]');
+            if (hiddenPlanned) hiddenPlanned.value = plannedInput.value || '';
+        }
+    });
+});
+
+function openContactEdit(id, category, name, phone, email) {
+    const idEl = document.getElementById('edit_contact_id');
+    const catEl = document.getElementById('edit_contact_category');
+    const nameEl = document.getElementById('edit_contact_name');
+    const phoneEl = document.getElementById('edit_contact_phone');
+    const emailEl = document.getElementById('edit_contact_email');
+
+    if (!idEl || !catEl || !nameEl || !phoneEl || !emailEl) return;
+
+    idEl.value = id || '';
+    catEl.value = category || '';
+    nameEl.value = name || '';
+    phoneEl.value = phone || '';
+    emailEl.value = email || '';
+
+    new bootstrap.Modal(document.getElementById('editContactModal')).show();
+}
+
+function openContactEditFromBtn(btn) {
+    openContactEdit(
+        btn.dataset.id,
+        btn.dataset.category,
+        btn.dataset.name,
+        btn.dataset.phone,
+        btn.dataset.email
+    );
+}
+
+</script>
+{% endblock %}

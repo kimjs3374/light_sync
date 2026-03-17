@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .delivery-board .table { table-layout: fixed; border-collapse: collapse; }
+    .delivery-board th, .delivery-board td { vertical-align: middle; padding-top: .62rem; padding-bottom: .62rem; border-left: 0 !important; border-right: 0 !important; }
+    .delivery-board thead th { background: #f8fafc !important; color: #334155 !important; border-top: 0 !important; border-bottom: 1px solid #e2e8f0 !important; }
+    .delivery-board tbody td { border-top: 1px solid #eef2f7 !important; border-bottom: 1px solid #eef2f7 !important; }
+    .delivery-main-row:hover { background: #f8fafc !important; }
+    .delivery-board > .table { min-width: 920px; }
+    .delivery-subtable { min-width: 860px; }
+    .delivery-subtable .clickable-item-row { cursor: pointer; }
+    .delivery-subtable .clickable-item-row:hover { background: #f1f5f9; }
+
+    @media (max-width: 767.98px) {
+        .delivery-header-actions,
+        .delivery-header-actions .btn {
+            width: 100%;
+        }
+        .delivery-header-actions form {
+            width: 100%;
+        }
+    }
+</style>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">🚚 납품관리 리스트</h2>
+    <div class="delivery-header-actions">
+        <form method="POST" class="m-0">
+            <input type="hidden" name="action" value="sync_deliveries">
+            <button class="btn btn-primary fw-bold">납품 자동동기화</button>
+        </form>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-2 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">전체 현장</small><div class="fw-bold fs-5">{{ stats.total_projects }}</div></div></div></div>
+    <div class="col-md-2 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">조회 현장</small><div class="fw-bold fs-5">{{ stats.filtered_projects }}</div></div></div></div>
+    <div class="col-md-2 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">납품건</small><div class="fw-bold fs-5">{{ stats.total_deliveries }}</div></div></div></div>
+    <div class="col-md-2 col-6"><div class="card border-0 shadow-sm border-start border-4 border-secondary"><div class="card-body py-2"><small class="text-muted">납품대기</small><div class="fw-bold fs-5 text-secondary">{{ stats.waiting }}</div></div></div></div>
+    <div class="col-md-2 col-6"><div class="card border-0 shadow-sm border-start border-4 border-warning"><div class="card-body py-2"><small class="text-muted">진행중</small><div class="fw-bold fs-5 text-warning">{{ stats.working }}</div></div></div></div>
+    <div class="col-md-2 col-6"><div class="card border-0 shadow-sm border-start border-4 border-success"><div class="card-body py-2"><small class="text-muted">납품완료</small><div class="fw-bold fs-5 text-success">{{ stats.done }}</div></div></div></div>
+</div>
+
+<form class="card border-0 shadow-sm mb-4" method="GET">
+    <div class="card-body row g-2 align-items-end">
+        <div class="col-md-4">
+            <label class="small fw-bold">검색</label>
+            <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/계약명">
+        </div>
+        <div class="col-md-2">
+            <label class="small fw-bold">납품상태</label>
+            <select class="form-select" name="status">
+                <option value="all" {% if filters.status=='all' %}selected{% endif %}>전체</option>
+                {% for code, label in status_labels.items() %}
+                <option value="{{ code }}" {% if filters.status==code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="small fw-bold">정렬</label>
+            <select class="form-select" name="sort">
+                <option value="due_asc" {% if filters.sort=='due_asc' %}selected{% endif %}>납기 빠른순</option>
+                <option value="due_desc" {% if filters.sort=='due_desc' %}selected{% endif %}>납기 늦은순</option>
+                <option value="created_desc" {% if filters.sort=='created_desc' %}selected{% endif %}>생성 최신순</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-2 text-md-end mobile-actions">
+            <a href="{{ url_for('delivery.delivery_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+            <button class="btn btn-primary btn-sm fw-bold">검색</button>
+        </div>
+    </div>
+</form>
+
+{% include 'components/priority_section.html' %}
+
+<div class="table-responsive delivery-board">
+    <table class="table shadow-sm align-middle mobile-stack-table">
+        <thead class="text-center small">
+            <tr>
+                <th style="width: 70px;">트리</th>
+                <th style="width: 120px;">관리번호</th>
+                <th style="width: 110px;">D-Day</th>
+                <th>현장명</th>
+                <th style="width: 160px;">납품건수</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in projects %}
+            <tr class="delivery-main-row bg-white">
+                <td class="text-center">
+                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#tree_{{ p.id }}">▼</button>
+                </td>
+                <td class="text-center"><b>{{ p.project_no }}</b></td>
+                <td class="text-center small">
+                    {% if p._dday is none %}
+                        -
+                    {% elif p._dday < 0 %}
+                        <span class="badge bg-danger">D+{{ -p._dday }}</span>
+                    {% elif p._dday == 0 %}
+                        <span class="badge bg-warning text-dark">D-Day</span>
+                    {% else %}
+                        <span class="badge bg-info text-dark">D-{{ p._dday }}</span>
+                    {% endif %}
+                </td>
+                <td class="ps-3 fw-bold text-dark">
+                    <a href="{{ url_for('delivery.delivery_detail', project_id=p.id) }}" class="text-dark text-decoration-none">{{ p.temp_name }}</a>
+                </td>
+                <td class="text-center"><span class="badge bg-primary">{{ p._matched_deliveries|length }}</span></td>
+            </tr>
+
+            <tr class="collapse show" id="tree_{{ p.id }}">
+                <td colspan="5" class="p-3 bg-light">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0 text-center delivery-subtable mobile-stack-table" style="font-size: 0.85rem;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:40%;">계약명</th><th style="width:20%;">납품상태</th><th style="width:20%;">계획/완료 수량</th><th style="width:20%;">최근 회차</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for d in p._matched_deliveries %}
+                                <tr class="clickable-item-row" data-href="{{ url_for('delivery.delivery_detail', project_id=p.id) }}#delivery-{{ d.id }}">
+                                    <td class="text-start" style="max-width: 70ch; word-break: keep-all; white-space: normal;">
+                                        {{ (d.contract.contract_name if d.contract else '-')[:70] }}{% if d.contract and d.contract.contract_name and (d.contract.contract_name|length > 70) %}...{% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge {% if d.delivery_status == 'done' %}bg-success{% elif d.delivery_status == 'in_progress' %}bg-warning text-dark{% elif d.delivery_status == 'coordinating' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+                                            {{ status_labels.get(d.delivery_status, d.delivery_status) }}
+                                        </span>
+                                    </td>
+                                    <td>{{ d.planned_total_qty or 0 }} / {{ d.delivered_total_qty or 0 }}</td>
+                                    <td>
+                                        {% if d._latest_split %}
+                                            {{ d._latest_split.split_no }}차 · {{ d._latest_split.confirmed_date or d._latest_split.scheduled_date or '-' }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-center text-muted">조회된 납품건이 없습니다.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center py-5 text-muted">조회된 현장이 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.clickable-item-row').forEach((row) => {
+        row.addEventListener('click', function (e) {
+            const interactive = e.target.closest('a, button, input, select, textarea, label, form');
+            if (interactive) return;
+            const href = row.dataset.href;
+            if (href) window.location.href = href;
+        });
+    });
+});
+</script>
+{% endblock %}

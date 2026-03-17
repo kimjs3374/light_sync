@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .project-list-board .table { table-layout: fixed; border-collapse: collapse; min-width: 1080px; }
+    .project-list-board th, .project-list-board td {
+        vertical-align: middle;
+        padding-top: .62rem;
+        padding-bottom: .62rem;
+        border-left: 0 !important;
+        border-right: 0 !important;
+    }
+    .project-list-board thead th {
+        background: #f8fafc !important;
+        color: #334155 !important;
+        border-top: 0 !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+    }
+    .project-list-board tbody td {
+        border-top: 1px solid #eef2f7 !important;
+        border-bottom: 1px solid #eef2f7 !important;
+    }
+    .project-list-board tbody td { padding-top: .85rem; padding-bottom: .85rem; }
+    .project-list-table .clickable-row { cursor: pointer; }
+    .project-list-table .clickable-row:hover { background: #f8fafc !important; }
+    .summary-wrap { max-height: none; overflow: visible; }
+
+    @media (max-width: 991.98px) {
+        .project-list-board .table {
+            min-width: 980px;
+            font-size: .86rem;
+        }
+        .project-list-board th,
+        .project-list-board td {
+            padding-top: .5rem;
+            padding-bottom: .5rem;
+        }
+    }
+
+    @media (max-width: 767.98px) {
+        .project-header-actions {
+            width: 100%;
+        }
+        .project-header-actions .btn {
+            width: 100%;
+        }
+        .project-list-board .card-body {
+            padding: .75rem;
+        }
+    }
+</style>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">🧭 설계관리 리스트</h2>
+    {% if session.user_group != '생산부' %}
+    <div class="project-header-actions">
+        <a href="{{ url_for('project.project_create') }}" class="btn btn-primary fw-bold">+ 신규 현장 등록</a>
+    </div>
+    {% else %}
+    <span class="small text-muted">생산부는 현장 등록 권한이 없습니다.</span>
+    {% endif %}
+</div>
+
+{% include 'components/priority_section.html' %}
+
+<div class="card shadow-sm border-0 project-list-board">
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-hover mb-0 align-middle project-list-table mobile-stack-table">
+            <thead class="text-center small">
+                <tr>
+                    <th class="ps-4" style="width:120px;">관리번호</th>
+                    <th style="width:90px;">상태</th>
+                    <th style="width:30%;">현장명</th>
+                    <th style="width:110px;">생성일</th>
+                    <th style="width:120px;">계약예정일</th>
+                    <th style="width:90px;">D-Day</th>
+                    <th style="width:90px;">담당자</th>
+                    <th style="width:18%;">품목 요약 (모델명/수량)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in projects %}
+                <tr class="clickable-row {% if p.is_contracted %}table-light opacity-75{% endif %}"
+                    data-href="{{ url_for('project.project_detail', project_id=p.id) }}">
+                    <td class="ps-4 text-center"><b>{{ p.project_no }}</b></td>
+                    <td class="text-center">
+                        {% if p.is_contracted %}
+                            <span class="badge bg-success">계약완료</span>
+                        {% elif p.is_urgent %}
+                            <span class="badge bg-danger">긴급</span>
+                        {% else %}
+                            <span class="badge bg-secondary">진행중</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('project.project_detail', project_id=p.id) }}" class="text-dark text-decoration-none fw-bold">{{ p.temp_name }}</a>
+                        {% if p.short_name %}<small class="badge bg-light text-dark border ms-1">{{ p.short_name }}</small>{% endif %}
+                    </td>
+                    <td class="text-center">
+                        <small>{{ (p.created_at|string)[:10] if p.created_at else '-' }}</small>
+                    </td>
+                    <td class="text-center">
+                        <small>{{ p.expected_contract_date.strftime('%Y-%m-%d') if p.expected_contract_date else '-' }}</small>
+                    </td>
+                    <td class="text-center">
+                        {% if p.is_contracted %}
+                            <span class="badge bg-success">완료</span>
+                        {% elif p.expected_contract_date %}
+                            {% set dday = (p.expected_contract_date - today).days %}
+                            {% if dday < 0 %}
+                                <span class="badge bg-danger">D+{{ -dday }}</span>
+                            {% elif dday == 0 %}
+                                <span class="badge bg-warning text-dark">D-Day</span>
+                            {% else %}
+                                <span class="badge bg-info text-dark">D-{{ dday }}</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted small">미정</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-light text-dark border">{{ p.contacts|length }}명</span>
+                    </td>
+                    <td>
+                        {% if p.materials %}
+                            {% set ns = namespace(total_qty=0) %}
+                            <div class="summary-wrap pe-1">
+                                {% for mat in p.materials %}
+                                    {% set ns.total_qty = ns.total_qty + (mat.quantity|int) %}
+                                    <div class="mb-1">
+                                        <small class="fw-bold">{{ mat.category }}:</small>
+                                        <small>{{ mat.model_name or '미정' }} ({{ mat.quantity or '0' }})</small>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            <div class="mt-1"><small class="text-primary fw-bold">총수량: {{ ns.total_qty }}</small></div>
+                        {% else %}
+                            <span class="text-muted small">등록된 품목 없음</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="text-center py-4 text-muted">등록된 현장이 없습니다.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.project-list-table .clickable-row').forEach((row) => {
+        row.addEventListener('click', function (e) {
+            const interactive = e.target.closest('a, button, input, select, textarea, label, form');
+            if (interactive) return;
+
+            const href = row.dataset.href;
+            if (href) window.location.href = href;
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,991 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .delivery-shell {
+        background: linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+        border: 1px solid #e2e8f0;
+        border-radius: 22px;
+        padding: 16px;
+    }
+    .delivery-hero {
+        background: linear-gradient(125deg, #0f172a 0%, #1e3a8a 52%, #2563eb 100%);
+        border-radius: 20px;
+        padding: 1.35rem;
+        color: #fff;
+        box-shadow: 0 18px 40px rgba(37, 99, 235, .16);
+    }
+    .delivery-hero-subtle { color: rgba(255,255,255,.74); }
+    .hero-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .36rem .65rem;
+        border-radius: 999px;
+        background: rgba(255,255,255,.12);
+        border: 1px solid rgba(255,255,255,.12);
+        color: #fff;
+        font-size: .78rem;
+        font-weight: 700;
+    }
+    .hero-kpi {
+        background: rgba(255,255,255,.10);
+        border: 1px solid rgba(255,255,255,.14);
+        border-radius: 16px;
+        padding: .9rem 1rem;
+        backdrop-filter: blur(8px);
+    }
+    .hero-kpi .label {
+        font-size: .76rem;
+        color: rgba(255,255,255,.72);
+        margin-bottom: .2rem;
+    }
+    .hero-kpi .value {
+        font-size: 1.35rem;
+        font-weight: 800;
+        line-height: 1;
+        color: #fff;
+    }
+    .delivery-board-card {
+        background: #fff;
+        border: 1px solid #dbe4f0;
+        border-radius: 20px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, .06);
+        overflow: hidden;
+    }
+    .delivery-board-head {
+        padding: 1rem 1.1rem;
+        border-bottom: 1px solid #edf2f7;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+    .delivery-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .45rem;
+        justify-content: flex-end;
+    }
+    .summary-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: .3rem;
+        padding: .32rem .58rem;
+        border-radius: 999px;
+        border: 1px solid #dbe2ec;
+        background: #fff;
+        color: #334155;
+        font-size: .75rem;
+        font-weight: 700;
+    }
+    .delivery-progress-wrap {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: .85rem;
+    }
+    .detail-panel {
+        height: 100%;
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        border-radius: 18px;
+        padding: 1rem;
+    }
+    .panel-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: .75rem;
+        margin-bottom: .85rem;
+    }
+    .panel-heading h5,
+    .panel-heading h6 {
+        margin: 0;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .split-stack {
+        display: flex;
+        flex-direction: column;
+        gap: .8rem;
+    }
+    .split-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: .95rem;
+    }
+    .split-card.is-overdue {
+        border-color: #fecaca;
+        background: linear-gradient(180deg, #fffefe 0%, #fff7f7 100%);
+    }
+    .split-card.is-today {
+        border-color: #bfdbfe;
+        background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+    }
+    .split-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: .75rem;
+    }
+    .split-no {
+        font-size: 1rem;
+        font-weight: 800;
+        color: #111827;
+    }
+    .split-meta-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .7rem;
+        margin-top: .85rem;
+    }
+    .split-meta {
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: .7rem;
+    }
+    .split-meta .label {
+        display: block;
+        font-size: .73rem;
+        color: #64748b;
+        margin-bottom: .15rem;
+        font-weight: 700;
+    }
+    .split-meta strong {
+        color: #111827;
+        font-size: .93rem;
+    }
+    .split-note {
+        margin-top: .8rem;
+        padding: .75rem;
+        background: #fff;
+        border: 1px dashed #cbd5e1;
+        border-radius: 14px;
+        color: #475569;
+        font-size: .85rem;
+        white-space: pre-wrap;
+    }
+    .editor-surface {
+        background: #fff;
+        border: 1px dashed #cbd5e1;
+        border-radius: 16px;
+        padding: 1rem;
+    }
+    .editor-surface label {
+        font-size: .76rem;
+        font-weight: 700;
+        color: #64748b;
+        margin-bottom: .25rem;
+    }
+    .photo-stat {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: .8rem;
+    }
+    .photo-stat .label {
+        display: block;
+        font-size: .74rem;
+        color: #64748b;
+        margin-bottom: .25rem;
+        font-weight: 700;
+    }
+    .photo-stat .value {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .photo-gallery-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .8rem;
+    }
+    .photo-thumb-card {
+        display: block;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: .55rem;
+        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    }
+    .photo-thumb-card:hover {
+        transform: translateY(-2px);
+        border-color: #93c5fd;
+        box-shadow: 0 10px 24px rgba(37, 99, 235, .12);
+    }
+    .photo-thumb-frame {
+        aspect-ratio: 4 / 3;
+        width: 100%;
+        border-radius: 12px;
+        overflow: hidden;
+        background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
+    }
+    .photo-thumb-frame img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+    .photo-gallery-modal {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 1rem;
+    }
+    .photo-gallery-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 18px;
+        overflow: hidden;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, .06);
+    }
+    .photo-gallery-card .photo-thumb-frame {
+        border-radius: 0;
+        aspect-ratio: 16 / 11;
+    }
+    .photo-gallery-body {
+        padding: .85rem;
+    }
+    .photo-file-name {
+        font-weight: 700;
+        color: #0f172a;
+        font-size: .85rem;
+        word-break: break-all;
+    }
+    .mini-metric-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .7rem;
+    }
+    .mini-metric {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: .8rem;
+    }
+    .mini-metric .label {
+        font-size: .73rem;
+        color: #64748b;
+        margin-bottom: .2rem;
+        font-weight: 700;
+    }
+    .mini-metric .value {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .alert-item {
+        border-radius: 14px;
+        padding: .8rem .85rem;
+        border: 1px solid transparent;
+        margin-bottom: .7rem;
+    }
+    .alert-item:last-child { margin-bottom: 0; }
+    .alert-item.danger { background: #fef2f2; border-color: #fecaca; }
+    .alert-item.warning { background: #fff7ed; border-color: #fed7aa; }
+    .alert-item.info { background: #eff6ff; border-color: #bfdbfe; }
+    .alert-item.success { background: #ecfdf5; border-color: #bbf7d0; }
+    .alert-item-title {
+        font-weight: 800;
+        color: #0f172a;
+        margin-bottom: .25rem;
+    }
+    .contact-panel-table {
+        min-width: 420px;
+        margin-bottom: 0;
+    }
+    .delivery-side-sticky {
+        position: sticky;
+        top: 84px;
+    }
+    .empty-state-box {
+        border: 1px dashed #cbd5e1;
+        border-radius: 16px;
+        padding: 1.2rem;
+        background: #fff;
+        color: #64748b;
+        text-align: center;
+    }
+
+    @media (max-width: 991.98px) {
+        .delivery-side-sticky { position: static; }
+    }
+    @media (max-width: 767.98px) {
+        .delivery-shell { padding: 12px; border-radius: 18px; }
+        .delivery-hero { padding: 1rem; }
+        .delivery-actions { justify-content: flex-start; }
+        .photo-gallery-grid { grid-template-columns: 1fr; }
+        .split-meta-grid,
+        .mini-metric-grid { grid-template-columns: 1fr; }
+    }
+</style>
+
+{% set main_contact = project.contacts[0] if project.contacts else none %}
+{% set project_due = namespace(dday=None) %}
+{% for c in project.contracts %}
+    {% if c.delivery_due_date %}
+        {% set current_dday = (c.delivery_due_date - today).days %}
+        {% if project_due.dday is none or current_dday < project_due.dday %}
+            {% set project_due.dday = current_dday %}
+        {% endif %}
+    {% endif %}
+{% endfor %}
+
+{% set summary = namespace(
+    total_planned=0,
+    total_delivered=0,
+    today_splits=0,
+    overdue_splits=0,
+    unassigned=0,
+    done_photo_missing=0,
+    waiting=0,
+    coordinating=0,
+    in_progress=0,
+    done=0,
+    production_photos=0,
+    loading_photos=0,
+    delivery_done_photos=0
+) %}
+{% for d in project.deliveries %}
+    {% set summary.total_planned = summary.total_planned + (d.planned_total_qty or 0) %}
+    {% set summary.total_delivered = summary.total_delivered + (d.delivered_total_qty or 0) %}
+    {% set summary.today_splits = summary.today_splits + (d._today_split_count or 0) %}
+    {% set summary.overdue_splits = summary.overdue_splits + (d._overdue_split_count or 0) %}
+    {% if d._is_unassigned %}{% set summary.unassigned = summary.unassigned + 1 %}{% endif %}
+    {% if d._needs_done_photo %}{% set summary.done_photo_missing = summary.done_photo_missing + 1 %}{% endif %}
+    {% set summary.production_photos = summary.production_photos + (d._photo_counts['production_done'] if d._photo_counts is defined else 0) %}
+    {% set summary.loading_photos = summary.loading_photos + (d._photo_counts['loading'] if d._photo_counts is defined else 0) %}
+    {% set summary.delivery_done_photos = summary.delivery_done_photos + (d._photo_counts['delivery_done'] if d._photo_counts is defined else 0) %}
+    {% if d.delivery_status == 'waiting' %}
+        {% set summary.waiting = summary.waiting + 1 %}
+    {% elif d.delivery_status == 'coordinating' %}
+        {% set summary.coordinating = summary.coordinating + 1 %}
+    {% elif d.delivery_status == 'in_progress' %}
+        {% set summary.in_progress = summary.in_progress + 1 %}
+    {% elif d.delivery_status == 'done' %}
+        {% set summary.done = summary.done + 1 %}
+    {% endif %}
+{% endfor %}
+{% set completion_rate = ((summary.total_delivered / summary.total_planned) * 100) if summary.total_planned else 0 %}
+
+<div class="delivery-shell">
+    <div class="delivery-hero mb-3">
+        <div class="d-flex flex-column flex-xl-row justify-content-between align-items-start gap-3">
+            <div>
+                <div class="small delivery-hero-subtle mb-1">납품 운영 대시보드</div>
+                <h2 class="fw-bold mb-1">🚚 {{ project.temp_name }}</h2>
+                <div class="delivery-hero-subtle small">
+                    {{ project.project_no }} · 계약 {{ project.contracts|length }}건 · 납품 {{ project.deliveries|length }}건 · 연락처 {{ project.contacts|length }}명
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                    <span class="hero-chip">대기 {{ summary.waiting }}</span>
+                    <span class="hero-chip">협의 {{ summary.coordinating }}</span>
+                    <span class="hero-chip">진행 {{ summary.in_progress }}</span>
+                    <span class="hero-chip">완료 {{ summary.done }}</span>
+                    <span class="hero-chip">D-Day {% if project_due.dday is none %}-{% elif project_due.dday < 0 %}D+{{ -project_due.dday }}{% elif project_due.dday == 0 %}D-Day{% else %}D-{{ project_due.dday }}{% endif %}</span>
+                    <span class="hero-chip">대표 연락 {{ main_contact.name if main_contact else '미등록' }} / {{ main_contact.phone if main_contact else '-' }}</span>
+                </div>
+            </div>
+            <div class="delivery-actions">
+                <a href="{{ url_for('delivery.delivery_management') }}" class="btn btn-light btn-sm fw-bold">목록으로</a>
+                <form method="POST" class="m-0">
+                    <input type="hidden" name="action" value="sync_deliveries">
+                    <button class="btn btn-warning btn-sm fw-bold">동기화</button>
+                </form>
+                {% if project.deliveries %}
+                <a href="#delivery-{{ project.deliveries[0].id }}" class="btn btn-outline-light btn-sm">첫 납품카드</a>
+                {% endif %}
+                <a href="#contact-panel" class="btn btn-outline-light btn-sm">연락처</a>
+                <a href="#delivery-history-panel" class="btn btn-outline-light btn-sm">히스토리</a>
+            </div>
+        </div>
+
+        <div class="row g-2 mt-3">
+            <div class="col-md-3 col-6">
+                <div class="hero-kpi">
+                    <div class="label">총 계획수량</div>
+                    <div class="value">{{ summary.total_planned }}</div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="hero-kpi">
+                    <div class="label">총 완료수량</div>
+                    <div class="value">{{ summary.total_delivered }}</div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="hero-kpi">
+                    <div class="label">완료율</div>
+                    <div class="value">{{ completion_rate|round(1) }}%</div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="hero-kpi">
+                    <div class="label">오늘 예정/확정 회차</div>
+                    <div class="value">{{ summary.today_splits }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-xl-8">
+            {% for d in project.deliveries %}
+            {% set progress_percent = d._progress_percent if d._progress_percent is defined else (((d.delivered_total_qty or 0) / (d.planned_total_qty or 1)) * 100 if d.planned_total_qty else 0) %}
+            <div class="delivery-board-card mb-3" id="delivery-{{ d.id }}">
+                <div class="delivery-board-head">
+                    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3">
+                        <div>
+                            <div class="small text-muted mb-1">계약 {{ loop.index }}</div>
+                            <h4 class="fw-bold text-dark mb-1">{{ d.contract.contract_name if d.contract else '미연결 계약' }}</h4>
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                <span class="summary-chip">담당 {{ d.contact_name or '미지정' }}</span>
+                                <span class="summary-chip">연락처 {{ d.contact_phone or '-' }}</span>
+                                <span class="summary-chip">계획 {{ d.planned_total_qty or 0 }}EA</span>
+                                <span class="summary-chip">완료 {{ d.delivered_total_qty or 0 }}EA</span>
+                                {% if d._latest_split %}
+                                <span class="summary-chip">최근 {{ d._latest_split.split_no }}차 · {{ d._latest_split.confirmed_date or d._latest_split.scheduled_date or '-' }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="delivery-actions">
+                            <span class="badge {% if d.delivery_status == 'done' %}bg-success{% elif d.delivery_status == 'in_progress' %}bg-warning text-dark{% elif d.delivery_status == 'coordinating' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+                                {{ status_labels.get(d.delivery_status, d.delivery_status) }}
+                            </span>
+                            <form method="POST" class="m-0">
+                                <input type="hidden" name="action" value="assign_me">
+                                <input type="hidden" name="delivery_id" value="{{ d.id }}">
+                                <button class="btn btn-sm btn-outline-dark">내가 담당</button>
+                            </form>
+                            {% if can_assign_owner %}
+                            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#assignOwnerModal{{ d.id }}">담당자 지정</button>
+                            {% endif %}
+                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#addSplit{{ d.id }}">회차 추가</button>
+                            <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="modal" data-bs-target="#addPhotoModal{{ d.id }}">사진 업로드</button>
+                            <button class="btn btn-sm btn-outline-dark" type="button" data-bs-toggle="modal" data-bs-target="#photoListModal{{ d.id }}">사진 목록</button>
+                        </div>
+                    </div>
+
+                    <div class="delivery-progress-wrap mt-3">
+                        <div class="d-flex justify-content-between align-items-center small text-muted mb-2">
+                            <span>납품 진행률</span>
+                            <span>{{ progress_percent|round(1) }}%</span>
+                        </div>
+                        <div class="progress" style="height: 10px; border-radius: 999px; background:#e2e8f0;">
+                            <div class="progress-bar {% if d.delivery_status == 'done' %}bg-success{% elif d.delivery_status == 'in_progress' %}bg-warning{% elif d.delivery_status == 'coordinating' %}bg-info{% else %}bg-secondary{% endif %}" style="width: {{ 100 if progress_percent > 100 else progress_percent }}%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-body p-3">
+                    <div class="row g-3">
+                        <div class="col-xl-7">
+                            <div class="detail-panel">
+                                <div class="panel-heading">
+                                    <h5>분할납품 운영</h5>
+                                    <span class="small text-muted">{{ d.splits|length }}개 회차</span>
+                                </div>
+
+                                <div class="split-stack">
+                                    {% for s in d.splits|sort(attribute='split_no') %}
+                                    {% set split_base_date = s.confirmed_date or s.scheduled_date %}
+                                    <div class="split-card {% if d._overdue_split_count and split_base_date and split_base_date < today and s.status not in ['done', '완료'] %}is-overdue{% elif split_base_date == today %}is-today{% endif %}">
+                                        <div class="split-card-head">
+                                            <div>
+                                                <div class="d-flex align-items-center flex-wrap gap-2">
+                                                    <span class="split-no">{{ s.split_no or loop.index }}차</span>
+                                                    <span class="badge {% if s.status in ['done', '완료'] %}bg-success{% elif s.status in ['coordinating', '진행'] %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                                                        {% if s.status in ['done', '완료'] %}완료{% elif s.status in ['coordinating', '진행'] %}진행{% else %}예정{% endif %}
+                                                    </span>
+                                                    {% if split_base_date == today %}<span class="badge bg-primary">오늘 일정</span>{% endif %}
+                                                    {% if split_base_date and split_base_date < today and s.status not in ['done', '완료'] %}<span class="badge bg-danger">지연</span>{% endif %}
+                                                </div>
+                                            </div>
+                                            <div class="d-flex gap-1 flex-wrap justify-content-end">
+                                                <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editSplit{{ s.id }}">수정</button>
+                                                <form method="POST" class="m-0" onsubmit="return confirm('해당 회차를 삭제할까요?')">
+                                                    <input type="hidden" name="action" value="delete_split">
+                                                    <input type="hidden" name="split_id" value="{{ s.id }}">
+                                                    <button class="btn btn-sm btn-outline-danger">삭제</button>
+                                                </form>
+                                            </div>
+                                        </div>
+
+                                        <div class="split-meta-grid">
+                                            <div class="split-meta"><span class="label">수량</span><strong>{{ s.quantity or 0 }} EA</strong></div>
+                                            <div class="split-meta"><span class="label">예정일</span><strong>{{ s.scheduled_date.strftime('%Y-%m-%d') if s.scheduled_date else '-' }}</strong></div>
+                                            <div class="split-meta"><span class="label">확정일</span><strong>{{ s.confirmed_date.strftime('%Y-%m-%d') if s.confirmed_date else '-' }}</strong></div>
+                                            <div class="split-meta"><span class="label">상차완료</span><strong>{{ s.loading_done_at.strftime('%Y-%m-%d %H:%M') if s.loading_done_at else '-' }}</strong></div>
+                                            <div class="split-meta"><span class="label">납품완료</span><strong>{{ s.delivered_done_at.strftime('%Y-%m-%d %H:%M') if s.delivered_done_at else '-' }}</strong></div>
+                                            <div class="split-meta"><span class="label">현재상태</span><strong>{% if s.status in ['done', '완료'] %}완료{% elif s.status in ['coordinating', '진행'] %}진행{% else %}예정{% endif %}</strong></div>
+                                        </div>
+
+                                        {% if s.note %}
+                                        <div class="split-note"><b>메모</b><br>{{ s.note }}</div>
+                                        {% endif %}
+
+                                        <div class="collapse mt-3" id="editSplit{{ s.id }}">
+                                            <div class="editor-surface">
+                                                <form method="POST" class="row g-2">
+                                                    <input type="hidden" name="action" value="update_split">
+                                                    <input type="hidden" name="split_id" value="{{ s.id }}">
+                                                    <div class="col-md-2">
+                                                        <label>회차</label>
+                                                        <input class="form-control form-control-sm" type="number" name="split_no" value="{{ s.split_no or 1 }}">
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <label>수량</label>
+                                                        <input class="form-control form-control-sm" type="number" name="quantity" value="{{ s.quantity or 0 }}">
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <label>예정일</label>
+                                                        <input class="form-control form-control-sm" type="date" name="scheduled_date" value="{{ s.scheduled_date.strftime('%Y-%m-%d') if s.scheduled_date else '' }}">
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <label>확정일</label>
+                                                        <input class="form-control form-control-sm" type="date" name="confirmed_date" value="{{ s.confirmed_date.strftime('%Y-%m-%d') if s.confirmed_date else '' }}">
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <label>상차완료</label>
+                                                        <input class="form-control form-control-sm" type="datetime-local" name="loading_done_at" value="{{ s.loading_done_at.strftime('%Y-%m-%dT%H:%M') if s.loading_done_at else '' }}">
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <label>납품완료</label>
+                                                        <input class="form-control form-control-sm" type="datetime-local" name="delivered_done_at" value="{{ s.delivered_done_at.strftime('%Y-%m-%dT%H:%M') if s.delivered_done_at else '' }}">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label>상태</label>
+                                                        <select class="form-select form-select-sm" name="status">
+                                                            <option value="waiting" {% if s.status in ['waiting', '예정'] %}selected{% endif %}>예정</option>
+                                                            <option value="coordinating" {% if s.status in ['coordinating', '진행'] %}selected{% endif %}>진행</option>
+                                                            <option value="done" {% if s.status in ['done', '완료'] %}selected{% endif %}>완료</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-9">
+                                                        <label>메모</label>
+                                                        <input class="form-control form-control-sm" name="note" value="{{ s.note or '' }}" placeholder="운송/현장 특이사항">
+                                                    </div>
+                                                    <div class="col-12 text-end">
+                                                        <button class="btn btn-sm btn-primary fw-bold">회차 저장</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    <div class="empty-state-box">등록된 분할납품 회차가 없습니다. 회차 추가로 일정부터 잡아주세요.</div>
+                                    {% endfor %}
+                                </div>
+
+                                <div class="collapse mt-3" id="addSplit{{ d.id }}">
+                                    <div class="editor-surface">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <h6 class="fw-bold text-dark m-0">새 회차 추가</h6>
+                                            <span class="small text-muted">현재 {{ d.splits|length }}개 회차</span>
+                                        </div>
+                                        <form method="POST" class="row g-2">
+                                            <input type="hidden" name="action" value="add_split">
+                                            <input type="hidden" name="delivery_id" value="{{ d.id }}">
+                                            <div class="col-md-2">
+                                                <label>회차</label>
+                                                <input class="form-control form-control-sm" type="number" name="split_no" min="1" value="{{ (d.splits|length) + 1 }}">
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label>수량</label>
+                                                <input class="form-control form-control-sm" type="number" name="quantity" min="0" value="0">
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label>예정일</label>
+                                                <input class="form-control form-control-sm" type="date" name="scheduled_date">
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label>확정일</label>
+                                                <input class="form-control form-control-sm" type="date" name="confirmed_date">
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label>상태</label>
+                                                <select class="form-select form-select-sm" name="status">
+                                                    <option value="waiting">예정</option>
+                                                    <option value="coordinating">진행</option>
+                                                    <option value="done">완료</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-2 d-grid align-items-end">
+                                                <button class="btn btn-sm btn-primary fw-bold">추가 저장</button>
+                                            </div>
+                                            <div class="col-12">
+                                                <label>메모</label>
+                                                <input class="form-control form-control-sm" name="note" placeholder="운송/현장 특이사항 메모">
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-xl-5">
+                            <div class="detail-panel">
+                                <div class="panel-heading">
+                                    <h5>사진 증빙</h5>
+                                    <span class="small text-muted">총 {{ d.photos|length }}건</span>
+                                </div>
+
+                                <div class="row g-2 mb-3">
+                                    <div class="col-6"><div class="photo-stat"><span class="label">{{ photo_type_labels.get('production_done', '제작완료') }}</span><div class="value">{{ d._photo_counts['production_done'] if d._photo_counts is defined else 0 }}</div></div></div>
+                                    <div class="col-6"><div class="photo-stat"><span class="label">{{ photo_type_labels.get('loading', '상차') }}</span><div class="value">{{ d._photo_counts['loading'] if d._photo_counts is defined else 0 }}</div></div></div>
+                                    <div class="col-6"><div class="photo-stat"><span class="label">{{ photo_type_labels.get('delivery_done', '납품완료') }}</span><div class="value">{{ d._photo_counts['delivery_done'] if d._photo_counts is defined else 0 }}</div></div></div>
+                                    <div class="col-6"><div class="photo-stat"><span class="label">전체 사진</span><div class="value">{{ d.photos|length }}</div></div></div>
+                                </div>
+
+                                {% if d._needs_done_photo %}
+                                <div class="alert-item warning mb-3">
+                                    <div class="alert-item-title">완료 사진 확인 필요</div>
+                                    <div class="small text-muted">계획 수량은 충족했지만 납품완료 사진이 없어 최종 완료 판단이 지연될 수 있습니다.</div>
+                                </div>
+                                {% endif %}
+
+                                {% if d.photos %}
+                                <div class="photo-gallery-grid">
+                                    {% for ph in d.photos|reverse %}
+                                        {% if loop.index <= 6 %}
+                                        <a href="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" target="_blank" class="photo-thumb-card text-decoration-none">
+                                            <div class="photo-thumb-frame">
+                                                <img src="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" alt="{{ ph.file_name }}">
+                                            </div>
+                                            <div class="pt-2">
+                                                <div class="d-flex flex-wrap gap-1 mb-1">
+                                                    <span class="badge bg-light text-dark border">{{ ph._photo_type_label or ph.photo_type }}</span>
+                                                    <span class="badge bg-light text-secondary border">{{ ('#' ~ ph.split_id) if ph.split_id else '공통' }}</span>
+                                                </div>
+                                                <div class="small fw-semibold text-dark text-truncate">{{ ph.file_name }}</div>
+                                                <div class="small text-muted">{{ ph.uploaded_by or '-' }}</div>
+                                            </div>
+                                        </a>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% if d.photos|length > 6 %}
+                                <div class="small text-muted mt-2">최근 6건 썸네일만 표시됩니다. 전체 사진은 사진 목록에서 확인하세요.</div>
+                                {% endif %}
+                                {% else %}
+                                <div class="empty-state-box">업로드된 사진이 없습니다. 제작완료 / 상차 / 납품완료 증빙을 등록해 주세요.</div>
+                                {% endif %}
+
+                                <div class="d-flex flex-wrap gap-2 mt-3">
+                                    <button class="btn btn-sm btn-success fw-bold" type="button" data-bs-toggle="modal" data-bs-target="#addPhotoModal{{ d.id }}">사진 업로드</button>
+                                    <button class="btn btn-sm btn-outline-dark" type="button" data-bs-toggle="modal" data-bs-target="#photoListModal{{ d.id }}">전체 사진 보기</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="delivery-board-card">
+                <div class="card-body p-4 text-center text-muted">
+                    동기화 후 납품카드가 생성됩니다. 아직 연결된 납품 대상이 없습니다.
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="col-xl-4">
+            <div class="delivery-side-sticky d-flex flex-column gap-3">
+                <div class="detail-panel side-card">
+                    <div class="panel-heading">
+                        <h5>오늘의 운영 포인트</h5>
+                        <span class="small text-muted">빠른 현황</span>
+                    </div>
+                    <div class="mini-metric-grid">
+                        <div class="mini-metric"><div class="label">오늘 예정/확정</div><div class="value">{{ summary.today_splits }}</div></div>
+                        <div class="mini-metric"><div class="label">지연 회차</div><div class="value text-danger">{{ summary.overdue_splits }}</div></div>
+                        <div class="mini-metric"><div class="label">담당 미지정</div><div class="value text-warning">{{ summary.unassigned }}</div></div>
+                        <div class="mini-metric"><div class="label">완료사진 필요</div><div class="value text-primary">{{ summary.done_photo_missing }}</div></div>
+                    </div>
+                </div>
+
+                <div class="detail-panel side-card">
+                    <div class="panel-heading">
+                        <h5>체크 필요 항목</h5>
+                        <span class="small text-muted">리스크 요약</span>
+                    </div>
+
+                    {% if not summary.overdue_splits and not summary.unassigned and not summary.done_photo_missing %}
+                    <div class="alert-item success">
+                        <div class="alert-item-title">특이사항 없음</div>
+                        <div class="small text-muted">현재 기준으로 급한 리스크가 보이지 않습니다.</div>
+                    </div>
+                    {% endif %}
+
+                    {% if summary.overdue_splits %}
+                    <div class="alert-item danger">
+                        <div class="alert-item-title">지연 회차 {{ summary.overdue_splits }}건</div>
+                        <div class="small text-muted">
+                            {% for d in project.deliveries %}
+                                {% if d._overdue_split_count %}
+                                • {{ (d.contract.contract_name if d.contract else '미연결 계약')[:34] }} · {{ d._overdue_split_count }}건<br>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if summary.unassigned %}
+                    <div class="alert-item warning">
+                        <div class="alert-item-title">담당자 미지정 {{ summary.unassigned }}건</div>
+                        <div class="small text-muted">
+                            {% for d in project.deliveries %}
+                                {% if d._is_unassigned %}
+                                • {{ (d.contract.contract_name if d.contract else '미연결 계약')[:34] }}<br>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if summary.done_photo_missing %}
+                    <div class="alert-item info">
+                        <div class="alert-item-title">완료사진 필요 {{ summary.done_photo_missing }}건</div>
+                        <div class="small text-muted">
+                            {% for d in project.deliveries %}
+                                {% if d._needs_done_photo %}
+                                • {{ (d.contract.contract_name if d.contract else '미연결 계약')[:34] }}<br>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="detail-panel side-card" id="contact-panel">
+                    <div class="panel-heading">
+                        <h5>현장 담당자 연락처</h5>
+                        <button class="btn btn-sm btn-dark" data-bs-toggle="modal" data-bs-target="#addContactModal">+ 담당자 추가</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle contact-panel-table">
+                            <thead class="table-light">
+                                <tr><th>구분</th><th>이름</th><th>연락처</th><th>이메일</th><th>수정</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for c in project.contacts %}
+                                <tr>
+                                    <td>{{ c.category or '-' }}</td>
+                                    <td class="fw-bold">{{ c.name or '-' }}</td>
+                                    <td>{{ c.phone or '-' }}</td>
+                                    <td>{{ c.email or '-' }}</td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                                                data-id="{{ c.id }}"
+                                                data-category="{{ c.category or '' }}"
+                                                data-name="{{ c.name or '' }}"
+                                                data-phone="{{ c.phone or '' }}"
+                                                data-email="{{ c.email or '' }}"
+                                                onclick="openContactEditFromBtn(this)">수정</button>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="5" class="text-center text-muted py-3">등록된 담당자가 없습니다.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="delivery-history-panel">
+                    {% set history_board_title = '📜 납품 히스토리 보드' %}
+                    {% set history_post_action = 'add_chat' %}
+                    {% set history_post_url = url_for('delivery.delivery_detail', project_id=project.id) %}
+                    {% set history_board_id = 'delivery-history-board-detail' %}
+                    {% set history_default_filter = 'delivery' %}
+                    {% include 'components/history_board.html' %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% for d in project.deliveries %}
+{% if can_assign_owner %}
+<div class="modal fade" id="assignOwnerModal{{ d.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" class="modal-content border-0 shadow">
+            <input type="hidden" name="action" value="assign_delivery_owner">
+            <input type="hidden" name="delivery_id" value="{{ d.id }}">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold">납품담당자 지정</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="small text-muted mb-2">{{ d.contract.contract_name if d.contract else '미연결 계약' }}</div>
+                <select name="owner_user_id" class="form-select" required>
+                    <option value="">담당자 선택</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}">{{ u.full_name }} ({{ u.user_group or '-' }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button class="btn btn-primary fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<div class="modal fade" id="addPhotoModal{{ d.id }}" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <form method="POST" enctype="multipart/form-data" class="modal-content border-0 shadow">
+            <input type="hidden" name="action" value="add_photo">
+            <input type="hidden" name="delivery_id" value="{{ d.id }}">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title fw-bold">사진 업로드</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label class="small fw-bold">사진 구분</label>
+                        <select name="photo_type" class="form-select form-select-sm">
+                            {% for code in photo_type_options %}
+                            <option value="{{ code }}">{{ photo_type_labels.get(code, code) }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="small fw-bold">회차</label>
+                        <select name="split_id" class="form-select form-select-sm">
+                            <option value="">공통</option>
+                            {% for s in d.splits %}
+                            <option value="{{ s.id }}">{{ s.split_no }}차</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="small fw-bold">품목</label>
+                        <select name="contract_item_id" class="form-select form-select-sm">
+                            <option value="">공통</option>
+                            {% if d.contract and d.contract.items %}
+                                {% for it in d.contract.items %}
+                                <option value="{{ it.id }}">{{ (it.model_name or '품목')[:30] }} ({{ it.quantity or 0 }})</option>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="small fw-bold">이미지 파일</label>
+                        <input type="file" name="photo_file" class="form-control" accept="image/*" required>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button class="btn btn-success fw-bold">업로드</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="photoListModal{{ d.id }}" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold">사진 목록 · {{ d.contract.contract_name if d.contract else '미연결 계약' }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="photo-gallery-modal">
+                    {% for ph in d.photos|reverse %}
+                    <div class="photo-gallery-card">
+                        <a href="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" target="_blank" class="text-decoration-none">
+                            <div class="photo-thumb-frame">
+                                <img src="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" alt="{{ ph.file_name }}">
+                            </div>
+                        </a>
+                        <div class="photo-gallery-body">
+                            <div class="d-flex flex-wrap gap-1 mb-2">
+                                <span class="badge bg-light text-dark border">{{ ph._photo_type_label or ph.photo_type }}</span>
+                                <span class="badge bg-light text-secondary border">{{ ('#' ~ ph.split_id) if ph.split_id else '공통' }}</span>
+                            </div>
+                            <div class="photo-file-name mb-1">{{ ph.file_name }}</div>
+                            <div class="small text-muted">{{ ph.uploaded_by or '-' }} · {{ ph.created_at.strftime('%Y-%m-%d %H:%M') if ph.created_at else '-' }}</div>
+                            <div class="d-flex flex-wrap gap-2 mt-3">
+                                <a href="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" target="_blank" class="btn btn-sm btn-outline-dark">원본 보기</a>
+                                <form method="POST" class="d-inline" onsubmit="return confirm('이 사진을 삭제할까요?')">
+                                    <input type="hidden" name="action" value="delete_photo">
+                                    <input type="hidden" name="photo_id" value="{{ ph.id }}">
+                                    <button class="btn btn-sm btn-outline-danger">삭제</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="empty-state-box">업로드된 사진이 없습니다.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<div class="modal fade" id="addContactModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content border-0 shadow" method="POST">
+            <input type="hidden" name="action" value="add_contact">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold">담당자 추가</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2"><label class="small fw-bold">구분</label><input type="text" class="form-control" name="contact_category" required></div>
+                <div class="mb-2"><label class="small fw-bold">이름</label><input type="text" class="form-control" name="name" required></div>
+                <div class="mb-2"><label class="small fw-bold">연락처</label><input type="text" class="form-control" name="phone"></div>
+                <div class="mb-2"><label class="small fw-bold">이메일</label><input type="email" class="form-control" name="email"></div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button class="btn btn-dark fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="editContactModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content border-0 shadow" method="POST">
+            <input type="hidden" name="action" value="update_contact">
+            <input type="hidden" name="contact_id" id="edit_contact_id">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title fw-bold">담당자 수정</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2"><label class="small fw-bold">구분</label><input type="text" name="contact_category" id="edit_contact_category" class="form-control" required></div>
+                <div class="mb-2"><label class="small fw-bold">이름</label><input type="text" name="name" id="edit_contact_name" class="form-control" required></div>
+                <div class="mb-2"><label class="small fw-bold">연락처</label><input type="text" name="phone" id="edit_contact_phone" class="form-control"></div>
+                <div class="mb-2"><label class="small fw-bold">이메일</label><input type="email" name="email" id="edit_contact_email" class="form-control"></div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-primary fw-bold">저장</button>
+                <button type="submit" class="btn btn-outline-danger" onclick="this.form.action.value='delete_contact'; return confirm('삭제할까요?')">삭제</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openContactEdit(id, category, name, phone, email) {
+    document.getElementById('edit_contact_id').value = id || '';
+    document.getElementById('edit_contact_category').value = category || '';
+    document.getElementById('edit_contact_name').value = name || '';
+    document.getElementById('edit_contact_phone').value = phone || '';
+    document.getElementById('edit_contact_email').value = email || '';
+    new bootstrap.Modal(document.getElementById('editContactModal')).show();
+}
+function openContactEditFromBtn(btn) {
+    openContactEdit(btn.dataset.id, btn.dataset.category, btn.dataset.name, btn.dataset.phone, btn.dataset.email);
+}
+</script>
+{% endblock %}

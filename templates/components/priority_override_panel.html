@@ -1,0 +1,50 @@
+{% if can_manage_priority or priority_override %}
+<div class="card shadow-sm border-0 mb-3 {% if priority_override %}border-start border-4 border-danger{% else %}border-start border-4 border-secondary{% endif %}">
+    <div class="card-body">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2">
+            <div>
+                <div class="fw-bold {% if priority_override %}text-danger{% else %}text-secondary{% endif %}">🎯 수동 우선순위</div>
+                {% if priority_override %}
+                    <div class="small text-muted mt-1">현재 이 현장은 <span class="badge bg-danger">수동최우선</span> 으로 지정되어 있습니다.</div>
+                    {% if priority_override.set_by_name or priority_override.updated_at %}
+                    <div class="small text-muted mt-1">
+                        지정자: {{ priority_override.set_by_name or '-' }} / 수정일: {{ (priority_override.updated_at|string)[:19] if priority_override.updated_at else '-' }}
+                    </div>
+                    {% endif %}
+                {% else %}
+                    <div class="small text-muted mt-1">현재는 수동 우선순위 미지정 상태이며 시스템 우선순위를 따릅니다.</div>
+                {% endif %}
+            </div>
+            {% if priority_override %}
+            <span class="badge bg-danger">최우선 적용중</span>
+            {% else %}
+            <span class="badge bg-secondary">시스템 기준 적용중</span>
+            {% endif %}
+        </div>
+
+        {% if priority_override and priority_override.note %}
+        <div class="mt-2 p-2 rounded bg-light small text-dark" style="white-space: pre-wrap;">{{ priority_override.note }}</div>
+        {% endif %}
+
+        {% if can_manage_priority %}
+        <form method="POST" class="row g-2 align-items-end mt-2">
+            <input type="hidden" name="action" value="update_priority_override">
+            <input type="hidden" name="priority_mode" value="set" class="priority-mode-input">
+            <div class="col-12 col-md-8">
+                <label class="small fw-bold">우선순위 사유 / 메모</label>
+                <input type="text" name="priority_note" class="form-control" value="{{ priority_override.note if priority_override else '' }}" placeholder="예: 대표 요청 건, 금일 최우선 대응 필요">
+            </div>
+            <div class="col-12 col-md-4 d-flex gap-2 justify-content-md-end">
+                <button type="submit" class="btn btn-danger fw-bold flex-fill">{{ '수정 저장' if priority_override else '최우선 지정' }}</button>
+                {% if priority_override %}
+                <button type="submit" class="btn btn-outline-secondary flex-fill"
+                        onclick="this.form.querySelector('.priority-mode-input').value='clear'; return confirm('수동 우선순위를 해제할까요?');">
+                    해제
+                </button>
+                {% endif %}
+            </div>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
