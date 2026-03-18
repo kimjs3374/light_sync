@@ -4,10 +4,10 @@
 # 시놀로지 NAS 작업 스케줄러(cron)에 등록하여 사용
 #
 # 설치 방법:
-#   1. 이 파일을 NAS에 복사: /volume1/scripts/nas_folder_sync.sh
-#   2. 실행 권한 부여: chmod +x /volume1/scripts/nas_folder_sync.sh
+#   1. 이 파일을 NAS에 복사: /scripts/nas_folder_sync.sh
+#   2. 실행 권한 부여: chmod +x /scripts/nas_folder_sync.sh
 #   3. 시놀로지 DSM → 제어판 → 작업 스케줄러 → 생성 → 예약된 작업
-#      - 실행 명령: bash /volume1/scripts/nas_folder_sync.sh
+#      - 실행 명령: bash /scripts/nas_folder_sync.sh
 #      - 반복: 매 10분 (또는 원하는 간격)
 # =============================================================
 
@@ -19,9 +19,9 @@ BASE_DIR="/volume1/현장관리/000. 현장관리"
 YEAR=$(date +%Y)
 SCAN_DIR="${BASE_DIR}/${YEAR}"
 
-# 동기화 상태 파일 (이미 전송한 폴더 목록)
-STATE_FILE="/volume1/scripts/.nas_sync_state_${YEAR}.txt"
-LOG_FILE="/volume1/scripts/nas_sync.log"
+# 동기화 상태 파일 (연도별)
+STATE_FILE="/scripts/.nas_sync_state_${YEAR}.txt"
+LOG_FILE="/scripts/nas_sync.log"
 
 # ── 초기화 ──
 touch "$STATE_FILE"
@@ -36,24 +36,42 @@ if [ ! -d "$SCAN_DIR" ]; then
     exit 1
 fi
 
-# ── 새 폴더 감지 ──
+# ── 당해년도 폴더 + .lnk 바로가기 감지 ──
 NEW_FOLDERS=()
 
+# 1) 실제 폴더
 while IFS= read -r -d '' dir; do
     folder_name=$(basename "$dir")
 
-    # 패턴 매칭: YYYY.MM.DD_현장명
     if [[ ! "$folder_name" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}_.+ ]]; then
         continue
     fi
 
-    # 이미 동기화된 폴더인지 확인
     if grep -qxF "$folder_name" "$STATE_FILE" 2>/dev/null; then
         continue
     fi
 
     NEW_FOLDERS+=("$folder_name")
 done < <(find "$SCAN_DIR" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
+
+# 2) .lnk 바로가기 (과년도 현장)
+while IFS= read -r -d '' lnk; do
+    lnk_name=$(basename "$lnk")
+
+    # "2025.09.16_동구청 - 바로 가기.lnk" → "2025.09.16_동구청"
+    folder_name="${lnk_name% - 바로 가기.lnk}"
+    folder_name="${folder_name%.lnk}"
+
+    if [[ ! "$folder_name" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}_.+ ]]; then
+        continue
+    fi
+
+    if grep -qxF "$folder_name" "$STATE_FILE" 2>/dev/null; then
+        continue
+    fi
+
+    NEW_FOLDERS+=("$folder_name")
+done < <(find "$SCAN_DIR" -maxdepth 1 -mindepth 1 -name "*.lnk" -type f -print0 | sort -z)
 
 # ── 새 폴더가 없으면 종료 ──
 if [ ${#NEW_FOLDERS[@]} -eq 0 ]; then
@@ -77,7 +95,7 @@ for f in "${NEW_FOLDERS[@]}"; do
 done
 JSON_ARRAY+="]"
 
-PAYLOAD="{\"folders\": ${JSON_ARRAY}, \"year\": \"${YEAR}\"}"
+PAYLOAD="{\"folders\": ${JSON_ARRAY}}"
 
 # ── API 호출 ──
 RESPONSE=$(curl -s -w "\n%{http_code}" \

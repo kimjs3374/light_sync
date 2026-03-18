@@ -1,0 +1,316 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">입고관리</h2>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#poSelectModal">발주서 기반 입고</button>
+        <a href="{{ url_for('receiving.receiving_create') }}" class="btn btn-outline-primary btn-sm">+ 직접 입고</a>
+    </div>
+</div>
+
+{# --- 통계 카드 --- #}
+<div class="row g-3 mb-3">
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body py-2 text-center">
+                <small class="text-muted">전체 입고</small>
+                <div class="fw-bold fs-5">{{ stats.total }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-warning">
+            <div class="card-body py-2 text-center">
+                <small class="text-muted">검수대기</small>
+                <div class="fw-bold fs-5 text-warning">{{ stats.pending }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-success">
+            <div class="card-body py-2 text-center">
+                <small class="text-muted">검수완료</small>
+                <div class="fw-bold fs-5 text-success">{{ stats.completed }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-danger">
+            <div class="card-body py-2 text-center">
+                <small class="text-muted">반품</small>
+                <div class="fw-bold fs-5 text-danger">{{ stats.returned }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# --- 검색/필터 --- #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-4 col-8">
+                <input type="text" name="q" class="form-control form-control-sm" placeholder="입고번호 또는 거래처명 검색" value="{{ filters.q }}">
+            </div>
+            <div class="col-md-2 col-4">
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">전체 상태</option>
+                    {% for s in status_choices %}
+                    <option value="{{ s }}" {{ 'selected' if filters.status == s }}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm">검색</button>
+                <a href="{{ url_for('receiving.receiving_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# --- 자체 입고 목록 (기존 이력과 동일 포맷) --- #}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-2">
+        <strong>자체 입고 목록</strong>
+        <span class="badge bg-primary ms-1">{{ pagination.total }}건</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.8rem; border-color:#dee2e6;">
+                <colgroup>
+                    <col style="width:88px">
+                    <col style="width:72px">
+                    <col style="width:100px">
+                    <col style="width:22%">
+                    <col style="width:18%">
+                    <col style="width:38px">
+                    <col style="width:28px">
+                    <col style="width:62px">
+                    <col style="width:72px">
+                    <col style="width:10%">
+                </colgroup>
+                <thead>
+                    <tr style="background:#f0f0f0; border-bottom:2px solid #999;">
+                        <th class="py-1 text-center">입고번호</th>
+                        <th class="py-1 text-center">입고일</th>
+                        <th class="py-1 text-center">거래처</th>
+                        <th class="py-1 text-center">품명</th>
+                        <th class="py-1 text-center">규격</th>
+                        <th class="py-1 text-center">수량</th>
+                        <th class="py-1 text-center">단위</th>
+                        <th class="py-1 text-center">단가</th>
+                        <th class="py-1 text-center">금액</th>
+                        <th class="py-1 text-center">비고</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rcv in receivings %}
+                    {% set rows = rcv.detail_rows if rcv.detail_rows else [{}] %}
+                    {% for item in rows %}
+                    <tr style="border-bottom:1px solid #eee;{% if loop.first %} cursor:pointer;{% endif %}" {% if loop.first %}onclick="location.href='{{ url_for('receiving.receiving_detail', rcv_id=rcv.id) }}'"{% endif %}>
+                        {% if loop.first %}
+                        <td rowspan="{{ rows|length }}" class="align-top" style="border-right:1px solid #ccc;">
+                            <a href="{{ url_for('receiving.receiving_detail', rcv_id=rcv.id) }}" class="text-decoration-none" onclick="event.stopPropagation();">{{ rcv.rcv_no }}</a>
+                            {% if rcv.status == '검수대기' %}<br><span class="badge bg-warning text-dark" style="font-size:0.65rem;">대기</span>{% endif %}
+                            {% if rcv.status == '검수완료' %}<br><span class="badge bg-success" style="font-size:0.65rem;">완료</span>{% endif %}
+                            {% if rcv.status == '반품' %}<br><span class="badge bg-danger" style="font-size:0.65rem;">반품</span>{% endif %}
+                        </td>
+                        <td rowspan="{{ rows|length }}" class="align-top" style="border-right:1px solid #ccc;">{{ rcv.rcv_date.strftime('%Y-%m-%d') if rcv.rcv_date else '-' }}</td>
+                        <td rowspan="{{ rows|length }}" class="align-top fw-bold" style="border-right:1px solid #ccc; color:#008000;">{{ rcv.vendor_name }}</td>
+                        {% endif %}
+                        {% if item %}
+                        <td style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_name or '' }}">{{ item.item_name or '' }}</td>
+                        <td style="overflow:hidden;text-overflow:ellipsis; color:#808080;" title="{{ item.spec or '' }}">{{ item.spec or '' }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(item.qty or 0) }}</td>
+                        <td class="text-center">{{ item.unit or '' }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
+                        <td class="text-end fw-bold" style="color:#cc0000;">{{ "{:,.0f}".format(item.amount or 0) }}</td>
+                        <td style="overflow:hidden;text-overflow:ellipsis; color:#0000cc;" title="{{ item.remark or '' }}">{{ item.remark or '' }}</td>
+                        {% else %}
+                        <td colspan="7" class="text-muted">품목 없음</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr><td colspan="10" class="text-center text-muted py-4">등록된 입고가 없습니다.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# --- 페이지네이션 --- #}
+{% if pagination.total_pages > 1 %}
+<nav class="d-flex justify-content-center mb-4">
+    <ul class="pagination pagination-sm mb-0">
+        {% if pagination.has_prev %}
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(pagination.prev_page) }}">&laquo;</a></li>
+        {% endif %}
+        {% if pagination.show_first %}
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(1) }}">1</a></li>
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+        {% for p in pagination.page_range %}
+        <li class="page-item {{ 'active' if p == pagination.page }}"><a class="page-link" href="?{{ pagination_query(p) }}">{{ p }}</a></li>
+        {% endfor %}
+        {% if pagination.show_last %}
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(pagination.total_pages) }}">{{ pagination.total_pages }}</a></li>
+        {% endif %}
+        {% if pagination.has_next %}
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(pagination.next_page) }}">&raquo;</a></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{# --- iCUBE 기존 입고이력 (품목 플랫 리스트) --- #}
+{% if history_count > 0 %}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-2">
+        <strong>iCUBE 기존 입고이력</strong>
+        <span class="badge bg-secondary ms-1">{{ history_count }}건</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.8rem; border-color:#dee2e6;">
+                <colgroup>
+                    <col style="width:88px">
+                    <col style="width:72px">
+                    <col style="width:100px">
+                    <col style="width:22%">
+                    <col style="width:18%">
+                    <col style="width:38px">
+                    <col style="width:28px">
+                    <col style="width:62px">
+                    <col style="width:72px">
+                    <col style="width:10%">
+                </colgroup>
+                <thead>
+                    <tr style="background:#f0f0f0; border-bottom:2px solid #999;">
+                        <th class="py-1 text-center">입고번호</th>
+                        <th class="py-1 text-center">입고일</th>
+                        <th class="py-1 text-center">거래처</th>
+                        <th class="py-1 text-center">품명</th>
+                        <th class="py-1 text-center">규격</th>
+                        <th class="py-1 text-center">수량</th>
+                        <th class="py-1 text-center">단위</th>
+                        <th class="py-1 text-center">단가</th>
+                        <th class="py-1 text-center">금액</th>
+                        <th class="py-1 text-center">비고</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rh in history_items %}
+                    {% for item in rh.detail_rows %}
+                    <tr style="border-bottom:1px solid #eee;">
+                        {% if loop.first %}
+                        <td rowspan="{{ rh.detail_rows|length }}" class="align-top" style="border-right:1px solid #ccc;">{{ rh.icube_rcv_nb }}</td>
+                        <td rowspan="{{ rh.detail_rows|length }}" class="align-top" style="border-right:1px solid #ccc;">{{ rh.receive_date.strftime('%Y-%m-%d') if rh.receive_date else '-' }}</td>
+                        <td rowspan="{{ rh.detail_rows|length }}" class="align-top fw-bold" style="border-right:1px solid #ccc; color:#008000;">{{ rh.vendor_name }}</td>
+                        {% endif %}
+                        <td style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_name or item.item_cd or '' }}">{{ item.item_name or item.item_cd or '' }}</td>
+                        <td style="overflow:hidden;text-overflow:ellipsis; color:#808080;" title="{{ item.spec or '' }}">{{ item.spec or '' }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(item.qty or 0) }}</td>
+                        <td class="text-center">{{ item.unit or '' }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
+                        <td class="text-end fw-bold" style="color:#cc0000;">{{ "{:,.0f}".format(item.amount or 0) }}</td>
+                        <td style="overflow:hidden;text-overflow:ellipsis; color:#0000cc;" title="{{ item.remark or '' }}">{{ item.remark or '' }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not rh.detail_rows %}
+                    <tr>
+                        <td>{{ rh.icube_rcv_nb }}</td>
+                        <td>{{ rh.receive_date.strftime('%Y-%m-%d') if rh.receive_date else '-' }}</td>
+                        <td class="fw-bold" style="color:#008000;">{{ rh.vendor_name }}</td>
+                        <td colspan="7" class="text-muted">상세 없음</td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if hist_total_pages > 1 %}
+    <div class="card-footer bg-white text-center py-2">
+        <ul class="pagination pagination-sm justify-content-center mb-0">
+            {% for hp in range(1, hist_total_pages + 1) %}
+            {% if hp <= 10 %}
+            <li class="page-item {{ 'active' if hp == hist_page }}"><a class="page-link" href="?hp={{ hp }}{% if filters.q %}&q={{ filters.q }}{% endif %}">{{ hp }}</a></li>
+            {% endif %}
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{# --- 발주서 선택 모달 --- #}
+<div class="modal fade" id="poSelectModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title">발주서 선택 → 입고 등록</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="poModalSearch" class="form-control form-control-sm mb-3" placeholder="발주번호 또는 거래처명 검색" autocomplete="off">
+                <div id="poModalResults" style="max-height:400px; overflow-y:auto;">
+                    <p class="text-muted text-center py-3">검색어를 입력하세요</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var searchTimer = null;
+    var searchInput = document.getElementById('poModalSearch');
+    var resultsDiv = document.getElementById('poModalResults');
+
+    if (!searchInput) return;
+
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimer);
+        var q = this.value.trim();
+        if (q.length < 1) {
+            resultsDiv.innerHTML = '<p class="text-muted text-center py-3">검색어를 입력하세요</p>';
+            return;
+        }
+        searchTimer = setTimeout(function() {
+            fetch('/api/receiving/po-search?q=' + encodeURIComponent(q))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data.length) {
+                        resultsDiv.innerHTML = '<p class="text-muted text-center py-3">결과 없음</p>';
+                        return;
+                    }
+                    var html = '<table class="table table-sm table-hover mb-0" style="font-size:0.8rem; white-space:nowrap;">';
+                    html += '<thead class="table-light"><tr><th>발주번호</th><th>발주일</th><th>거래처</th><th>상태</th><th class="text-end">금액</th><th></th></tr></thead><tbody>';
+                    data.forEach(function(po) {
+                        var statusBadge = po.status === '발송완료' ? 'bg-success' : po.status === '입고대기' ? 'bg-info' : 'bg-secondary';
+                        html += '<tr>'
+                            + '<td><strong>' + po.po_no + '</strong></td>'
+                            + '<td>' + po.po_date + '</td>'
+                            + '<td>' + po.vendor_name + '</td>'
+                            + '<td><span class="badge ' + statusBadge + '">' + po.status + '</span></td>'
+                            + '<td class="text-end">' + Number(po.total_amount || 0).toLocaleString() + '</td>'
+                            + '<td><a href="/receiving/create?po_id=' + po.id + '" class="btn btn-success btn-xs">입고</a></td>'
+                            + '</tr>';
+                    });
+                    html += '</tbody></table>';
+                    resultsDiv.innerHTML = html;
+                });
+        }, 300);
+    });
+
+    // 모달 열릴 때 포커스
+    document.getElementById('poSelectModal').addEventListener('shown.bs.modal', function() {
+        searchInput.focus();
+    });
+})();
+</script>
+
+{% endblock %}

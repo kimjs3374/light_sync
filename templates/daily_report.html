@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h4 class="mb-0">일일업무보고</h4>
+        <div class="d-flex gap-2 align-items-center">
+            <a href="{{ url_for('daily_report.daily_report_view', date=prev_date) }}" class="btn btn-sm btn-outline-secondary">&laquo;</a>
+            <input type="date" id="dateSelector" class="form-control form-control-sm" style="width:160px"
+                   value="{{ target_date.isoformat() }}"
+                   onchange="location.href='{{ url_for('daily_report.daily_report_view') }}?date='+this.value">
+            <a href="{{ url_for('daily_report.daily_report_view', date=next_date) }}" class="btn btn-sm btn-outline-secondary">&raquo;</a>
+            <span class="badge bg-dark">{{ weekday_kr }}</span>
+        </div>
+    </div>
+
+    {% for dept in dept_reports %}
+    <div class="card mb-4 {{ 'border-primary' if dept.is_my_dept else '' }}">
+        <div class="card-header d-flex justify-content-between align-items-center {{ 'bg-primary text-white' if dept.is_my_dept else '' }}">
+            <div>
+                <strong>{{ dept.department }}</strong>
+                {% if dept.auto_items %}
+                <span class="badge bg-info ms-1">자동 {{ dept.auto_items|length }}건</span>
+                {% endif %}
+                {% if dept.manual_items %}
+                <span class="badge bg-warning text-dark ms-1">수동 {{ dept.manual_items|length }}건</span>
+                {% endif %}
+            </div>
+            <button class="btn btn-sm {{ 'btn-light' if dept.is_my_dept else 'btn-outline-success' }}"
+                    onclick="copyDeptReport('{{ dept.department }}')">카톡 복사</button>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <!-- 왼쪽: 자동수집 + 수동추가 -->
+                <div class="col-lg-7">
+                    {% if dept.auto_items %}
+                    <h6 class="text-info">ERP 자동 수집</h6>
+                    <ol class="mb-3" style="font-size:0.9rem">
+                        {% for item in dept.auto_items %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ol>
+                    {% endif %}
+
+                    {% if dept.is_my_dept %}
+                    <form method="POST" action="{{ url_for('daily_report.daily_report_save') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="report_date" value="{{ target_date.isoformat() }}">
+                        <input type="hidden" name="department" value="{{ dept.department }}">
+
+                        <div class="row mb-2">
+                            <div class="col-4">
+                                <label class="form-label small fw-bold">총 인원</label>
+                                <input type="number" name="headcount_total" class="form-control form-control-sm"
+                                       value="{{ dept.headcount_total }}" min="0">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label small fw-bold">재실</label>
+                                <input type="number" name="headcount_present" class="form-control form-control-sm"
+                                       value="{{ dept.headcount_present }}" min="0">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label small fw-bold">부재 사유</label>
+                                <input type="text" name="headcount_absence_info" class="form-control form-control-sm"
+                                       value="{{ dept.headcount_absence_info }}">
+                            </div>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">수동 추가 항목 <small class="text-muted">(한 줄에 한 항목)</small></label>
+                            <textarea name="manual_items" class="form-control form-control-sm" rows="5">{% for item in dept.manual_items %}{{ item }}{% if not loop.last %}
+{% endif %}{% endfor %}</textarea>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-sm btn-primary">저장</button>
+                        </div>
+                    </form>
+                    {% else %}
+                        {% if dept.manual_items %}
+                        <h6 class="text-warning">수동 추가</h6>
+                        <ol start="{{ dept.auto_items|length + 1 }}" style="font-size:0.9rem">
+                            {% for item in dept.manual_items %}
+                            <li>{{ item }}</li>
+                            {% endfor %}
+                        </ol>
+                        {% endif %}
+                    {% endif %}
+                </div>
+
+                <!-- 오른쪽: 카톡 미리보기 -->
+                <div class="col-lg-5">
+                    <pre id="preview-{{ loop.index }}" class="mb-0"
+                         style="white-space:pre-wrap; font-family:'Malgun Gothic',sans-serif; font-size:0.88rem; background:#fef9c3; padding:15px; border-radius:8px; border:1px solid #eab308; min-height:100px;"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if dept_reports|length > 1 %}
+    <div class="text-center mb-4">
+        <button class="btn btn-success" onclick="copyAllReports()">전체 부서 한번에 복사</button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 토스트 -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1080">
+    <div id="copyToast" class="toast align-items-center text-bg-success border-0" role="alert">
+        <div class="d-flex">
+            <div class="toast-body" id="copyToastMsg">복사 완료!</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>
+
+<script>
+var deptData = {{ dept_reports | tojson }};
+var dateStr = '{{ target_date.strftime("%y.%m.%d") }}';
+var weekday = '{{ weekday_kr }}';
+
+function buildText(dept, allItems) {
+    var lines = [];
+    lines.push(dateStr + ' ' + weekday);
+    lines.push(dept.department + ' 업무보고');
+    lines.push('');
+    lines.push('- 기본사항');
+    var abs = dept.headcount_absence_info ? ' ' + dept.headcount_absence_info : '';
+    lines.push('인원 ' + dept.headcount_total + '명중 재실 ' + dept.headcount_present + '명' + abs);
+    lines.push('');
+    for (var i = 0; i < allItems.length; i++) {
+        lines.push((i+1) + '. ' + allItems[i]);
+    }
+    lines.push('');
+    lines.push('이상입니다.');
+    return lines.join('\n');
+}
+
+// 미리보기 초기화
+deptData.forEach(function(dept, idx) {
+    var el = document.getElementById('preview-' + (idx+1));
+    if (!el) return;
+    var allItems = dept.auto_items.concat(dept.manual_items);
+    if (allItems.length === 0) {
+        el.textContent = '(업무 내역 없음)';
+        el.style.background = '#f1f5f9';
+        el.style.borderColor = '#cbd5e1';
+    } else {
+        el.textContent = buildText(dept, allItems);
+    }
+});
+
+function showToast(msg) {
+    document.getElementById('copyToastMsg').textContent = msg;
+    new bootstrap.Toast(document.getElementById('copyToast'), {delay: 2000}).show();
+}
+
+function copyDeptReport(department) {
+    fetch('{{ url_for("daily_report.generate_kakao_text") }}?date={{ target_date.isoformat() }}&department=' + encodeURIComponent(department))
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.ok) {
+                navigator.clipboard.writeText(d.text).then(function() {
+                    showToast(department + ' 복사 완료!');
+                });
+            } else { showToast(d.error || '복사 실패'); }
+        })
+        .catch(function() { showToast('네트워크 오류가 발생했습니다.'); });
+}
+
+function copyAllReports() {
+    fetch('{{ url_for("daily_report.generate_all_kakao_text") }}?date={{ target_date.isoformat() }}')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.ok) {
+                navigator.clipboard.writeText(d.text).then(function() {
+                    showToast('전체 보고서 복사 완료!');
+                });
+            } else { showToast(d.error || '데이터 없음'); }
+        })
+        .catch(function() { showToast('네트워크 오류가 발생했습니다.'); });
+}
+
+// 실시간 미리보기: 수동 항목/기본사항 입력 시 오른쪽 즉시 반영
+document.querySelectorAll('textarea[name="manual_items"]').forEach(function(ta) {
+    var form = ta.closest('form');
+    var deptName = form.querySelector('[name="department"]').value;
+    var idx = deptData.findIndex(function(d) { return d.department === deptName; });
+    if (idx < 0) return;
+
+    function updatePreview() {
+        var dept = deptData[idx];
+        var manualLines = ta.value.split('\n').filter(function(l) { return l.trim(); });
+        var allItems = dept.auto_items.concat(manualLines);
+
+        var updated = {
+            department: dept.department,
+            headcount_total: parseInt(form.querySelector('[name="headcount_total"]').value) || 0,
+            headcount_present: parseInt(form.querySelector('[name="headcount_present"]').value) || 0,
+            headcount_absence_info: form.querySelector('[name="headcount_absence_info"]').value || '',
+        };
+
+        var el = document.getElementById('preview-' + (idx+1));
+        if (!el) return;
+        if (allItems.length > 0) {
+            el.textContent = buildText(updated, allItems);
+            el.style.background = '#fef9c3';
+            el.style.borderColor = '#eab308';
+        } else {
+            el.textContent = '(업무 내역 없음)';
+            el.style.background = '#f1f5f9';
+            el.style.borderColor = '#cbd5e1';
+        }
+    }
+
+    ta.addEventListener('input', updatePreview);
+    form.querySelector('[name="headcount_total"]').addEventListener('input', updatePreview);
+    form.querySelector('[name="headcount_present"]').addEventListener('input', updatePreview);
+    form.querySelector('[name="headcount_absence_info"]').addEventListener('input', updatePreview);
+});
+</script>
+{% endblock %}

@@ -4,6 +4,235 @@
 
 ---
 
+## [2026-03-18] - dept-weekly-report 부서별 주간보고서 자동화
+
+### Overview
+Light-Sync ERP 부서별 주간보고서(dept-weekly-report) PDCA 완료. Match Rate 100% (FR 6/6, Design 100%, Gap 0건), Iteration 0회 달성.
+영업부 전용 주간보고서를 session['user_group'] 기반 자동 부서 판별 + 3개 부서별 맞춤형 보고서(영업부/생산부/관리부)로 확장.
+부서별 자동 액세스 제어(403) + admin 전체 부서 조회 드롭다운 + 인쇄 기능(landscape) 완성.
+
+### Added
+
+**New Backend Functions**
+- `routes/report.py` - _resolve_dept() 부서 판별 + 접근 제어
+  - dept 파라미터 있으면 admin만 허용
+  - dept 파라미터 없으면 session['user_group'] 기반 자동 판별
+  - 기타 그룹 / 비admin 타부서 접근 → 403 Forbidden
+- `_weekly_production()` - 생산부 보고서
+  - 주간 요약: 생산중/납품준비/납품완료/AS접수 건수
+  - 생산 공정 현황: 현장별 공정 진행률(%) + 완료된 현장 제외
+  - 납품 진행 현황: 예정일 기준 정렬
+  - AS/하자보증 현황: 미완료 케이스만
+- `_weekly_management()` - 관리부 보고서
+  - 주간 요약: 발주건수/입고건수/검수대기/발주총액
+  - 자재 발주 현황: 현장별 발주율(%) + 미완료 현장만
+  - 발주서 현황: 금액 합계행 포함
+  - 입고 검수 현황: 첫 품목명 + "외 N건" 형식
+
+**New Templates**
+- `templates/report_weekly_production.html` - 생산부 보고서 (340줄)
+  - 4개 섹션, page-break로 인쇄 페이지 분리
+  - 진행률 프로그레스바 시각화
+  - 상태 배지(대기/진행/완료)
+- `templates/report_weekly_management.html` - 관리부 보고서 (350줄)
+  - 4개 섹션, tfoot 합계행
+  - 발주율 프로그레스바
+  - 금액 천 단위 포맷팅
+
+### Changed
+
+**Route File**
+- `routes/report.py` - 469줄 전체 재작성
+  - DEPT_MAP / DEPT_LABELS 추가
+  - _parse_week_range() 날짜 범위 파싱 추가
+  - _weekly_sales() 기존 로직 함수 추출 (호환성 100%)
+  - weekly_report() 라우터 → 부서별 분기 구현
+
+**Template Updates**
+- `templates/report_weekly.html` - admin 부서 선택 드롭다운 추가 (lines 150-158)
+  - onchange="this.form.submit()" 즉시 전환
+  - 비admin일 때 숨김
+  - select name="dept" 옵션: sales/production/management
+
+### Fixed
+
+**Access Control**
+- ✅ 부서별 자동 판별: 로그인 사용자 user_group → 자동 보고서 제공
+- ✅ 비admin 접근 제어: 타부서 접근 시도 → 403 Forbidden
+- ✅ admin 권한: ?dept 파라미터로 전체 부서 조회 가능
+
+**Data Accuracy**
+- ✅ 생산부 공정 진행률: done/total * 100 (완료된 현장 제외)
+- ✅ 관리부 발주율: ordered/total * 100 (완료된 현장 제외)
+- ✅ 금액 집계: SUM() 쿼리로 정확한 합계
+- ✅ 기간별 필터: week_start~week_end 범위만 집계
+
+### Quality Metrics
+
+| Metric | Value |
+|--------|-------|
+| Design Match Rate | **100%** (FR 6/6, Design 100%, Gap 0) |
+| Gap Analysis Iterations | **0** (first pass completion) |
+| Files Created | 2 (production.html, management.html) |
+| Files Modified | 2 (report.py, report_weekly.html) |
+| Total LOC (Routes) | 469줄 |
+| Total LOC (Templates) | ~1,040줄 |
+| DB Model Changes | 0 (기존 모델 재사용) |
+| Backwards Compatibility | 100% (/report/weekly URL 유지) |
+
+### Migration Notes
+
+**For Deployment:**
+1. routes/report.py 전체 교체 (부서 판별 + 3개 함수)
+2. templates/ 2개 신규 템플릿 추가 (production/management)
+3. templates/report_weekly.html admin 드롭다운 추가
+4. 기존 /report/weekly 링크 동일하게 동작 (URL 변경 없음)
+
+**User Groups Supported:**
+- '영업부' → sales (고정)
+- '생산부' → production (고정)
+- '관리부', '경영관리부' → management (동일)
+- admin → 모든 부서 + 드롭다운
+
+---
+
+## [2026-03-18] - material-po-bom-integration BOM-발주서-자재관리 통합 연동
+
+### Overview
+BOM 소요자재 부족분에서 거래처별 발주서 1클릭 자동 생성, bom_item_id FK 기반 발주-BOM 양방향 추적 구현. Match Rate 97% (FR 7/7, Gap 1건 기능 목적 충족), Iteration 0회 달성.
+PurchaseOrderItem/MaterialOrder에 nullable FK 2개 추가로 기존 데이터 완전 하위 호환을 유지하면서 자재 조달 end-to-end 파이프라인 가시성 확보.
+
+### Added
+
+**New API**
+- `POST /bom/create-po-from-requirement` (`routes/bom.py:432`) — 소요자재 선택 → supplier 그룹핑 → 거래처별 PurchaseOrder 자동 생성
+  - Vendor.name ilike 매칭 + 없으면 Vendor 자동 생성
+  - PurchaseOrderItem.bom_item_id 자동 설정
+  - 1건: PO 상세 redirect / N건: PO 목록 redirect + flash
+
+**Helper**
+- `_get_latest_receiving_prices()` (`routes/bom.py`) — 최근 입고 단가 조회
+
+### Changed
+
+**Data Model**
+- `modules/models/entities.py` — FK 2개 추가
+  - `PurchaseOrderItem.bom_item_id` (Integer, FK→bom_items.id, nullable=True)
+  - `MaterialOrder.bom_item_id` (Integer, FK→bom_items.id, nullable=True)
+- `modules/models/db.py` — PostgreSQL ALTER TABLE 2건 (try/except 멱등성 패턴)
+
+**Logic Improvements**
+- `routes/bom.py` `material_requirement()` — 소요량 계산 이중화
+  - 1차: bom_item_id 기반 PurchaseOrderItem 발주량 (취소 PO 자동 제외)
+  - 2차: MaterialOrder 기반 fallback (기존 데이터 하위 호환)
+  - max(ordered_via_po, ordered_via_mo) 중복 방지
+- `routes/purchase_order.py` `_sync_po_to_material_orders()` — bom_item_id 있으면 BOM 경로 정확 매칭, 없으면 품명 유사도 fallback
+- `routes/purchase_order.py` `po_detail()` — BomItem → BomHeader joinedload (N+1 쿼리 방지)
+
+**UI**
+- `templates/bom_requirement.html` — 체크박스(shortage>0 행) + 전체선택 + "선택 자재 발주서 생성" 버튼 + 거래처별 그룹핑 프리뷰 모달 + 거래처 컬럼 추가
+- `templates/po_detail.html` — BOM 연결 배지 컬럼 (bom_item_id 있는 품목: BomHeader.product_name 표시)
+
+### Quality Metrics
+
+| Metric | Value |
+|--------|-------|
+| Design Match Rate | **97%** (FR 7/7, Gap 1건 기능 목적 충족) |
+| Gap Count | **1건** (GET `/api/bom/requirement-for-po` → 클라이언트 JS 대체) |
+| Iteration 횟수 | **0회** |
+| 설계 초과 구현 | 4건 (project_id/created_by 설정, 취소 PO 제외, 거래처 컬럼, joinedload) |
+| Files Modified | 6 (entities.py, db.py, bom.py, purchase_order.py, bom_requirement.html, po_detail.html) |
+| Backwards Compatibility | 100% (nullable FK, fallback 로직 유지) |
+
+### Migration Notes
+
+**For Deployment:**
+1. `init_db()` 실행 시 PostgreSQL ALTER TABLE 자동 적용 (bom_item_id 컬럼 2건)
+2. 기존 PO/MaterialOrder 데이터: bom_item_id=NULL — 기존 동작 그대로 유지
+3. 신규 발주서 생성(소요자재 페이지 경유): bom_item_id 자동 설정
+
+**Backwards Compatibility:**
+- 기존 발주서 생성/수정/삭제 CRUD 100% 정상 동작
+- 기존 MaterialOrder 데이터: bom_item_id=NULL에서 기존 품명 유사도 매칭 그대로 동작
+- 입고 CRUD 변경 없음
+
+---
+
+## [2026-03-18] - item-management 품목관리 CRUD + 분류 체계
+
+### Overview
+Light-Sync ERP item-management 피처 PDCA 완료. Match Rate 100% (FR 6/6, 구현 파일 8/8, Scope 7/7, NFR 3/3), Gap 0건, Iteration 0회 달성.
+iCUBE SITEM 1,835건 품목 데이터에 category/manufacturer/note 분류 체계 추가 및 전용 CRUD 관리 화면 구현. USE_YN 매핑 버그 수정으로 데이터 신뢰성 동시 확보.
+
+### Added
+
+**New Route**
+- `routes/item.py` — 품목관리 CRUD Blueprint
+  - `item_list()` — 품목 목록 (페이지네이션 50건, 통합 검색, 카테고리 필터)
+  - `item_detail()` — 품목 상세/수정
+  - `item_create()` — 품목 신규 등록 (품번 중복 체크 포함)
+  - `item_deactivate()` — 품목 비활성화 (삭제 대신)
+  - `api_item_categories()` — `/api/item/categories` datalist 자동완성용
+
+**New Templates**
+- `templates/item_list.html` — 품목 목록 (table-sm 0.8rem, 50건/페이지, 카테고리 필터, 통합 검색)
+- `templates/item_detail.html` — 품목 상세/수정 (거래처 자동완성, 카테고리 datalist)
+- `templates/item_create.html` — 품목 신규 등록 (거래처 자동완성, 카테고리 datalist)
+
+### Changed
+
+**Model Extension**
+- `modules/models/entities.py` — Item 모델 필드 추가
+  - `category` (String 50, nullable) — 품목 분류
+  - `manufacturer` (String 100, nullable) — 제조사/납품업체
+  - `note` (Text, nullable) — 비고
+  - `is_active` (Boolean, default=True) — 비활성화 지원
+
+**Infrastructure**
+- `modules/models/db.py` — init_db() 내 PostgreSQL ALTER TABLE 자동 마이그레이션 추가 (컬럼 중복 예외 처리로 반복 실행 안전)
+- `app.py` — item_bp Blueprint 등록
+- `templates/base.html` — 사이드바 관리부 섹션에 "품목관리" 메뉴 추가
+
+### Fixed
+
+**Data Integrity Bug**
+- `scripts/migrate_icube.py` — iCUBE USE_YN 매핑 버그 수정
+  - 버그: `USE_YN == 'Y'` (`'Y' == True`는 Python에서 False — 전 품목 is_active=False로 등록됨)
+  - 수정: `str(USE_YN) in ('1', 'Y', 'y')` 패턴으로 변경
+  - 영향: migrate_vendors 업데이트 경로 수정 (migrate_items는 이미 정상 패턴 사용 중)
+
+### Quality Metrics
+
+| Metric | Value |
+|--------|-------|
+| Design Match Rate | **100%** (FR 6/6, Files 8/8, Scope 7/7, NFR 3/3) |
+| Gap Count | **0** |
+| Gap Analysis Iterations | **0** (first pass completion) |
+| Overall Score | 97/100 (코드 품질 -3: SQLAlchemy deprecated API) |
+| Files Created | 4 (item.py, item_list.html, item_detail.html, item_create.html) |
+| Files Modified | 5 (entities.py, db.py, app.py, base.html, migrate_icube.py) |
+| iCUBE 품목 데이터 | 1,835건 (분류 체계 추가 대상) |
+
+### Migration Notes
+
+**For Deployment:**
+1. `init_db()` 실행 시 PostgreSQL에 ALTER TABLE 자동 적용 (category, manufacturer, note 컬럼 추가)
+2. iCUBE 마이그레이션 재실행으로 USE_YN 수정 반영: `python scripts/migrate_icube.py`
+3. 기존 품목 is_active 상태 확인: 재마이그레이션 전 is_active=False 품목 수 확인 권장
+
+**Backwards Compatibility:**
+- 기존 발주서/BOM 품목 검색 API 경로 변경 없음 (별도 라우트 유지)
+- 신규 필드 모두 nullable — 기존 품목 데이터 호환성 유지
+
+### Next PDCA Cycle
+
+**Backlog (item-management 범위 외)**
+- 거래처별 단가 이력 연동 (VendorItem 테이블 연결)
+- 재고 수량 관리
+- SQLAlchemy 2.x deprecated API 전체 마이그레이션
+
+---
+
 ## [2026-03-17] - Phase 6 Auth Decorator + Error Handling + DB Index Optimization
 
 ### Overview

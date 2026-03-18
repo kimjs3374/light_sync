@@ -4,6 +4,7 @@ from modules.auth_decorators import admin_required, login_required
 import bcrypt
 from modules.db_context import get_db
 from modules.models import User, GroupPermission, ProjectDeleteRequest, UserPriorityPermission
+from config import MENU_REGISTRY, COMMON_MENU_KEYS
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -31,9 +32,11 @@ def login():
                         return redirect(url_for('auth.login'))
 
                     group_data = db.query(GroupPermission).filter(GroupPermission.group_name == user.user_group).first()
-                    allowed_menus = group_data.allowed_menus.split(",") if group_data else []
-                    if user.role == 'admin':
-                        allowed_menus.append("👑 시스템 및 권한 관리")
+                    allowed_menus = [m.strip() for m in group_data.allowed_menus.split(",") if m.strip()] if group_data and group_data.allowed_menus else []
+                    # 개인 추가 메뉴 병합 (팀장 등 개별 권한)
+                    if user.extra_menus:
+                        extra = [m.strip() for m in user.extra_menus.split(",") if m.strip()]
+                        allowed_menus = list(dict.fromkeys(allowed_menus + extra))  # 중복 제거, 순서 유지
                     can_manage_priority = bool(
                         user.role == 'admin'
                         or db.query(UserPriorityPermission).filter(
@@ -44,7 +47,8 @@ def login():
 
                     session.update({
                         'user_id': user.id, 'username': user.username, 'full_name': user.full_name,
-                        'user_group': user.user_group, 'role': user.role, 'allowed_menus': allowed_menus,
+                        'user_group': user.user_group, 'role': user.role, 'position': user.position or '',
+                        'allowed_menus': allowed_menus,
                         'can_approve_delete': bool(user.role == 'admin' or user.can_approve_delete),
                         'can_manage_priority': can_manage_priority,
                     })
@@ -113,7 +117,39 @@ def admin_settings():
         for user in users:
             user.can_manage_priority = bool(user.role == 'admin' or user.id in priority_user_ids)
         delete_requests = db.query(ProjectDeleteRequest).order_by(ProjectDeleteRequest.created_at.desc()).all()
-        return render_template('admin_settings.html', pending=pending, users=users, delete_requests=delete_requests)
+
+        # 통계 데이터
+        total_count = len(users)
+        active_count = sum(1 for u in users if u.is_active)
+        inactive_count = total_count - active_count
+        pending_count = len(pending)
+
+        # 부서 목록 (필터용)
+        groups = sorted(set(u.user_group for u in users if u.user_group))
+
+        # 그룹별 메뉴 권한 데이터
+        group_permissions = db.query(GroupPermission).all()
+        group_menu_data = []
+        for gp in group_permissions:
+            current_menus = [m.strip() for m in gp.allowed_menus.split(",") if m.strip()] if gp.allowed_menus else []
+            group_menu_data.append({
+                "group_name": gp.group_name,
+                "current_menus": current_menus,
+            })
+
+        configurable_menus = [
+            {"key": k, "label": v["label"], "group": v["group"]}
+            for k, v in MENU_REGISTRY.items()
+            if k not in COMMON_MENU_KEYS and not v.get("admin_only")
+        ]
+
+        return render_template('admin_settings.html',
+            pending=pending, users=users, delete_requests=delete_requests,
+            total_count=total_count, active_count=active_count,
+            inactive_count=inactive_count, pending_count=pending_count,
+            groups=groups,
+            group_menu_data=group_menu_data,
+            configurable_menus=configurable_menus)
 
 
 @auth_bp.route('/toggle_delete_approver/<int:user_id>', methods=['POST'])
@@ -270,6 +306,52 @@ def reset_password(user_id):
         user.password_hash = hashed_pw
         db.commit()
         flash(f"{user.full_name} 비밀번호가 초기화되었습니다.", "success")
+    return redirect(url_for('auth.admin_settings'))
+
+
+@auth_bp.route('/admin/update_group_menus', methods=['POST'])
+@admin_required
+def update_group_menus():
+    """그룹별 allowed_menus 업데이트"""
+    group_name = request.form.get('group_name', '').strip()
+    selected_menus = request.form.getlist('menus')
+
+    if not group_name:
+        flash('그룹을 선택해주세요.', 'danger')
+        return redirect(url_for('auth.admin_settings'))
+
+    with get_db() as db:
+        group = db.query(GroupPermission).filter(
+            GroupPermission.group_name == group_name
+        ).first()
+        if not group:
+            flash('존재하지 않는 그룹입니다.', 'danger')
+            return redirect(url_for('auth.admin_settings'))
+
+        group.allowed_menus = ",".join(selected_menus)
+        db.commit()
+        flash(f'{group_name} 메뉴 권한이 업데이트되었습니다.', 'success')
+
+    return redirect(url_for('auth.admin_settings'))
+
+
+@auth_bp.route('/admin/update_user_extra_menus', methods=['POST'])
+@admin_required
+def update_user_extra_menus():
+    """개인 추가 메뉴 권한 업데이트"""
+    user_id = request.form.get('user_id', type=int)
+    selected_menus = request.form.getlist('extra_menus')
+
+    with get_db() as db:
+        user = db.get(User, user_id)
+        if not user:
+            flash('사용자를 찾을 수 없습니다.', 'danger')
+            return redirect(url_for('auth.admin_settings'))
+
+        user.extra_menus = ",".join(selected_menus) if selected_menus else None
+        db.commit()
+        flash(f'{user.full_name} 추가 메뉴 권한이 업데이트되었습니다.', 'success')
+
     return redirect(url_for('auth.admin_settings'))
 
 

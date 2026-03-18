@@ -291,11 +291,17 @@ class MaterialOrder(Base):
     is_outsourcing = Column(Boolean, default=False)
     outsourcing_status = Column(String(30), nullable=True)  # 외주입고대기/외주입고/가공중/본사입고완료
 
+    po_id = Column(Integer, ForeignKey('purchase_orders.id'), nullable=True)      # 발주서 연결
+    po_item_id = Column(Integer, ForeignKey('purchase_order_items.id'), nullable=True)
+    bom_item_id = Column(Integer, ForeignKey('bom_items.id'), nullable=True)
+
     note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
     contract_item = relationship("ContractItem", back_populates="material_orders")
+    purchase_order = relationship("PurchaseOrder", foreign_keys=[po_id])
+    bom_item = relationship("BomItem", foreign_keys=[bom_item_id])
 
 
 # -------------------------------------------------------------------
@@ -593,8 +599,13 @@ class User(Base):
     password_hash = Column(String(200), nullable=False)
     full_name = Column(String(50), nullable=False)
     phone_number = Column(String(20), nullable=False)
+    position = Column(String(50), nullable=True)          # 직급 (부장, 과장 등)
+    email = Column(String(200), nullable=True)            # 이메일
+    office_tel = Column(String(30), nullable=True)        # 사무실 전화
+    office_fax = Column(String(30), nullable=True)        # 팩스
     user_group = Column(String(50), ForeignKey('group_permissions.group_name'))
-    role = Column(String(20), default="user") 
+    role = Column(String(20), default="user")
+    extra_menus = Column(Text, nullable=True)           # 개인 추가 메뉴 권한 (CSV: "item,vendor")
     can_approve_delete = Column(Boolean, default=False)
     is_approved = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
@@ -651,6 +662,71 @@ class ProductCatalog(Base):
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
+# -------------------------------------------------------------------
+# 10-1. 조달내역 (나라장터 특정물품조달내역 API 연동)
+# -------------------------------------------------------------------
+class G2bProcurement(Base):
+    __tablename__ = 'g2b_procurements'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # 계약납품요구번호 + 품목순번 = 유니크키
+    cntrct_dlvr_req_no = Column(String(30), nullable=False)       # 계약납품요구번호
+    prdct_sno = Column(String(10), nullable=False, default='1')   # 품목순번
+    cntrct_dlvr_req_chg_ord = Column(String(5), nullable=True)    # 변경차수
+
+    # 계약 기본정보
+    prcrmnt_div_nm = Column(String(50), nullable=True)            # 조달구분명 (중앙조달/자체조달)
+    cntrct_div_nm = Column(String(50), nullable=True)             # 계약구분명 (총액계약/제3자단가 등)
+    cntrct_dlvr_div_nm = Column(String(50), nullable=True)        # 계약납품구분명
+    cntrct_dlvr_req_date = Column(Date, nullable=True)            # 계약납품요구일자
+    cntrct_dlvr_req_nm = Column(String(200), nullable=True)       # 계약명 (공사명)
+    cntrct_mthd_nm = Column(String(100), nullable=True)           # 계약체결방법명
+
+    # 수요기관
+    dminstt_nm = Column(String(200), nullable=True)               # 수요기관명
+    dminstt_cd = Column(String(20), nullable=True)                # 수요기관코드
+    dminstt_rgn_nm = Column(String(100), nullable=True)           # 수요기관지역명
+    dmnd_instt_div_nm = Column(String(100), nullable=True)        # 수요기관구분명
+
+    # 물품정보
+    prdct_clsfc_no = Column(String(20), nullable=True)            # 물품분류번호 (8자리)
+    prdct_clsfc_no_nm = Column(String(200), nullable=True)        # 품명
+    dtil_prdct_clsfc_no = Column(String(20), nullable=True)       # 세부물품분류번호 (10자리)
+    dtil_prdct_clsfc_no_nm = Column(String(200), nullable=True)   # 세부품명
+    prdct_idnt_no = Column(String(20), nullable=True)             # 물품식별번호
+    prdct_idnt_no_nm = Column(String(300), nullable=True)         # 물품규격명
+
+    # 금액/수량
+    prdct_uprc = Column(Integer, nullable=True)                   # 단가
+    prdct_qty = Column(Integer, nullable=True)                    # 수량
+    prdct_unit = Column(String(20), nullable=True)                # 단위
+    prdct_amt = Column(Integer, nullable=True)                    # 금액
+
+    # 업체정보
+    corp_nm = Column(String(100), nullable=True)                  # 업체명
+    bizno = Column(String(20), nullable=True)                     # 사업자등록번호
+
+    # 납품정보
+    dlvr_plce_nm = Column(String(300), nullable=True)             # 납품장소
+    dlvr_tmlmt_date = Column(Date, nullable=True)                 # 납품기한일자
+    dlvry_cndtn_nm = Column(String(200), nullable=True)           # 인도조건명
+
+    # 기타
+    fnl_cntrct_dlvr_req_chg_ord_yn = Column(String(5), nullable=True)  # 최종변경차수여부
+    mas_yn = Column(String(5), nullable=True)                     # 다수공급자계약여부
+    uprc_cntrct_no = Column(String(30), nullable=True)            # 단가계약번호
+    intl_cntrct_dlvr_req_date = Column(Date, nullable=True)       # 최초계약납품요구일자
+    exclc_prodct_yn = Column(String(5), nullable=True)            # 우수제품여부
+
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('cntrct_dlvr_req_no', 'prdct_sno', 'cntrct_dlvr_req_chg_ord',
+                         name='uq_g2b_proc_req_sno_chg'),
+    )
+
+
 class ProjectDeleteRequest(Base):
     __tablename__ = 'project_delete_requests'
 
@@ -672,3 +748,343 @@ class ProjectDeleteRequest(Base):
 
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+
+# -------------------------------------------------------------------
+# 12. 일일업무보고
+# -------------------------------------------------------------------
+# -------------------------------------------------------------------
+# 11. 구매관리 - 거래처/품목/발주서/이력 (iCUBE 마이그레이션 + 자체 관리)
+# -------------------------------------------------------------------
+PO_STATUS_CHOICES = ['작성중', '발송완료', '입고대기', '입고완료', '취소']
+
+
+class Vendor(Base):
+    """거래처 마스터 (iCUBE STRADE 마이그레이션)"""
+    __tablename__ = 'vendors'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    icube_tr_cd = Column(String(20), unique=True, nullable=True)  # iCUBE 거래처코드
+    name = Column(String(200), nullable=False)
+    ceo_name = Column(String(100), nullable=True)
+    business_no = Column(String(50), nullable=True)    # 사업자번호
+    email = Column(String(200), nullable=True)
+    tel = Column(String(100), nullable=True)
+    fax = Column(String(100), nullable=True)
+    address = Column(String(500), nullable=True)
+    business = Column(String(200), nullable=True)      # 업종
+    jongmok = Column(String(200), nullable=True)       # 종목
+    is_active = Column(Boolean, default=True)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    purchase_orders = relationship("PurchaseOrder", back_populates="vendor")
+    vendor_items = relationship("VendorItem", back_populates="vendor", cascade="all, delete-orphan")
+
+
+class VendorItem(Base):
+    """거래처별 담당자재 매핑"""
+    __tablename__ = 'vendor_items'
+    __table_args__ = (
+        UniqueConstraint('vendor_id', 'item_id', name='uq_vendor_item'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    vendor_id = Column(Integer, ForeignKey('vendors.id'), nullable=False)
+    item_id = Column(Integer, ForeignKey('items.id'), nullable=True)  # 마스터 품목 연결 (nullable: 직접입력도 가능)
+    item_name = Column(String(300), nullable=False)       # 품명
+    item_spec = Column(String(500), nullable=True)        # 규격
+    unit = Column(String(50), nullable=True)              # 단위
+    last_price = Column(Float, nullable=True)             # 최근 단가
+    note = Column(Text, nullable=True)                    # 메모
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    vendor = relationship("Vendor", back_populates="vendor_items")
+    item = relationship("Item")
+
+
+class Item(Base):
+    """품목 마스터 (iCUBE SITEM 마이그레이션)"""
+    __tablename__ = 'items'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    icube_item_cd = Column(String(30), unique=True, nullable=True)  # iCUBE 품목코드 (품번)
+    item_name = Column(String(300), nullable=False)                 # 품명
+    item_spec = Column(String(500), nullable=True)                  # 규격
+    unit = Column(String(50), nullable=True)                        # 단위
+    category = Column(String(50), nullable=True)                    # 분류 (드라이버, 하우징, LED모듈 등)
+    manufacturer = Column(String(100), nullable=True)               # 제조사/납품업체
+    note = Column(Text, nullable=True)                              # 비고
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+
+class EmailSignature(Base):
+    """사용자별 이메일 서명"""
+    __tablename__ = 'email_signatures'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, nullable=False)
+    department = Column(String(50), nullable=True)     # 경영관리부
+    position = Column(String(50), nullable=True)       # 부장
+    display_name = Column(String(50), nullable=True)   # 이지훈
+    email = Column(String(200), nullable=True)         # purchase@mgnt.kr
+    mobile = Column(String(30), nullable=True)         # 010-5465-5621
+    office_tel = Column(String(30), nullable=True)     # 061-392-5508
+    fax = Column(String(30), nullable=True)            # 061-392-5518
+    is_default = Column(Boolean, default=False)        # 기본 서명 여부
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    user = relationship("User")
+
+    def to_text(self):
+        """서명 텍스트 생성"""
+        lines = ['=' * 65]
+        title = '(주)매그나텍'
+        if self.department:
+            title += f' {self.department}'
+        if self.display_name:
+            title += f' {self.display_name}'
+        if self.position:
+            title += f' {self.position}'
+        lines.append(title)
+        if self.email:
+            lines.append(f'E-mail : {self.email}')
+        if self.mobile:
+            lines.append(f'Mobile : {self.mobile}')
+        if self.office_tel:
+            lines.append(f'Office : {self.office_tel}')
+        if self.fax:
+            lines.append(f'Fax    : {self.fax}')
+        lines.append('홈페이지 : https://www.magnatech.co.kr')
+        lines.append('=' * 65)
+        return '\n'.join(lines)
+
+
+class PurchaseOrder(Base):
+    """발주서 (신규 작성용)"""
+    __tablename__ = 'purchase_orders'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    po_no = Column(String(20), unique=True, nullable=False)   # PO2026-001
+    po_date = Column(Date, nullable=False)
+    vendor_id = Column(Integer, ForeignKey('vendors.id'), nullable=False)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)
+    contract_id = Column(Integer, ForeignKey('contracts.id'), nullable=True)  # 계약 연결
+    assigned_to = Column(Integer, ForeignKey('users.id'), nullable=True)      # 담당자
+    status = Column(String(20), default='작성중')  # 작성중/발송완료/입고대기/입고완료/취소
+    total_amount = Column(Float, default=0)
+    tax_amount = Column(Float, default=0)
+    email_sent_at = Column(DateTime, nullable=True)
+    email_to = Column(String(200), nullable=True)
+    note = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    vendor = relationship("Vendor", back_populates="purchase_orders")
+    project = relationship("Project", foreign_keys=[project_id])
+    contract = relationship("Contract", foreign_keys=[contract_id])
+    assignee = relationship("User", foreign_keys=[assigned_to])
+    items = relationship("PurchaseOrderItem", back_populates="purchase_order", cascade="all, delete-orphan", order_by="PurchaseOrderItem.id")
+
+
+class PurchaseOrderItem(Base):
+    """발주 품목 상세"""
+    __tablename__ = 'purchase_order_items'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    po_id = Column(Integer, ForeignKey('purchase_orders.id'), nullable=False)
+    item_id = Column(Integer, ForeignKey('items.id'), nullable=True)
+    item_code = Column(String(30), nullable=True)
+    item_name = Column(String(300), nullable=False)
+    item_spec = Column(String(500), nullable=True)
+    quantity = Column(Float, default=0)
+    unit_price = Column(Float, default=0)
+    amount = Column(Float, default=0)
+    unit = Column(String(50), nullable=True)
+    delivery_date = Column(Date, nullable=True)
+    note = Column(Text, nullable=True)
+
+    bom_item_id = Column(Integer, ForeignKey('bom_items.id'), nullable=True)
+
+    purchase_order = relationship("PurchaseOrder", back_populates="items")
+    bom_item = relationship("BomItem", foreign_keys=[bom_item_id])
+
+
+class PurchaseOrderHistory(Base):
+    """iCUBE 발주이력 (마이그레이션용, 읽기 전용)"""
+    __tablename__ = 'purchase_order_history'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    icube_cls_nb = Column(String(30), unique=True, nullable=False)
+    order_date = Column(Date, nullable=True)
+    vendor_name = Column(String(200), nullable=True)
+    vendor_tr_cd = Column(String(20), nullable=True)
+    items_json = Column(Text, nullable=True)    # JSON: [{item_cd, item_name, spec, qty, unit_price, amount, unit, remark}]
+    total_amount = Column(Float, default=0)
+    remark = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+
+class ReceivingHistory(Base):
+    """iCUBE 입고이력 (마이그레이션용, 읽기 전용)"""
+    __tablename__ = 'receiving_history'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    icube_rcv_nb = Column(String(30), unique=True, nullable=False)
+    receive_date = Column(Date, nullable=True)
+    vendor_name = Column(String(200), nullable=True)
+    vendor_tr_cd = Column(String(20), nullable=True)
+    warehouse = Column(String(50), nullable=True)
+    items_json = Column(Text, nullable=True)    # JSON: [{item_cd, item_name, spec, qty, unit_price, amount, unit, remark}]
+    total_amount = Column(Float, default=0)
+    remark = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+
+class EmailHistory(Base):
+    """이메일 발송이력"""
+    __tablename__ = 'email_history'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    send_date = Column(DateTime, default=datetime.datetime.now)
+    sender = Column(String(200), nullable=True)
+    receiver = Column(String(200), nullable=True)
+    subject = Column(String(500), nullable=True)
+    content = Column(Text, nullable=True)
+    attachment = Column(String(500), nullable=True)
+    is_success = Column(Boolean, default=False)
+    error_message = Column(Text, nullable=True)
+    po_id = Column(Integer, ForeignKey('purchase_orders.id'), nullable=True)
+    po_ref = Column(String(50), nullable=True)    # iCUBE 발주번호 참조 (PO2603000015 등)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+
+class DailyReport(Base):
+    __tablename__ = 'daily_reports'
+    __table_args__ = (
+        UniqueConstraint('report_date', 'department', name='uq_daily_report_date_dept'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_date = Column(Date, nullable=False)                    # 보고 날짜
+    department = Column(String(50), nullable=False)               # 부서명 (user_group)
+    reporter_name = Column(String(50), nullable=False)            # 보고자 이름
+    reporter_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+
+    # 기본사항
+    headcount_total = Column(Integer, default=0)                  # 총 인원
+    headcount_present = Column(Integer, default=0)                # 재실 인원
+    headcount_absence_info = Column(String(200), nullable=True)   # 부재 사유 (예: "반차 1명", "연차 1명")
+
+    # 업무 항목 (JSON 배열: ["항목1", "항목2", ...])
+    items_json = Column(Text, nullable=False, default='[]')
+
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    @property
+    def items(self):
+        try:
+            return json.loads(self.items_json or '[]')
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    @items.setter
+    def items(self, value):
+        self.items_json = json.dumps(value, ensure_ascii=False)
+
+
+# -------------------------------------------------------------------
+# 13. 입고관리 (Phase 3)
+# -------------------------------------------------------------------
+RCV_STATUS_CHOICES = ['검수대기', '검수완료', '반품']
+
+
+class Receiving(Base):
+    """입고 (발주서 기반 또는 직접 입고)"""
+    __tablename__ = 'receivings'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    rcv_no = Column(String(20), unique=True, nullable=False)      # RCV2026-001
+    rcv_date = Column(Date, nullable=False)
+    vendor_id = Column(Integer, ForeignKey('vendors.id'), nullable=False)
+    po_id = Column(Integer, ForeignKey('purchase_orders.id'), nullable=True)
+    contract_id = Column(Integer, ForeignKey('contracts.id'), nullable=True)
+    status = Column(String(20), default='검수대기')     # 검수대기/검수완료/반품
+    note = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    vendor = relationship("Vendor")
+    purchase_order = relationship("PurchaseOrder", foreign_keys=[po_id])
+    contract = relationship("Contract", foreign_keys=[contract_id])
+    creator = relationship("User", foreign_keys=[created_by])
+    items = relationship("ReceivingItem", back_populates="receiving", cascade="all, delete-orphan", order_by="ReceivingItem.id")
+
+
+class ReceivingItem(Base):
+    """입고 품목 상세"""
+    __tablename__ = 'receiving_items'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    receiving_id = Column(Integer, ForeignKey('receivings.id'), nullable=False)
+    po_item_id = Column(Integer, ForeignKey('purchase_order_items.id'), nullable=True)
+    item_name = Column(String(300), nullable=False)
+    item_spec = Column(String(500), nullable=True)
+    received_qty = Column(Float, default=0)
+    unit = Column(String(50), nullable=True)
+    unit_price = Column(Float, default=0)
+    amount = Column(Float, default=0)
+    note = Column(Text, nullable=True)
+
+    receiving = relationship("Receiving", back_populates="items")
+    po_item = relationship("PurchaseOrderItem", foreign_keys=[po_item_id])
+
+
+# -------------------------------------------------------------------
+# 14. BOM 관리 (Phase 4)
+# -------------------------------------------------------------------
+class BomHeader(Base):
+    """BOM 마스터 (완제품별)"""
+    __tablename__ = 'bom_headers'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_code = Column(String(50), unique=True, nullable=False)
+    product_name = Column(String(200), nullable=False)
+    product_category = Column(String(50), nullable=True)     # 제품군 (실내등, 투광등 등)
+    certification_no = Column(String(50), nullable=True)     # 인증번호
+    version = Column(String(20), default='1.0')
+    is_active = Column(Boolean, default=True)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    bom_items = relationship("BomItem", back_populates="bom_header", cascade="all, delete-orphan", order_by="BomItem.id")
+
+
+class BomItem(Base):
+    """BOM 소요 부품"""
+    __tablename__ = 'bom_items'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    bom_id = Column(Integer, ForeignKey('bom_headers.id'), nullable=False)
+    item_code = Column(String(100), nullable=True)            # 품번 (items.icube_item_cd 매칭)
+    item_id = Column(Integer, ForeignKey('items.id'), nullable=True)  # items FK
+    item_name = Column(String(300), nullable=False)
+    item_spec = Column(String(500), nullable=True)
+    quantity = Column(Float, default=1)       # 1개 완제품당 소요량
+    unit_price = Column(Float, nullable=True)                 # 단가
+    amount = Column(Float, nullable=True)                     # 금액
+    supplier = Column(String(200), nullable=True)             # 납품업체
+    unit = Column(String(50), nullable=True)
+    note = Column(Text, nullable=True)
+
+    bom_header = relationship("BomHeader", back_populates="bom_items")
+    item = relationship("Item", foreign_keys=[item_id])

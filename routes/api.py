@@ -10,8 +10,13 @@ import re
 from flask import Blueprint, current_app, jsonify, request
 from flask_wtf.csrf import CSRFProtect
 
+from sqlalchemy import or_
+
+from modules.auth_decorators import login_required
 from modules.db_context import get_db
-from modules.models import Project
+from modules.history_board import append_history_log
+from modules.models import Project, ProductCatalog, G2bProcurement
+from modules.services.g2b_procurement_sync import sync_daily, sync_bulk
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -82,8 +87,6 @@ def sync_nas_folders():
     if not isinstance(folders, list):
         return jsonify({'ok': False, 'error': 'folders는 배열이어야 합니다.'}), 400
 
-    year = str(data.get('year', datetime.date.today().year))
-
     created = []
     skipped = []
     errors = []
@@ -98,10 +101,8 @@ def sync_nas_folders():
             if wp:
                 existing_paths.add(wp.strip())
 
-        # 현재 연도 프로젝트 번호 카운트
-        count = db.query(Project).filter(
-            Project.project_no.like(f"{year}-%")
-        ).count()
+        # 연도별 프로젝트 번호 카운트 캐시
+        year_counts = {}
 
         for folder_name in folders:
             parsed = _parse_folder_name(folder_name)
@@ -112,25 +113,41 @@ def sync_nas_folders():
                 })
                 continue
 
-            # work_path 기준으로 중복 체크
-            nas_path = f"/volume1/현장관리/000. 현장관리/{year}/{folder_name}"
-            if nas_path in existing_paths:
+            # work_path: 폴더명 앞 4자리(YYYY)로 연도 디렉토리 결정
+            folder_year = str(parsed['folder_date'].year)
+            nas_path = f"\\\\Magnatech\\현장관리\\000. 현장관리\\{folder_year}\\{folder_name}"
+            old_path = f"/volume1/현장관리/000. 현장관리/{folder_year}/{folder_name}"
+            if nas_path in existing_paths or old_path in existing_paths:
                 skipped.append({
                     'folder': folder_name,
                     'reason': '이미 등록된 현장'
                 })
                 continue
 
-            # 새 프로젝트 생성 (생성일 = 폴더명의 날짜)
-            count += 1
+            # 새 프로젝트 생성 (생성일 = 폴더명의 날짜, 관리번호 = 폴더연도 기준)
+            if folder_year not in year_counts:
+                year_counts[folder_year] = db.query(Project).filter(
+                    Project.project_no.like(f"{folder_year}-%")
+                ).count()
+            year_counts[folder_year] += 1
             folder_dt = datetime.datetime.combine(parsed['folder_date'], datetime.time())
             new_project = Project(
-                project_no=f"{year}-{count:03d}",
+                project_no=f"{folder_year}-{year_counts[folder_year]:03d}",
                 temp_name=parsed['site_name'],
                 work_path=nas_path,
                 created_at=folder_dt,
             )
             db.add(new_project)
+            db.flush()
+
+            append_history_log(
+                db,
+                project_id=new_project.id,
+                user_name="시스템 🤖",
+                content=f"NAS 폴더 동기화로 현장이 자동 생성되었습니다. (폴더: {folder_name})",
+                scope='design',
+                kind='system'
+            )
 
             created.append({
                 'folder': folder_name,
@@ -154,10 +171,45 @@ def sync_nas_folders():
     })
 
 
-@api_bp.route('/fix_nas_dates', methods=['POST'])
-def fix_nas_dates():
+@api_bp.route('/catalog/search')
+@login_required
+def catalog_search():
+    """ProductCatalog 자동완성 검색 API."""
+    q = (request.args.get('q') or '').strip()
+    category = (request.args.get('category') or '').strip()
+
+    if len(q) < 2:
+        return jsonify({'results': []})
+
+    with get_db() as db:
+        like_q = f'%{q}%'
+        query = db.query(ProductCatalog).filter(
+            or_(
+                ProductCatalog.model_name.ilike(like_q),
+                ProductCatalog.item_name.ilike(like_q),
+                ProductCatalog.spec.ilike(like_q),
+            )
+        )
+        if category:
+            query = query.filter(ProductCatalog.item_name.ilike(f'%{category}%'))
+
+        results = query.order_by(ProductCatalog.model_name).limit(10).all()
+        return jsonify({'results': [
+            {
+                'id': r.id,
+                'model_name': r.model_name or '',
+                'item_name': r.item_name or '',
+                'spec': r.spec or '',
+                'unit_price': r.unit_price or 0,
+                'unit': r.unit or '',
+            } for r in results
+        ]})
+
+
+@api_bp.route('/fix_nas_paths', methods=['POST'])
+def fix_nas_paths():
     """
-    work_path가 NAS 경로인 기존 프로젝트의 created_at을 폴더 날짜로 보정.
+    기존 리눅스 경로(/volume1/...)를 SMB 경로(\\\\Magnatech\\...)로 일괄 보정.
     한 번만 실행하면 되는 마이그레이션용 엔드포인트.
     """
     ok, err_msg = _check_api_key()
@@ -171,22 +223,16 @@ def fix_nas_dates():
         ).all()
 
         for p in projects:
-            # work_path에서 폴더명 추출
-            folder_name = p.work_path.rstrip('/').split('/')[-1]
-            parsed = _parse_folder_name(folder_name)
-            if not parsed:
-                continue
-
-            folder_dt = datetime.datetime.combine(parsed['folder_date'], datetime.time())
-            if p.created_at != folder_dt:
-                old_dt = p.created_at
-                p.created_at = folder_dt
-                fixed.append({
-                    'project_no': p.project_no,
-                    'name': p.temp_name,
-                    'old': str(old_dt),
-                    'new': str(folder_dt),
-                })
+            old_path = p.work_path
+            # /volume1/현장관리/000. 현장관리/2026/폴더명 → \\Magnatech\현장관리\000. 현장관리\2026\폴더명
+            new_path = old_path.replace('/volume1/현장관리/', '\\\\Magnatech\\현장관리\\').replace('/', '\\')
+            p.work_path = new_path
+            fixed.append({
+                'project_no': p.project_no,
+                'name': p.temp_name,
+                'old': old_path,
+                'new': new_path,
+            })
 
         if fixed:
             db.commit()
@@ -194,5 +240,48 @@ def fix_nas_dates():
     return jsonify({
         'ok': True,
         'fixed': fixed,
-        'summary': f"{len(fixed)}건 날짜 보정 완료"
+        'summary': f"{len(fixed)}건 경로 보정 완료"
+    })
+
+
+# =====================================================================
+# 나라장터 조달내역 동기화 API
+# =====================================================================
+
+@api_bp.route('/sync_g2b_procurement', methods=['POST'])
+def sync_g2b_procurement():
+    """
+    나라장터 특정물품조달내역 동기화.
+    - 일일 동기화 (기본): 전일 계약건 조회
+    - 벌크 동기화: mode=bulk&start_year=2020 으로 전체 이력 수집
+
+    Request JSON (optional):
+        {"mode": "daily"}   → 전일 데이터만 (기본값, cron용)
+        {"mode": "bulk", "start_year": 2020}  → 초기 벌크
+
+    Headers: X-API-Key (NAS와 동일 키 사용)
+    """
+    ok, err_msg = _check_api_key()
+    if not ok:
+        return jsonify({'ok': False, 'error': err_msg}), 401
+
+    data = request.get_json(silent=True) or {}
+    mode = data.get('mode', 'daily')
+
+    with get_db() as db:
+        if mode == 'bulk':
+            start_year = int(data.get('start_year', 2020))
+            result = sync_bulk(db, start_year=start_year)
+        else:
+            result = sync_daily(db)
+
+        db.commit()
+
+    total = result.get('created', 0) + result.get('updated', 0)
+    return jsonify({
+        'ok': True,
+        'mode': mode,
+        'result': result,
+        'summary': f"동기화 완료: 신규 {result['created']}건, 갱신 {result['updated']}건"
+                   + (f", 오류 {result['errors']}건" if result.get('errors') else '')
     })

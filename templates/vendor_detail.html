@@ -1,0 +1,489 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">🏢 {{ vendor.TR_NM }}</h2>
+    <a href="{{ url_for('vendor.vendor_list') }}" class="btn btn-outline-secondary btn-sm">목록으로</a>
+</div>
+
+{# --- 기본정보 카드 --- #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white fw-bold">기본정보</div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3 col-6">
+                <small class="text-muted d-block">거래처코드</small>
+                <code>{{ vendor.TR_CD }}</code>
+            </div>
+            <div class="col-md-3 col-6">
+                <small class="text-muted d-block">대표자</small>
+                <strong>{{ vendor.CEO_NM or '-' }}</strong>
+            </div>
+            <div class="col-md-3 col-6">
+                <small class="text-muted d-block">사업자번호</small>
+                {{ vendor.REG_NB or '-' }}
+            </div>
+            <div class="col-md-3 col-6">
+                <small class="text-muted d-block">상태</small>
+                {% if vendor.USE_YN == 'Y' %}
+                    <span class="badge bg-success">사용</span>
+                {% else %}
+                    <span class="badge bg-secondary">미사용</span>
+                {% endif %}
+            </div>
+            <div class="col-md-3 col-6">
+                <small class="text-muted d-block">업종</small>
+                {{ vendor.BUSINESS or '-' }}
+            </div>
+            <div class="col-md-3 col-6">
+                <small class="text-muted d-block">종목</small>
+                {{ vendor.JONGMOK or '-' }}
+            </div>
+            <div class="col-md-3 col-6">
+                <small class="text-muted d-block">이메일</small>
+                {% if vendor.EMAIL %}
+                    <a href="mailto:{{ vendor.EMAIL }}">{{ vendor.EMAIL }}</a>
+                {% else %}-{% endif %}
+            </div>
+            <div class="col-md-3 col-6">
+                <small class="text-muted d-block">전화</small>
+                {{ vendor.TEL or '-' }}
+            </div>
+            <div class="col-md-3 col-6">
+                <small class="text-muted d-block">팩스</small>
+                {{ vendor.FAX or '-' }}
+            </div>
+            <div class="col-md-9 col-12">
+                <small class="text-muted d-block">주소</small>
+                {{ vendor.DIV_ADDR1 or '' }} {{ vendor.ADDR2 or '' }}
+                {% if not vendor.DIV_ADDR1 and not vendor.ADDR2 %}-{% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# --- 거래 통계 카드 --- #}
+<div class="row g-3 mb-3">
+    <div class="col-md-2 col-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body py-2 text-center">
+                <small class="text-muted">발주 건수</small>
+                <div class="fw-bold fs-5 text-primary">{{ trade_stats.po_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-8">
+        <div class="card border-0 shadow-sm border-start border-4 border-primary">
+            <div class="card-body py-2">
+                <small class="text-muted">발주 총액</small>
+                <div class="fw-bold fs-5 text-primary">{{ fmt_money(trade_stats.po_total) }}원</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body py-2 text-center">
+                <small class="text-muted">입고 건수</small>
+                <div class="fw-bold fs-5 text-success">{{ trade_stats.rcv_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-8">
+        <div class="card border-0 shadow-sm border-start border-4 border-success">
+            <div class="card-body py-2">
+                <small class="text-muted">입고 총액</small>
+                <div class="fw-bold fs-5 text-success">{{ fmt_money(trade_stats.rcv_total) }}원</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-12">
+        <div class="card border-0 shadow-sm border-start border-4 border-info">
+            <div class="card-body py-2">
+                <small class="text-muted">최근 거래일</small>
+                <div class="fw-bold small">발주: {{ trade_stats.last_po_date }}</div>
+                <div class="fw-bold small">입고: {{ trade_stats.last_rcv_date }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# --- 탭: 발주이력 / 입고이력 / 품목별 단가추이 --- #}
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-po" type="button">
+            발주이력 <span class="badge bg-primary">{{ trade_stats.po_count }}</span>
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-rcv" type="button">
+            입고이력 <span class="badge bg-success">{{ trade_stats.rcv_count }}</span>
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-vitems" type="button">
+            업체 메모
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-price" type="button">
+            품목별 단가추이
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    {# --- 발주이력 탭 --- #}
+    <div class="tab-pane fade show active" id="tab-po">
+        {% if purchase_orders %}
+        {% for po in purchase_orders %}
+        <div class="card border-0 shadow-sm mb-2">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
+                <div>
+                    <strong class="text-primary">{{ po.CLS_NB }}</strong>
+                    <span class="text-muted ms-2">{{ po.CLS_DT }}</span>
+                </div>
+                <span class="fw-bold">{{ fmt_money(po.total) }}원</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 no-stack-table" style="table-layout:fixed;">
+                        <colgroup>
+                            <col style="width:36px">
+                            <col>
+                            <col style="width:70px">
+                            <col style="width:40px">
+                            <col style="width:90px">
+                            <col style="width:100px">
+                            <col style="width:18%">
+                        </colgroup>
+                        <thead class="table-light">
+                            <tr>
+                                <th>No</th>
+                                <th>품명/규격</th>
+                                <th class="text-end">수량</th>
+                                <th>단위</th>
+                                <th class="text-end">단가</th>
+                                <th class="text-end">합계</th>
+                                <th>비고</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in po.detail_rows %}
+                            <tr>
+                                <td class="text-muted">{{ item.CLS_SQ }}</td>
+                                <td>
+                                    <strong>{{ item.ITEM_NM or item.ITEM_CD }}</strong>
+                                    {% if item.ITEM_DC %}<br><small class="text-muted">{{ item.ITEM_DC }}</small>{% endif %}
+                                    {% if not item.ITEM_NM %}<br><small class="text-muted">{{ item.ITEM_CD }}</small>{% endif %}
+                                </td>
+                                <td class="text-end">{{ "{:,.0f}".format(item.CLS_QT or 0) }}</td>
+                                <td>{{ item.UNIT_DC or '' }}</td>
+                                <td class="text-end">{{ "{:,.0f}".format(item.CLS_UM or 0) }}</td>
+                                <td class="text-end fw-bold">{{ "{:,.0f}".format(item.CLSH_AM or 0) }}</td>
+                                <td class="text-muted small">{{ item.ITEM_REMARK or '' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% if po.REMARK_DC %}
+            <div class="card-footer bg-white py-1">
+                <small class="text-muted">비고: {{ po.REMARK_DC }}</small>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="text-center text-muted py-4">발주 이력이 없습니다.</div>
+        {% endif %}
+    </div>
+
+    {# --- 입고이력 탭 --- #}
+    <div class="tab-pane fade" id="tab-rcv">
+        {% if receivings %}
+        {% for rcv in receivings %}
+        <div class="card border-0 shadow-sm mb-2">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
+                <div>
+                    <strong class="text-success">{{ rcv.RCV_NB }}</strong>
+                    <span class="text-muted ms-2">{{ rcv.RCV_DT }}</span>
+                    {% if rcv.WH_CD %}<span class="badge bg-light text-dark ms-1">{{ rcv.WH_CD }}</span>{% endif %}
+                </div>
+                <span class="fw-bold">{{ fmt_money(rcv.total) }}원</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 no-stack-table" style="table-layout:fixed;">
+                        <colgroup>
+                            <col style="width:36px">
+                            <col>
+                            <col style="width:70px">
+                            <col style="width:40px">
+                            <col style="width:90px">
+                            <col style="width:100px">
+                            <col style="width:18%">
+                        </colgroup>
+                        <thead class="table-light">
+                            <tr>
+                                <th>No</th>
+                                <th>품명/규격</th>
+                                <th class="text-end">수량</th>
+                                <th>단위</th>
+                                <th class="text-end">단가</th>
+                                <th class="text-end">합계</th>
+                                <th>비고</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in rcv.detail_rows %}
+                            <tr>
+                                <td class="text-muted">{{ item.RCV_SQ }}</td>
+                                <td>
+                                    <strong>{{ item.ITEM_NM or item.ITEM_CD }}</strong>
+                                    {% if item.ITEM_DC %}<br><small class="text-muted">{{ item.ITEM_DC }}</small>{% endif %}
+                                    {% if not item.ITEM_NM %}<br><small class="text-muted">{{ item.ITEM_CD }}</small>{% endif %}
+                                </td>
+                                <td class="text-end">{{ "{:,.0f}".format(item.RCV_QT or 0) }}</td>
+                                <td>{{ item.UNIT_DC or '' }}</td>
+                                <td class="text-end">{{ "{:,.0f}".format(item.RCV_UM or 0) }}</td>
+                                <td class="text-end fw-bold">{{ "{:,.0f}".format(item.RCVH_AM or 0) }}</td>
+                                <td class="text-muted small">{{ item.REMARK_DC or '' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="text-center text-muted py-4">입고 이력이 없습니다.</div>
+        {% endif %}
+    </div>
+
+    {# --- 업체 메모 탭 --- #}
+    <div class="tab-pane fade" id="tab-vitems">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <label class="form-label fw-bold">업체 메모 <small class="text-muted">(업체별 담당자재, 특이사항 등 빠르게 확인가능한 코멘트)</small></label>
+                <textarea id="vendorNoteText" class="form-control" rows="4" placeholder="예: 케이블류 납품, CV/VCTF 전선. 담당자 김과장 010-1234-5678">{{ vendor.note or '' }}</textarea>
+                <div class="mt-2 text-end">
+                    <button class="btn btn-primary btn-sm" id="saveVendorNoteBtn">저장</button>
+                    <span id="noteSaveResult" class="text-success small ms-2" style="display:none;">저장됨</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# --- 품목별 단가추이 탭 --- #}
+    <div class="tab-pane fade" id="tab-price">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6 col-12">
+                        <div class="input-group input-group-sm">
+                            <input type="text" id="itemCodeInput" class="form-control" placeholder="품목코드 입력 (예: ITEM001)">
+                            <button class="btn btn-primary" type="button" id="loadPriceBtn">조회</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="priceChartArea" style="display:none;">
+                    <canvas id="priceChart" height="250"></canvas>
+                </div>
+                <div id="priceTableArea" style="display:none;">
+                    <div class="table-responsive mt-3">
+                        <table class="table table-sm table-hover no-stack-table" id="priceTable" style="table-layout:fixed;">
+                            <colgroup>
+                                <col style="width:90px">
+                                <col style="width:55px">
+                                <col>
+                                <col>
+                                <col style="width:70px">
+                                <col style="width:90px">
+                                <col style="width:100px">
+                            </colgroup>
+                            <thead class="table-light">
+                                <tr>
+                                    <th>거래일</th>
+                                    <th>유형</th>
+                                    <th>거래처</th>
+                                    <th>규격</th>
+                                    <th class="text-end">수량</th>
+                                    <th class="text-end">단가</th>
+                                    <th class="text-end">금액</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="priceEmpty" class="text-center text-muted py-4">
+                    품목코드를 입력하고 조회 버튼을 클릭하세요.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+(function() {
+    var chart = null;
+
+    // 품목코드 클릭 시 단가추이 탭으로 이동
+    document.querySelectorAll('.item-code').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var code = this.textContent.trim();
+            document.getElementById('itemCodeInput').value = code;
+            // 단가추이 탭 활성화
+            var tab = document.querySelector('[data-bs-target="#tab-price"]');
+            if (tab) new bootstrap.Tab(tab).show();
+            setTimeout(function() { loadPriceData(code); }, 200);
+        });
+    });
+
+    document.getElementById('loadPriceBtn').addEventListener('click', function() {
+        var code = document.getElementById('itemCodeInput').value.trim();
+        if (code) loadPriceData(code);
+    });
+
+    document.getElementById('itemCodeInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            var code = this.value.trim();
+            if (code) loadPriceData(code);
+        }
+    });
+
+    function loadPriceData(itemCd) {
+        fetch('/vendor/item-history?item_cd=' + encodeURIComponent(itemCd))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                if (data.total_count === 0) {
+                    document.getElementById('priceChartArea').style.display = 'none';
+                    document.getElementById('priceTableArea').style.display = 'none';
+                    document.getElementById('priceEmpty').style.display = '';
+                    document.getElementById('priceEmpty').textContent = '해당 품목의 거래 이력이 없습니다.';
+                    return;
+                }
+
+                document.getElementById('priceEmpty').style.display = 'none';
+                document.getElementById('priceChartArea').style.display = '';
+                document.getElementById('priceTableArea').style.display = '';
+
+                renderChart(data.chart, itemCd);
+                renderTable(data.history);
+            })
+            .catch(function(err) {
+                console.error(err);
+                alert('데이터 조회 중 오류가 발생했습니다.');
+            });
+    }
+
+    function renderChart(chartData, itemCd) {
+        var ctx = document.getElementById('priceChart').getContext('2d');
+        if (chart) chart.destroy();
+
+        var poData = [];
+        var rcvData = [];
+        chartData.labels.forEach(function(label, i) {
+            if (chartData.po_prices[i] !== null) poData.push({x: label, y: chartData.po_prices[i]});
+            if (chartData.rcv_prices[i] !== null) rcvData.push({x: label, y: chartData.rcv_prices[i]});
+        });
+
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [
+                    {
+                        label: '발주 단가',
+                        data: poData,
+                        borderColor: '#0d6efd',
+                        backgroundColor: 'rgba(13,110,253,0.1)',
+                        tension: 0.3,
+                        pointRadius: 4,
+                        fill: false,
+                    },
+                    {
+                        label: '입고 단가',
+                        data: rcvData,
+                        borderColor: '#198754',
+                        backgroundColor: 'rgba(25,135,84,0.1)',
+                        tension: 0.3,
+                        pointRadius: 4,
+                        fill: false,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: { display: true, text: itemCd + ' 단가 추이' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString() + '원';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { type: 'category', title: { display: true, text: '거래일' } },
+                    y: {
+                        title: { display: true, text: '단가 (원)' },
+                        ticks: { callback: function(v) { return v.toLocaleString(); } }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderTable(rows) {
+        var tbody = document.querySelector('#priceTable tbody');
+        tbody.innerHTML = '';
+        rows.forEach(function(r) {
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td>' + r.date + '</td>' +
+                '<td><span class="badge ' + (r.type === 'PO' ? 'bg-primary' : 'bg-success') + '">' + (r.type === 'PO' ? '발주' : '입고') + '</span></td>' +
+                '<td>' + r.vendor + '</td>' +
+                '<td>' + (r.spec || '-') + '</td>' +
+                '<td class="text-end">' + r.qty.toLocaleString() + '</td>' +
+                '<td class="text-end">' + r.unit_price.toLocaleString() + '</td>' +
+                '<td class="text-end fw-bold">' + r.amount.toLocaleString() + '</td>';
+            tbody.appendChild(tr);
+        });
+    }
+})();
+
+// ── 업체 메모 저장 ──
+(function() {
+    var vendorId = '{{ vendor.vendor_id }}';
+    var csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+    document.getElementById('saveVendorNoteBtn').addEventListener('click', function() {
+        var note = document.getElementById('vendorNoteText').value.trim();
+        fetch('/api/vendor/' + vendorId + '/note', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({note: note}),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.ok) {
+                var msg = document.getElementById('noteSaveResult');
+                msg.style.display = '';
+                setTimeout(function() { msg.style.display = 'none'; }, 2000);
+            } else { alert(d.error || '저장 실패'); }
+        })
+        .catch(function(e) { alert('오류: ' + e.message); });
+    });
+})();
+</script>
+
+{% endblock %}

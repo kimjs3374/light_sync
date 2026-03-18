@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <div>
+        <h2 class="text-primary fw-bold mb-0">{{ rcv.rcv_no }}</h2>
+        <small class="text-muted">입고 상세</small>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('receiving.receiving_list') }}" class="btn btn-outline-secondary btn-sm">목록</a>
+        {% if rcv.po_id %}
+        <a href="{{ url_for('purchase_order.po_detail', po_id=rcv.po_id) }}" class="btn btn-outline-info btn-sm">발주서 보기</a>
+        {% endif %}
+    </div>
+</div>
+
+{# --- 기본정보 --- #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <strong>기본정보</strong>
+        <div class="d-flex gap-2 align-items-center">
+            {% if rcv.status == '검수대기' %}
+            <span class="badge bg-warning text-dark fs-6">검수대기</span>
+            {% elif rcv.status == '검수완료' %}
+            <span class="badge bg-success fs-6">검수완료</span>
+            {% elif rcv.status == '반품' %}
+            <span class="badge bg-danger fs-6">반품</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-3">
+                <small class="text-muted">입고번호</small>
+                <div class="fw-bold">{{ rcv.rcv_no }}</div>
+            </div>
+            <div class="col-md-3">
+                <small class="text-muted">입고일</small>
+                <div>{{ rcv.rcv_date.strftime('%Y-%m-%d') if rcv.rcv_date else '-' }}</div>
+            </div>
+            <div class="col-md-3">
+                <small class="text-muted">거래처</small>
+                <div>{{ rcv.vendor.name if rcv.vendor else '-' }}</div>
+            </div>
+            <div class="col-md-3">
+                <small class="text-muted">발주서</small>
+                <div>
+                    {% if rcv.purchase_order %}
+                    <a href="{{ url_for('purchase_order.po_detail', po_id=rcv.po_id) }}">{{ rcv.purchase_order.po_no }}</a>
+                    {% else %}
+                    <span class="text-muted">직접 입고</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% if rcv.note %}
+            <div class="col-12">
+                <small class="text-muted">비고</small>
+                <div>{{ rcv.note }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# --- 입고 품목 --- #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-2"><strong>입고 품목</strong></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0" style="table-layout:fixed;">
+                <colgroup>
+                    <col style="width:30px">
+                    <col style="width:25%">
+                    <col style="width:20%">
+                    <col style="width:80px">
+                    <col style="width:60px">
+                    <col style="width:100px">
+                    <col style="width:100px">
+                    <col>
+                </colgroup>
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>품명</th>
+                        <th>규격</th>
+                        <th class="text-end">수량</th>
+                        <th>단위</th>
+                        <th class="text-end">단가</th>
+                        <th class="text-end">금액</th>
+                        <th>비고</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in rcv.items %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ item.item_name }}</td>
+                        <td>{{ item.item_spec or '-' }}</td>
+                        <td class="text-end">{{ item.received_qty|int }}</td>
+                        <td>{{ item.unit or '-' }}</td>
+                        <td class="text-end">{{ fmt_money(item.unit_price) }}</td>
+                        <td class="text-end">{{ fmt_money(item.amount) }}</td>
+                        <td>{{ item.note or '' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-light">
+                        <td colspan="6" class="text-end fw-bold">공급가액</td>
+                        <td class="text-end fw-bold">{{ fmt_money(total_amount) }}</td>
+                        <td></td>
+                    </tr>
+                    <tr class="table-light">
+                        <td colspan="6" class="text-end">부가세 (10%)</td>
+                        <td class="text-end">{{ fmt_money(tax_amount) }}</td>
+                        <td></td>
+                    </tr>
+                    <tr class="table-light">
+                        <td colspan="6" class="text-end fw-bold fs-6">합계</td>
+                        <td class="text-end fw-bold fs-6 text-primary">{{ fmt_money(total_amount + tax_amount) }}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# --- 발주 대비 입고 현황 --- #}
+{% if rcv.po_id %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-2">
+        <strong>발주 vs 입고 대사</strong>
+        <small class="text-muted ms-2">{{ rcv.purchase_order.po_no }}</small>
+    </div>
+    <div class="card-body p-0" id="comparisonBody">
+        <p class="text-center text-muted py-3">로딩 중...</p>
+    </div>
+</div>
+<script>
+(function() {
+    fetch('/api/receiving/po-comparison/{{ rcv.po_id }}')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            var body = document.getElementById('comparisonBody');
+            if (d.error) { body.innerHTML = '<p class="text-danger p-3">' + d.error + '</p>'; return; }
+            var html = '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light"><tr><th>품명</th><th>규격</th><th class="text-end">발주</th><th class="text-end">입고</th><th class="text-end">차이</th><th>상태</th></tr></thead><tbody>';
+            d.items.forEach(function(item) {
+                var cls = item.status === '완료' ? 'text-success' : (item.status === '과입고' ? 'text-warning' : 'text-danger');
+                html += '<tr><td>' + item.item_name + '</td><td>' + item.item_spec + '</td><td class="text-end">' + item.ordered_qty + '</td><td class="text-end">' + item.received_qty + '</td><td class="text-end ' + cls + '">' + item.diff + '</td><td><span class="badge ' + (item.status === '완료' ? 'bg-success' : (item.status === '과입고' ? 'bg-warning text-dark' : 'bg-danger')) + '">' + item.status + '</span></td></tr>';
+            });
+            html += '</tbody></table></div>';
+            body.innerHTML = html;
+        });
+})();
+</script>
+{% endif %}
+
+{# --- 액션 버튼 --- #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+        <div class="d-flex flex-wrap gap-2">
+            {# 상태 변경 #}
+            {% for s in status_choices %}
+            {% if s != rcv.status %}
+            <form method="POST" action="{{ url_for('receiving.receiving_change_status', rcv_id=rcv.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="status" value="{{ s }}">
+                <button type="submit" class="btn btn-sm {{ 'btn-success' if s == '검수완료' else ('btn-danger' if s == '반품' else 'btn-outline-secondary') }}"
+                    onclick="return confirm('{{ s }}(으)로 변경하시겠습니까?');">
+                    {{ s }}
+                </button>
+            </form>
+            {% endif %}
+            {% endfor %}
+
+            {# 삭제 #}
+            {% if rcv.status != '검수완료' %}
+            <form method="POST" action="{{ url_for('receiving.receiving_delete', rcv_id=rcv.id) }}" class="d-inline ms-auto">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('이 입고를 삭제하시겠습니까?');">삭제</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}

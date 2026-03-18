@@ -1,0 +1,244 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">소요자재 계산</h2>
+    <a href="{{ url_for('bom.bom_list') }}" class="btn btn-outline-secondary btn-sm">BOM 목록</a>
+</div>
+
+{# --- 계약 선택 --- #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-6 col-12">
+                <label class="form-label fw-bold">계약 선택</label>
+                <select name="contract_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">-- 계약을 선택하세요 --</option>
+                    {% for c in contracts %}
+                    <option value="{{ c.id }}" {{ 'selected' if c.id == contract_id }}>
+                        {{ c.project.temp_name if c.project else '' }} - {{ c.contract_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if selected_contract %}
+{# --- 계약 정보 --- #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-2"><strong>{{ selected_contract.project.temp_name if selected_contract.project else '' }} - {{ selected_contract.contract_name }}</strong></div>
+    <div class="card-body py-2">
+        <div class="row g-2">
+            <div class="col-md-4">
+                <small class="text-muted">계약품목</small>: <strong>{{ selected_contract.items|length }}건</strong>
+            </div>
+            <div class="col-md-4">
+                <small class="text-muted">납품기일</small>: {{ selected_contract.delivery_due_date.strftime('%Y-%m-%d') if selected_contract.delivery_due_date else '-' }}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# --- 소요자재 테이블 --- #}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <div>
+            <strong>소요자재 목록</strong>
+            <small class="text-muted ms-2">(계약 품목 x BOM = 소요 자재)</small>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="btnCreatePO" style="display:none;" data-bs-toggle="modal" data-bs-target="#poPreviewModal">
+            선택 자재 발주서 생성 (<span id="selectedCount">0</span>건)
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:36px"><input type="checkbox" id="checkAll" title="전체 선택"></th>
+                        <th>계약품목</th>
+                        <th>소요부품</th>
+                        <th>규격</th>
+                        <th>거래처</th>
+                        <th class="text-end">제품수량</th>
+                        <th class="text-end">단위소요</th>
+                        <th class="text-end">총소요</th>
+                        <th class="text-end">발주량</th>
+                        <th class="text-end">입고량</th>
+                        <th class="text-end">부족량</th>
+                        <th>상태</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in requirement %}
+                    <tr>
+                        <td>
+                            {% if not r.get('no_bom') and r.shortage > 0 %}
+                            <input type="checkbox" class="item-check"
+                                data-bom-item-id="{{ r.bom_item.id }}"
+                                data-contract-item-id="{{ r.contract_item.id }}"
+                                data-item-name="{{ r.bom_item.item_name }}"
+                                data-item-spec="{{ r.bom_item.item_spec or '' }}"
+                                data-quantity="{{ r.shortage|int }}"
+                                data-unit="{{ r.bom_item.unit or 'EA' }}"
+                                data-unit-price="{{ r.bom_item.unit_price or 0 }}"
+                                data-supplier="{{ r.bom_item.supplier or '' }}">
+                            {% endif %}
+                        </td>
+                        <td data-label="계약품목">
+                            <strong>{{ r.contract_item.category or '' }}</strong>
+                            {% if r.contract_item.model_name %}
+                            <br><small class="text-muted">{{ r.contract_item.model_name }}</small>
+                            {% endif %}
+                        </td>
+                        {% if r.get('no_bom') %}
+                        <td colspan="9" class="text-muted">
+                            BOM 미등록 -
+                            <a href="{{ url_for('bom.bom_create') }}" class="text-primary">BOM 등록하기</a>
+                        </td>
+                        <td><span class="badge bg-secondary">BOM없음</span></td>
+                        {% else %}
+                        <td data-label="소요부품">{{ r.bom_item.item_name }}</td>
+                        <td data-label="규격">{{ r.bom_item.item_spec or '-' }}</td>
+                        <td data-label="거래처"><small>{{ r.bom_item.supplier or '-' }}</small></td>
+                        <td data-label="제품수량" class="text-end">{{ r.product_qty }}</td>
+                        <td data-label="단위소요" class="text-end">{{ r.per_unit }}</td>
+                        <td data-label="총소요" class="text-end fw-bold">{{ r.needed|int }}</td>
+                        <td data-label="발주량" class="text-end">{{ r.ordered|int }}</td>
+                        <td data-label="입고량" class="text-end">{{ r.received|int }}</td>
+                        <td data-label="부족량" class="text-end {{ 'text-danger fw-bold' if r.shortage > 0 else 'text-success' }}">
+                            {{ r.shortage|int }}
+                        </td>
+                        <td data-label="상태">
+                            {% if r.shortage > 0 %}
+                            <span class="badge bg-danger">부족</span>
+                            {% elif r.ordered >= r.needed %}
+                            <span class="badge bg-success">충족</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">진행중</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="12" class="text-center text-muted py-4">소요자재가 없습니다.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# --- 발주서 생성 프리뷰 모달 --- #}
+<div class="modal fade" id="poPreviewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">발주서 생성 프리뷰</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="poPreviewBody">
+                <!-- JS에서 동적 생성 -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <form method="POST" action="{{ url_for('bom.create_po_from_requirement') }}" id="createPoForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="contract_id" value="{{ contract_id }}"/>
+                    <input type="hidden" name="selected_items" id="selectedItemsInput" value="[]"/>
+                    <button type="submit" class="btn btn-primary btn-sm">발주서 생성</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var checkAll = document.getElementById('checkAll');
+    var checks = document.querySelectorAll('.item-check');
+    var btnCreatePO = document.getElementById('btnCreatePO');
+    var selectedCountEl = document.getElementById('selectedCount');
+
+    function updateUI() {
+        var count = 0;
+        checks.forEach(function(cb) { if (cb.checked) count++; });
+        selectedCountEl.textContent = count;
+        btnCreatePO.style.display = count > 0 ? '' : 'none';
+    }
+
+    if (checkAll) {
+        checkAll.addEventListener('change', function() {
+            checks.forEach(function(cb) { cb.checked = checkAll.checked; });
+            updateUI();
+        });
+    }
+
+    checks.forEach(function(cb) {
+        cb.addEventListener('change', updateUI);
+    });
+
+    // 모달 열릴 때 프리뷰 생성
+    var modal = document.getElementById('poPreviewModal');
+    if (modal) {
+        modal.addEventListener('show.bs.modal', function() {
+            var selected = [];
+            checks.forEach(function(cb) {
+                if (!cb.checked) return;
+                selected.push({
+                    bom_item_id: parseInt(cb.dataset.bomItemId) || 0,
+                    contract_item_id: parseInt(cb.dataset.contractItemId) || 0,
+                    item_name: cb.dataset.itemName || '',
+                    item_spec: cb.dataset.itemSpec || '',
+                    quantity: parseInt(cb.dataset.quantity) || 0,
+                    unit: cb.dataset.unit || 'EA',
+                    unit_price: parseFloat(cb.dataset.unitPrice) || 0,
+                    supplier: cb.dataset.supplier || '미지정'
+                });
+            });
+
+            // 거래처별 그룹핑
+            var groups = {};
+            selected.forEach(function(item) {
+                var key = item.supplier || '미지정';
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(item);
+            });
+
+            // 프리뷰 HTML 생성
+            var html = '<p class="mb-3">거래처별 발주서 <strong>' + Object.keys(groups).length + '건</strong>이 생성됩니다:</p>';
+            var groupKeys = Object.keys(groups);
+            for (var i = 0; i < groupKeys.length; i++) {
+                var supplier = groupKeys[i];
+                var items = groups[supplier];
+                var subtotal = 0;
+                html += '<div class="card border-0 bg-light mb-2"><div class="card-body py-2">';
+                html += '<strong>' + supplier + '</strong>';
+                html += '<table class="table table-sm mb-1 mt-1"><thead><tr><th>품명</th><th>규격</th><th class="text-end">수량</th><th>단위</th><th class="text-end">단가</th><th class="text-end">금액</th></tr></thead><tbody>';
+                for (var j = 0; j < items.length; j++) {
+                    var it = items[j];
+                    var amt = it.quantity * it.unit_price;
+                    subtotal += amt;
+                    html += '<tr><td>' + it.item_name + '</td><td><small>' + it.item_spec + '</small></td><td class="text-end">' + it.quantity.toLocaleString() + '</td><td>' + it.unit + '</td><td class="text-end">' + it.unit_price.toLocaleString() + '</td><td class="text-end fw-bold">' + amt.toLocaleString() + '</td></tr>';
+                }
+                html += '</tbody></table>';
+                html += '<div class="text-end"><small class="text-muted">소계: ' + subtotal.toLocaleString() + '원</small></div>';
+                html += '</div></div>';
+            }
+
+            document.getElementById('poPreviewBody').innerHTML = html;
+            document.getElementById('selectedItemsInput').value = JSON.stringify(selected);
+        });
+    }
+})();
+</script>
+
+{% elif contract_id %}
+<div class="alert alert-warning">선택한 계약을 찾을 수 없습니다.</div>
+{% else %}
+<div class="alert alert-info">계약을 선택하면 BOM 기준 소요자재가 자동 계산됩니다.</div>
+{% endif %}
+
+{% endblock %}

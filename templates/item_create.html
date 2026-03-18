@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="mb-4">
+    <a href="{{ url_for('item.item_list') }}" class="text-muted text-decoration-none small">&larr; 품목 목록</a>
+    <h2 class="text-primary fw-bold mt-1">품목 등록</h2>
+</div>
+
+<form method="POST" action="{{ url_for('item.item_create') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label small text-muted">품번 (품목코드)</label>
+                    <input type="text" name="item_code" class="form-control form-control-sm" placeholder="예: BATOO-1000-020">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small text-muted">품명 <span class="text-danger">*</span></label>
+                    <input type="text" name="item_name" class="form-control form-control-sm" required placeholder="예: BATOO-1000-20도(2296-2444)">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small text-muted">규격</label>
+                    <input type="text" name="item_spec" class="form-control form-control-sm" placeholder="예: LED 1000W">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">단위</label>
+                    <input type="text" name="unit" class="form-control form-control-sm" value="EA" list="unitList">
+                    <datalist id="unitList">
+                        <option value="EA">
+                        <option value="SET">
+                        <option value="M">
+                        <option value="KG">
+                        <option value="BOX">
+                        <option value="ROLL">
+                    </datalist>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">분류</label>
+                    <input type="text" name="category" class="form-control form-control-sm" list="categoryList" placeholder="예: 드라이버, 하우징, LED모듈">
+                    <datalist id="categoryList">
+                        {% for cat in categories %}
+                        <option value="{{ cat }}">
+                        {% endfor %}
+                    </datalist>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">제조사/납품업체</label>
+                    <div class="position-relative">
+                        <input type="text" name="manufacturer" id="manufacturerInput" class="form-control form-control-sm" placeholder="예: Mean Well, TSC" autocomplete="off">
+                        <div id="vendorDropdown" class="position-absolute w-100 bg-white border shadow-sm rounded-bottom" style="display:none; z-index:1050; max-height:200px; overflow-y:auto;"></div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    &nbsp;
+                </div>
+                <div class="col-12">
+                    <label class="form-label small text-muted">비고</label>
+                    <textarea name="note" class="form-control form-control-sm" rows="2" placeholder="추가 메모"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer bg-light d-flex gap-2">
+            <button type="submit" class="btn btn-primary btn-sm">등록</button>
+            <a href="{{ url_for('item.item_list') }}" class="btn btn-outline-secondary btn-sm">취소</a>
+        </div>
+    </div>
+</form>
+
+<script>
+(function() {
+    var input = document.getElementById('manufacturerInput');
+    var dropdown = document.getElementById('vendorDropdown');
+    if (!input || !dropdown) return;
+    var timer = null;
+
+    input.addEventListener('input', function() {
+        clearTimeout(timer);
+        var q = this.value.trim();
+        if (q.length < 1) { dropdown.style.display = 'none'; return; }
+        timer = setTimeout(function() {
+            fetch('/api/vendors/search?q=' + encodeURIComponent(q))
+            .then(function(r) { return r.json(); })
+            .then(function(vendors) {
+                if (!vendors.length) { dropdown.style.display = 'none'; return; }
+                dropdown.innerHTML = '';
+                vendors.forEach(function(v) {
+                    var div = document.createElement('div');
+                    div.style.cssText = 'padding:4px 8px; cursor:pointer; font-size:0.8rem; border-bottom:1px solid #f0f0f0;';
+                    div.textContent = v.name;
+                    if (v.note) {
+                        var small = document.createElement('small');
+                        small.style.cssText = 'color:#999; margin-left:6px;';
+                        small.textContent = v.note;
+                        div.appendChild(small);
+                    }
+                    div.addEventListener('mousedown', function(e) {
+                        e.preventDefault();
+                        input.value = v.name;
+                        dropdown.style.display = 'none';
+                    });
+                    div.addEventListener('mouseenter', function() { this.style.background = '#e8f0fe'; });
+                    div.addEventListener('mouseleave', function() { this.style.background = ''; });
+                    dropdown.appendChild(div);
+                });
+                dropdown.style.display = 'block';
+            });
+        }, 200);
+    });
+
+    input.addEventListener('blur', function() {
+        setTimeout(function() { dropdown.style.display = 'none'; }, 150);
+    });
+    input.addEventListener('focus', function() {
+        if (this.value.trim().length >= 1) this.dispatchEvent(new Event('input'));
+    });
+})();
+</script>
+
+{% endblock %}

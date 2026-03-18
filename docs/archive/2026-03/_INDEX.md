@@ -10,6 +10,140 @@
 | ux-improvements-batch | UX 개선 5종 (검색/비번/페이지네이션/알림/종합현황) | 95% (20/21) | 2026-03-17 | 4 |
 | warranty-as | 하자보증/AS 관리 (관급자재 Phase 9) | 99% (11/11) | 2026-03-17 | 4 |
 | product-catalog | 품목관리 (나라장터 G2B API 단가 연동) | 98% (65/66) | 2026-03-17 | 4 |
+| nas-folder-sync | NAS 폴더 → ERP 현장 자동 동기화 (.lnk + 연도 자동 결정) | 100% | 2026-03-17 | 1 |
+| product-autocomplete | 품목 모델명 자동완성 (ProductCatalog 연동) | 100% | 2026-03-17 | 4 |
+| daily-report | 일일업무보고 (ERP 자동수집 + 카톡 복사) | 92% | 2026-03-17 | 1 |
+| procurement-view | 나라장터 조달내역 조회 + 분석 보고서 | 93% | 2026-03-18 | 4 |
+| item-management | 품목관리 (분류 체계 + CRUD + 거래처 자동완성) | 100% | 2026-03-18 | 3 |
+| bom-excel-import | BOM 엑셀 임포트 (223 완성품, 3,762 부품, 14 제품군) | 100% | 2026-03-18 | 1 |
+| material-po-bom-integration | 자재-발주-BOM 통합 연동 (1클릭 발주, bom_item_id FK) | 97% | 2026-03-18 | 4 |
+| dept-permission | 조직도 기반 부서별 권한 + 개인 추가 메뉴 + 임원진 전체 열람 | 95% | 2026-03-18 | 4 |
+
+## dept-permission
+
+- **Duration**: 2026-03-18 (1 session)
+- **Iterations**: 1 (91% → Gap 수정 + extra_menus 추가)
+- **Key Result**: MENU_REGISTRY 17개 중앙 정의, GroupPermission 동적 사이드바, 개인 extra_menus, 임원진 전체 접근
+- **Modified**: config.py, app.py, base.html, auth_decorators.py, entities.py, db.py, routes/auth.py, admin_settings.html
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [dept-permission.plan.md](dept-permission/dept-permission.plan.md) |
+| Design | [dept-permission.design.md](dept-permission/dept-permission.design.md) |
+| Analysis | [dept-permission.analysis.md](dept-permission/dept-permission.analysis.md) |
+| Report | [dept-permission.report.md](dept-permission/dept-permission.report.md) |
+
+---
+
+## material-po-bom-integration
+
+- **Duration**: 2026-03-18 (1 session)
+- **Iterations**: 0 (first-pass 97%)
+- **Key Result**: BOM 소요자재→1클릭 발주서 자동 생성, bom_item_id FK로 양방향 추적, 최신 입고 단가 연동
+- **New**: POST /bom/create-po-from-requirement API
+- **Modified**: entities.py, db.py, routes/bom.py, routes/purchase_order.py, bom_requirement.html, po_detail.html
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [material-po-bom-integration.plan.md](material-po-bom-integration/material-po-bom-integration.plan.md) |
+| Design | [material-po-bom-integration.design.md](material-po-bom-integration/material-po-bom-integration.design.md) |
+| Analysis | [material-po-bom-integration.analysis.md](material-po-bom-integration/material-po-bom-integration.analysis.md) |
+| Report | [material-po-bom-integration.report.md](material-po-bom-integration/material-po-bom-integration.report.md) |
+
+---
+
+## item-management
+
+- **Duration**: 2026-03-18 (1 session)
+- **Iterations**: 0 (first-pass 100%)
+- **Key Result**: Item 모델 확장(category/manufacturer/note), 품목 CRUD 페이지, 거래처 API 자동완성, iCUBE USE_YN 버그 수정
+- **New Modules**: routes/item.py, templates/item_list.html, item_detail.html, item_create.html
+- **Modified**: entities.py, app.py, base.html, db.py, migrate_icube.py
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [item-management.plan.md](item-management/item-management.plan.md) |
+| Analysis | [item-management.analysis.md](item-management/item-management.analysis.md) |
+| Report | [item-management.report.md](item-management/item-management.report.md) |
+
+---
+
+## procurement-view
+
+- **Duration**: 2026-03-17 ~ 2026-03-18 (2일)
+- **Iterations**: 0 (first-pass 93%)
+- **Key Result**: 조달청 API 1,591건(554억원) 수집, 계약 그룹핑 목록, Chart.js 분석 보고서, Flask CLI 일일 동기화
+- **New Modules**: routes/procurement.py, templates/procurement_list.html, templates/procurement_report.html, services/g2b_procurement_sync.py, crontab.md
+- **Modified**: app.py, base.html, entities.py, __init__.py
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [procurement-view.plan.md](procurement-view/procurement-view.plan.md) |
+| Design | [procurement-view.design.md](procurement-view/procurement-view.design.md) |
+| Analysis | [procurement-view.analysis.md](procurement-view/procurement-view.analysis.md) |
+| Report | [procurement-view.report.md](procurement-view/procurement-view.report.md) |
+
+---
+
+## daily-report
+
+- **Duration**: 2026-03-17 (1 session)
+- **Iterations**: 0 (code-analyzer 82% → 수정 후 92%)
+- **Key Result**: ERP 7개 데이터소스 자동수집 → 부서별 카톡 포맷 생성, 실시간 미리보기, 원클릭 복사
+- **New Modules**: routes/daily_report.py, templates/daily_report.html, DailyReport 모델
+- **Modified**: app.py, base.html, entities.py, __init__.py
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Report | [daily-report.report.md](daily-report/daily-report.report.md) |
+
+---
+
+## product-autocomplete
+
+- **Duration**: 2026-03-17 (1 session)
+- **Iterations**: 0 (first-pass 96% → GAP 수정 100%)
+- **Key Result**: 검색 API + 순수 JS 자동완성 컴포넌트, 카테고리 연동, 설계관리 모달→인라인 전환
+- **New Modules**: templates/components/catalog_autocomplete.html
+- **Modified**: routes/api.py, base.html, contract_detail.html, project_create.html, project_detail.html
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [product-autocomplete.plan.md](product-autocomplete/product-autocomplete.plan.md) |
+| Design | [product-autocomplete.design.md](product-autocomplete/product-autocomplete.design.md) |
+| Analysis | [product-autocomplete.analysis.md](product-autocomplete/product-autocomplete.analysis.md) |
+| Report | [product-autocomplete.report.md](product-autocomplete/product-autocomplete.report.md) |
+
+---
+
+## nas-folder-sync
+
+- **Duration**: 2026-03-17 (1 session)
+- **Iterations**: 0 (first-pass 100%)
+- **Key Result**: NAS cron 1분 폴더+.lnk 감지 → 폴더명 연도 기준 경로 자동 결정, 히스토리 로그, SMB 경로 저장
+- **New Modules**: routes/api.py, scripts/nas_folder_sync.sh
+- **Modified**: app.py, .env
+- **NAS 스크립트**: `/scripts/nas_folder_sync.sh` (crontab `*/1 * * * *`)
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Report | [nas-folder-sync.report.md](nas-folder-sync/nas-folder-sync.report.md) |
+
+---
 
 ## product-catalog
 

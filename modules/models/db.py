@@ -33,13 +33,20 @@ def _is_postgres_engine():
 
 
 if _is_postgres_engine():
-    @event.listens_for(engine, 'connect')
-    def _set_postgres_search_path(dbapi_connection, connection_record):
+    def _do_set_search_path(dbapi_connection):
         cursor = dbapi_connection.cursor()
         try:
             cursor.execute(f"SET search_path TO {quote_ident(DB_SCHEMA)}, public")
         finally:
             cursor.close()
+
+    @event.listens_for(engine, 'connect')
+    def _set_postgres_search_path(dbapi_connection, connection_record):
+        _do_set_search_path(dbapi_connection)
+
+    @event.listens_for(engine, 'checkout')
+    def _checkout_set_search_path(dbapi_connection, connection_record, connection_proxy):
+        _do_set_search_path(dbapi_connection)
 
 
 SessionLocal = sessionmaker(bind=engine)
@@ -66,6 +73,72 @@ def init_db():
         # 간헐적으로 SQLite has_table 체크 타이밍 이슈로 "already exists"가 발생하는 경우 무시
         if 'already exists' not in str(e).lower():
             raise
+    # PostgreSQL 컬럼 추가 마이그레이션 (안전: IF NOT EXISTS 패턴)
+    if _is_postgres_engine():
+        with engine.begin() as conn:
+            # items 테이블 신규 컬럼 추가 (v2026-03-18)
+            for col, col_type in [
+                ('category', 'VARCHAR(50)'),
+                ('manufacturer', 'VARCHAR(100)'),
+                ('note', 'TEXT'),
+            ]:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE {quote_ident(DB_SCHEMA)}.items "
+                        f"ADD COLUMN {col} {col_type}"
+                    ))
+                except Exception:
+                    pass  # 이미 존재하면 무시
+
+            # users 테이블: extra_menus 컬럼 추가 (v2026-03-18, 개인별 추가 메뉴 권한)
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE {quote_ident(DB_SCHEMA)}.users "
+                    f"ADD COLUMN extra_menus TEXT"
+                ))
+            except Exception:
+                pass  # 이미 존재하면 무시
+
+            # purchase_order_items: bom_item_id FK 추가 (v2026-03-18, BOM-발주 연동)
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE {quote_ident(DB_SCHEMA)}.purchase_order_items "
+                    f"ADD COLUMN bom_item_id INTEGER REFERENCES {quote_ident(DB_SCHEMA)}.bom_items(id)"
+                ))
+            except Exception:
+                pass  # 이미 존재하면 무시
+
+            # material_orders: bom_item_id FK 추가 (v2026-03-18, BOM-자재관리 연동)
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE {quote_ident(DB_SCHEMA)}.material_orders "
+                    f"ADD COLUMN bom_item_id INTEGER REFERENCES {quote_ident(DB_SCHEMA)}.bom_items(id)"
+                ))
+            except Exception:
+                pass  # 이미 존재하면 무시
+
+    # GroupPermission 기본 메뉴 자동 세팅 (빈 값이면 DEFAULT_GROUP_MENUS 적용)
+    if _is_postgres_engine():
+        from config import DEFAULT_GROUP_MENUS
+        with engine.begin() as conn:
+            for group_name, default_menus in DEFAULT_GROUP_MENUS.items():
+                # 해당 그룹이 없으면 생성
+                row = conn.execute(text(
+                    f"SELECT allowed_menus FROM {quote_ident(DB_SCHEMA)}.group_permissions "
+                    f"WHERE group_name = :gn"
+                ), {"gn": group_name}).fetchone()
+                if row is None:
+                    conn.execute(text(
+                        f"INSERT INTO {quote_ident(DB_SCHEMA)}.group_permissions (group_name, allowed_menus) "
+                        f"VALUES (:gn, :menus)"
+                    ), {"gn": group_name, "menus": default_menus})
+                elif not row[0] or row[0] == group_name:
+                    # allowed_menus가 비어있거나 그룹명 자체가 들어있으면 기본값으로 업데이트
+                    conn.execute(text(
+                        f"UPDATE {quote_ident(DB_SCHEMA)}.group_permissions "
+                        f"SET allowed_menus = :menus WHERE group_name = :gn"
+                    ), {"gn": group_name, "menus": default_menus})
+
     # 기존 DB 스키마 호환: SQLite만 런타임 ALTER 적용
     if _is_sqlite_engine():
         with engine.begin() as conn:

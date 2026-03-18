@@ -1,0 +1,189 @@
+<style>
+.catalog-ac-dropdown {
+    position: fixed;
+    z-index: 9999;
+    max-height: 220px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+    display: none;
+}
+.catalog-ac-dropdown.show { display: block; }
+.catalog-ac-dropdown .ac-item {
+    font-size: 0.85rem;
+    padding: 7px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.catalog-ac-dropdown .ac-item:hover,
+.catalog-ac-dropdown .ac-item.active {
+    background-color: #0d6efd;
+    color: white;
+}
+.catalog-ac-dropdown .ac-item .ac-spec {
+    color: #6c757d;
+    font-size: 0.78rem;
+    margin-left: 4px;
+}
+.catalog-ac-dropdown .ac-item.active .ac-spec,
+.catalog-ac-dropdown .ac-item:hover .ac-spec {
+    color: #e0e0e0;
+}
+</style>
+<script>
+(function(){
+    let debounceTimer = null;
+    let controller = null;
+    let activeIndex = -1;
+    let composing = false;
+    let currentInput = null;
+
+    // 드롭다운을 body에 1개만 생성 (overflow 문제 해결)
+    const dd = document.createElement('div');
+    dd.className = 'catalog-ac-dropdown';
+    document.body.appendChild(dd);
+
+    function positionDropdown(input) {
+        const rect = input.getBoundingClientRect();
+        dd.style.top = rect.bottom + 2 + 'px';
+        dd.style.left = rect.left + 'px';
+        dd.style.width = Math.max(rect.width, 300) + 'px';
+    }
+
+    function closeDropdown() {
+        dd.classList.remove('show');
+        dd.innerHTML = '';
+        activeIndex = -1;
+        currentInput = null;
+    }
+
+    function getCategoryValue(input) {
+        const selName = input.getAttribute('data-category-select');
+        if (!selName) return '';
+        const row = input.closest('tr') || input.closest('.row') || input.closest('form') || input.parentElement;
+        const sel = row ? row.querySelector('select[name="' + selName + '"]') : null;
+        return sel ? sel.value : '';
+    }
+
+    function formatPrice(n) {
+        if (!n) return '';
+        return n.toLocaleString('ko-KR');
+    }
+
+    function renderResults(input, data) {
+        if (!data.results || data.results.length === 0) {
+            closeDropdown();
+            return;
+        }
+        currentInput = input;
+        activeIndex = -1;
+        dd.innerHTML = data.results.map(function(r, i) {
+            const spec = r.spec ? ' \u2014 ' + r.spec : '';
+            const price = r.unit_price ? ' (\u20a9' + formatPrice(r.unit_price) + ')' : '';
+            return '<div class="ac-item" data-index="' + i + '" data-model="' + (r.model_name||'').replace(/"/g,'&quot;') + '">'
+                + '<strong>' + (r.model_name||'') + '</strong>'
+                + '<span class="ac-spec">' + spec + price + '</span>'
+                + '</div>';
+        }).join('');
+        positionDropdown(input);
+        dd.classList.add('show');
+    }
+
+    function selectItem(item) {
+        if (!currentInput) return;
+        currentInput.value = item.getAttribute('data-model');
+        closeDropdown();
+        currentInput.focus();
+    }
+
+    async function doSearch(input) {
+        const q = input.value.trim();
+        if (q.length < 2) { closeDropdown(); return; }
+
+        if (controller) controller.abort();
+        controller = new AbortController();
+
+        const category = getCategoryValue(input);
+        const params = new URLSearchParams({q: q});
+        if (category) params.set('category', category);
+
+        try {
+            const resp = await fetch('/api/catalog/search?' + params, {signal: controller.signal});
+            const data = await resp.json();
+            renderResults(input, data);
+        } catch(e) {
+            if (e.name !== 'AbortError') closeDropdown();
+        }
+    }
+
+    // 이벤트 위임: input
+    document.addEventListener('input', function(e) {
+        if (!e.target.hasAttribute('data-catalog-autocomplete')) return;
+        if (composing) return;
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function(){ doSearch(e.target); }, 300);
+    });
+
+    // 한글 조합 처리
+    document.addEventListener('compositionstart', function(e) {
+        if (e.target.hasAttribute('data-catalog-autocomplete')) composing = true;
+    });
+    document.addEventListener('compositionend', function(e) {
+        if (!e.target.hasAttribute('data-catalog-autocomplete')) return;
+        composing = false;
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function(){ doSearch(e.target); }, 300);
+    });
+
+    // 이벤트 위임: keydown
+    document.addEventListener('keydown', function(e) {
+        if (!e.target.hasAttribute('data-catalog-autocomplete')) return;
+        if (!dd.classList.contains('show')) return;
+
+        const items = dd.querySelectorAll('.ac-item');
+        if (!items.length) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = Math.min(activeIndex + 1, items.length - 1);
+            items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
+            items[activeIndex].scrollIntoView({block: 'nearest'});
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = Math.max(activeIndex - 1, 0);
+            items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
+            items[activeIndex].scrollIntoView({block: 'nearest'});
+        } else if (e.key === 'Enter' && activeIndex >= 0) {
+            e.preventDefault();
+            selectItem(items[activeIndex]);
+        } else if (e.key === 'Escape') {
+            closeDropdown();
+        }
+    });
+
+    // 클릭 선택
+    dd.addEventListener('mousedown', function(e) {
+        e.preventDefault(); // input blur 방지
+        const item = e.target.closest('.ac-item');
+        if (item) selectItem(item);
+    });
+
+    // 외부 클릭/포커스 아웃 시 닫기
+    document.addEventListener('click', function(e) {
+        if (!e.target.hasAttribute('data-catalog-autocomplete') && !dd.contains(e.target)) {
+            closeDropdown();
+        }
+    });
+
+    // 스크롤 시 위치 재조정
+    window.addEventListener('scroll', function() {
+        if (currentInput && dd.classList.contains('show')) {
+            positionDropdown(currentInput);
+        }
+    }, true);
+})();
+</script>

@@ -1,0 +1,231 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">{{ '발주서 기반 입고' if po else '직접 입고 등록' }}</h2>
+    <a href="{{ url_for('receiving.receiving_list') }}" class="btn btn-outline-secondary btn-sm">목록으로</a>
+</div>
+
+<form method="POST" id="rcvForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white py-2"><strong>기본정보</strong></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">입고일 <span class="text-danger">*</span></label>
+                    <input type="date" name="rcv_date" class="form-control form-control-sm" value="{{ po.po_date.strftime('%Y-%m-%d') if po and po.po_date else '' }}" required>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label fw-bold">거래처 <span class="text-danger">*</span></label>
+                    {% if po %}
+                    <input type="hidden" name="vendor_id" value="{{ po.vendor_id }}">
+                    <input type="text" class="form-control form-control-sm bg-light" value="{{ po.vendor.name }}" readonly>
+                    {% else %}
+                    <div data-vendor-autocomplete>
+                        <input type="hidden" name="vendor_id" id="vendorId">
+                        <input type="text" class="form-control form-control-sm" id="vendorSearch" placeholder="거래처 검색..." autocomplete="off">
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">발주서 연결</label>
+                    {% if po %}
+                    <input type="hidden" name="po_id" value="{{ po.id }}">
+                    <input type="text" class="form-control form-control-sm bg-light" value="{{ po.po_no }}" readonly>
+                    {% else %}
+                    <div class="input-group input-group-sm">
+                        <input type="hidden" name="po_id" id="poId">
+                        <input type="text" class="form-control" id="poSearch" placeholder="발주번호 검색 (선택)" autocomplete="off">
+                        <button type="button" class="btn btn-outline-secondary" id="clearPo" style="display:none;">X</button>
+                    </div>
+                    <div id="poResults" class="position-relative"></div>
+                    {% endif %}
+                </div>
+                <div class="col-12">
+                    <label class="form-label fw-bold">비고</label>
+                    <textarea name="note" class="form-control form-control-sm" rows="2"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# --- 품목 테이블 --- #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+            <strong>입고 품목</strong>
+            <button type="button" class="btn btn-outline-primary btn-xs" id="addItemBtn">+ 품목 추가</button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 no-stack-table" id="itemsTable" style="table-layout:fixed;">
+                    <colgroup>
+                        <col style="width:30px">
+                        <col style="width:25%">
+                        <col style="width:20%">
+                        <col style="width:80px">
+                        <col style="width:60px">
+                        <col style="width:100px">
+                        <col style="width:100px">
+                        <col style="width:15%">
+                        <col style="width:40px">
+                    </colgroup>
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>품명</th>
+                            <th>규격</th>
+                            <th>수량</th>
+                            <th>단위</th>
+                            <th>단가</th>
+                            <th>금액</th>
+                            <th>비고</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsBody">
+                        {% if po_items %}
+                        {% for pi in po_items %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>
+                                <input type="hidden" name="po_item_id[]" value="{{ pi.id }}">
+                                <input type="text" name="item_name[]" class="form-control form-control-sm" value="{{ pi.item_name }}" readonly>
+                            </td>
+                            <td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="{{ pi.item_spec or '' }}" readonly></td>
+                            <td>
+                                <input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="{{ pi._remaining }}" step="any" min="0" max="{{ pi._remaining }}">
+                                <small class="text-muted">잔량: {{ pi._remaining|int }}</small>
+                            </td>
+                            <td><input type="text" name="unit[]" class="form-control form-control-sm" value="{{ pi.unit or '' }}" readonly></td>
+                            <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="{{ pi.unit_price|int }}" readonly></td>
+                            <td class="amount-cell text-end fw-bold">{{ (pi._remaining * (pi.unit_price or 0))|int|e }}</td>
+                            <td><input type="text" name="item_note[]" class="form-control form-control-sm" value=""></td>
+                            <td></td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr id="emptyRow">
+                            <td colspan="9" class="text-center text-muted py-3">품목을 추가해주세요.</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-light">
+                            <td colspan="6" class="text-end fw-bold">합계</td>
+                            <td class="text-end fw-bold" id="totalAmount">0</td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2">
+        <a href="{{ url_for('receiving.receiving_list') }}" class="btn btn-outline-secondary">취소</a>
+        <button type="submit" class="btn btn-primary">입고 등록</button>
+    </div>
+</form>
+
+<script>
+(function() {
+    var itemIndex = {{ po_items|length if po_items else 0 }};
+
+    function recalc() {
+        var total = 0;
+        document.querySelectorAll('#itemsBody tr').forEach(function(row) {
+            var qty = parseFloat(row.querySelector('.qty-input')?.value || 0);
+            var price = parseFloat(row.querySelector('.price-input')?.value || 0);
+            var amt = Math.round(qty * price);
+            var cell = row.querySelector('.amount-cell');
+            if (cell) { cell.textContent = amt.toLocaleString(); }
+            total += amt;
+        });
+        document.getElementById('totalAmount').textContent = total.toLocaleString();
+    }
+
+    document.getElementById('addItemBtn').addEventListener('click', function() {
+        var empty = document.getElementById('emptyRow');
+        if (empty) empty.remove();
+
+        itemIndex++;
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td>' + itemIndex + '</td>' +
+            '<td><input type="hidden" name="po_item_id[]" value=""><input type="text" name="item_name[]" class="form-control form-control-sm" placeholder="품명" required></td>' +
+            '<td><input type="text" name="item_spec[]" class="form-control form-control-sm" placeholder="규격"></td>' +
+            '<td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="0" step="any" min="0"></td>' +
+            '<td><input type="text" name="unit[]" class="form-control form-control-sm" value="EA"></td>' +
+            '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="0" step="any"></td>' +
+            '<td class="amount-cell text-end fw-bold">0</td>' +
+            '<td><input type="text" name="item_note[]" class="form-control form-control-sm"></td>' +
+            '<td><button type="button" class="btn btn-outline-danger btn-xs remove-item">X</button></td>';
+        document.getElementById('itemsBody').appendChild(tr);
+
+        tr.querySelectorAll('.qty-input, .price-input').forEach(function(inp) {
+            inp.addEventListener('input', recalc);
+        });
+        tr.querySelector('.remove-item').addEventListener('click', function() {
+            tr.remove(); recalc();
+        });
+    });
+
+    // 기존 행 이벤트
+    document.querySelectorAll('.qty-input, .price-input').forEach(function(inp) {
+        inp.addEventListener('input', recalc);
+    });
+    recalc();
+
+    // 발주서 검색 (직접 입고 시)
+    var poSearch = document.getElementById('poSearch');
+    var poId = document.getElementById('poId');
+    var clearPo = document.getElementById('clearPo');
+    var poResults = document.getElementById('poResults');
+
+    if (poSearch) {
+        var timer;
+        poSearch.addEventListener('input', function() {
+            clearTimeout(timer);
+            var q = this.value.trim();
+            if (q.length < 2) { poResults.innerHTML = ''; return; }
+            var vendorId = document.getElementById('vendorId')?.value || '';
+            timer = setTimeout(function() {
+                fetch('/api/receiving/po-search?q=' + encodeURIComponent(q) + '&vendor_id=' + vendorId)
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (!data.length) { poResults.innerHTML = '<div class="list-group position-absolute w-100" style="z-index:1050"><div class="list-group-item text-muted">결과 없음</div></div>'; return; }
+                        var html = '<div class="list-group position-absolute w-100" style="z-index:1050">';
+                        data.forEach(function(po) {
+                            html += '<a href="#" class="list-group-item list-group-item-action py-1" data-id="' + po.id + '" data-no="' + po.po_no + '" data-vendor-id="' + po.vendor_id + '" data-vendor="' + po.vendor_name + '">' + po.po_no + ' - ' + po.vendor_name + ' (' + po.po_date + ')</a>';
+                        });
+                        html += '</div>';
+                        poResults.innerHTML = html;
+                        poResults.querySelectorAll('a').forEach(function(a) {
+                            a.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                poId.value = this.dataset.id;
+                                poSearch.value = this.dataset.no;
+                                poResults.innerHTML = '';
+                                clearPo.style.display = '';
+                                // 발주서 선택 시 해당 발주서 입고 폼으로 이동
+                                window.location.href = '/receiving/create?po_id=' + this.dataset.id;
+                            });
+                        });
+                    });
+            }, 300);
+        });
+
+        if (clearPo) {
+            clearPo.addEventListener('click', function() {
+                poId.value = '';
+                poSearch.value = '';
+                clearPo.style.display = 'none';
+            });
+        }
+    }
+})();
+</script>
+
+{% endblock %}

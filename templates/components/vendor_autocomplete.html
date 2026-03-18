@@ -1,0 +1,211 @@
+<style>
+.vendor-ac-dropdown {
+    position: fixed;
+    z-index: 9999;
+    max-height: 250px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+    display: none;
+}
+.vendor-ac-dropdown.show { display: block; }
+.vendor-ac-dropdown .ac-item {
+    font-size: 0.85rem;
+    padding: 7px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.vendor-ac-dropdown .ac-item:hover,
+.vendor-ac-dropdown .ac-item.active {
+    background-color: #0d6efd;
+    color: white;
+}
+.vendor-ac-dropdown .ac-item .ac-sub {
+    color: #6c757d;
+    font-size: 0.78rem;
+    margin-left: 4px;
+}
+.vendor-ac-dropdown .ac-item.active .ac-sub,
+.vendor-ac-dropdown .ac-item:hover .ac-sub {
+    color: #e0e0e0;
+}
+</style>
+<script>
+(function(){
+    let debounceTimer = null;
+    let controller = null;
+    let activeIndex = -1;
+    let composing = false;
+    let currentInput = null;
+
+    const dd = document.createElement('div');
+    dd.className = 'vendor-ac-dropdown';
+    document.body.appendChild(dd);
+
+    function positionDropdown(input) {
+        const rect = input.getBoundingClientRect();
+        dd.style.top = rect.bottom + 2 + 'px';
+        dd.style.left = rect.left + 'px';
+        dd.style.width = Math.max(rect.width, 320) + 'px';
+    }
+
+    function closeDropdown() {
+        dd.classList.remove('show');
+        dd.innerHTML = '';
+        activeIndex = -1;
+        currentInput = null;
+    }
+
+    function renderResults(input, vendors) {
+        if (!vendors || vendors.length === 0) {
+            dd.innerHTML = '<div class="ac-item" style="cursor:default;color:#999;">검색 결과 없음</div>';
+            currentInput = input;
+            positionDropdown(input);
+            dd.classList.add('show');
+            return;
+        }
+        currentInput = input;
+        activeIndex = -1;
+        dd.innerHTML = vendors.map(function(v, i) {
+            var sub = [];
+            if (v.note) sub.push(v.note);
+            if (v.tel) sub.push(v.tel);
+            return '<div class="ac-item" data-index="' + i + '" '
+                + 'data-id="' + v.id + '" '
+                + 'data-name="' + (v.name||'').replace(/"/g,'&quot;') + '" '
+                + 'data-email="' + (v.email||'') + '" '
+                + 'data-tel="' + (v.tel||'') + '" '
+                + 'data-note="' + (v.note||'').replace(/"/g,'&quot;') + '">'
+                + '<strong>' + (v.name||'') + '</strong>'
+                + (sub.length ? '<span class="ac-sub">' + sub.join(' / ') + '</span>' : '')
+                + '</div>';
+        }).join('');
+        positionDropdown(input);
+        dd.classList.add('show');
+    }
+
+    function selectItem(item) {
+        if (!currentInput) return;
+        var id = item.getAttribute('data-id');
+        var name = item.getAttribute('data-name');
+        var email = item.getAttribute('data-email');
+        var tel = item.getAttribute('data-tel');
+        var note = item.getAttribute('data-note');
+
+        currentInput.value = name;
+
+        var hiddenTarget = currentInput.getAttribute('data-vendor-id-target');
+        if (hiddenTarget) {
+            var hiddenEl = document.getElementById(hiddenTarget) || document.querySelector('[name="' + hiddenTarget + '"]');
+            if (hiddenEl) hiddenEl.value = id;
+        }
+        var emailTarget = currentInput.getAttribute('data-vendor-email-target');
+        if (emailTarget) {
+            var emailEl = document.getElementById(emailTarget);
+            if (emailEl) emailEl.value = email || '';
+        }
+        var infoTarget = currentInput.getAttribute('data-vendor-info-target');
+        if (infoTarget) {
+            var infoEl = document.getElementById(infoTarget);
+            var parts = [];
+            if (note) parts.push(note);
+            if (tel) parts.push('TEL: ' + tel);
+            infoEl.textContent = parts.join(' | ');
+        }
+
+        closeDropdown();
+        currentInput.focus();
+
+        // 커스텀 이벤트 발생 (발주서 등에서 담당자재 로드용)
+        currentInput.dispatchEvent(new CustomEvent('vendorSelected', {
+            detail: {id: id, name: name, email: email, tel: tel},
+            bubbles: true,
+        }));
+    }
+
+    async function doSearch(input) {
+        var q = input.value.trim();
+        if (q.length < 1) { closeDropdown(); return; }
+
+        if (controller) controller.abort();
+        controller = new AbortController();
+
+        try {
+            var resp = await fetch('/api/vendors/search?q=' + encodeURIComponent(q), {signal: controller.signal});
+            var data = await resp.json();
+            renderResults(input, data);
+        } catch(e) {
+            if (e.name !== 'AbortError') closeDropdown();
+        }
+    }
+
+    document.addEventListener('input', function(e) {
+        if (!e.target.hasAttribute('data-vendor-autocomplete')) return;
+        if (composing) return;
+        // 선택 초기화
+        var hiddenTarget = e.target.getAttribute('data-vendor-id-target');
+        if (hiddenTarget) {
+            var h = document.getElementById(hiddenTarget) || document.querySelector('[name="' + hiddenTarget + '"]');
+            if (h) h.value = '';
+        }
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function(){ doSearch(e.target); }, 250);
+    });
+
+    document.addEventListener('compositionstart', function(e) {
+        if (e.target.hasAttribute('data-vendor-autocomplete')) composing = true;
+    });
+    document.addEventListener('compositionend', function(e) {
+        if (!e.target.hasAttribute('data-vendor-autocomplete')) return;
+        composing = false;
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function(){ doSearch(e.target); }, 250);
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (!e.target.hasAttribute('data-vendor-autocomplete')) return;
+        if (!dd.classList.contains('show')) return;
+        var items = dd.querySelectorAll('.ac-item[data-id]');
+        if (!items.length) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = Math.min(activeIndex + 1, items.length - 1);
+            items.forEach(function(it, i) { it.classList.toggle('active', i === activeIndex); });
+            items[activeIndex].scrollIntoView({block: 'nearest'});
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = Math.max(activeIndex - 1, 0);
+            items.forEach(function(it, i) { it.classList.toggle('active', i === activeIndex); });
+            items[activeIndex].scrollIntoView({block: 'nearest'});
+        } else if (e.key === 'Enter' && activeIndex >= 0) {
+            e.preventDefault();
+            selectItem(items[activeIndex]);
+        } else if (e.key === 'Escape') {
+            closeDropdown();
+        }
+    });
+
+    dd.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        var item = e.target.closest('.ac-item[data-id]');
+        if (item) selectItem(item);
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.hasAttribute('data-vendor-autocomplete') && !dd.contains(e.target)) {
+            closeDropdown();
+        }
+    });
+
+    window.addEventListener('scroll', function() {
+        if (currentInput && dd.classList.contains('show')) {
+            positionDropdown(currentInput);
+        }
+    }, true);
+})();
+</script>

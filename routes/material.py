@@ -8,7 +8,9 @@ from modules.pagination import make_pagination
 from modules.models import (
     Project, MaterialOrder, Contract, ContractItem,
     DETAIL_ITEM_OPTIONS, normalize_detail_item,
+    BomHeader, BomItem, PurchaseOrder, PurchaseOrderItem,
 )
+from sqlalchemy import or_, func
 from modules.history_board import append_history_log, get_project_history_context
 from modules.priority_utils import (
     append_due_priority_reason,
@@ -138,42 +140,142 @@ def _material_specs_from_contract_item(item):
     return []
 
 
+def _find_bom_for_contract_item(db, item):
+    """계약품목에 매칭되는 BomHeader를 찾는다."""
+    model_name = (item.model_name or '').strip()
+    category = (item.category or '').strip()
+
+    if model_name:
+        bom = db.query(BomHeader).filter(
+            BomHeader.is_active == True,
+            or_(
+                BomHeader.product_code.ilike(f'%{model_name}%'),
+                BomHeader.product_name.ilike(f'%{model_name}%'),
+            )
+        ).first()
+        if bom:
+            return bom
+
+    if category:
+        bom = db.query(BomHeader).filter(
+            BomHeader.is_active == True,
+            or_(
+                BomHeader.product_name.ilike(f'%{category}%'),
+                BomHeader.product_code.ilike(f'%{category}%'),
+            )
+        ).first()
+        if bom:
+            return bom
+
+    return None
+
+
 def sync_material_orders_for_contract_item(db, contract, item):
-    target_specs = _material_specs_from_contract_item(item)
-    target_names = {name for name, _, _ in target_specs}
+    """계약품목의 MaterialOrder를 BOM 기반으로 동기화.
+
+    1순위: BOM이 있으면 BomItem 기반으로 자재 목록 생성
+    2순위: BOM이 없으면 기존 하드코딩 스펙 사용 (fallback)
+    """
+    bom = _find_bom_for_contract_item(db, item)
     existing_orders = db.query(MaterialOrder).filter(MaterialOrder.contract_item_id == item.id).all()
     existing_map = {o.material_name: o for o in existing_orders}
-
     qty = safe_int(item.quantity, 0)
-    for material_name, is_outsourcing, outsourcing_status in target_specs:
-        order = existing_map.get(material_name)
-        if order:
-            order.item_category = item.category
-            order.item_model_name = item.model_name
-            order.quantity = qty
-            order.is_outsourcing = bool(is_outsourcing)
-            if not is_outsourcing:
-                order.outsourcing_status = None
-            elif not order.outsourcing_status:
-                order.outsourcing_status = outsourcing_status
-            continue
 
-        db.add(MaterialOrder(
-            project_id=contract.project_id,
-            contract_id=contract.id,
-            contract_item_id=item.id,
-            item_category=item.category,
-            item_model_name=item.model_name,
-            material_name=material_name,
-            quantity=qty,
-            order_status='발주대기',
-            is_outsourcing=bool(is_outsourcing),
-            outsourcing_status=outsourcing_status if is_outsourcing else None,
-        ))
+    if bom and bom.bom_items:
+        # === BOM 기반 자재 생성 ===
+        target_names = set()
+        for bi in bom.bom_items:
+            material_name = bi.item_name
+            target_names.add(material_name)
 
+            # 발주 상태 확인 (bom_item_id 기반)
+            po_status = _get_po_status_for_bom_item(db, bi.id, contract.id)
+
+            order = existing_map.get(material_name)
+            if order:
+                order.item_category = item.category
+                order.item_model_name = item.model_name
+                order.quantity = (bi.quantity or 1) * qty
+                order.bom_item_id = bi.id
+                # 발주 상태가 진행됐으면 유지, 아니면 PO 기반 업데이트
+                if order.order_status == '발주대기' and po_status:
+                    order.order_status = po_status
+                continue
+
+            db.add(MaterialOrder(
+                project_id=contract.project_id,
+                contract_id=contract.id,
+                contract_item_id=item.id,
+                item_category=item.category,
+                item_model_name=item.model_name,
+                material_name=material_name,
+                quantity=(bi.quantity or 1) * qty,
+                order_status=po_status or '발주대기',
+                bom_item_id=bi.id,
+                is_outsourcing=False,
+            ))
+    else:
+        # === Fallback: 기존 하드코딩 스펙 ===
+        target_specs = _material_specs_from_contract_item(item)
+        target_names = {name for name, _, _ in target_specs}
+
+        for material_name, is_outsourcing, outsourcing_status in target_specs:
+            order = existing_map.get(material_name)
+            if order:
+                order.item_category = item.category
+                order.item_model_name = item.model_name
+                order.quantity = qty
+                order.is_outsourcing = bool(is_outsourcing)
+                if not is_outsourcing:
+                    order.outsourcing_status = None
+                elif not order.outsourcing_status:
+                    order.outsourcing_status = outsourcing_status
+                continue
+
+            db.add(MaterialOrder(
+                project_id=contract.project_id,
+                contract_id=contract.id,
+                contract_item_id=item.id,
+                item_category=item.category,
+                item_model_name=item.model_name,
+                material_name=material_name,
+                quantity=qty,
+                order_status='발주대기',
+                is_outsourcing=bool(is_outsourcing),
+                outsourcing_status=outsourcing_status if is_outsourcing else None,
+            ))
+
+    # 목록에서 빠진 기존 MO 삭제 (pristine 상태인 것만)
     for old in existing_orders:
         if old.material_name not in target_names:
-            db.delete(old)
+            if _is_pristine_material_order(old):
+                db.delete(old)
+
+
+def _get_po_status_for_bom_item(db, bom_item_id, contract_id):
+    """BOM 부품에 연결된 발주서 상태를 확인."""
+    po_item = (
+        db.query(PurchaseOrderItem)
+        .join(PurchaseOrder, PurchaseOrderItem.po_id == PurchaseOrder.id)
+        .filter(
+            PurchaseOrderItem.bom_item_id == bom_item_id,
+            PurchaseOrder.contract_id == contract_id,
+            PurchaseOrder.status != '취소',
+        )
+        .first()
+    )
+    if not po_item:
+        return None
+    po = db.query(PurchaseOrder).get(po_item.po_id)
+    if not po:
+        return None
+    if po.status == '입고완료':
+        return '입고완료'
+    if po.status in ('발송완료', '입고대기'):
+        return '발주완료'
+    if po.status == '작성중':
+        return '발주대기'
+    return None
 
 
 def sync_material_orders(db, project_id=None):

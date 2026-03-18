@@ -1,0 +1,312 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <div>
+        <a href="{{ url_for('item.item_list') }}" class="text-muted text-decoration-none small">&larr; 품목 목록</a>
+        <h2 class="text-primary fw-bold mt-1">{{ item.item_name }}</h2>
+    </div>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-warning btn-sm" onclick="toggleEdit()">수정</button>
+        {% if item.is_active %}
+        <form method="POST" action="{{ url_for('item.item_delete', item_id=item.id) }}" onsubmit="return confirm('이 품목을 비활성화하시겠습니까?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-danger btn-sm">비활성화</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+{# --- 조회 모드 --- #}
+<div id="viewMode">
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <small class="text-muted">품번 (품목코드)</small>
+                    <div class="fw-bold"><code>{{ item.icube_item_cd or '-' }}</code></div>
+                </div>
+                <div class="col-md-4">
+                    <small class="text-muted">품명</small>
+                    <div class="fw-bold">{{ item.item_name }}</div>
+                </div>
+                <div class="col-md-4">
+                    <small class="text-muted">규격</small>
+                    <div>{{ item.item_spec or '-' }}</div>
+                </div>
+                <div class="col-md-3">
+                    <small class="text-muted">단위</small>
+                    <div>{{ item.unit or '-' }}</div>
+                </div>
+                <div class="col-md-3">
+                    <small class="text-muted">분류</small>
+                    <div>
+                        {% if item.category %}
+                        <span class="badge bg-outline-primary border text-dark">{{ item.category }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <small class="text-muted">제조사/납품업체</small>
+                    <div>{{ item.manufacturer or '-' }}</div>
+                </div>
+                <div class="col-md-3">
+                    <small class="text-muted">상태</small>
+                    <div>
+                        {% if item.is_active %}
+                        <span class="badge bg-success">사용</span>
+                        {% else %}
+                        <span class="badge bg-secondary">미사용</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if item.note %}
+                <div class="col-12">
+                    <small class="text-muted">비고</small>
+                    <div>{{ item.note }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-footer bg-light">
+            <small class="text-muted">
+                등록: {{ item.created_at.strftime('%Y-%m-%d') if item.created_at else '-' }}
+                | 수정: {{ item.updated_at.strftime('%Y-%m-%d') if item.updated_at else '-' }}
+            </small>
+        </div>
+    </div>
+</div>
+
+{# --- 수정 모드 --- #}
+<div id="editMode" style="display:none;">
+    <form method="POST" action="{{ url_for('item.item_edit', item_id=item.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted">품번 (품목코드)</label>
+                        <input type="text" name="item_code" class="form-control form-control-sm" value="{{ item.icube_item_cd or '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted">품명 <span class="text-danger">*</span></label>
+                        <input type="text" name="item_name" class="form-control form-control-sm" value="{{ item.item_name }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted">규격</label>
+                        <input type="text" name="item_spec" class="form-control form-control-sm" value="{{ item.item_spec or '' }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">단위</label>
+                        <input type="text" name="unit" class="form-control form-control-sm" value="{{ item.unit or '' }}" list="unitList">
+                        <datalist id="unitList">
+                            <option value="EA">
+                            <option value="SET">
+                            <option value="M">
+                            <option value="KG">
+                            <option value="BOX">
+                            <option value="ROLL">
+                        </datalist>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">분류</label>
+                        <input type="text" name="category" class="form-control form-control-sm" value="{{ item.category or '' }}" list="categoryList">
+                        <datalist id="categoryList">
+                            {% for cat in categories %}
+                            <option value="{{ cat }}">
+                            {% endfor %}
+                        </datalist>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">제조사/납품업체</label>
+                        <div class="position-relative">
+                            <input type="text" name="manufacturer" id="manufacturerInput" class="form-control form-control-sm" value="{{ item.manufacturer or '' }}" autocomplete="off">
+                            <div id="vendorDropdown" class="position-absolute w-100 bg-white border shadow-sm rounded-bottom" style="display:none; z-index:1050; max-height:200px; overflow-y:auto;"></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">상태</label>
+                        <select name="is_active" class="form-select form-select-sm">
+                            <option value="1" {{ 'selected' if item.is_active }}>사용</option>
+                            <option value="0" {{ 'selected' if not item.is_active }}>미사용</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small text-muted">비고</label>
+                        <textarea name="note" class="form-control form-control-sm" rows="2">{{ item.note or '' }}</textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-light d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm">저장</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleEdit()">취소</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+{# --- 단가 추이 --- #}
+{% if price_history %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-2"><strong>단가 추이</strong> <small class="text-muted">({{ price_history|length }}건)</small></div>
+    <div class="card-body py-2">
+        <canvas id="priceChart" height="120"></canvas>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0" style="font-size:0.8rem;">
+                <thead class="table-light">
+                    <tr><th>일자</th><th class="text-end">단가</th><th>거래처</th><th>출처</th></tr>
+                </thead>
+                <tbody>
+                    {% for ph in price_history[-10:] %}
+                    <tr>
+                        <td>{{ ph.date }}</td>
+                        <td class="text-end">{{ '{:,.0f}'.format(ph.price) }}</td>
+                        <td>{{ ph.vendor }}</td>
+                        <td><span class="badge {{ 'bg-primary' if ph.source == '자체입고' else 'bg-secondary' }}" style="font-size:0.65rem;">{{ ph.source }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# --- 관련 거래처 --- #}
+{% if related_vendors %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-2"><strong>관련 거래처</strong></div>
+    <div class="card-body py-2">
+        {% for v in related_vendors %}
+        <span class="badge bg-light text-dark border me-1 mb-1">{{ v.name }} <small class="text-muted">({{ v.source }})</small></span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{# --- BOM 사용처 --- #}
+{% if used_in_boms %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-2"><strong>BOM 사용처</strong> <small class="text-muted">({{ used_in_boms|length }}개 제품)</small></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0" style="font-size:0.8rem;">
+                <thead class="table-light">
+                    <tr><th>제품코드</th><th>제품군</th><th class="text-end">소요량</th></tr>
+                </thead>
+                <tbody>
+                    {% for b in used_in_boms %}
+                    <tr style="cursor:pointer;" onclick="location.href='{{ url_for('bom.bom_detail', bom_id=b.bom_id) }}'">
+                        <td><a href="{{ url_for('bom.bom_detail', bom_id=b.bom_id) }}" class="text-decoration-none">{{ b.product_code }}</a></td>
+                        <td><span class="badge bg-light text-dark border">{{ b.product_category }}</span></td>
+                        <td class="text-end">{{ b.quantity }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if price_history %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    var data = {{ price_history | tojson }};
+    var ctx = document.getElementById('priceChart');
+    if (!ctx || !data.length) return;
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(function(d) { return d.date; }),
+            datasets: [{
+                label: '단가',
+                data: data.map(function(d) { return d.price; }),
+                borderColor: '#0d6efd',
+                backgroundColor: 'rgba(13,110,253,0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { ticks: { callback: function(v) { return v.toLocaleString(); } } },
+                x: { ticks: { maxTicksToRender: 8 } }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+
+<script>
+function toggleEdit() {
+    var v = document.getElementById('viewMode');
+    var e = document.getElementById('editMode');
+    if (v.style.display === 'none') {
+        v.style.display = '';
+        e.style.display = 'none';
+    } else {
+        v.style.display = 'none';
+        e.style.display = '';
+    }
+}
+
+(function() {
+    var input = document.getElementById('manufacturerInput');
+    var dropdown = document.getElementById('vendorDropdown');
+    if (!input || !dropdown) return;
+    var timer = null;
+
+    input.addEventListener('input', function() {
+        clearTimeout(timer);
+        var q = this.value.trim();
+        if (q.length < 1) { dropdown.style.display = 'none'; return; }
+        timer = setTimeout(function() {
+            fetch('/api/vendors/search?q=' + encodeURIComponent(q))
+            .then(function(r) { return r.json(); })
+            .then(function(vendors) {
+                if (!vendors.length) { dropdown.style.display = 'none'; return; }
+                dropdown.innerHTML = '';
+                vendors.forEach(function(v) {
+                    var div = document.createElement('div');
+                    div.style.cssText = 'padding:4px 8px; cursor:pointer; font-size:0.8rem; border-bottom:1px solid #f0f0f0;';
+                    div.textContent = v.name;
+                    if (v.note) {
+                        var small = document.createElement('small');
+                        small.style.cssText = 'color:#999; margin-left:6px;';
+                        small.textContent = v.note;
+                        div.appendChild(small);
+                    }
+                    div.addEventListener('mousedown', function(e) {
+                        e.preventDefault();
+                        input.value = v.name;
+                        dropdown.style.display = 'none';
+                    });
+                    div.addEventListener('mouseenter', function() { this.style.background = '#e8f0fe'; });
+                    div.addEventListener('mouseleave', function() { this.style.background = ''; });
+                    dropdown.appendChild(div);
+                });
+                dropdown.style.display = 'block';
+            });
+        }, 200);
+    });
+
+    input.addEventListener('blur', function() {
+        setTimeout(function() { dropdown.style.display = 'none'; }, 150);
+    });
+    input.addEventListener('focus', function() {
+        if (this.value.trim().length >= 1) this.dispatchEvent(new Event('input'));
+    });
+})();
+</script>
+
+{% endblock %}

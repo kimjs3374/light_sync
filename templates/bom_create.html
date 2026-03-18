@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">신규 BOM 등록</h2>
+    <a href="{{ url_for('bom.bom_list') }}" class="btn btn-outline-secondary btn-sm">목록으로</a>
+</div>
+
+<form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white py-2"><strong>제품 정보</strong></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">제품코드 <span class="text-danger">*</span></label>
+                    <input type="text" name="product_code" class="form-control form-control-sm" placeholder="예: ARENA-200S" required>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label fw-bold">제품명 <span class="text-danger">*</span></label>
+                    <input type="text" name="product_name" class="form-control form-control-sm" placeholder="예: LED 투광등 200W" required>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">버전</label>
+                    <input type="text" name="version" class="form-control form-control-sm" value="1.0">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">&nbsp;</label>
+                </div>
+                <div class="col-12">
+                    <label class="form-label fw-bold">비고</label>
+                    <textarea name="note" class="form-control form-control-sm" rows="2"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# --- BOM 품목 --- #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+            <strong>소요 부품 (BOM Items)</strong>
+            <button type="button" class="btn btn-outline-primary btn-xs" id="addItemBtn">+ 부품 추가</button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 no-stack-table" id="itemsTable" style="table-layout:fixed;">
+                    <colgroup>
+                        <col style="width:30px">
+                        <col style="width:30%">
+                        <col style="width:25%">
+                        <col style="width:80px">
+                        <col style="width:60px">
+                        <col>
+                        <col style="width:40px">
+                    </colgroup>
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>부품명</th>
+                            <th>규격</th>
+                            <th>소요량</th>
+                            <th>단위</th>
+                            <th>비고</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsBody">
+                        <tr id="emptyRow">
+                            <td colspan="7" class="text-center text-muted py-3">부품을 추가해주세요.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2">
+        <a href="{{ url_for('bom.bom_list') }}" class="btn btn-outline-secondary">취소</a>
+        <button type="submit" class="btn btn-primary">BOM 등록</button>
+    </div>
+</form>
+
+<script>
+(function() {
+    var idx = 0;
+    document.getElementById('addItemBtn').addEventListener('click', function() {
+        var empty = document.getElementById('emptyRow');
+        if (empty) empty.remove();
+        idx++;
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td>' + idx + '</td>' +
+            '<td><input type="text" name="item_name[]" class="form-control form-control-sm" placeholder="부품명" required></td>' +
+            '<td><input type="text" name="item_spec[]" class="form-control form-control-sm" placeholder="규격"></td>' +
+            '<td><input type="number" name="quantity[]" class="form-control form-control-sm text-end" value="1" step="any" min="0"></td>' +
+            '<td><input type="text" name="unit[]" class="form-control form-control-sm" value="EA"></td>' +
+            '<td><input type="text" name="item_note[]" class="form-control form-control-sm"></td>' +
+            '<td><button type="button" class="btn btn-outline-danger btn-xs remove-btn">X</button></td>';
+        document.getElementById('itemsBody').appendChild(tr);
+        tr.querySelector('.remove-btn').addEventListener('click', function() { tr.remove(); });
+    });
+})();
+</script>
+
+{% endblock %}

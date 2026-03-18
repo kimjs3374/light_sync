@@ -1,0 +1,409 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
+    <h2 class="text-primary fw-bold">신규 발주서 작성</h2>
+    <a href="{{ url_for('purchase_order.po_list') }}" class="btn btn-outline-secondary btn-sm">목록으로</a>
+</div>
+
+<form method="POST" action="{{ url_for('purchase_order.po_create') }}" id="poCreateForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" name="vendor_id" id="vendorIdHidden" value="">
+
+    {# --- 기본정보 --- #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-bold">1) 발주 기본정보</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">거래처 <span class="text-danger">*</span></label>
+                    <div class="input-group">
+                        <input type="text" id="vendorSearchInput" class="form-control" placeholder="거래처명 입력 (자동완성)"
+                               autocomplete="off" required
+                               data-vendor-autocomplete
+                               data-vendor-id-target="vendorIdHidden"
+                               data-vendor-email-target="vendorEmail"
+                               data-vendor-info-target="vendorInfo">
+                        <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#vendorCreateModal" title="신규 거래처 등록">+</button>
+                    </div>
+                    <small id="vendorInfo" class="text-muted"></small>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">발주일 <span class="text-danger">*</span></label>
+                    <input type="date" name="po_date" class="form-control" required>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label fw-bold">거래처 이메일</label>
+                    <input type="text" id="vendorEmail" class="form-control" readonly disabled>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">담당자 (발송 서명)</label>
+                    <select name="assigned_to" id="assignedTo" class="form-select">
+                        <option value="">-- 본인 ({{ session.full_name }}) --</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}">{{ u.full_name }}{% if u.position %} {{ u.position }}{% endif %} ({{ u.user_group or '' }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">연결 계약건 (선택)</label>
+                    <input type="text" id="contractSearchInput" class="form-control" placeholder="현장명 또는 계약명 검색" autocomplete="off">
+                    <input type="hidden" name="contract_id" id="contractIdHidden" value="">
+                    <small id="contractInfo" class="text-muted"></small>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">비고</label>
+                    <input type="text" name="note" class="form-control" placeholder="발주서 비고사항 (선택)">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# --- 품목 입력 --- #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <span class="fw-bold">2) 발주 품목</span>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="addItemBtn">+ 품목 추가</button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0" id="itemsTable" style="table-layout:fixed;">
+                    <colgroup>
+                        <col style="width:36px">
+                        <col>
+                        <col style="width:120px">
+                        <col style="width:70px">
+                        <col style="width:50px">
+                        <col style="width:100px">
+                        <col style="width:100px">
+                        <col style="width:100px">
+                        <col style="width:36px">
+                    </colgroup>
+                    <thead class="table-light">
+                        <tr>
+                            <th>No</th>
+                            <th>품명 <span class="text-danger">*</span></th>
+                            <th>규격</th>
+                            <th class="text-end">수량</th>
+                            <th>단위</th>
+                            <th class="text-end">단가</th>
+                            <th class="text-end">금액</th>
+                            <th>비고</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsBody"></tbody>
+                    <tfoot>
+                        <tr class="table-light">
+                            <td colspan="6" class="text-end fw-bold">공급가액:</td>
+                            <td class="text-end fw-bold" id="totalAmount">0</td>
+                            <td colspan="2"></td>
+                        </tr>
+                        <tr class="table-light">
+                            <td colspan="6" class="text-end">부가세 (10%):</td>
+                            <td class="text-end" id="taxAmount">0</td>
+                            <td colspan="2"></td>
+                        </tr>
+                        <tr class="table-warning">
+                            <td colspan="6" class="text-end fw-bold fs-6">총 합계:</td>
+                            <td class="text-end fw-bold fs-6" id="grandTotal">0</td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-grid">
+        <button type="submit" class="btn btn-primary btn-lg fw-bold">발주서 저장</button>
+    </div>
+</form>
+
+{# --- 품목 검색 모달 --- #}
+<div class="modal fade" id="itemSearchModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">품목 검색</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="itemSearchInput" class="form-control mb-3" placeholder="품목명 또는 코드 검색" autocomplete="off">
+                <div id="itemSearchResults" style="max-height:300px; overflow-y:auto;">
+                    <div class="text-center text-muted py-3">검색어를 입력하세요.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# --- 거래처 신규등록 모달 --- #}
+<div class="modal fade" id="vendorCreateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">거래처 신규 등록</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <label class="form-label fw-bold">거래처명 <span class="text-danger">*</span></label>
+                    <input type="text" id="newVendorName" class="form-control" required>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label class="form-label small">대표자</label>
+                        <input type="text" id="newVendorCeo" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">사업자번호</label>
+                        <input type="text" id="newVendorBizNo" class="form-control form-control-sm">
+                    </div>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label class="form-label small">전화</label>
+                        <input type="text" id="newVendorTel" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">팩스</label>
+                        <input type="text" id="newVendorFax" class="form-control form-control-sm">
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">이메일</label>
+                    <input type="email" id="newVendorEmail" class="form-control form-control-sm">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">주소</label>
+                    <input type="text" id="newVendorAddr" class="form-control form-control-sm">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small fw-bold">업체 메모 <small class="text-muted">(케이블류, LED드라이버, 스텐레이저가공 등)</small></label>
+                    <input type="text" id="newVendorNote" class="form-control form-control-sm" placeholder="업체별 담당자재, 특이사항 등 빠르게 확인가능한 코멘트">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary btn-sm" id="saveNewVendorBtn">등록</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var rowIndex = 0;
+    var currentSearchRow = null;
+    // 오늘 날짜
+    var dateInput = document.querySelector('input[name="po_date"]');
+    if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().split('T')[0];
+
+    // ── 거래처 신규등록 ──
+    document.getElementById('saveNewVendorBtn').addEventListener('click', function() {
+        var name = document.getElementById('newVendorName').value.trim();
+        if (!name) { alert('거래처명을 입력하세요.'); return; }
+        var csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        fetch('/api/vendors/create', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({
+                name: name,
+                ceo_name: document.getElementById('newVendorCeo').value.trim(),
+                business_no: document.getElementById('newVendorBizNo').value.trim(),
+                tel: document.getElementById('newVendorTel').value.trim(),
+                fax: document.getElementById('newVendorFax').value.trim(),
+                email: document.getElementById('newVendorEmail').value.trim(),
+                address: document.getElementById('newVendorAddr').value.trim(),
+                note: document.getElementById('newVendorNote').value.trim(),
+            }),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.id) {
+                document.getElementById('vendorIdHidden').value = d.id;
+                document.getElementById('vendorSearchInput').value = name;
+                document.getElementById('vendorEmail').value = d.email || '';
+                document.getElementById('vendorInfo').textContent = d.tel ? 'TEL: ' + d.tel : '';
+                bootstrap.Modal.getInstance(document.getElementById('vendorCreateModal')).hide();
+                // 폼 초기화
+                ['newVendorName','newVendorCeo','newVendorBizNo','newVendorTel','newVendorFax','newVendorEmail','newVendorAddr','newVendorNote'].forEach(function(id) {
+                    document.getElementById(id).value = '';
+                });
+            } else {
+                alert(d.error || '등록 실패');
+            }
+        })
+        .catch(function(e) { alert('오류: ' + e.message); });
+    });
+
+    // ── 폼 제출 전 검증 ──
+    document.getElementById('poCreateForm').addEventListener('submit', function(e) {
+        if (!document.getElementById('vendorIdHidden').value) {
+            e.preventDefault();
+            alert('거래처를 선택해주세요. (자동완성 목록에서 클릭)');
+            document.getElementById('vendorSearchInput').focus();
+        }
+    });
+
+    // ── 품목 행 추가 ──
+    function addItemRow(data) {
+        data = data || {};
+        rowIndex++;
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td class="text-muted">' + rowIndex + '</td>' +
+            '<td>' +
+                '<input type="hidden" name="item_id[]" value="' + (data.id || '') + '">' +
+                '<div class="input-group input-group-sm">' +
+                    '<input type="text" name="item_name[]" class="form-control" value="' + (data.item_name || '') + '" placeholder="품명" required>' +
+                    '<button type="button" class="btn btn-outline-secondary search-item-btn" title="품목검색">Q</button>' +
+                '</div>' +
+            '</td>' +
+            '<td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="' + (data.item_spec || '') + '"></td>' +
+            '<td><input type="number" name="quantity[]" class="form-control form-control-sm text-end calc-field" value="' + (data.qty || '') + '" min="0" step="any"></td>' +
+            '<td><input type="text" name="unit[]" class="form-control form-control-sm" value="' + (data.unit || 'EA') + '"></td>' +
+            '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end calc-field" value="' + (data.unit_price || '') + '" min="0" step="any"></td>' +
+            '<td class="text-end fw-bold row-amount">0</td>' +
+            '<td><input type="text" name="item_note[]" class="form-control form-control-sm" value="' + (data.note || '') + '"></td>' +
+            '<td><button type="button" class="btn btn-sm btn-outline-danger remove-row-btn">X</button></td>';
+        document.getElementById('itemsBody').appendChild(tr);
+        recalculate();
+    }
+
+    document.getElementById('addItemBtn').addEventListener('click', function() { addItemRow(); });
+    addItemRow();
+
+    document.getElementById('itemsBody').addEventListener('click', function(e) {
+        if (e.target.classList.contains('remove-row-btn')) {
+            e.target.closest('tr').remove();
+            renumberRows();
+            recalculate();
+        }
+        if (e.target.classList.contains('search-item-btn')) {
+            currentSearchRow = e.target.closest('tr');
+            new bootstrap.Modal(document.getElementById('itemSearchModal')).show();
+            document.getElementById('itemSearchInput').value = '';
+            document.getElementById('itemSearchInput').focus();
+        }
+    });
+
+    document.getElementById('itemsBody').addEventListener('input', function(e) {
+        if (e.target.classList.contains('calc-field')) recalculate();
+    });
+
+    function recalculate() {
+        var total = 0;
+        document.querySelectorAll('#itemsBody tr').forEach(function(tr) {
+            var qty = parseFloat(tr.querySelector('input[name="quantity[]"]').value) || 0;
+            var price = parseFloat(tr.querySelector('input[name="unit_price[]"]').value) || 0;
+            var amount = qty * price;
+            tr.querySelector('.row-amount').textContent = amount.toLocaleString();
+            total += amount;
+        });
+        document.getElementById('totalAmount').textContent = total.toLocaleString();
+        document.getElementById('taxAmount').textContent = Math.round(total * 0.1).toLocaleString();
+        document.getElementById('grandTotal').textContent = Math.round(total * 1.1).toLocaleString();
+    }
+
+    function renumberRows() {
+        document.querySelectorAll('#itemsBody tr').forEach(function(tr, i) {
+            tr.querySelector('td:first-child').textContent = i + 1;
+        });
+        rowIndex = document.querySelectorAll('#itemsBody tr').length;
+    }
+
+    // ── 품목 검색 ──
+    var itemSearchTimeout = null;
+    document.getElementById('itemSearchInput').addEventListener('input', function() {
+        clearTimeout(itemSearchTimeout);
+        var q = this.value.trim();
+        if (q.length < 1) { document.getElementById('itemSearchResults').innerHTML = '<div class="text-center text-muted py-3">검색어를 입력하세요.</div>'; return; }
+        itemSearchTimeout = setTimeout(function() {
+            fetch('/api/items/search?q=' + encodeURIComponent(q))
+                .then(function(r) { return r.json(); })
+                .then(function(items) {
+                    if (items.length === 0) {
+                        document.getElementById('itemSearchResults').innerHTML = '<div class="text-center text-muted py-3">검색 결과 없음</div>';
+                    } else {
+                        document.getElementById('itemSearchResults').innerHTML = '<div class="list-group">' + items.map(function(item) {
+                            return '<a href="#" class="list-group-item list-group-item-action item-select-btn py-1" ' +
+                                'data-id="' + item.id + '" data-name="' + item.item_name + '" data-spec="' + (item.item_spec || '') + '" data-unit="' + (item.unit || '') + '">' +
+                                '<strong>' + item.item_name + '</strong>' +
+                                (item.item_spec ? ' <small class="text-muted">(' + item.item_spec + ')</small>' : '') +
+                                (item.item_cd ? ' <code class="ms-1">' + item.item_cd + '</code>' : '') +
+                                '</a>';
+                        }).join('') + '</div>';
+                    }
+                });
+        }, 300);
+    });
+
+    document.getElementById('itemSearchResults').addEventListener('click', function(e) {
+        var btn = e.target.closest('.item-select-btn');
+        if (!btn) return;
+        e.preventDefault();
+        if (currentSearchRow) {
+            currentSearchRow.querySelector('input[name="item_id[]"]').value = btn.dataset.id;
+            currentSearchRow.querySelector('input[name="item_name[]"]').value = btn.dataset.name;
+            currentSearchRow.querySelector('input[name="item_spec[]"]').value = btn.dataset.spec;
+            currentSearchRow.querySelector('input[name="unit[]"]').value = btn.dataset.unit || 'EA';
+        }
+        bootstrap.Modal.getInstance(document.getElementById('itemSearchModal')).hide();
+    });
+})();
+
+// ── 계약건 검색 (간단 자동완성) ──
+(function() {
+    var input = document.getElementById('contractSearchInput');
+    var hidden = document.getElementById('contractIdHidden');
+    var info = document.getElementById('contractInfo');
+    var timer = null;
+    var dd = document.createElement('div');
+    dd.className = 'vendor-ac-dropdown';
+    document.body.appendChild(dd);
+
+    input.addEventListener('input', function() {
+        clearTimeout(timer);
+        hidden.value = '';
+        info.textContent = '';
+        var q = this.value.trim();
+        if (q.length < 2) { dd.classList.remove('show'); return; }
+        timer = setTimeout(function() {
+            fetch('/api/contracts/search?q=' + encodeURIComponent(q))
+                .then(function(r) { return r.json(); })
+                .then(function(contracts) {
+                    if (!contracts.length) { dd.classList.remove('show'); return; }
+                    dd.innerHTML = contracts.map(function(c) {
+                        return '<div class="ac-item" data-id="' + c.id + '" data-name="' + (c.label||'').replace(/"/g,'&quot;') + '">'
+                            + '<strong>' + c.site_name + '</strong> '
+                            + '<span class="ac-sub">' + c.contract_name + ' (' + c.item_group + ')</span>'
+                            + '</div>';
+                    }).join('');
+                    var rect = input.getBoundingClientRect();
+                    dd.style.top = rect.bottom + 2 + 'px';
+                    dd.style.left = rect.left + 'px';
+                    dd.style.width = Math.max(rect.width, 350) + 'px';
+                    dd.classList.add('show');
+                });
+        }, 300);
+    });
+
+    dd.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        var item = e.target.closest('.ac-item');
+        if (!item) return;
+        hidden.value = item.dataset.id;
+        input.value = item.dataset.name;
+        info.textContent = '';
+        dd.classList.remove('show');
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!input.contains(e.target) && !dd.contains(e.target)) dd.classList.remove('show');
+    });
+})();
+</script>
+
+{% endblock %}

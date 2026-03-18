@@ -1,0 +1,220 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<style>
+.prod-tbl { width:100%; border-collapse:collapse; font-size:0.95rem; }
+.prod-tbl th, .prod-tbl td { padding:6px 10px; border:1px solid #dee2e6; }
+.prod-tbl th { background:#f1f5f9; font-weight:600; }
+.prod-tbl .sum-row { background:#1e293b; color:#fff; font-weight:700; }
+.prod-tbl .text-end { text-align:right; }
+
+@media print {
+    @page { size: A4 landscape; margin: 8mm; }
+    body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    .sidebar, .mobile-menu-btn, .sidebar-backdrop, .no-print, .alert { display:none !important; }
+    .main-content { margin-left:0 !important; padding:0 !important; }
+    .card { box-shadow:none !important; border:1px solid #dee2e6 !important; margin-bottom:3px !important; }
+    .card-body { padding:4px 6px !important; }
+    .print-title { display:block !important; }
+    canvas { display:none !important; }
+    .chart-print-img { display:block !important; max-height:190px; width:auto; margin:0 auto; }
+    .row { display:flex !important; flex-wrap:wrap !important; }
+    .col-lg-5 { flex:0 0 41.666% !important; max-width:41.666% !important; }
+    .col-lg-6 { flex:0 0 50% !important; max-width:50% !important; }
+    .col-lg-7 { flex:0 0 58.333% !important; max-width:58.333% !important; }
+    .col-lg-12 { flex:0 0 100% !important; max-width:100% !important; }
+    .g-2 > * { padding:2px !important; }
+    .mb-2 { margin-bottom:2px !important; }
+    .prod-tbl { font-size:10px !important; }
+    .prod-tbl th, .prod-tbl td { padding:2px 6px !important; }
+    .print-page { break-inside:avoid; }
+}
+@media screen { .print-title { display:none; } .chart-print-img { display:none; } }
+</style>
+
+<div class="print-title mb-1">
+    <h6 class="fw-bold mb-0">📊 매그나텍 조달내역 분석 보고서 {% if sel_year %}({{ sel_year }}년){% else %}(전체){% endif %} <small class="text-muted fw-normal">출력일: {{ current_date }}</small></h6>
+</div>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3 no-print">
+    <h5 class="text-primary fw-bold mb-0">📊 조달내역 분석 {% if sel_year %}<span class="badge bg-primary">{{ sel_year }}년</span>{% endif %}</h5>
+    <div class="d-flex gap-2 align-items-center">
+        <form class="d-flex align-items-center" method="GET">
+            <select class="form-select form-select-sm" name="year" style="width:auto;" onchange="this.form.submit()">
+                <option value="">전체</option>
+                {% for y in year_options %}
+                <option value="{{ y }}" {% if sel_year == y|string %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        <button class="btn btn-outline-dark btn-sm py-0" onclick="printReport()">🖨️ 인쇄</button>
+        <a href="{{ url_for('procurement.procurement_list') }}" class="btn btn-outline-secondary btn-sm py-0">← 목록</a>
+    </div>
+</div>
+
+{# ================================================================ #}
+{# === 품목별 현황 + 수요기관 TOP10 (공통) === #}
+{# ================================================================ #}
+{% set total_amt = products.amounts | sum %}
+<div class="row g-2 mb-2 print-page">
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body p-2">
+                <small class="fw-bold">품목별 현황 {% if sel_year %}<span class="text-muted">({{ sel_year }})</span>{% endif %}</small>
+                <table class="prod-tbl mt-1">
+                    <thead>
+                        <tr><th>세부품목</th><th class="text-end">건수</th><th class="text-end">금액(원)</th><th class="text-end">비율</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr class="sum-row">
+                            <td>합계</td><td class="text-end">{{ products.counts | sum }}</td><td class="text-end">{{ "{:,}".format(total_amt) }}</td><td class="text-end">100%</td>
+                        </tr>
+                        {% for i in range(products.labels | length) %}
+                        <tr>
+                            <td>{{ products.labels[i] }}</td><td class="text-end">{{ products.counts[i] }}</td><td class="text-end">{{ "{:,}".format(products.amounts[i]) }}</td>
+                            <td class="text-end">{% if total_amt > 0 %}{{ "%.1f"|format(products.amounts[i] / total_amt * 100) }}%{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body p-2">
+                <small class="fw-bold">수요기관 TOP 10 {% if sel_year %}<span class="text-muted">({{ sel_year }})</span>{% endif %}</small>
+                <div style="height:{{ 30 + (top_orgs.labels | length) * 28 }}px; min-height:200px;"><canvas id="chartTopOrgs"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ================================================================ #}
+{% if sel_year %}
+{# === 연도 선택 모드: 월별 추이 + 3년 비교 === #}
+{# ================================================================ #}
+<div class="row g-2 mb-2 print-page">
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-2">
+                <small class="fw-bold">{{ sel_year }}년 월별 추이</small>
+                <div style="height:220px;"><canvas id="chartTrend"></canvas></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-2">
+                <small class="fw-bold">{{ monthly.years[0] }}~{{ monthly.years[-1] }}년 월별 비교</small>
+                <div style="height:220px;"><canvas id="chartMonthly"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+{# ================================================================ #}
+{# === 전체 모드: 연도별 계약금액 + 전체 월별 추이 === #}
+{# ================================================================ #}
+<div class="row g-2 mb-2 print-page">
+    <div class="col-lg-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-2">
+                <small class="fw-bold">연도별 계약금액</small>
+                <div style="height:190px;"><canvas id="chartYearly"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row g-2 mb-2 print-page">
+    <div class="col-lg-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-2">
+                <small class="fw-bold">월별 합계금액</small>
+                <div style="height:190px;"><canvas id="chartTrend"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+const COLORS = ['#3b82f6','#ef4444','#f59e0b','#10b981','#8b5cf6','#ec4899','#06b6d4','#f97316','#6366f1','#84cc16','#64748b'];
+function fmtAmt(v) {
+    if (v >= 1e8) return (v/1e8).toFixed(1)+'억';
+    if (v >= 1e4) return (v/1e4).toFixed(0)+'만';
+    return v.toLocaleString();
+}
+const barOpt = {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmtAmt(ctx.raw)+'원'}}},
+    scales:{y:{ticks:{callback:v=>fmtAmt(v),font:{size:10}},beginAtZero:true}}
+};
+
+// 수요기관 TOP 10 (가로 막대)
+new Chart(document.getElementById('chartTopOrgs'), {
+    type:'bar',
+    data:{
+        labels:{{top_orgs.labels|tojson}},
+        datasets:[{label:'계약금액',data:{{top_orgs.amounts|tojson}},backgroundColor:COLORS,borderRadius:3}]
+    },
+    options:{
+        responsive:true, maintainAspectRatio:false, indexAxis:'y',
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmtAmt(ctx.raw)+'원 ('+{{top_orgs.counts|tojson}}[ctx.dataIndex]+'건)'}}},
+        scales:{x:{ticks:{callback:v=>fmtAmt(v),font:{size:10}},beginAtZero:true},y:{ticks:{font:{size:10}}}}
+    }
+});
+
+{% if sel_year %}
+// 연도 선택: 월별 추이
+new Chart(document.getElementById('chartTrend'), {
+    type:'bar',
+    data:{labels:{{trend.labels|tojson}},datasets:[{label:'계약금액',data:{{trend.amounts|tojson}},backgroundColor:'#3b82f6',borderRadius:3}]},
+    options:barOpt
+});
+
+// 연도 선택: 3년 월별 비교
+const mYrs={{monthly.years|tojson}},mDs={{monthly.datasets|tojson}},mC=['#94a3b8','#f59e0b','#3b82f6'];
+new Chart(document.getElementById('chartMonthly'), {
+    type:'bar',
+    data:{labels:{{monthly.labels|tojson}},datasets:mYrs.map((yr,i)=>({label:yr+'년',data:mDs[yr],backgroundColor:mC[i],borderRadius:2}))},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+        plugins:{tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmtAmt(ctx.raw)+'원'}},legend:{labels:{font:{size:10}}}},
+        scales:{y:{ticks:{callback:v=>fmtAmt(v),font:{size:10}},beginAtZero:true}}}
+});
+
+{% else %}
+// 전체: 연도별 막대
+new Chart(document.getElementById('chartYearly'), {
+    type:'bar',
+    data:{labels:{{yearly.labels|tojson}},datasets:[{label:'계약금액',data:{{yearly.amounts|tojson}},backgroundColor:'#3b82f6',borderRadius:3}]},
+    options:barOpt
+});
+
+// 전체: 월별 추이
+new Chart(document.getElementById('chartTrend'), {
+    type:'bar',
+    data:{labels:{{trend.labels|tojson}},datasets:[{label:'계약금액',data:{{trend.amounts|tojson}},backgroundColor:'#10b981',borderRadius:2}]},
+    options:barOpt
+});
+{% endif %}
+
+function printReport() {
+    document.querySelectorAll('.chart-print-img').forEach(el=>el.remove());
+    let loaded=0;
+    const canvases=document.querySelectorAll('canvas');
+    const total=canvases.length;
+    canvases.forEach(c=>{
+        let img=new Image();
+        img.className='chart-print-img';
+        img.onload=()=>{loaded++;if(loaded>=total)setTimeout(()=>window.print(),150);};
+        img.src=c.toDataURL('image/png',1.0);
+        c.parentElement.appendChild(img);
+    });
+    if(total===0) window.print();
+}
+</script>
+
+{% endblock %}

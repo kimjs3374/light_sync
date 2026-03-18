@@ -133,7 +133,6 @@ def project_list():
 
     with get_db() as db:
         today = datetime.date.today()
-        # 관계 데이터를 미리 로드하여 세션 종료 후에도 템플릿에서 에러가 나지 않게 함
         all_projects = db.query(Project).options(
             joinedload(Project.materials),
             joinedload(Project.contacts),
@@ -204,7 +203,7 @@ def project_list():
         start = (pagination['page'] - 1) * per_page
         projects_page = filtered[start:start + per_page]
 
-        # 우선순위 (페이지네이션 전 전체 filtered 대상)
+        # 우선순위
         priority_projects = []
         for p in filtered:
             reasons = []
@@ -295,15 +294,6 @@ def contract_list():
             due_date = primary_contract.delivery_due_date if primary_contract else None
             dday = (due_date - today).days if due_date else None
 
-            search_pool = [p.project_no or '', p.temp_name or '', p.short_name or '']
-            for c in p.contracts:
-                search_pool.append(c.contract_name or '')
-                search_pool.append(c.item_group or '')
-                for item in c.items:
-                    item.status_admin = compute_admin_status_from_orders(item.material_orders)
-                    search_pool.append(item.model_name or '')
-                    search_pool.append(format_spec_summary(item.category, item.item_spec))
-
             has_inspection = any(c.is_prof_inspection for c in p.contracts)
             is_urgent_project = p.is_urgent or any(c.is_urgent_prod for c in p.contracts)
 
@@ -314,8 +304,17 @@ def contract_list():
             if is_urgent_project:
                 urgent_count += 1
 
-            if q and not any(q in s.lower() for s in search_pool):
-                continue
+            # 검색어가 있을 때만 search_pool 구축
+            if q:
+                search_pool = [p.project_no or '', p.temp_name or '', p.short_name or '']
+                for c in p.contracts:
+                    search_pool.append(c.contract_name or '')
+                    search_pool.append(c.item_group or '')
+                    for item in c.items:
+                        search_pool.append(item.model_name or '')
+                        search_pool.append(format_spec_summary(item.category, item.item_spec))
+                if not any(q in s.lower() for s in search_pool):
+                    continue
             if due_filter == 'overdue' and (dday is None or dday >= 0):
                 continue
             if due_filter == 'week' and (dday is None or dday < 0 or dday > 7):
@@ -380,6 +379,12 @@ def contract_list():
         pagination = make_pagination(page, per_page, len(enriched))
         start = (pagination['page'] - 1) * per_page
         enriched_page = enriched[start:start + per_page]
+
+        # 페이지네이션된 결과의 items에 대해서만 status_admin 계산
+        for p in enriched_page:
+            for c in p.contracts:
+                for item in c.items:
+                    item.status_admin = compute_admin_status_from_orders(item.material_orders)
 
         return render_template(
             'contract_list.html',

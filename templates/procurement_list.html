@@ -1,0 +1,247 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">📋 나라장터 조달내역</h2>
+    <div class="d-flex gap-2">
+    <a href="{{ url_for('procurement.procurement_report') }}" class="btn btn-outline-info btn-sm">📊 분석 보고서</a>
+    {% if is_admin %}
+    <div class="dropdown">
+        <button class="btn btn-outline-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown">🔄 동기화</button>
+        <ul class="dropdown-menu dropdown-menu-end">
+            <li>
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="sync_daily">
+                    <button type="submit" class="dropdown-item" onclick="return confirm('전일 데이터를 동기화합니다.');">📅 일일 동기화 (전일)</button>
+                </form>
+            </li>
+            <li>
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="sync_bulk">
+                    <button type="submit" class="dropdown-item" onclick="return confirm('2015년~현재까지 전체 데이터를 동기화합니다. 시간이 소요될 수 있습니다.');">📦 벌크 동기화 (전체)</button>
+                </form>
+            </li>
+        </ul>
+    </div>
+    {% endif %}
+    </div>
+</div>
+
+{# --- 통계 카드 --- #}
+<div class="row g-3 mb-3">
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body py-2">
+                <small class="text-muted">전체 계약</small>
+                <div class="fw-bold fs-5">{{ "{:,}".format(stats.total_count) }}건</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-primary">
+            <div class="card-body py-2">
+                <small class="text-muted">전체 금액</small>
+                <div class="fw-bold fs-5 text-primary">{{ "{:,}".format(stats.total_amt) }}원</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-success">
+            <div class="card-body py-2">
+                <small class="text-muted">{{ stats.year }}년 실적</small>
+                <div class="fw-bold fs-5 text-success">{{ stats.year_count }}건 / {{ "{:,}".format(stats.year_amt) }}원</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-info">
+            <div class="card-body py-2">
+                <small class="text-muted">최다 품목</small>
+                <div class="fw-bold" style="font-size:0.9rem;">{{ stats.top_product }} ({{ stats.top_product_pct }}%)</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# --- 검색/필터 --- #}
+<form class="card border-0 shadow-sm mb-4" method="GET">
+    <div class="card-body row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="small fw-bold">검색</label>
+            <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="계약명 / 수요기관 / 규격명">
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="small fw-bold">연도</label>
+            <select class="form-select" name="year">
+                <option value="">전체</option>
+                {% for y in filter_options.years %}
+                <option value="{{ y }}" {% if filters.year == y|string %}selected{% endif %}>{{ y }}년</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="small fw-bold">세부품목</label>
+            <select class="form-select" name="product">
+                <option value="">전체</option>
+                {% for p in filter_options.products %}
+                <option value="{{ p }}" {% if filters.product == p %}selected{% endif %}>{{ p }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="small fw-bold">상태</label>
+            <select class="form-select" name="status">
+                <option value="">전체</option>
+                <option value="new" {% if filters.status == 'new' %}selected{% endif %}>신규</option>
+                <option value="changed" {% if filters.status == 'changed' %}selected{% endif %}>변경</option>
+                <option value="cancelled" {% if filters.status == 'cancelled' %}selected{% endif %}>취소</option>
+                <option value="spec_price" {% if filters.status == 'spec_price' %}selected{% endif %}>규격가격</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-3 text-md-end">
+            <a href="{{ url_for('procurement.procurement_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+            <button type="submit" class="btn btn-primary btn-sm fw-bold">검색</button>
+            {% if stats.filtered != stats.total_count %}
+            <span class="ms-2 text-muted small">{{ "{:,}".format(stats.filtered) }}건 검색됨</span>
+            {% endif %}
+        </div>
+    </div>
+</form>
+
+{# --- 상태 뱃지 매크로 --- #}
+{% macro status_badge(status) %}
+    {%- if status == 'cancelled' %}<span class="badge bg-danger">취소</span>
+    {%- elif status == 'changed' %}<span class="badge bg-warning text-dark">변경</span>
+    {%- elif status == 'spec_price' %}<span class="badge" style="background:#7c3aed;color:#fff;white-space:nowrap;">규격가격</span>
+    {%- else %}<span class="badge bg-success">신규</span>
+    {%- endif %}
+{% endmacro %}
+
+{# --- 테이블 (계약 단위 그룹핑) --- #}
+<div class="table-responsive">
+    <table class="table table-hover align-middle" style="font-size:0.88rem;">
+        <thead class="table-light">
+            <tr>
+                <th style="width:90px;">계약일</th>
+                <th style="width:80px;">상태</th>
+                <th>계약명</th>
+                <th style="width:150px;">수요기관</th>
+                <th class="text-center" style="width:60px;">품목</th>
+                <th class="text-end" style="width:130px;">계약금액</th>
+                <th style="width:90px;">납품기한</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in contracts %}
+            <tr role="button" data-bs-toggle="collapse" data-bs-target="#detail-{{ loop.index }}" class="{% if c.status == 'cancelled' %}table-danger{% elif c.status == 'changed' %}table-warning{% elif c.status == 'spec_price' %}{% endif %}" {% if c.status == 'spec_price' %}style="background:#ede9fe;"{% endif %}>
+                <td>{{ c.req_date.strftime('%Y-%m-%d') if c.req_date else '-' }}</td>
+                <td>{{ status_badge(c.status) }}</td>
+                <td>
+                    <span title="{{ c.req_nm or '' }}">
+                        {{ (c.req_nm or '-')[:50] }}{% if c.req_nm and c.req_nm|length > 50 %}...{% endif %}
+                    </span>
+                </td>
+                <td><small>{{ c.dminstt or '-' }}</small></td>
+                <td class="text-center">
+                    {% if c.item_cnt > 1 %}
+                        <span class="badge bg-secondary">{{ c.item_cnt }}종</span>
+                    {% else %}
+                        1
+                    {% endif %}
+                </td>
+                <td class="text-end fw-bold">{{ "{:,}".format(c.total_amt) }}원</td>
+                <td><small>{{ c.dlvr_date.strftime('%Y-%m-%d') if c.dlvr_date else '-' }}</small></td>
+            </tr>
+            {# --- 품목 상세 (접히는 행) --- #}
+            <tr class="collapse" id="detail-{{ loop.index }}">
+                <td colspan="7" class="p-0">
+                    <div class="bg-light p-3" style="font-size:0.82rem;">
+                        <div class="mb-2">
+                            <strong>계약번호:</strong> {{ c.req_no }}
+                            <span class="text-muted ms-2">변경차수: {{ c.chg_ord }}</span>
+                            <span class="text-muted ms-3">{{ c.line_items[0].prcrmnt_div_nm or '' }} / {{ c.line_items[0].cntrct_div_nm or '' }}</span>
+                            {% if c.line_items[0].dlvr_plce_nm %}
+                            <span class="text-muted ms-3">납품: {{ c.line_items[0].dlvr_plce_nm }}</span>
+                            {% endif %}
+                        </div>
+                        <table class="table table-sm table-bordered mb-0 bg-white" style="font-size:0.82rem;">
+                            <thead>
+                                <tr class="table-secondary">
+                                    <th>세부품목</th>
+                                    <th>규격명</th>
+                                    <th class="text-end" style="width:100px;">단가</th>
+                                    <th class="text-end" style="width:60px;">수량</th>
+                                    <th class="text-end" style="width:120px;">금액</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in c.line_items %}
+                                <tr>
+                                    <td>{{ item.dtil_prdct_clsfc_no_nm or '-' }}</td>
+                                    <td>{{ item.prdct_idnt_no_nm or '-' }}</td>
+                                    <td class="text-end">{{ "{:,}".format(item.prdct_uprc) if item.prdct_uprc else '-' }}</td>
+                                    <td class="text-end">{{ item.prdct_qty or '-' }}{{ item.prdct_unit or '' }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,}".format(item.prdct_amt) if item.prdct_amt else '-' }}</td>
+                                </tr>
+                                {% endfor %}
+                                {% if c.item_cnt > 1 %}
+                                <tr class="table-warning">
+                                    <td colspan="3" class="text-end fw-bold">합계</td>
+                                    <td class="text-end fw-bold">{{ c.line_items|sum(attribute='prdct_qty') or '-' }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,}".format(c.total_amt) }}원</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+
+            {% if not contracts %}
+            <tr>
+                <td colspan="7" class="text-center text-muted py-4">조회된 조달내역이 없습니다.</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+{# --- 페이지네이션 --- #}
+{% if pagination.total_pages > 1 %}
+<nav class="d-flex justify-content-center mt-3">
+    <ul class="pagination pagination-sm">
+        {% if pagination.has_prev %}
+        <li class="page-item">
+            <a class="page-link" href="?{{ pagination_query(pagination.prev_page) }}">&laquo;</a>
+        </li>
+        {% endif %}
+
+        {% if pagination.show_first %}
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(1) }}">1</a></li>
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+
+        {% for p in pagination.page_range %}
+        <li class="page-item {% if p == pagination.page %}active{% endif %}">
+            <a class="page-link" href="?{{ pagination_query(p) }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+
+        {% if pagination.show_last %}
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(pagination.total_pages) }}">{{ pagination.total_pages }}</a></li>
+        {% endif %}
+
+        {% if pagination.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?{{ pagination_query(pagination.next_page) }}">&raquo;</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{% endblock %}

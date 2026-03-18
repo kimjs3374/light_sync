@@ -242,7 +242,7 @@
                                         {% endfor %}
                                     </select>
                                 </td>
-                                <td><input type="text" name="model_name" class="form-control form-control-sm" value="{{ item.model_name or '' }}"></td>
+                                <td><input type="text" name="model_name" class="form-control form-control-sm" value="{{ item.model_name or '' }}" data-catalog-autocomplete data-category-select="category"></td>
                                 <td><input type="number" name="quantity" class="form-control form-control-sm" value="{{ item.quantity or 0 }}"></td>
                                 <td class="text-center">
                                     {% set current_category = (item.category or c.item_group or detail_item_options[0]) %}
@@ -308,7 +308,7 @@
                                         {% endfor %}
                                     </select>
                                 </td>
-                                <td><input type="text" name="model_name" class="form-control form-control-sm" placeholder="신규 모델"></td>
+                                <td><input type="text" name="model_name" class="form-control form-control-sm" placeholder="모델명 입력 (자동완성)" data-catalog-autocomplete data-category-select="category"></td>
                                 <td><input type="number" name="quantity" class="form-control form-control-sm" value="1"></td>
                                 <td><input type="text" name="barcode_id" class="form-control form-control-sm" placeholder="조명기구 계열만 입력"></td>
                                 <td colspan="3" class="text-muted small align-middle text-center">해당 계약의 상세품목만 추가 가능</td>

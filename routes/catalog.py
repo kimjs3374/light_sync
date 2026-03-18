@@ -5,6 +5,7 @@ from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.models import ProductCatalog
 from modules.services.g2b_catalog_sync import sync_from_g2b
+from modules.services.g2b_procurement_sync import sync_daily as sync_procurement_daily, sync_bulk as sync_procurement_bulk
 
 catalog_bp = Blueprint('catalog', __name__)
 
@@ -141,8 +142,28 @@ def handle_delete_item(db, form, user_name):
     return {'flash': (f'"{name}" 삭제 완료', 'success')}
 
 
+def handle_sync_procurement(db, form, user_name):
+    """나라장터 조달내역 동기화 (관리자 전용)"""
+    if session.get('role') != 'admin':
+        return {'flash': ('권한이 없습니다.', 'danger')}
+    mode = form.get('procurement_mode', 'daily')
+    if mode == 'bulk':
+        result = sync_procurement_bulk(db, start_year=2020)
+    else:
+        result = sync_procurement_daily(db)
+    total = result['created'] + result['updated']
+    if total == 0 and result.get('errors', 0) == 0:
+        msg = '조달내역 동기화: 새로운 데이터가 없습니다.' if mode == 'daily' else '조달내역 벌크 동기화: 데이터를 받지 못했습니다.'
+        return {'flash': (msg, 'info')}
+    msg = f"조달내역 동기화 완료: 신규 {result['created']}건, 갱신 {result['updated']}건"
+    if result.get('errors'):
+        msg += f", 오류 {result['errors']}건"
+    return {'flash': (msg, 'success')}
+
+
 ACTION_HANDLERS = {
     'sync_catalog': handle_sync_catalog,
+    'sync_procurement': handle_sync_procurement,
     'update_price': handle_update_price,
     'add_manual': handle_add_manual,
     'edit_item': handle_edit_item,
