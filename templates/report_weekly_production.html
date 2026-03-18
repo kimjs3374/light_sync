@@ -1,0 +1,339 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    .report-container {
+        max-width: 1100px;
+        margin: 0 auto;
+        background: #fff;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .report-controls {
+        max-width: 1100px;
+        margin: 0 auto 20px;
+        background: #f1f5f9;
+        padding: 20px;
+        border-radius: 8px;
+    }
+    .report-controls label {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: #334155;
+    }
+    .report-header {
+        text-align: center;
+        border-bottom: 2px solid #1e293b;
+        padding-bottom: 16px;
+        margin-bottom: 24px;
+    }
+    .report-header .company-name {
+        font-size: 0.95rem;
+        color: #64748b;
+        margin-bottom: 4px;
+    }
+    .report-header h2 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 8px 0;
+    }
+    .report-header .report-meta {
+        font-size: 0.88rem;
+        color: #475569;
+    }
+    .report-section {
+        margin-bottom: 28px;
+    }
+    .report-section h3 {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #1e293b;
+        border-left: 4px solid #3b82f6;
+        padding-left: 10px;
+        margin-bottom: 12px;
+    }
+    .report-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88rem;
+    }
+    .report-table th,
+    .report-table td {
+        border: 1px solid #cbd5e1;
+        padding: 6px 8px;
+        text-align: center;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .report-table th {
+        background: #f1f5f9;
+        font-weight: 600;
+        color: #334155;
+    }
+    .report-table td {
+        color: #1e293b;
+    }
+    .report-table td.text-left {
+        text-align: left;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .report-table td.text-right {
+        text-align: right;
+    }
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 8px;
+    }
+    .summary-card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 12px;
+        text-align: center;
+    }
+    .summary-card .label {
+        font-size: 0.8rem;
+        color: #64748b;
+        margin-bottom: 4px;
+    }
+    .summary-card .value {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #1e293b;
+    }
+    .badge-status {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .badge-wait { background: #e2e8f0; color: #475569; }
+    .badge-progress { background: #dbeafe; color: #1d4ed8; }
+    .badge-done { background: #dcfce7; color: #15803d; }
+    .badge-as { background: #fef3c7; color: #b45309; }
+    .empty-notice {
+        text-align: center;
+        color: #94a3b8;
+        padding: 16px;
+        font-style: italic;
+    }
+    .progress-bar-bg {
+        width: 80px;
+        height: 14px;
+        background: #e2e8f0;
+        border-radius: 7px;
+        overflow: hidden;
+        display: inline-block;
+        vertical-align: middle;
+    }
+    .progress-bar-fill {
+        height: 100%;
+        background: #3b82f6;
+        border-radius: 7px;
+    }
+    @page {
+        size: landscape;
+        margin: 10mm 12mm;
+    }
+    @media print {
+        .sidebar, .mobile-menu-btn, .sidebar-backdrop, .no-print { display: none !important; }
+        .main-content { margin-left: 0 !important; padding: 0 !important; }
+        body { background: white !important; font-size: 10pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .report-container { max-width: 100%; box-shadow: none; padding: 10px 0; border-radius: 0; }
+        .report-table { page-break-inside: auto; }
+        .report-table tr { page-break-inside: avoid; }
+        .report-table th { background: #f1f5f9 !important; }
+        .page-break { page-break-before: always; }
+        .summary-card { border: 1px solid #999; }
+        a { color: inherit !important; text-decoration: none !important; }
+    }
+</style>
+
+<!-- Controls -->
+<div class="no-print report-controls">
+    <form method="get" action="{{ url_for('report.weekly_report') }}" class="row g-2 align-items-end">
+        {% if is_admin %}
+        <div class="col-auto">
+            <label for="dept">부서</label>
+            <select class="form-select form-select-sm" id="dept" name="dept" onchange="this.form.submit()">
+                <option value="sales" {% if current_dept == 'sales' %}selected{% endif %}>영업부</option>
+                <option value="production" {% if current_dept == 'production' %}selected{% endif %}>생산부</option>
+                <option value="management" {% if current_dept == 'management' %}selected{% endif %}>관리부</option>
+            </select>
+        </div>
+        {% endif %}
+        <div class="col-auto">
+            <label for="start">시작일</label>
+            <input type="date" class="form-control form-control-sm" id="start" name="start"
+                   value="{{ week_start.isoformat() }}">
+        </div>
+        <div class="col-auto">
+            <label for="end">종료일</label>
+            <input type="date" class="form-control form-control-sm" id="end" name="end"
+                   value="{{ week_end.isoformat() }}">
+        </div>
+        <div class="col-auto">
+            <label for="reporter">작성자</label>
+            <input type="text" class="form-control form-control-sm" id="reporter" name="reporter"
+                   value="{{ reporter or session.get('full_name', '') }}" placeholder="작성자명">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm">보고서 생성</button>
+        </div>
+        <div class="col-auto">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print();">인쇄</button>
+        </div>
+    </form>
+</div>
+
+<!-- Report Content -->
+<div class="report-container">
+
+    <!-- Header -->
+    <div class="report-header">
+        <div class="company-name">(주)매그나텍 LED조명사업부</div>
+        <h2>생산부 주간 업무보고서</h2>
+        <div class="report-meta">
+            보고 기간: {{ week_start.strftime('%Y-%m-%d') }} ~ {{ week_end.strftime('%Y-%m-%d') }}<br>
+            작성일: {{ today.strftime('%Y-%m-%d') }}
+            {% if reporter or session.get('full_name') %}
+                &nbsp;&middot;&nbsp; 작성자: {{ reporter or session.get('full_name', '') }}
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 1. 주간 요약 -->
+    <div class="report-section">
+        <h3>1. 주간 요약</h3>
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="label">생산중</div>
+                <div class="value">{{ stats.producing }}건</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">납품준비</div>
+                <div class="value">{{ stats.delivery_ready }}건</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">납품완료</div>
+                <div class="value">{{ stats.delivery_done }}건</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">AS접수</div>
+                <div class="value" style="color: {% if stats.as_received > 0 %}#dc2626{% else %}#1e293b{% endif %};">{{ stats.as_received }}건</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 생산 공정 현황 (현장별 진행률) -->
+    <div class="report-section">
+        <h3>2. 생산 공정 현황</h3>
+        {% if process_rows %}
+        <table class="report-table no-stack-table">
+            <thead>
+                <tr>
+                    <th style="width:40px;">No</th>
+                    <th>현장명</th>
+                    <th>전체 공정</th>
+                    <th>완료 공정</th>
+                    <th>진행률</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in process_rows %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td class="text-left">{{ r.site_name }}</td>
+                    <td>{{ r.total }}건</td>
+                    <td>{{ r.done }}건</td>
+                    <td>
+                        <span class="progress-bar-bg"><span class="progress-bar-fill" style="width:{{ r.progress_percent }}%"></span></span>
+                        {{ r.progress_percent }}%
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-notice">해당 사항 없음</div>
+        {% endif %}
+    </div>
+
+    <!-- 3. 납품 진행 현황 -->
+    <div class="report-section page-break">
+        <h3>3. 납품 진행 현황</h3>
+        {% if delivery_rows %}
+        <table class="report-table no-stack-table">
+            <thead>
+                <tr>
+                    <th style="width:40px;">No</th>
+                    <th>현장명</th>
+                    <th>회차</th>
+                    <th>수량</th>
+                    <th>예정일</th>
+                    <th>상태</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in delivery_rows %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td class="text-left">{{ r.site_name }}</td>
+                    <td>{{ r.split_no }}차</td>
+                    <td>{{ r.quantity }}</td>
+                    <td>{{ r.scheduled_date.strftime('%Y-%m-%d') if r.scheduled_date else '-' }}</td>
+                    <td>
+                        <span class="badge-status {% if r.status == '예정' %}badge-wait{% elif r.status in ('상차완료', '배송중') %}badge-progress{% else %}badge-done{% endif %}">{{ r.status }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-notice">해당 사항 없음</div>
+        {% endif %}
+    </div>
+
+    <!-- 4. AS/하자보증 현황 -->
+    <div class="report-section page-break">
+        <h3>4. AS/하자보증 현황</h3>
+        {% if warranty_rows %}
+        <table class="report-table no-stack-table">
+            <thead>
+                <tr>
+                    <th style="width:40px;">No</th>
+                    <th>케이스번호</th>
+                    <th>현장명</th>
+                    <th>불량유형</th>
+                    <th>상태</th>
+                    <th>접수일</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in warranty_rows %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ r.case_no }}</td>
+                    <td class="text-left">{{ r.site_name }}</td>
+                    <td>{{ r.defect_type }}</td>
+                    <td>
+                        <span class="badge-status {% if r.status == '접수' %}badge-as{% elif r.status == '조치중' %}badge-progress{% else %}badge-wait{% endif %}">{{ r.status }}</span>
+                    </td>
+                    <td>{{ r.reported_date.strftime('%Y-%m-%d') if r.reported_date else '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-notice">해당 사항 없음</div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

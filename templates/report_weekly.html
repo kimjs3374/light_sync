@@ -3,7 +3,7 @@
 <style>
     /* ===== Screen Styles ===== */
     .report-container {
-        max-width: 900px;
+        max-width: 1100px;
         margin: 0 auto;
         background: #fff;
         padding: 30px;
@@ -11,7 +11,7 @@
         box-shadow: 0 1px 4px rgba(0,0,0,0.08);
     }
     .report-controls {
-        max-width: 900px;
+        max-width: 1100px;
         margin: 0 auto 20px;
         background: #f1f5f9;
         padding: 20px;
@@ -78,6 +78,9 @@
     .report-table td.text-left {
         text-align: left;
     }
+    .report-table td.text-right {
+        text-align: right;
+    }
     .summary-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -119,36 +122,15 @@
         padding: 16px;
         font-style: italic;
     }
-    .activity-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
+    /* ===== Print Styles - Landscape ===== */
+    @page {
+        size: landscape;
+        margin: 10mm 12mm;
     }
-    .activity-list li {
-        padding: 6px 0;
-        border-bottom: 1px solid #f1f5f9;
-        font-size: 0.88rem;
-        color: #334155;
-    }
-    .activity-list li:last-child {
-        border-bottom: none;
-    }
-    .activity-date {
-        color: #64748b;
-        font-size: 0.82rem;
-        margin-right: 8px;
-    }
-    .activity-project {
-        font-weight: 600;
-        color: #1e40af;
-        margin-right: 6px;
-    }
-
-    /* ===== Print Styles ===== */
     @media print {
         .sidebar, .mobile-menu-btn, .sidebar-backdrop, .no-print { display: none !important; }
         .main-content { margin-left: 0 !important; padding: 0 !important; }
-        body { background: white !important; font-size: 11pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body { background: white !important; font-size: 10pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .report-container { max-width: 100%; box-shadow: none; padding: 10px 0; border-radius: 0; }
         .report-table { page-break-inside: auto; }
         .report-table tr { page-break-inside: avoid; }
@@ -164,6 +146,16 @@
 <!-- ===== Print Controls (hidden when printing) ===== -->
 <div class="no-print report-controls">
     <form method="get" action="{{ url_for('report.weekly_report') }}" class="row g-2 align-items-end">
+        {% if is_admin %}
+        <div class="col-auto">
+            <label for="dept">부서</label>
+            <select class="form-select form-select-sm" id="dept" name="dept" onchange="this.form.submit()">
+                <option value="sales" {% if current_dept == 'sales' %}selected{% endif %}>영업부</option>
+                <option value="production" {% if current_dept == 'production' %}selected{% endif %}>생산부</option>
+                <option value="management" {% if current_dept == 'management' %}selected{% endif %}>관리부</option>
+            </select>
+        </div>
+        {% endif %}
         <div class="col-auto">
             <label for="start">시작일</label>
             <input type="date" class="form-control form-control-sm" id="start" name="start"
@@ -194,7 +186,7 @@
     <!-- Header -->
     <div class="report-header">
         <div class="company-name">(주)매그나텍 LED조명사업부</div>
-        <h2>설계관리 주간 업무보고서</h2>
+        <h2>영업부 설계 업무보고서</h2>
         <div class="report-meta">
             보고 기간: {{ week_start.strftime('%Y-%m-%d') }} ~ {{ week_end.strftime('%Y-%m-%d') }}<br>
             작성일: {{ today.strftime('%Y-%m-%d') }}
@@ -239,51 +231,90 @@
             <thead>
                 <tr>
                     <th style="width:40px;">No</th>
-                    <th>관리번호</th>
                     <th>현장명</th>
+                    <th>설계인입일</th>
                     <th>계약예정일</th>
-                    <th>D-Day</th>
-                    <th>상태</th>
-                    <th>품목요약</th>
-                    <th>비고</th>
+                    <th>품목</th>
+                    <th>모델</th>
+                    <th>수량</th>
+                    <th>예상금액</th>
                 </tr>
             </thead>
             <tbody>
+                {% set ns2 = namespace(row=0) %}
                 {% for p in active_projects %}
+                {% set ns2.row = ns2.row + 1 %}
                 {% set dday = calc_dday(p) %}
+                {% set mat_count = (p.materials|length) if p.materials else 0 %}
+                {% if mat_count > 0 %}
+                    {% for m in p.materials %}
+                    <tr class="{% if dday is not none and dday < 0 %}row-overdue{% endif %}">
+                        {% if loop.first %}
+                        <td rowspan="{{ mat_count }}">{{ ns2.row }}</td>
+                        <td rowspan="{{ mat_count }}" class="text-left">
+                            {{ p.temp_name or p.short_name or '-' }}
+                            {% if p.is_urgent %} <span class="badge-urgent">긴급</span>{% endif %}
+                        </td>
+                        <td rowspan="{{ mat_count }}">{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '-' }}</td>
+                        <td rowspan="{{ mat_count }}">
+                            {{ p.expected_contract_date.strftime('%Y-%m-%d') if p.expected_contract_date else '-' }}
+                            {% if dday is not none %}
+                                {% if dday < 0 %}
+                                    <span class="dday-overdue">(D+{{ dday|abs }})</span>
+                                {% elif dday <= 7 %}
+                                    <span class="dday-warn">(D-{{ dday }})</span>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                        <td class="text-left">{{ m.category or '-' }}</td>
+                        <td class="text-left">{{ m.model_name or '-' }}</td>
+                        <td>{{ m.quantity or '-' }}</td>
+                        {% if loop.first %}
+                        <td rowspan="{{ mat_count }}" class="text-right">{% if p._estimated_amount is defined and p._estimated_amount %}{{ "{:,}".format(p._estimated_amount) }}원{% else %}-{% endif %}</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                {% else %}
                 <tr class="{% if dday is not none and dday < 0 %}row-overdue{% endif %}">
                     <td>{{ loop.index }}</td>
-                    <td>{{ p.project_no }}</td>
-                    <td class="text-left">{{ p.temp_name or p.short_name or '-' }}</td>
-                    <td>{{ p.expected_contract_date.strftime('%Y-%m-%d') if p.expected_contract_date else '-' }}</td>
+                    <td class="text-left">
+                        {{ p.temp_name or p.short_name or '-' }}
+                        {% if p.is_urgent %} <span class="badge-urgent">긴급</span>{% endif %}
+                    </td>
+                    <td>{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '-' }}</td>
                     <td>
+                        {{ p.expected_contract_date.strftime('%Y-%m-%d') if p.expected_contract_date else '-' }}
                         {% if dday is not none %}
                             {% if dday < 0 %}
-                                <span class="dday-overdue">D+{{ dday|abs }}</span>
+                                <span class="dday-overdue">(D+{{ dday|abs }})</span>
                             {% elif dday <= 7 %}
-                                <span class="dday-warn">D-{{ dday }}</span>
-                            {% else %}
-                                <span class="dday-normal">D-{{ dday }}</span>
+                                <span class="dday-warn">(D-{{ dday }})</span>
                             {% endif %}
-                        {% else %}
-                            -
                         {% endif %}
                     </td>
-                    <td>{{ p.status or '설계/영업' }}</td>
-                    <td class="text-left">
-                        {% if p.materials %}
-                            {{ p.materials|length }}종
-                        {% else %}
-                            -
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if p.is_urgent %}<span class="badge-urgent">긴급</span> {% endif %}
-                        {% if p.contacts %}담당{{ p.contacts|length }}명{% endif %}
-                    </td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td class="text-right">-</td>
                 </tr>
+                {% endif %}
                 {% endfor %}
             </tbody>
+            <tfoot>
+                <tr style="background:#f1f5f9; font-weight:700;">
+                    <td colspan="7" class="text-right">합계</td>
+                    <td class="text-right">
+                        {% set ns_sum = namespace(total=0) %}
+                        {% for p in active_projects %}
+                            {% if p._estimated_amount is defined and p._estimated_amount %}
+                                {% set ns_sum.total = ns_sum.total + p._estimated_amount %}
+                            {% endif %}
+                        {% endfor %}
+                        {% if ns_sum.total > 0 %}{{ "{:,}".format(ns_sum.total) }}원{% else %}-{% endif %}
+                    </td>
+                </tr>
+            </tfoot>
         </table>
         {% else %}
         <div class="empty-notice">해당 사항 없음</div>
@@ -291,30 +322,72 @@
     </div>
 
     <!-- 3. 금주 신규 등록 현장 -->
-    <div class="report-section">
+    <div class="report-section page-break">
         <h3>3. 금주 신규 등록 현장</h3>
         {% if new_projects %}
         <table class="report-table no-stack-table">
             <thead>
                 <tr>
                     <th style="width:40px;">No</th>
-                    <th>관리번호</th>
                     <th>현장명</th>
-                    <th>등록일</th>
+                    <th>설계인입일</th>
                     <th>계약예정일</th>
+                    <th>품목</th>
+                    <th>모델</th>
+                    <th>수량</th>
+                    <th>예상금액</th>
                 </tr>
             </thead>
             <tbody>
+                {% set ns3 = namespace(row=0) %}
                 {% for p in new_projects %}
+                {% set ns3.row = ns3.row + 1 %}
+                {% set mat_count = (p.materials|length) if p.materials else 0 %}
+                {% if mat_count > 0 %}
+                    {% for m in p.materials %}
+                    <tr>
+                        {% if loop.first %}
+                        <td rowspan="{{ mat_count }}">{{ ns3.row }}</td>
+                        <td rowspan="{{ mat_count }}" class="text-left">{{ p.temp_name or p.short_name or '-' }}</td>
+                        <td rowspan="{{ mat_count }}">{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '-' }}</td>
+                        <td rowspan="{{ mat_count }}">{{ p.expected_contract_date.strftime('%Y-%m-%d') if p.expected_contract_date else '-' }}</td>
+                        {% endif %}
+                        <td class="text-left">{{ m.category or '-' }}</td>
+                        <td class="text-left">{{ m.model_name or '-' }}</td>
+                        <td>{{ m.quantity or '-' }}</td>
+                        {% if loop.first %}
+                        <td rowspan="{{ mat_count }}" class="text-right">{% if p._estimated_amount is defined and p._estimated_amount %}{{ "{:,}".format(p._estimated_amount) }}원{% else %}-{% endif %}</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                {% else %}
                 <tr>
-                    <td>{{ loop.index }}</td>
-                    <td>{{ p.project_no }}</td>
+                    <td>{{ ns3.row }}</td>
                     <td class="text-left">{{ p.temp_name or p.short_name or '-' }}</td>
                     <td>{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '-' }}</td>
                     <td>{{ p.expected_contract_date.strftime('%Y-%m-%d') if p.expected_contract_date else '-' }}</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td class="text-right">-</td>
                 </tr>
+                {% endif %}
                 {% endfor %}
             </tbody>
+            <tfoot>
+                <tr style="background:#f1f5f9; font-weight:700;">
+                    <td colspan="7" class="text-right">합계</td>
+                    <td class="text-right">
+                        {% set ns_sum2 = namespace(total=0) %}
+                        {% for p in new_projects %}
+                            {% if p._estimated_amount is defined and p._estimated_amount %}
+                                {% set ns_sum2.total = ns_sum2.total + p._estimated_amount %}
+                            {% endif %}
+                        {% endfor %}
+                        {% if ns_sum2.total > 0 %}{{ "{:,}".format(ns_sum2.total) }}원{% else %}-{% endif %}
+                    </td>
+                </tr>
+            </tfoot>
         </table>
         {% else %}
         <div class="empty-notice">해당 사항 없음</div>
@@ -322,32 +395,78 @@
     </div>
 
     <!-- 4. 금주 계약 전환 현장 -->
-    <div class="report-section">
+    <div class="report-section page-break">
         <h3>4. 금주 계약 전환 현장</h3>
         {% if converted_projects %}
         <table class="report-table no-stack-table">
             <thead>
                 <tr>
                     <th style="width:40px;">No</th>
-                    <th>관리번호</th>
                     <th>현장명</th>
+                    <th>설계인입일</th>
                     <th>계약일</th>
-                    <th>계약건수</th>
-                    <th>예상금액</th>
+                    <th>품목</th>
+                    <th>모델</th>
+                    <th>수량</th>
+                    <th>계약금액</th>
                 </tr>
             </thead>
             <tbody>
+                {% set ns4 = namespace(row=0) %}
                 {% for p in converted_projects %}
+                {% set ns4.row = ns4.row + 1 %}
+                {% set all_items = [] %}
+                {% for c in (p.contracts or []) %}
+                    {% for ci in (c.items or []) %}
+                        {% if all_items.append(ci) %}{% endif %}
+                    {% endfor %}
+                {% endfor %}
+                {% set item_count = all_items|length %}
+                {% if item_count > 0 %}
+                    {% for ci in all_items %}
+                    <tr>
+                        {% if loop.first %}
+                        <td rowspan="{{ item_count }}">{{ ns4.row }}</td>
+                        <td rowspan="{{ item_count }}" class="text-left">{{ p.temp_name or p.short_name or '-' }}</td>
+                        <td rowspan="{{ item_count }}">{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '-' }}</td>
+                        <td rowspan="{{ item_count }}">{{ p.contract_date.strftime('%Y-%m-%d') if p.contract_date else '-' }}</td>
+                        {% endif %}
+                        <td class="text-left">{{ ci.category or '-' }}</td>
+                        <td class="text-left">{{ ci.model_name or '-' }}</td>
+                        <td>{{ ci.quantity or '-' }}</td>
+                        {% if loop.first %}
+                        <td rowspan="{{ item_count }}" class="text-right">{% if p._estimated_amount is defined and p._estimated_amount %}{{ "{:,}".format(p._estimated_amount) }}원{% else %}-{% endif %}</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                {% else %}
                 <tr>
-                    <td>{{ loop.index }}</td>
-                    <td>{{ p.project_no }}</td>
+                    <td>{{ ns4.row }}</td>
                     <td class="text-left">{{ p.temp_name or p.short_name or '-' }}</td>
+                    <td>{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '-' }}</td>
                     <td>{{ p.contract_date.strftime('%Y-%m-%d') if p.contract_date else '-' }}</td>
-                    <td>{{ p.contracts|length if p.contracts else 0 }}건</td>
-                    <td>{% if p._estimated_amount is defined and p._estimated_amount %}{{ "{:,}".format(p._estimated_amount) }}원{% else %}-{% endif %}</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td class="text-right">-</td>
                 </tr>
+                {% endif %}
                 {% endfor %}
             </tbody>
+            <tfoot>
+                <tr style="background:#f1f5f9; font-weight:700;">
+                    <td colspan="7" class="text-right">합계</td>
+                    <td class="text-right">
+                        {% set ns_sum3 = namespace(total=0) %}
+                        {% for p in converted_projects %}
+                            {% if p._estimated_amount is defined and p._estimated_amount %}
+                                {% set ns_sum3.total = ns_sum3.total + p._estimated_amount %}
+                            {% endif %}
+                        {% endfor %}
+                        {% if ns_sum3.total > 0 %}{{ "{:,}".format(ns_sum3.total) }}원{% else %}-{% endif %}
+                    </td>
+                </tr>
+            </tfoot>
         </table>
         {% else %}
         <div class="empty-notice">해당 사항 없음</div>
@@ -356,13 +475,12 @@
 
     <!-- 5. 긴급/지연 현장 -->
     {% if urgent_projects or overdue_projects %}
-    <div class="report-section">
+    <div class="report-section page-break">
         <h3>5. 긴급/지연 현장</h3>
         <table class="report-table no-stack-table">
             <thead>
                 <tr>
                     <th style="width:40px;">No</th>
-                    <th>관리번호</th>
                     <th>현장명</th>
                     <th>계약예정일</th>
                     <th>D-Day</th>
@@ -376,7 +494,6 @@
                 {% set dday = calc_dday(p) %}
                 <tr class="row-overdue">
                     <td>{{ ns.idx }}</td>
-                    <td>{{ p.project_no }}</td>
                     <td class="text-left">{{ p.temp_name or p.short_name or '-' }}</td>
                     <td>{{ p.expected_contract_date.strftime('%Y-%m-%d') if p.expected_contract_date else '-' }}</td>
                     <td><span class="dday-overdue">D+{{ dday|abs if dday is not none else '-' }}</span></td>
@@ -388,7 +505,6 @@
                 {% set dday = calc_dday(p) %}
                 <tr>
                     <td>{{ ns.idx }}</td>
-                    <td>{{ p.project_no }}</td>
                     <td class="text-left">{{ p.temp_name or p.short_name or '-' }}</td>
                     <td>{{ p.expected_contract_date.strftime('%Y-%m-%d') if p.expected_contract_date else '-' }}</td>
                     <td>
@@ -404,30 +520,7 @@
             </tbody>
         </table>
     </div>
-    {% else %}
-    <div class="report-section">
-        <h3>5. 긴급/지연 현장</h3>
-        <div class="empty-notice">해당 사항 없음</div>
-    </div>
     {% endif %}
-
-    <!-- 6. 금주 주요 활동 -->
-    <div class="report-section">
-        <h3>6. 금주 주요 활동</h3>
-        {% if recent_logs %}
-        <ul class="activity-list">
-            {% for log in recent_logs %}
-            <li>
-                <span class="activity-date">{{ log.created_at.strftime('%m/%d') }}</span>
-                <span class="activity-project">[{{ log.project.project_no if log.project else '-' }}]</span>
-                {{ log.content|truncate(80) }}
-            </li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <div class="empty-notice">해당 사항 없음</div>
-        {% endif %}
-    </div>
 
 </div>
 {% endblock %}
