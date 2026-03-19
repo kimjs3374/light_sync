@@ -272,43 +272,44 @@
 
     if (!searchInput) return;
 
+    function renderPoList(data) {
+        if (!data.length) {
+            resultsDiv.innerHTML = '<p class="text-muted text-center py-3">입고 가능한 발주서가 없습니다</p>';
+            return;
+        }
+        var html = '<table class="table table-sm table-hover mb-0" style="font-size:0.8rem; white-space:nowrap;">';
+        html += '<thead class="table-light"><tr><th>발주번호</th><th>발주일</th><th>거래처</th><th>상태</th><th class="text-end">금액</th><th></th></tr></thead><tbody>';
+        data.forEach(function(po) {
+            var statusBadge = po.status === '발송완료' ? 'bg-success' : po.status === '입고대기' ? 'bg-info' : 'bg-secondary';
+            html += '<tr>'
+                + '<td><strong>' + po.po_no + '</strong></td>'
+                + '<td>' + po.po_date + '</td>'
+                + '<td>' + po.vendor_name + '</td>'
+                + '<td><span class="badge ' + statusBadge + '">' + po.status + '</span></td>'
+                + '<td class="text-end">' + Number(po.total_amount || 0).toLocaleString() + '</td>'
+                + '<td><a href="/receiving/create?po_id=' + po.id + '" class="btn btn-success btn-xs">입고</a></td>'
+                + '</tr>';
+        });
+        html += '</tbody></table>';
+        resultsDiv.innerHTML = html;
+    }
+
+    function loadPoList(q) {
+        var url = '/api/receiving/po-search?q=' + encodeURIComponent(q || '');
+        fetch(url).then(function(r) { return r.json(); }).then(renderPoList);
+    }
+
     searchInput.addEventListener('input', function() {
         clearTimeout(searchTimer);
         var q = this.value.trim();
-        if (q.length < 1) {
-            resultsDiv.innerHTML = '<p class="text-muted text-center py-3">검색어를 입력하세요</p>';
-            return;
-        }
-        searchTimer = setTimeout(function() {
-            fetch('/api/receiving/po-search?q=' + encodeURIComponent(q))
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (!data.length) {
-                        resultsDiv.innerHTML = '<p class="text-muted text-center py-3">결과 없음</p>';
-                        return;
-                    }
-                    var html = '<table class="table table-sm table-hover mb-0" style="font-size:0.8rem; white-space:nowrap;">';
-                    html += '<thead class="table-light"><tr><th>발주번호</th><th>발주일</th><th>거래처</th><th>상태</th><th class="text-end">금액</th><th></th></tr></thead><tbody>';
-                    data.forEach(function(po) {
-                        var statusBadge = po.status === '발송완료' ? 'bg-success' : po.status === '입고대기' ? 'bg-info' : 'bg-secondary';
-                        html += '<tr>'
-                            + '<td><strong>' + po.po_no + '</strong></td>'
-                            + '<td>' + po.po_date + '</td>'
-                            + '<td>' + po.vendor_name + '</td>'
-                            + '<td><span class="badge ' + statusBadge + '">' + po.status + '</span></td>'
-                            + '<td class="text-end">' + Number(po.total_amount || 0).toLocaleString() + '</td>'
-                            + '<td><a href="/receiving/create?po_id=' + po.id + '" class="btn btn-success btn-xs">입고</a></td>'
-                            + '</tr>';
-                    });
-                    html += '</tbody></table>';
-                    resultsDiv.innerHTML = html;
-                });
-        }, 300);
+        searchTimer = setTimeout(function() { loadPoList(q); }, 300);
     });
 
-    // 모달 열릴 때 포커스
+    // 모달 열릴 때 전체 목록 즉시 로딩 + 포커스
     document.getElementById('poSelectModal').addEventListener('shown.bs.modal', function() {
+        searchInput.value = '';
         searchInput.focus();
+        loadPoList('');
     });
 })();
 </script>
