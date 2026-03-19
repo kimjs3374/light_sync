@@ -308,6 +308,7 @@ def receiving_create():
             item_units = request.form.getlist('unit[]')
             item_notes = request.form.getlist('item_note[]')
             po_item_ids = request.form.getlist('po_item_id[]')
+            new_items = []
 
             for i in range(len(item_names)):
                 name = (item_names[i] if i < len(item_names) else '').strip()
@@ -341,6 +342,7 @@ def receiving_create():
                         Item.item_name == name,
                         Item.item_spec == spec,
                     ).first()
+                    is_new_item = item is None
                     if not item:
                         item = Item(
                             item_name=name,
@@ -350,6 +352,7 @@ def receiving_create():
                         )
                         db.add(item)
                         db.flush()
+                        new_items.append(f'{item.icube_item_cd or "-"}|{name}|{spec or "-"}')
                     if price > 0:
                         item.last_unit_price = price
                     record_stock_movement(
@@ -364,7 +367,11 @@ def receiving_create():
                 _update_po_status_on_receiving(db, po_id)
 
             db.commit()
+
+            # 알림 메시지
             flash(f'입고 {rcv.rcv_no}가 등록되었습니다.', 'success')
+            for ni in new_items:
+                flash(f'신규 품목 자동등록: {ni}', 'info')
             return redirect(url_for('receiving.receiving_detail', rcv_id=rcv.id))
 
         # GET: 폼 표시
