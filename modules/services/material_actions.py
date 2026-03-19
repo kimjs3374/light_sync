@@ -7,6 +7,7 @@ from modules.models import (
     Vendor, PurchaseOrder, PurchaseOrderItem, Contract,
 )
 from modules.history_board import append_history_log
+from modules.services.inventory_utils import record_stock_movement
 from sqlalchemy import desc
 
 logger = logging.getLogger(__name__)
@@ -255,13 +256,23 @@ def handle_cancel_reservation(db, project, form, current_user, **ctx):
     if order.order_status != '재고이용':
         return {'flash': ('재고이용 상태가 아닙니다.', 'warning')}
 
-    # BomItem -> Item 연결로 reserved_qty 감소
+    # BomItem -> Item 연결로 reserved_qty 감소 + StockMovement 기록
     if order.bom_item_id:
         bi = db.query(BomItem).get(order.bom_item_id)
         if bi and bi.item_id:
             linked_item = db.query(Item).get(bi.item_id)
             if linked_item:
-                linked_item.reserved_qty = max(0, (linked_item.reserved_qty or 0) - (order.quantity or 0))
+                cancel_qty = order.quantity or 0
+                linked_item.reserved_qty = max(0, (linked_item.reserved_qty or 0) - cancel_qty)
+                record_stock_movement(
+                    db, linked_item.id,
+                    movement_type='IN_CANCEL_RESERVE',
+                    quantity=0,  # reserved_qty 변동이지 stock_qty 변동은 아님
+                    reference_type='material_order',
+                    reference_id=order.id,
+                    note=f'예약취소: {order.material_name} (수량 {cancel_qty})',
+                    created_by=current_user,
+                )
 
     order.order_status = '발주대기'
 
@@ -308,6 +319,17 @@ def handle_reserve_stock(db, project, form, current_user, **ctx):
 
     linked_item.reserved_qty = (linked_item.reserved_qty or 0) + needed
     order.order_status = '재고이용'
+
+    # StockMovement 기록 (예약은 stock_qty 변동 없이 reserved_qty만 변동)
+    record_stock_movement(
+        db, linked_item.id,
+        movement_type='OUT_RESERVE',
+        quantity=0,  # reserved_qty 변동이지 stock_qty 변동은 아님
+        reference_type='material_order',
+        reference_id=order.id,
+        note=f'재고예약: {order.material_name} (예약수량 {needed})',
+        created_by=current_user,
+    )
 
     append_history_log(
         db,

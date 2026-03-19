@@ -22,6 +22,7 @@
 | production-display | MAGNATECH 전사 현황판 (6컬럼 칸반 + 전광판 + 날씨 + 캘린더) | 100% | 2026-03-19 | 4 |
 | history-board-ux | 통합히스토리보드 UX + 연락처 재배치 + 매그나텍 연동 | 97% | 2026-03-19 | 4 |
 | delivery-summary | 납품집계 (G2B 조달내역 피벗+차트+엑셀) | 95% | 2026-03-19 | 4 |
+| inventory-management | 재고관리 (대시보드+실사+회전율+BOM재고+변동이력) | 95% | 2026-03-19 | 4 |
 
 ## delivery-summary
 

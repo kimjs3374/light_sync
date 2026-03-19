@@ -21,6 +21,7 @@ from modules.models import (
     Item, PurchaseOrderItem, PurchaseOrder, ReceivingItem, Receiving,
     ReceivingHistory, BomItem, BomHeader, Vendor,
 )
+from modules.services.inventory_utils import record_stock_movement
 
 logger = logging.getLogger(__name__)
 
@@ -293,12 +294,25 @@ def item_edit(item_id):
         item.note = (request.form.get('note') or '').strip() or None
         item.is_active = request.form.get('is_active') == '1'
 
-        # 재고 수량 수동 수정 (FR-17)
+        # 재고 수량 수동 수정 (FR-17) + StockMovement 기록
         stock_qty_raw = request.form.get('stock_qty')
         if stock_qty_raw is not None and stock_qty_raw.strip() != '':
             try:
                 new_stock = max(0, float(stock_qty_raw))
-                item.stock_qty = new_stock
+                old_stock = item.stock_qty or 0
+                diff = new_stock - old_stock
+                if diff != 0:
+                    movement_type = 'IN_ADJUST' if diff > 0 else 'OUT_ADJUST'
+                    user_name = session.get('full_name', '사용자')
+                    record_stock_movement(
+                        db, item.id,
+                        movement_type=movement_type,
+                        quantity=diff,
+                        note=f'품목관리 수동 수정: {old_stock} -> {new_stock}',
+                        created_by=user_name,
+                    )
+                else:
+                    item.stock_qty = new_stock
             except (ValueError, TypeError):
                 pass
 

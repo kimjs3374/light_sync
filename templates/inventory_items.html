@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">가용재고 조회</h2>
+    <div class="d-flex gap-2" style="white-space:nowrap;">
+        <a href="{{ url_for('inventory.inventory_dashboard') }}" class="btn btn-outline-secondary btn-sm">대시보드</a>
+        <a href="{{ url_for('inventory.inventory_export') }}" class="btn btn-success btn-sm">엑셀 다운로드</a>
+    </div>
+</div>
+
+{# --- 검색/필터 --- #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-3 col-6">
+                <input type="text" name="q" class="form-control form-control-sm" placeholder="품명/품번 검색" value="{{ q }}">
+            </div>
+            <div class="col-md-2 col-4">
+                <select name="category" class="form-select form-select-sm">
+                    <option value="">전체 분류</option>
+                    {% for c in categories %}
+                    <option value="{{ c }}" {{ 'selected' if category == c }}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 col-4">
+                <select name="stock_status" class="form-select form-select-sm">
+                    <option value="">전체 상태</option>
+                    <option value="low" {{ 'selected' if stock_status == 'low' }}>부족 (안전재고 미만)</option>
+                    <option value="normal" {{ 'selected' if stock_status == 'normal' }}>정상</option>
+                    <option value="excess" {{ 'selected' if stock_status == 'excess' }}>과다 (안전재고 2배 초과)</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;">검색</button>
+                <a href="{{ url_for('inventory.inventory_items') }}" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">초기화</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# --- 가용재고 테이블 --- #}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-2">
+        <strong>가용재고 목록</strong>
+        <span class="badge bg-primary ms-1">{{ total }}건</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.82rem; border-color:#dee2e6;">
+                <colgroup>
+                    <col style="width:4%">
+                    <col style="width:25%">
+                    <col style="width:9%">
+                    <col style="width:8%">
+                    <col style="width:9%">
+                    <col style="width:9%">
+                    <col style="width:9%">
+                    <col style="width:9%">
+                    <col style="width:11%">
+                    <col style="width:7%">
+                </colgroup>
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center">No</th>
+                        <th>품명</th>
+                        <th>품번</th>
+                        <th class="text-end">총재고</th>
+                        <th class="text-end">예약</th>
+                        <th class="text-end">가용</th>
+                        <th class="text-end">안전재고</th>
+                        <th class="text-end">단가</th>
+                        <th class="text-end">금액</th>
+                        <th class="text-center">조정</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    {% set stock = item.stock_qty or 0 %}
+                    {% set reserved = item.reserved_qty or 0 %}
+                    {% set available = [0, stock - reserved]|max %}
+                    {% set safety = item.safety_stock or 0 %}
+                    {% set price = item.last_unit_price or 0 %}
+                    {% set value = stock * price %}
+                    {% set is_low = safety > 0 and stock < safety %}
+                    <tr {% if is_low %}class="table-danger" style="--bs-table-bg: rgba(220,53,69,.06);"{% endif %}>
+                        <td class="text-center">
+                            {% if is_low %}<span class="text-danger fw-bold" title="안전재고 미만">!</span>{% endif %}
+                            {{ loop.index + (pagination.page - 1) * 50 }}
+                        </td>
+                        <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">
+                            <a href="{{ url_for('item.item_detail', item_id=item.id) }}">{{ item.item_name }}</a>
+                        </td>
+                        <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ item.icube_item_cd or '' }}</td>
+                        <td class="text-end">{{ fmt_money(stock) }}</td>
+                        <td class="text-end">{{ fmt_money(reserved) }}</td>
+                        <td class="text-end fw-bold">{{ fmt_money(available) }}</td>
+                        <td class="text-end {% if is_low %}text-danger{% endif %}">{{ fmt_money(safety) }}</td>
+                        <td class="text-end">{{ fmt_money(price) }}</td>
+                        <td class="text-end fw-bold">{{ fmt_money(value) }}</td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1" style="font-size:0.72rem; white-space:nowrap;"
+                                    data-bs-toggle="modal" data-bs-target="#adjustModal"
+                                    data-item-id="{{ item.id }}" data-item-name="{{ item.item_name }}" data-stock="{{ stock }}">
+                                조정
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not items %}
+                    <tr><td colspan="10" class="text-center text-muted py-3">데이터가 없습니다.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# 페이지네이션 #}
+{% if pagination.total_pages > 1 %}
+<nav>
+    <ul class="pagination pagination-sm justify-content-center">
+        {% for p in range(1, pagination.total_pages + 1) %}
+        <li class="page-item {{ 'active' if p == pagination.page }}">
+            <a class="page-link" href="?page={{ p }}&q={{ q }}&category={{ category }}&stock_status={{ stock_status }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+</nav>
+{% endif %}
+
+{# --- 수동 재고 조정 모달 --- #}
+<div class="modal fade" id="adjustModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form method="POST" id="adjustForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title">재고 수동 조정</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-1 fw-bold" id="adjustItemName"></p>
+                    <p class="mb-2 text-muted" style="font-size:0.85rem;">현재고: <span id="adjustCurrentStock"></span></p>
+                    <div class="mb-2">
+                        <label class="form-label mb-0" style="font-size:0.85rem;">조정 수량 (양수=증가, 음수=감소)</label>
+                        <input type="number" step="any" name="adjust_qty" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label mb-0" style="font-size:0.85rem;">조정 사유 (필수)</label>
+                        <input type="text" name="adjust_reason" class="form-control form-control-sm" required placeholder="사유를 입력하세요">
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary btn-sm">조정</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('adjustModal');
+    modal.addEventListener('show.bs.modal', function(e) {
+        const btn = e.relatedTarget;
+        const itemId = btn.getAttribute('data-item-id');
+        const itemName = btn.getAttribute('data-item-name');
+        const stock = btn.getAttribute('data-stock');
+        document.getElementById('adjustItemName').textContent = itemName;
+        document.getElementById('adjustCurrentStock').textContent = stock;
+        document.getElementById('adjustForm').action = '/inventory/item/' + itemId + '/adjust';
+    });
+});
+</script>
+
+{% endblock %}

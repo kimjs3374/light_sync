@@ -1,0 +1,176 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <div>
+        <h2 class="text-primary fw-bold mb-1">재고실사: {{ audit.audit_no }}</h2>
+        <span class="text-muted" style="font-size:0.9rem;">
+            {{ audit.audit_date.strftime('%Y-%m-%d') if audit.audit_date else '' }}
+            | 실사자: {{ audit.auditor_name }}
+            | 상태:
+            {% if audit.status == '완료' %}
+            <span class="badge bg-success" style="white-space:nowrap;">완료</span>
+            {% elif audit.status == '취소' %}
+            <span class="badge bg-secondary" style="white-space:nowrap;">취소</span>
+            {% else %}
+            <span class="badge bg-warning text-dark" style="white-space:nowrap;">진행중</span>
+            {% endif %}
+        </span>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{{ url_for('inventory.audit_template_download', audit_id=audit.id) }}" class="btn btn-outline-success btn-sm fw-bold" style="white-space:nowrap;">엑셀 템플릿 다운</a>
+        <a href="{{ url_for('inventory.audit_report', audit_id=audit.id) }}" class="btn btn-outline-dark btn-sm fw-bold" style="white-space:nowrap;">차이 보고서</a>
+        <a href="{{ url_for('inventory.audit_list') }}" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">목록으로</a>
+    </div>
+</div>
+
+{% if audit.note %}
+<div class="alert alert-info py-1 px-3 mb-3" style="font-size:0.85rem;">
+    <strong>메모:</strong> {{ audit.note }}
+</div>
+{% endif %}
+
+{% if audit.status == '진행중' %}
+<form method="POST" action="{{ url_for('inventory.audit_save', audit_id=audit.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <div>
+            <strong>실사 품목</strong>
+            <span class="badge bg-primary ms-1">{{ audit.total_items }}건</span>
+        </div>
+        {% if audit.status == '진행중' %}
+        <div class="d-flex gap-2" style="white-space:nowrap;">
+            <button type="submit" class="btn btn-primary btn-sm fw-bold">임시저장</button>
+            <button type="button" class="btn btn-outline-success btn-sm fw-bold" onclick="document.getElementById('auditUploadModal').classList.add('show'); document.getElementById('auditUploadModal').style.display='block';">엑셀 업로드</button>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.82rem; border-color:#dee2e6;">
+                <colgroup>
+                    <col style="width:4%">
+                    <col style="width:24%">
+                    <col style="width:10%">
+                    <col style="width:10%">
+                    <col style="width:12%">
+                    <col style="width:12%">
+                    <col style="width:8%">
+                    <col style="width:20%">
+                </colgroup>
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center">No</th>
+                        <th>품명</th>
+                        <th>품번</th>
+                        <th>분류</th>
+                        <th class="text-end">시스템수량</th>
+                        <th class="text-center">실사수량</th>
+                        <th class="text-end">차이</th>
+                        <th>사유</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ai in audit_items %}
+                    {% set item = items_map.get(ai.item_id) %}
+                    {% set diff = ai.diff_qty or 0 %}
+                    {% set has_diff = ai.actual_qty is not none and diff != 0 %}
+                    <tr {% if has_diff %}style="background-color: {% if diff > 0 %}rgba(13,110,253,.06){% else %}rgba(220,53,69,.06){% endif %};"{% endif %}>
+                        <td class="text-center">{{ loop.index }}</td>
+                        <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ item.item_name if item else '' }}</td>
+                        <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ item.icube_item_cd if item else '' }}</td>
+                        <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ item.category if item else '' }}</td>
+                        <td class="text-end">{{ '{:g}'.format(ai.system_qty or 0) }}</td>
+                        <td class="text-center">
+                            {% if audit.status == '진행중' %}
+                            <input type="number" step="any" name="actual_{{ ai.id }}"
+                                   class="form-control form-control-sm text-end py-0"
+                                   style="font-size:0.82rem;"
+                                   value="{{ '{:g}'.format(ai.actual_qty) if ai.actual_qty is not none else '' }}"
+                                   placeholder="-">
+                            {% else %}
+                            {{ '{:g}'.format(ai.actual_qty) if ai.actual_qty is not none else '-' }}
+                            {% endif %}
+                        </td>
+                        <td class="text-end fw-bold {% if diff > 0 %}text-primary{% elif diff < 0 %}text-danger{% else %}text-muted{% endif %}">
+                            {% if ai.actual_qty is not none %}
+                            {{ '{:+g}'.format(diff) }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if audit.status == '진행중' %}
+                            <input type="text" name="reason_{{ ai.id }}"
+                                   class="form-control form-control-sm py-0"
+                                   style="font-size:0.82rem;"
+                                   value="{{ ai.diff_reason or '' }}"
+                                   placeholder="차이 사유">
+                            {% else %}
+                            <span style="overflow:hidden; text-overflow:ellipsis; display:block; max-width:100%;">{{ ai.diff_reason or '' }}</span>
+                            {% endif %}
+                            {% if ai.is_adjusted %}
+                            <span class="badge bg-success" style="white-space:nowrap; font-size:0.65rem;">조정완료</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not audit_items %}
+                    <tr><td colspan="8" class="text-center text-muted py-3">품목이 없습니다.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if audit.status == '진행중' %}
+</form>
+
+{# 조정 확정 버튼 (별도 폼) #}
+<div class="d-flex gap-2 mb-4">
+    <form method="POST" action="{{ url_for('inventory.audit_confirm', audit_id=audit.id) }}"
+          onsubmit="return confirm('차이가 있는 모든 품목의 재고를 실사수량으로 조정합니다. 계속하시겠습니까?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-danger btn-sm fw-bold" style="white-space:nowrap;">조정 확정 (차이 항목 일괄 반영)</button>
+    </form>
+    <form method="POST" action="{{ url_for('inventory.audit_delete', audit_id=audit.id) }}"
+          onsubmit="return confirm('이 실사를 삭제하시겠습니까? 복구할 수 없습니다.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-outline-danger btn-sm fw-bold" style="white-space:nowrap;">실사 삭제</button>
+    </form>
+</div>
+{% endif %}
+
+{# 엑셀 업로드 모달 #}
+<div class="modal fade" id="auditUploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form class="modal-content border-0 shadow" method="POST" enctype="multipart/form-data"
+              action="{{ url_for('inventory.audit_upload', audit_id=audit.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title fw-bold">실사 엑셀 업로드</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-3">
+                    "엑셀 템플릿 다운" 버튼으로 다운받은 파일에 <b>실재고(G열)</b>를 입력한 뒤 업로드하세요.<br>
+                    품목ID(A열) 기준으로 매칭됩니다.
+                </p>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">엑셀 파일 (.xlsx)</label>
+                    <input type="file" name="audit_file" class="form-control" accept=".xlsx,.xls" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-success fw-bold">업로드</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

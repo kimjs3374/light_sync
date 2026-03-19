@@ -24,6 +24,7 @@ from modules.models import (
     Receiving, ReceivingItem, ReceivingHistory,
     RCV_STATUS_CHOICES, Item, BomItem,
 )
+from modules.services.inventory_utils import record_stock_movement
 
 logger = logging.getLogger(__name__)
 
@@ -95,19 +96,37 @@ def _update_po_status_on_receiving(db, po_id):
         mo.in_confirmed = True
         mo.in_confirmed_at = datetime.datetime.now()
 
-    # 발주 품목별 입고 수량으로 Item.stock_qty 증가
+    # 발주 품목별 입고 수량으로 Item.stock_qty 증가 + StockMovement 기록
+    # 발주서에 연결된 입고 ID 찾기 (가장 최근)
+    latest_rcv = db.query(Receiving).filter(
+        Receiving.po_id == po_id,
+    ).order_by(desc(Receiving.id)).first()
+    rcv_id = latest_rcv.id if latest_rcv else None
+    rcv_no = latest_rcv.rcv_no if latest_rcv else ''
+
     for po_item in po.items:
         total_received = db.query(func.coalesce(func.sum(ReceivingItem.received_qty), 0)).filter(
             ReceivingItem.po_item_id == po_item.id,
         ).scalar() or 0
 
-        # BomItem -> Item 연결이 있으면 stock_qty 증가
+        # BomItem -> Item 연결이 있으면 record_stock_movement 사용
         if po_item.bom_item_id:
             bi = db.query(BomItem).get(po_item.bom_item_id)
             if bi and bi.item_id:
                 linked_item = db.query(Item).get(bi.item_id)
                 if linked_item:
-                    linked_item.stock_qty = (linked_item.stock_qty or 0) + total_received
+                    record_stock_movement(
+                        db, linked_item.id,
+                        movement_type='IN_RECEIVING',
+                        quantity=total_received,
+                        reference_type='receiving',
+                        reference_id=rcv_id,
+                        unit_price=po_item.unit_price,
+                        note=f'입고 {rcv_no}',
+                    )
+                    # last_unit_price 갱신
+                    if po_item.unit_price and po_item.unit_price > 0:
+                        linked_item.last_unit_price = po_item.unit_price
 
 
 # ===================================================================

@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">재고 현황</h2>
+    <div class="d-flex gap-2" style="white-space:nowrap;">
+        <a href="{{ url_for('inventory.inventory_items') }}" class="btn btn-outline-primary btn-sm">품목별 재고</a>
+        <a href="{{ url_for('inventory.bom_stock') }}" class="btn btn-outline-dark btn-sm">BOM 재고</a>
+        <a href="{{ url_for('inventory.audit_list') }}" class="btn btn-outline-secondary btn-sm">재고실사</a>
+        <a href="{{ url_for('inventory.inventory_export') }}" class="btn btn-success btn-sm">엑셀 다운로드</a>
+    </div>
+</div>
+
+{# --- 통계 카드 --- #}
+<div class="row g-3 mb-3">
+    <div class="col-md col-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body py-2 text-center">
+                <small class="text-muted">총 품목수</small>
+                <div class="fw-bold fs-5">{{ total_items }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-primary">
+            <div class="card-body py-2 text-center">
+                <small class="text-muted">총재고금액</small>
+                <div class="fw-bold fs-5 text-primary">{{ fmt_money(total_stock_value) }}원</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-success">
+            <div class="card-body py-2 text-center">
+                <small class="text-muted">가용재고액</small>
+                <div class="fw-bold fs-5 text-success">{{ fmt_money(total_available_value) }}원</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-warning">
+            <div class="card-body py-2 text-center">
+                <small class="text-muted">예약재고액</small>
+                <div class="fw-bold fs-5 text-warning">{{ fmt_money(total_reserved_value) }}원</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-danger">
+            <div class="card-body py-2 text-center">
+                <small class="text-muted">저재고 경고</small>
+                <div class="fw-bold fs-5 text-danger">{{ low_stock_count }}건</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# --- 카테고리별 재고금액 요약 --- #}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-2">
+        <strong>카테고리별 재고 요약</strong>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.82rem; border-color:#dee2e6;">
+                <colgroup>
+                    <col style="width:20%">
+                    <col style="width:10%">
+                    <col style="width:14%">
+                    <col style="width:14%">
+                    <col style="width:14%">
+                    <col style="width:18%">
+                </colgroup>
+                <thead class="table-light">
+                    <tr>
+                        <th>카테고리</th>
+                        <th class="text-center">품목수</th>
+                        <th class="text-end">총재고</th>
+                        <th class="text-end">예약수량</th>
+                        <th class="text-end">가용재고</th>
+                        <th class="text-end">재고금액</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cat in cat_summary %}
+                    <tr>
+                        <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ cat.category }}</td>
+                        <td class="text-center">{{ cat.count }}</td>
+                        <td class="text-end">{{ fmt_money(cat.total_stock) }}</td>
+                        <td class="text-end">{{ fmt_money(cat.reserved) }}</td>
+                        <td class="text-end">{{ fmt_money(cat.available) }}</td>
+                        <td class="text-end fw-bold">{{ fmt_money(cat.value) }}원</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not cat_summary %}
+                    <tr><td colspan="6" class="text-center text-muted py-3">데이터가 없습니다.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    {# --- 저재고 경고 품목 --- #}
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-2">
+                <strong class="text-danger">저재고 경고 품목</strong>
+                <span class="badge bg-danger ms-1">{{ low_stock_count }}건</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.82rem; border-color:#dee2e6;">
+                        <colgroup>
+                            <col style="width:35%">
+                            <col style="width:15%">
+                            <col style="width:15%">
+                            <col style="width:15%">
+                            <col style="width:20%">
+                        </colgroup>
+                        <thead class="table-light">
+                            <tr>
+                                <th>품명</th>
+                                <th class="text-end">현재고</th>
+                                <th class="text-end">안전재고</th>
+                                <th class="text-end">부족분</th>
+                                <th>분류</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in low_stock_items %}
+                            <tr class="table-danger" style="--bs-table-bg: rgba(220,53,69,.06);">
+                                <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">
+                                    <a href="{{ url_for('item.item_detail', item_id=item.id) }}">{{ item.name }}</a>
+                                </td>
+                                <td class="text-end">{{ fmt_money(item.stock_qty) }}</td>
+                                <td class="text-end">{{ fmt_money(item.safety_stock) }}</td>
+                                <td class="text-end text-danger fw-bold">-{{ fmt_money(item.shortage) }}</td>
+                                <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ item.category }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if not low_stock_items %}
+                            <tr><td colspan="5" class="text-center text-muted py-3">저재고 경고 품목이 없습니다.</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# --- 최근 재고 변동 --- #}
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+                <strong>최근 재고 변동</strong>
+                <a href="{{ url_for('inventory.movement_list') }}" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">전체보기</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.82rem; border-color:#dee2e6;">
+                        <colgroup>
+                            <col style="width:22%">
+                            <col style="width:28%">
+                            <col style="width:15%">
+                            <col style="width:15%">
+                            <col style="width:20%">
+                        </colgroup>
+                        <thead class="table-light">
+                            <tr>
+                                <th>일시</th>
+                                <th>품목</th>
+                                <th class="text-center">유형</th>
+                                <th class="text-end">수량</th>
+                                <th>담당자</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in recent_movements %}
+                            <tr>
+                                <td>{{ m.created_at.strftime('%m-%d %H:%M') if m.created_at else '' }}</td>
+                                <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ m.item.item_name if m.item else '' }}</td>
+                                <td class="text-center">
+                                    <span class="badge {% if m.movement_type.startswith('IN') %}bg-success{% elif m.movement_type.startswith('OUT') %}bg-danger{% else %}bg-warning text-dark{% endif %}" style="white-space:nowrap;">
+                                        {{ movement_labels.get(m.movement_type, m.movement_type) }}
+                                    </span>
+                                </td>
+                                <td class="text-end {% if m.quantity > 0 %}text-primary{% elif m.quantity < 0 %}text-danger{% else %}text-muted{% endif %}">
+                                    {{ '{:+g}'.format(m.quantity) }}
+                                </td>
+                                <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ m.created_by or '' }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if not recent_movements %}
+                            <tr><td colspan="5" class="text-center text-muted py-3">변동 이력이 없습니다.</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

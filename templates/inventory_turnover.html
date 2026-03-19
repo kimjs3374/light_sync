@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <h2 class="text-primary fw-bold">재고회전율 분석</h2>
+    <a href="{{ url_for('inventory.inventory_dashboard') }}" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">대시보드</a>
+</div>
+
+{# --- 기간 필터 --- #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-2 col-5">
+                <label class="form-label mb-0" style="font-size:0.8rem;">시작일</label>
+                <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.date_from }}">
+            </div>
+            <div class="col-md-2 col-5">
+                <label class="form-label mb-0" style="font-size:0.8rem;">종료일</label>
+                <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to }}">
+            </div>
+            <div class="col-md-2 col-4">
+                <label class="form-label mb-0" style="font-size:0.8rem;">카테고리</label>
+                <select name="category" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for c in categories %}
+                    <option value="{{ c }}" {{ 'selected' if filters.category == c }}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;">분석</button>
+                <a href="{{ url_for('inventory.turnover_report') }}" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">초기화</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-2">
+        <strong>회전율 분석</strong>
+        <span class="badge bg-primary ms-1">{{ results|length }}건</span>
+        <span class="text-muted ms-2" style="font-size:0.8rem;">회전율 = 기간출고량 / 평균재고</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.82rem; border-color:#dee2e6;">
+                <colgroup>
+                    <col style="width:5%">
+                    <col style="width:25%">
+                    <col style="width:12%">
+                    <col style="width:12%">
+                    <col style="width:12%">
+                    <col style="width:12%">
+                    <col style="width:12%">
+                    <col style="width:10%">
+                </colgroup>
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center">No</th>
+                        <th>품명</th>
+                        <th>분류</th>
+                        <th class="text-end">출고수량</th>
+                        <th class="text-end">평균재고</th>
+                        <th class="text-end">재고금액</th>
+                        <th class="text-end">회전율</th>
+                        <th class="text-center">판정</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in results %}
+                    {% set turnover = r.turnover %}
+                    <tr>
+                        <td class="text-center">{{ loop.index }}</td>
+                        <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">
+                            <a href="{{ url_for('item.item_detail', item_id=r.item.id) }}">{{ r.item.item_name }}</a>
+                        </td>
+                        <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ r.item.category or '' }}</td>
+                        <td class="text-end">{{ fmt_money(r.total_out) }}</td>
+                        <td class="text-end">{{ fmt_money(r.avg_stock) }}</td>
+                        <td class="text-end">{{ fmt_money(r.stock_value) }}원</td>
+                        <td class="text-end fw-bold {% if turnover > 3 %}text-primary{% elif turnover < 0.5 %}text-warning{% endif %}">
+                            {{ turnover }}x
+                        </td>
+                        <td class="text-center">
+                            {% if turnover > 3 %}
+                            <span class="badge bg-primary" style="white-space:nowrap;">빈번소진</span>
+                            {% elif turnover < 0.5 and r.avg_stock > 0 %}
+                            <span class="badge bg-warning text-dark" style="white-space:nowrap;">과다재고</span>
+                            {% else %}
+                            <span class="badge bg-success" style="white-space:nowrap;">적정</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not results %}
+                    <tr><td colspan="8" class="text-center text-muted py-3">분석 대상이 없습니다. (기간 내 출고 이력이 필요합니다)</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
