@@ -10,7 +10,7 @@ from modules.auth_decorators import login_required
 from modules.db_context import get_db
 from modules.pagination import make_pagination
 from modules.utils import safe_int
-from modules.models import G2bProcurement, Contract, ContractItem, Project
+from modules.models import G2bProcurement, Contract, ContractItem, Project, TaxInvoice
 from modules.services.g2b_procurement_sync import sync_daily, sync_bulk
 from modules.services.procurement_summary import (
     get_filter_options, get_summary_pivot, build_chart_data, generate_excel,
@@ -83,7 +83,15 @@ def procurement_list():
         if org:
             filters_list.append(G2bProcurement.dminstt_nm.ilike(f'%{org}%'))
 
-        # 상태 필터: 신규(chg=00, amt>0) / 변경(chg>00, amt>0) / 취소(amt=0, qty=0)
+        # 세금계산서 매칭된 G2B 번호 set (발행/미발행 필터용)
+        invoiced_nos = set(
+            r[0] for r in db.query(TaxInvoice.g2b_contract_no).filter(
+                TaxInvoice.g2b_contract_no.isnot(None),
+                TaxInvoice.match_status.in_(['자동매칭', '수동매칭']),
+            ).distinct().all()
+        )
+
+        # 상태 필터: 신규/변경/취소/규격가격/세금계산서발행/미발행
         if status_filter == 'new':
             filters_list.append(G2bProcurement.cntrct_dlvr_req_chg_ord == '00')
             filters_list.append(G2bProcurement.prdct_amt > 0)
@@ -95,6 +103,15 @@ def procurement_list():
             filters_list.append(G2bProcurement.prdct_qty == 0)
         elif status_filter == 'spec_price':
             filters_list.append(G2bProcurement.dtil_prdct_clsfc_no_nm == '스포츠조명기구')
+        elif status_filter == 'invoiced':
+            if invoiced_nos:
+                filters_list.append(G2bProcurement.cntrct_dlvr_req_no.in_(invoiced_nos))
+            else:
+                filters_list.append(G2bProcurement.id == -1)  # 없음
+        elif status_filter == 'uninvoiced':
+            if invoiced_nos:
+                filters_list.append(~G2bProcurement.cntrct_dlvr_req_no.in_(invoiced_nos))
+            # invoiced_nos 비어있으면 전체가 미발행이므로 필터 불필요
 
         # --- 계약 단위 그룹 쿼리 (페이지네이션용) ---
         contract_q = db.query(
@@ -163,6 +180,7 @@ def procurement_list():
                 status = 'new'
 
             linked = linked_map.get(row.cntrct_dlvr_req_no)
+            is_invoiced = row.cntrct_dlvr_req_no in invoiced_nos
             contracts.append({
                 'req_no': row.cntrct_dlvr_req_no,
                 'req_date': row.req_date,
@@ -176,6 +194,7 @@ def procurement_list():
                 'status': status,
                 'line_items': detail_map.get(row.cntrct_dlvr_req_no, []),
                 'linked': linked,
+                'is_invoiced': is_invoiced,
             })
 
         # --- 통계 (전체 기준, 필터 무관) ---

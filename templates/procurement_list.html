@@ -98,6 +98,8 @@
                 <option value="changed" {% if filters.status == 'changed' %}selected{% endif %}>변경</option>
                 <option value="cancelled" {% if filters.status == 'cancelled' %}selected{% endif %}>취소</option>
                 <option value="spec_price" {% if filters.status == 'spec_price' %}selected{% endif %}>규격가격</option>
+                <option value="invoiced" {% if filters.status == 'invoiced' %}selected{% endif %}>세금계산서 발행</option>
+                <option value="uninvoiced" {% if filters.status == 'uninvoiced' %}selected{% endif %}>세금계산서 미발행</option>
             </select>
         </div>
         <div class="col-12 col-md-3 text-md-end">
@@ -148,6 +150,9 @@
                     <span title="{{ c.req_nm or '' }}">
                         {{ (c.req_nm or '-')[:50] }}{% if c.req_nm and c.req_nm|length > 50 %}...{% endif %}
                     </span>
+                    {% if c.is_invoiced %}
+                    <span class="badge bg-success" style="font-size:0.65rem; white-space:nowrap;">계산서</span>
+                    {% endif %}
                 </td>
                 <td><small>{{ c.dminstt or '-' }}</small></td>
                 <td class="text-center">

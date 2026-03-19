@@ -263,6 +263,27 @@ def import_and_match(db, records):
                         contract.invoice_date = rec['issue_date']
                         contract.payment_date = rec['issue_date']
 
+        # 2차: 계약번호 매칭 실패 시 계약명으로 매칭 시도
+        if not matched and rec['g2b_contract_name']:
+            proc = db.query(G2bProcurement).filter(
+                G2bProcurement.cntrct_dlvr_req_nm == rec['g2b_contract_name']
+            ).first()
+            if proc:
+                inv.g2b_contract_no = proc.cntrct_dlvr_req_no
+                inv.match_status = '자동매칭'
+                matched = True
+
+                contract = db.query(Contract).filter(
+                    Contract.g2b_contract_no == proc.cntrct_dlvr_req_no
+                ).first()
+                if contract:
+                    inv.contract_id = contract.id
+                    inv.project_id = contract.project_id
+                    contract.payment_status = '입금완료'
+                    if rec['issue_date']:
+                        contract.invoice_date = rec['issue_date']
+                        contract.payment_date = rec['issue_date']
+
         if matched:
             result['matched'] += 1
         else:
