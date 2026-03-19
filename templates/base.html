@@ -314,7 +314,7 @@
         </div>
 
         {# === 부서별 동적 메뉴 (GroupPermission.allowed_menus 기반) === #}
-        {% for group_name, menus in sidebar_menu_groups.items() %}
+        {% for group_name, menus in (sidebar_menu_groups or {}).items() %}
         {% if group_name != '시스템' and menus %}
         <div class="sidebar-group">
             <a href="#" class="sidebar-group-toggle" data-target="menu-grp-{{ loop.index }}">{{ group_name }} ▾</a>
