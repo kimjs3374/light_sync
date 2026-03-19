@@ -19,6 +19,26 @@
 | material-po-bom-integration | 자재-발주-BOM 통합 연동 (1클릭 발주, bom_item_id FK) | 97% | 2026-03-18 | 4 |
 | dept-permission | 조직도 기반 부서별 권한 + 개인 추가 메뉴 + 임원진 전체 열람 | 95% | 2026-03-18 | 4 |
 | dept-weekly-report | 부서별 주간보고서 (영업/생산/관리 + 접근 제어 + 메뉴 트리) | 100% | 2026-03-18 | 4 |
+| production-display | MAGNATECH 전사 현황판 (6컬럼 칸반 + 전광판 + 날씨 + 캘린더) | 100% | 2026-03-19 | 4 |
+
+## production-display
+
+- **Duration**: 2026-03-19 (1 session, ~3시간)
+- **Iterations**: 0 (first-pass 100%)
+- **Key Result**: 공장 TV 전용 다크 테마 6컬럼 전사 현황판. 협의→자재→생산대기→생산중→납품→일정 파이프라인 + 전광판 + 자재 입고예정 티커 + 날씨 API + 카드 클릭 모달 + 미니 캘린더
+- **New Modules**: modules/production_display_utils.py, templates/production_display.html
+- **Modified**: routes/production.py, templates/dashboard.html
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [production-display.plan.md](production-display/production-display.plan.md) |
+| Design | [production-display.design.md](production-display/production-display.design.md) |
+| Analysis | [production-display.analysis.md](production-display/production-display.analysis.md) |
+| Report | [production-display.report.md](production-display/production-display.report.md) |
+
+---
 
 ## dept-weekly-report
 
