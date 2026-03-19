@@ -451,6 +451,14 @@
     </button>
 </div>
 
+{# ── 히스토리 바 + offcanvas ── #}
+{% set history_offcanvas_id = 'prodHistoryOffcanvas' %}
+{% set history_board_title = project.temp_name ~ ' 히스토리' %}
+{% set fab_offcanvas_target = '#prodHistoryOffcanvas' %}
+{% set fab_count = history_counts.all|default(0) %}
+{% include 'components/history_summary_bar.html' %}
+{% include 'components/history_offcanvas.html' %}
+
 {# ── KPI bar ── #}
 <div class="kpi-bar">
     <div class="kpi-tile kpi-total">

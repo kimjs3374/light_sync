@@ -838,6 +838,11 @@ def production_main():
             'done': sum(1 for c in all_cards if c['status'] in ('완료', '스킵')),
         }
 
+        # 히스토리보드
+        history, history_counts = get_project_history_context(
+            db, project_id=site_id, default_scope='production', limit=100,
+        )
+
     return render_template(
         'production.html',
         mode='detail',
@@ -846,6 +851,8 @@ def production_main():
         stats=stats,
         site_id=site_id,
         today=today.strftime('%Y-%m-%d'),
+        history=history,
+        history_counts=history_counts,
     )
 
 
