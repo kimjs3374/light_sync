@@ -11,16 +11,22 @@
 .filter-bar select, .filter-bar input { font-size: 0.82rem; }
 </style>
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
-    <h5 class="text-primary fw-bold mb-0">세금계산서 목록</h5>
-    <div class="d-flex gap-2 align-items-center" style="white-space:nowrap;">
-        <a href="{{ url_for('financial.financial_dashboard') }}" class="btn btn-outline-primary btn-sm">대시보드</a>
-        <button class="btn btn-dark btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#importModal">엑셀 임포트</button>
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Tax Invoices</div>
+            <h2>세금계산서 목록</h2>
+            <div class="hero-sub">세금계산서 발행 내역을 조회하고 관리합니다</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('financial.financial_dashboard') }}" class="btn btn-outline-primary btn-sm">대시보드</a>
+            <button class="btn btn-dark btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#importModal">엑셀 임포트</button>
+        </div>
     </div>
 </div>
 
 {# ====== 필터 ====== #}
-<form class="card border-0 shadow-sm mb-3" method="GET">
+<form class="card border-0 shadow-sm mb-3 mg-fade" style="animation-delay:.05s" method="GET">
     <div class="card-body py-2 px-3 filter-bar">
         <div class="row g-2 align-items-center">
             <div class="col-auto">

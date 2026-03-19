@@ -8,6 +8,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import sys
 
@@ -52,7 +53,7 @@ STANDARD_COLS = {
     'no': 0, 'cert_no': 1, 'product_code': 2,
     'item_code': 3, 'item_name': 4, 'qty': 5,
     'supplier': 6, 'need_qty': 7, 'unit_price': 8,
-    'amount': 9, 'note': 10,
+    'amount': 9, 'note': 10, 'option_filter': 11,
 }
 
 # 변형 컬럼 (보안타워, 폴대류) - 품번 대신 규격
@@ -60,7 +61,7 @@ VARIANT_COLS = {
     'no': 0, 'cert_no': 1, 'product_code': 2,
     'item_name': 3, 'item_spec': 4, 'qty': 5,
     'supplier': 6, 'need_qty': 7, 'unit_price': 8,
-    'amount': 9, 'note': 10,
+    'amount': 9, 'note': 10, 'option_filter': 11,
 }
 
 # 변형 시트 인덱스 (품번 컬럼이 없는 시트)
@@ -88,6 +89,32 @@ def safe_float(v):
         return float(v)
     except (ValueError, TypeError):
         return None
+
+
+def parse_option_filter(v):
+    """엑셀 옵션조건 셀을 JSON 문자열로 변환.
+
+    형식: "렌즈=20도" → '{"렌즈":"20도"}'
+          "렌즈=20도,반사판=A" → '{"렌즈":"20도","반사판":"A"}'
+          빈칸/None → None (공통부품)
+    """
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    result = {}
+    for pair in s.split(','):
+        pair = pair.strip()
+        if '=' not in pair:
+            continue
+        key, val = pair.split('=', 1)
+        key, val = key.strip(), val.strip()
+        if key and val:
+            result[key] = val
+    if not result:
+        return None
+    return json.dumps(result, ensure_ascii=False)
 
 
 def is_standard_sheet(sheet_idx):
@@ -177,6 +204,10 @@ def parse_sheet(ws, sheet_idx, category):
         unit_price = safe_float(cells[cols['unit_price']]) if cols['unit_price'] < len(cells) else None
         amount = safe_float(cells[cols['amount']]) if cols['amount'] < len(cells) else None
 
+        # 옵션조건 파싱 (컬럼 11, 없으면 None)
+        option_raw = cells[cols['option_filter']] if cols['option_filter'] < len(cells) else None
+        option_filter = parse_option_filter(option_raw)
+
         item_data = {
             'item_code': item_code,
             'item_name': item_name,
@@ -185,6 +216,7 @@ def parse_sheet(ws, sheet_idx, category):
             'unit_price': unit_price,
             'amount': amount,
             'supplier': supplier,
+            'option_filter': option_filter,
         }
 
         if current_product_code not in products_map:
@@ -210,6 +242,8 @@ def ensure_columns(session):
         ("bom_items", "unit_price", "FLOAT"),
         ("bom_items", "amount", "FLOAT"),
         ("bom_items", "supplier", "VARCHAR(200)"),
+        ("bom_items", "option_filter", "TEXT"),
+        ("bom_headers", "option_schema", "TEXT"),
     ]
     for table, column, col_type in alter_statements:
         try:
@@ -300,6 +334,21 @@ def main():
                     skipped_existing += 1
                     continue
 
+                # option_schema 자동 생성: 부품들의 option_filter에서 옵션 키/값 수집
+                option_schema = {}
+                for item_data in items_data:
+                    of = item_data.get('option_filter')
+                    if of:
+                        try:
+                            parsed = json.loads(of)
+                            for k, v in parsed.items():
+                                if k not in option_schema:
+                                    option_schema[k] = []
+                                if v not in option_schema[k]:
+                                    option_schema[k].append(v)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
                 # BomHeader 생성
                 bom = BomHeader(
                     product_code=product_code,
@@ -308,6 +357,7 @@ def main():
                     certification_no=cert_no,
                     version='1.0',
                     is_active=True,
+                    option_schema=json.dumps(option_schema, ensure_ascii=False) if option_schema else None,
                 )
 
                 if args.commit:
@@ -330,6 +380,7 @@ def main():
                         unit_price=item_data['unit_price'],
                         amount=item_data['amount'],
                         supplier=item_data['supplier'] or None,
+                        option_filter=item_data.get('option_filter'),
                     )
 
                     if args.commit:

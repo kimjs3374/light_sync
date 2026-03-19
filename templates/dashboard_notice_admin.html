@@ -1,10 +1,14 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h3 class="m-0">📢 전광판 관리</h3>
-    <div class="d-flex gap-2">
-        <a href="{{ url_for('dashboard.dashboard_view') }}" class="btn btn-outline-secondary btn-sm">대시보드로</a>
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Billboard Admin</div>
+            <h2>전광판 관리</h2>
+            <div class="hero-sub">전광판 문구를 등록하고 관리합니다</div>
+        </div>
+        <a href="{{ url_for('dashboard.dashboard_view') }}" class="btn btn-outline-light btn-sm">대시보드로</a>
     </div>
 </div>
 

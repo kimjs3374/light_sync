@@ -175,6 +175,24 @@ def init_db():
                 except Exception:
                     pass  # 이미 존재하면 무시
 
+            # bom_headers: option_schema 추가 (v2026-03-19, 슈퍼BOM)
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE {quote_ident(DB_SCHEMA)}.bom_headers "
+                    f"ADD COLUMN option_schema TEXT"
+                ))
+            except Exception:
+                pass
+
+            # bom_items: option_filter 추가 (v2026-03-19, 슈퍼BOM)
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE {quote_ident(DB_SCHEMA)}.bom_items "
+                    f"ADD COLUMN option_filter TEXT"
+                ))
+            except Exception:
+                pass
+
             # items: safety_stock, last_unit_price 추가 (v2026-03-19, 재고관리)
             for col, col_type in [
                 ('safety_stock', 'FLOAT DEFAULT 0'),

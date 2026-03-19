@@ -1,0 +1,341 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    .qt-detail-card { border: none; border-radius: 12px; overflow: hidden; }
+    .qt-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .qt-info-box { background: #f8fafc; border-radius: 10px; padding: 16px; }
+    .qt-info-box h6 { font-size: .82rem; color: #64748b; font-weight: 700; margin-bottom: 10px; text-transform: uppercase; letter-spacing: .03em; }
+    .qt-info-row { display: flex; gap: 8px; font-size: .85rem; margin-bottom: 4px; }
+    .qt-info-label { color: #94a3b8; min-width: 65px; flex-shrink: 0; }
+    .qt-info-value { color: #0f172a; font-weight: 500; }
+    .qt-items th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 2px solid #e2e8f0; white-space: nowrap; background: #f8fafc; }
+    .qt-items td { vertical-align: middle; font-size: .82rem; padding: 8px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+    .badge-status { font-size: .75rem; padding: 4px 10px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
+    .qt-total-box { background: #0f172a; color: #fff; border-radius: 10px; padding: 16px 24px; }
+    .sc-detail-row td { background: #fffbeb; font-size: .82rem; }
+    .tpl-badge-sm { display: inline-block; padding: 3px 8px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 5px; font-size: .72rem; color: #1e40af; cursor: pointer; white-space: nowrap; }
+    .tpl-badge-sm:hover { background: #dbeafe; }
+    @media (max-width: 767.98px) { .qt-info-grid { grid-template-columns: 1fr; } }
+</style>
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Quotation Detail</div>
+            <h2>{{ q.quote_no }}</h2>
+            <div class="hero-sub">
+                {{ q.customer_name or '-' }}
+                {% if q.status == '작성중' %}
+                    <span class="badge-status ms-2" style="background:rgba(245,158,11,.2);color:#f59e0b;">{{ q.status }}</span>
+                {% elif q.status == '발송' %}
+                    <span class="badge-status ms-2" style="background:rgba(34,197,94,.2);color:#22c55e;">{{ q.status }}</span>
+                {% elif q.status == '만료' %}
+                    <span class="badge-status ms-2" style="background:rgba(100,116,139,.2);color:#94a3b8;">{{ q.status }}</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('quotation.quotation_pdf', quote_id=q.id) }}" class="btn btn-primary btn-sm" target="_blank">PDF 출력</a>
+            <button type="button" class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#editModal">수정</button>
+            <form method="POST" action="{{ url_for('quotation.quotation_delete', quote_id=q.id) }}" style="display:inline;" onsubmit="return confirm('정말 삭제하시겠습니까?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-outline-danger btn-sm">삭제</button>
+            </form>
+            <a href="{{ url_for('quotation.quotation_list') }}" class="btn btn-outline-light btn-sm">목록</a>
+        </div>
+    </div>
+</div>
+
+{# ─── 상태 변경 ─── #}
+<div class="mb-3 d-flex gap-2 align-items-center">
+    <span class="small text-muted">상태 변경:</span>
+    {% for s in status_choices %}
+    {% if s != q.status %}
+    <form method="POST" action="{{ url_for('quotation.quotation_change_status', quote_id=q.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="status" value="{{ s }}">
+        <button type="submit" class="btn btn-outline-secondary btn-xs" style="white-space:nowrap;">{{ s }}</button>
+    </form>
+    {% endif %}
+    {% endfor %}
+</div>
+
+{# ─── 공급자/수급자 ─── #}
+<div class="qt-info-grid mb-4 mg-fade">
+    <div class="qt-info-box">
+        <h6>공급자</h6>
+        <div class="qt-info-row"><span class="qt-info-label">상호</span><span class="qt-info-value">(주)매그나텍</span></div>
+        <div class="qt-info-row"><span class="qt-info-label">주소</span><span class="qt-info-value">전남 장성군 동화면 전자농공단지2길 55</span></div>
+        <div class="qt-info-row"><span class="qt-info-label">Tel</span><span class="qt-info-value">061-392-5508</span></div>
+        <div class="qt-info-row"><span class="qt-info-label">E-mail</span><span class="qt-info-value">sales@mgnt.kr</span></div>
+    </div>
+    <div class="qt-info-box">
+        <h6>수급자</h6>
+        <div class="qt-info-row"><span class="qt-info-label">상호</span><span class="qt-info-value">{{ q.customer_name or '-' }}</span></div>
+        <div class="qt-info-row"><span class="qt-info-label">건명</span><span class="qt-info-value">{{ q.project_name or '-' }}</span></div>
+        <div class="qt-info-row"><span class="qt-info-label">담당자</span><span class="qt-info-value">{{ q.customer_contact or '-' }}</span></div>
+        <div class="qt-info-row"><span class="qt-info-label">주소</span><span class="qt-info-value">{{ q.customer_address or '-' }}</span></div>
+        <div class="qt-info-row"><span class="qt-info-label">Tel</span><span class="qt-info-value">{{ q.customer_tel or '-' }}</span></div>
+    </div>
+</div>
+
+{# ─── 견적 조건 ─── #}
+<div class="card qt-detail-card shadow-sm mb-4">
+    <div class="card-body p-3">
+        <div class="row g-2" style="font-size:.85rem;">
+            <div class="col-md-3"><span class="text-muted">견적일</span> <strong>{{ q.quote_date.strftime('%Y-%m-%d') if q.quote_date else '-' }}</strong></div>
+            <div class="col-md-2"><span class="text-muted">납기일</span> <strong>{{ q.delivery_date or '협의' }}</strong></div>
+            <div class="col-md-2"><span class="text-muted">대금지불</span> <strong>{{ q.payment_method or '현금' }}</strong></div>
+            <div class="col-md-3"><span class="text-muted">견적유효</span> <strong>{{ q.validity_period or '견적일로부터 1개월' }}</strong></div>
+            <div class="col-md-2"><span class="text-muted">계좌</span> <strong>{{ q.bank_account or '-' }}</strong></div>
+        </div>
+    </div>
+</div>
+
+{# ─── 품목 테이블 ─── #}
+<div class="card qt-detail-card shadow-sm mb-4">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 qt-items">
+                <thead>
+                    <tr>
+                        <th class="ps-3" style="width:45px">NO</th>
+                        <th>품명</th>
+                        <th style="width:140px">규격</th>
+                        <th style="width:55px">단위</th>
+                        <th style="width:65px" class="text-end">수량</th>
+                        <th style="width:110px" class="text-end">단가</th>
+                        <th style="width:120px" class="text-end">금액</th>
+                        <th style="width:100px">비고</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in q.items %}
+                    <tr>
+                        <td class="ps-3 text-muted">{{ loop.index }}</td>
+                        <td><strong>{{ item.item_name }}</strong></td>
+                        <td>{{ item.item_spec or '' }}</td>
+                        <td>{{ item.unit or '' }}</td>
+                        <td class="text-end">{{ '{:,.0f}'.format(item.quantity) }}</td>
+                        <td class="text-end">{{ '{:,.0f}'.format(item.unit_price) }}</td>
+                        <td class="text-end fw-bold">{{ '{:,.0f}'.format(item.amount) }}</td>
+                        <td class="text-muted">{{ item.note or '' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ─── 합계 (부과금 포함) ─── #}
+<div class="d-flex justify-content-end mb-4">
+    <div class="qt-total-box text-end" style="min-width:280px;">
+        <div class="d-flex justify-content-between gap-5 mb-1" style="font-size:.9rem;opacity:.7;">
+            <span>공급가액</span>
+            <span>{{ fmt_money(q.total_amount) }}원</span>
+        </div>
+        {% for sc in q.surcharges %}
+        <div class="d-flex justify-content-between gap-5 mb-1" style="font-size:.9rem;opacity:.7;">
+            <span>{{ sc.name }} ({{ sc.rate }}%)</span>
+            <span>{{ fmt_money(sc.amount) }}원</span>
+        </div>
+        {% endfor %}
+        <hr style="border-color:rgba(255,255,255,.2);margin:8px 0;">
+        <div class="d-flex justify-content-between gap-5" style="font-size:1.2rem;">
+            <span class="fw-bold">합계</span>
+            <span class="fw-bold">{{ fmt_money(q.grand_total or q.total_amount) }}원</span>
+        </div>
+    </div>
+</div>
+
+{# ─── 비고 ─── #}
+{% if q.note %}
+<div class="card qt-detail-card shadow-sm mb-4">
+    <div class="card-body p-3">
+        <h6 class="fw-bold mb-2" style="font-size:.85rem;color:#64748b;">비고</h6>
+        <div style="font-size:.85rem;white-space:pre-line;">{{ q.note }}</div>
+    </div>
+</div>
+{% endif %}
+
+{# ─── 수정 모달 ─── #}
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <form method="POST" action="{{ url_for('quotation.quotation_edit', quote_id=q.id) }}" id="qtEditForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="modal-header" style="background:#f8fafc;">
+                    <h6 class="modal-title fw-bold">견적서 수정 — {{ q.quote_no }}</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    {# 기본정보 #}
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3"><label class="form-label small text-muted">견적일</label><input type="date" name="quote_date" class="form-control form-control-sm" value="{{ q.quote_date.strftime('%Y-%m-%d') if q.quote_date else '' }}"></div>
+                        <div class="col-md-3"><label class="form-label small text-muted">납기일</label><input type="text" name="delivery_date" class="form-control form-control-sm" value="{{ q.delivery_date or '' }}"></div>
+                        <div class="col-md-3"><label class="form-label small text-muted">대금지불</label><input type="text" name="payment_method" class="form-control form-control-sm" value="{{ q.payment_method or '' }}"></div>
+                        <div class="col-md-3"><label class="form-label small text-muted">견적유효</label><input type="text" name="validity_period" class="form-control form-control-sm" value="{{ q.validity_period or '' }}"></div>
+                        <div class="col-md-8"><label class="form-label small text-muted">건명</label><input type="text" name="project_name" class="form-control form-control-sm" value="{{ q.project_name or '' }}"></div>
+                        <div class="col-md-4"><label class="form-label small text-muted">계좌번호</label><input type="text" name="bank_account" class="form-control form-control-sm" value="{{ q.bank_account or '' }}"></div>
+                    </div>
+                    {# 수급자 #}
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4"><label class="form-label small text-muted">수급자명</label><input type="text" name="customer_name" class="form-control form-control-sm" value="{{ q.customer_name or '' }}"></div>
+                        <div class="col-md-4"><label class="form-label small text-muted">담당자</label><input type="text" name="customer_contact" class="form-control form-control-sm" value="{{ q.customer_contact or '' }}"></div>
+                        <div class="col-md-4"><label class="form-label small text-muted">Tel</label><input type="text" name="customer_tel" class="form-control form-control-sm" value="{{ q.customer_tel or '' }}"></div>
+                        <div class="col-md-6"><label class="form-label small text-muted">주소</label><input type="text" name="customer_address" class="form-control form-control-sm" value="{{ q.customer_address or '' }}"></div>
+                        <div class="col-md-3"><label class="form-label small text-muted">Fax</label><input type="text" name="customer_fax" class="form-control form-control-sm" value="{{ q.customer_fax or '' }}"></div>
+                        <div class="col-md-3"><label class="form-label small text-muted">E-mail</label><input type="text" name="customer_email" class="form-control form-control-sm" value="{{ q.customer_email or '' }}"></div>
+                    </div>
+                    {# 품목 + 템플릿 #}
+                    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                        <strong style="font-size:.9rem;">품목</strong>
+                        <div class="d-flex gap-1 flex-wrap">
+                            {% for t in templates %}
+                            <span class="tpl-badge-sm edit-tpl-load" data-tpl-id="{{ t.id }}">{{ t.template_name }}</span>
+                            {% endfor %}
+                            <button type="button" class="btn btn-outline-primary btn-xs" id="editAddItemBtn">+ 품목</button>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm" id="editItemsTable" style="table-layout:fixed;">
+                            <colgroup><col style="width:36px"><col><col style="width:110px"><col style="width:50px"><col style="width:60px"><col style="width:95px"><col style="width:95px"><col style="width:80px"><col style="width:36px"></colgroup>
+                            <thead class="table-light"><tr><th>No</th><th>품명</th><th>규격</th><th>단위</th><th class="text-end">수량</th><th class="text-end">단가</th><th class="text-end">금액</th><th>비고</th><th></th></tr></thead>
+                            <tbody id="editItemsBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="text-end mt-1 small text-muted" id="editSupplyLabel"></div>
+
+                    {# 부과금 #}
+                    <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+                        <strong style="font-size:.9rem;">부과금</strong>
+                        <button type="button" class="btn btn-outline-warning btn-xs" id="editAddScBtn">+ 부과금</button>
+                    </div>
+                    <table class="table table-sm" id="editScTable">
+                        <thead class="table-light"><tr><th>항목명</th><th style="width:90px" class="text-end">비율(%)</th><th style="width:110px" class="text-end">금액</th><th style="width:36px"></th></tr></thead>
+                        <tbody id="editScBody"></tbody>
+                    </table>
+                    <div class="text-end fw-bold mt-1" id="editGrandTotal" style="font-size:1rem;"></div>
+
+                    {# 비고 #}
+                    <div class="mt-3">
+                        <label class="form-label small text-muted">비고</label>
+                        <textarea name="note" class="form-control form-control-sm" rows="2">{{ q.note or '' }}</textarea>
+                    </div>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" name="tax_included" id="editTaxIncluded" {{ 'checked' if q.tax_included }}>
+                        <label class="form-check-label small text-muted" for="editTaxIncluded">부가세 포함</label>
+                    </div>
+                </div>
+                <div class="modal-footer" style="background:#f8fafc;">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary btn-sm">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var editRowIdx = 0;
+    var editScIdx = 0;
+
+    function addEditRow(data) {
+        data = data || {};
+        editRowIdx++;
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td class="text-muted">' + editRowIdx + '</td>' +
+            '<td><input type="hidden" name="item_id[]" value="' + (data.item_id || '') + '"><input type="text" name="item_name[]" class="form-control form-control-sm" value="' + (data.item_name || '') + '" required></td>' +
+            '<td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="' + (data.item_spec || '') + '"></td>' +
+            '<td><input type="text" name="unit[]" class="form-control form-control-sm text-center" value="' + (data.unit || '개') + '"></td>' +
+            '<td><input type="number" name="quantity[]" class="form-control form-control-sm text-end edit-calc" value="' + (data.quantity || 0) + '" min="0" step="any"></td>' +
+            '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end edit-calc" value="' + (data.unit_price || 0) + '" min="0" step="any"></td>' +
+            '<td class="text-end fw-bold edit-row-amt">0</td>' +
+            '<td><input type="text" name="item_note[]" class="form-control form-control-sm" value="' + (data.note || '') + '"></td>' +
+            '<td class="text-center"><button type="button" class="btn btn-sm text-danger edit-rm-btn">&times;</button></td>';
+        document.getElementById('editItemsBody').appendChild(tr);
+        editRecalc();
+    }
+
+    function addEditScRow(data) {
+        data = data || {};
+        editScIdx++;
+        var tr = document.createElement('tr');
+        tr.className = 'sc-detail-row';
+        tr.innerHTML =
+            '<td><input type="text" name="sc_name[]" class="form-control form-control-sm" value="' + (data.name || '') + '" placeholder="부가세, 이윤 등"></td>' +
+            '<td><input type="number" name="sc_rate[]" class="form-control form-control-sm text-end edit-sc-calc" value="' + (data.rate || '') + '" min="0" step="any"></td>' +
+            '<td class="text-end fw-bold edit-sc-amt" style="color:#92400e;">0</td>' +
+            '<td class="text-center"><button type="button" class="btn btn-sm text-danger edit-sc-rm">&times;</button></td>';
+        document.getElementById('editScBody').appendChild(tr);
+        editRecalc();
+    }
+
+    // 기존 품목 로드
+    {% for item in q.items %}
+    addEditRow({item_id:'{{ item.item_id or "" }}', item_name:'{{ item.item_name|e }}', item_spec:'{{ (item.item_spec or "")|e }}', unit:'{{ item.unit or "개" }}', quantity:{{ item.quantity }}, unit_price:{{ item.unit_price }}, note:'{{ (item.note or "")|e }}'});
+    {% endfor %}
+
+    // 기존 부과금 로드
+    {% for sc in q.surcharges %}
+    addEditScRow({name:'{{ sc.name|e }}', rate:{{ sc.rate }}});
+    {% endfor %}
+
+    document.getElementById('editAddItemBtn').addEventListener('click', function() { addEditRow(); });
+    document.getElementById('editAddScBtn').addEventListener('click', function() { addEditScRow(); });
+
+    document.getElementById('editItemsBody').addEventListener('click', function(e) {
+        if (e.target.classList.contains('edit-rm-btn')) { e.target.closest('tr').remove(); editRecalc(); }
+    });
+    document.getElementById('editItemsBody').addEventListener('input', function(e) {
+        if (e.target.classList.contains('edit-calc')) editRecalc();
+    });
+    document.getElementById('editScBody').addEventListener('click', function(e) {
+        if (e.target.classList.contains('edit-sc-rm')) { e.target.closest('tr').remove(); editRecalc(); }
+    });
+    document.getElementById('editScBody').addEventListener('input', function(e) {
+        if (e.target.classList.contains('edit-sc-calc')) editRecalc();
+    });
+
+    function editRecalc() {
+        var supply = 0;
+        document.querySelectorAll('#editItemsBody tr').forEach(function(tr, i) {
+            tr.querySelector('td:first-child').textContent = i + 1;
+            var qty = parseFloat(tr.querySelector('input[name="quantity[]"]').value) || 0;
+            var price = parseFloat(tr.querySelector('input[name="unit_price[]"]').value) || 0;
+            var amt = qty * price;
+            tr.querySelector('.edit-row-amt').textContent = amt.toLocaleString();
+            supply += amt;
+        });
+        editRowIdx = document.querySelectorAll('#editItemsBody tr').length;
+        document.getElementById('editSupplyLabel').textContent = '공급가액: ' + supply.toLocaleString() + '원';
+
+        var scTotal = 0;
+        document.querySelectorAll('#editScBody tr').forEach(function(tr) {
+            var rate = parseFloat(tr.querySelector('input[name="sc_rate[]"]').value) || 0;
+            var amt = Math.round(supply * rate / 100);
+            tr.querySelector('.edit-sc-amt').textContent = amt.toLocaleString();
+            scTotal += amt;
+        });
+        document.getElementById('editGrandTotal').textContent = '합계: ' + (supply + scTotal).toLocaleString() + '원';
+    }
+
+    // 템플릿 불러오기 (수정 모달)
+    document.querySelectorAll('.edit-tpl-load').forEach(function(badge) {
+        badge.addEventListener('click', function() {
+            fetch('/api/quote-templates/' + this.dataset.tplId)
+                .then(function(r) { return r.json(); })
+                .then(function(tpl) {
+                    if (tpl.error) { alert(tpl.error); return; }
+                    tpl.items.forEach(function(item) { addEditRow(item); });
+                    editRecalc();
+                });
+        });
+    });
+})();
+</script>
+
+{% endblock %}

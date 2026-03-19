@@ -73,6 +73,11 @@ from .entities import (
     StockAudit,
     StockAuditItem,
     StockMovement,
+    Quotation,
+    QuotationItem,
+    QuoteTemplate,
+    QuoteTemplateItem,
+    QUOTE_STATUS_CHOICES,
 )
 from .db import SessionLocal, engine, init_db
 
@@ -153,4 +158,9 @@ __all__ = [
     "StockAudit",
     "StockAuditItem",
     "StockMovement",
+    "Quotation",
+    "QuotationItem",
+    "QuoteTemplate",
+    "QuoteTemplateItem",
+    "QUOTE_STATUS_CHOICES",
 ]

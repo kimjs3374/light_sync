@@ -30,6 +30,27 @@ from modules.models import (
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_option_filter_text(v):
+    """옵션조건 텍스트를 JSON 문자열로 변환.
+
+    "렌즈=20도" → '{"렌즈":"20도"}'
+    "렌즈=20도,반사판=A" → '{"렌즈":"20도","반사판":"A"}'
+    빈칸 → None
+    """
+    if not v or not str(v).strip():
+        return None
+    result = {}
+    for pair in str(v).strip().split(','):
+        pair = pair.strip()
+        if '=' not in pair:
+            continue
+        key, val = pair.split('=', 1)
+        key, val = key.strip(), val.strip()
+        if key and val:
+            result[key] = val
+    return json.dumps(result, ensure_ascii=False) if result else None
+
 bom_bp = Blueprint('bom', __name__)
 
 
@@ -246,10 +267,28 @@ def bom_detail(bom_id):
         # 최신 입고 단가 조회 (품목코드 기준)
         latest_prices = _get_latest_receiving_prices(db, bom.bom_items)
 
+        # 슈퍼BOM: option_schema 파싱 + 각 아이템에 display 텍스트 추가
+        option_schema = None
+        if bom.option_schema:
+            try:
+                option_schema = json.loads(bom.option_schema)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        for bi in bom.bom_items:
+            bi._option_display = ''
+            if bi.option_filter:
+                try:
+                    pf = json.loads(bi.option_filter)
+                    bi._option_display = ', '.join(f'{k}={v}' for k, v in pf.items())
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
         return render_template(
             'bom_detail.html',
             bom=bom,
             latest_prices=latest_prices,
+            option_schema=option_schema,
         )
 
 
@@ -278,6 +317,7 @@ def bom_edit(bom_id):
         item_units = request.form.getlist('unit[]')
         item_notes = request.form.getlist('item_note[]')
         unit_prices = request.form.getlist('unit_price[]')
+        option_filters = request.form.getlist('option_filter[]')
 
         # 기존 아이템 업데이트 + 신규 추가
         for i in range(len(item_names)):
@@ -294,6 +334,10 @@ def bom_edit(bom_id):
             up = float(up_str) if up_str else None
             amount = (up * qty) if up else None
 
+            # 옵션조건
+            of_raw = (option_filters[i] if i < len(option_filters) else '').strip()
+            of_json = _parse_option_filter_text(of_raw) if of_raw else None
+
             if i < len(existing_items):
                 # 기존 아이템 업데이트
                 bi = existing_items[i]
@@ -302,6 +346,7 @@ def bom_edit(bom_id):
                 bi.quantity = qty
                 bi.unit = unit
                 bi.note = item_note
+                bi.option_filter = of_json
                 # 단가 변경 시 직전 단가 기록
                 if up is not None and bi.unit_price is not None and up != bi.unit_price:
                     bi.prev_unit_price = bi.unit_price
@@ -318,12 +363,29 @@ def bom_edit(bom_id):
                     note=item_note,
                     unit_price=up,
                     amount=amount,
+                    option_filter=of_json,
                 ))
 
         # form에서 제거된 아이템 삭제
         if len(item_names) < len(existing_items):
             for j in range(len(item_names), len(existing_items)):
                 db.delete(existing_items[j])
+
+        # option_schema 재생성 (저장된 option_filter들에서)
+        all_items = db.query(BomItem).filter_by(bom_id=bom.id).all()
+        new_schema = {}
+        for bi in all_items:
+            if bi.option_filter:
+                try:
+                    pf = json.loads(bi.option_filter)
+                    for k, v in pf.items():
+                        if k not in new_schema:
+                            new_schema[k] = []
+                        if v not in new_schema[k]:
+                            new_schema[k].append(v)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        bom.option_schema = json.dumps(new_schema, ensure_ascii=False) if new_schema else None
 
         db.commit()
         flash('BOM이 수정되었습니다.', 'success')
@@ -438,7 +500,7 @@ def bom_export():
             ws = wb.create_sheet(title=ws_name)
 
             headers = ['No', '완제품코드', '제품명', '인증번호', '품목코드', '품목명',
-                        '규격', '소요량', '단가', '금액', '납품업체', '비고']
+                        '규격', '소요량', '단가', '금액', '납품업체', '비고', '옵션조건']
             for col, h in enumerate(headers, 1):
                 cell = ws.cell(row=1, column=col, value=h)
                 cell.fill = header_fill
@@ -449,6 +511,15 @@ def bom_export():
             row = 2
             for bom in cat_boms:
                 for idx, bi in enumerate(bom.bom_items):
+                    # 옵션조건 표시용 텍스트
+                    of_text = ''
+                    if bi.option_filter:
+                        try:
+                            pf = json.loads(bi.option_filter)
+                            of_text = ', '.join(f'{k}={v}' for k, v in pf.items())
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
                     row_data = [
                         idx + 1 if idx == 0 else '',
                         bom.product_code if idx == 0 else '',
@@ -462,6 +533,7 @@ def bom_export():
                         bi.amount or 0,
                         bi.supplier or '',
                         bi.note or '',
+                        of_text,
                     ]
                     for col, val in enumerate(row_data, 1):
                         cell = ws.cell(row=row, column=col, value=val)
@@ -473,7 +545,7 @@ def bom_export():
                 if bom.bom_items:
                     row += 1
 
-            widths = [6, 18, 20, 15, 15, 25, 20, 8, 10, 12, 15, 15]
+            widths = [6, 18, 20, 15, 15, 25, 20, 8, 10, 12, 15, 15, 18]
             for i, w in enumerate(widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
@@ -546,6 +618,8 @@ def bom_import():
                                 col_map['note'] = ci
                         elif cv in ('규격', '사양') or lv == 'spec':
                             col_map['spec'] = ci
+                        elif cv in ('옵션조건', '옵션', 'option', 'option_filter') or lv == 'option_filter':
+                            col_map['option_filter'] = ci
                     if 'item_name' in col_map or 'item_code' in col_map:
                         header_idx = ri
                         break
@@ -597,6 +671,7 @@ def bom_import():
                         'unit_price': price,
                         'supplier': get_col('supplier'),
                         'note': get_col('note'),
+                        'option_filter': _parse_option_filter_text(get_col('option_filter')),
                     })
 
                 wb.close()
@@ -721,12 +796,28 @@ def bom_import():
                         continue
 
                     if r['status'] == 'new':
+                        # option_schema 자동 생성
+                        option_schema = {}
+                        for ei in parsed['items']:
+                            of = ei.get('option_filter')
+                            if of:
+                                try:
+                                    pf = json.loads(of)
+                                    for k, v in pf.items():
+                                        if k not in option_schema:
+                                            option_schema[k] = []
+                                        if v not in option_schema[k]:
+                                            option_schema[k].append(v)
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+
                         # 신규 BOM 생성
                         bom = BomHeader(
                             product_code=pc,
                             product_name=pc,
                             product_category=parsed['sheet'],
                             is_active=True,
+                            option_schema=json.dumps(option_schema, ensure_ascii=False) if option_schema else None,
                         )
                         db.add(bom)
                         db.flush()
@@ -742,6 +833,7 @@ def bom_import():
                                 amount=(ei['quantity'] * ei['unit_price']) if ei['unit_price'] else None,
                                 supplier=ei['supplier'] or None,
                                 note=ei.get('note') or None,
+                                option_filter=ei.get('option_filter'),
                             ))
                         added_boms += 1
 
@@ -777,6 +869,7 @@ def bom_import():
                                     amount=(ei['quantity'] * ei['unit_price']) if ei['unit_price'] else None,
                                     supplier=ei['supplier'] or None,
                                     note=ei.get('note') or None,
+                                    option_filter=ei.get('option_filter'),
                                 ))
                         updated_boms += 1
 
@@ -836,7 +929,29 @@ def material_requirement():
                         ).first()
 
                     if bom:
+                        # 슈퍼BOM: 협의내용(item_spec_json)에서 선택된 옵션으로 필터링
+                        selected_options = {}
+                        if ci.item_spec_json:
+                            try:
+                                selected_options = json.loads(ci.item_spec_json) if isinstance(ci.item_spec_json, str) else ci.item_spec_json
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+
                         for bi in bom.bom_items:
+                            # 옵션 필터 적용: 공통부품(null)은 항상 포함, 옵션부품은 매칭 시만
+                            if bi.option_filter and selected_options:
+                                try:
+                                    item_opts = json.loads(bi.option_filter)
+                                    skip = False
+                                    for k, v in item_opts.items():
+                                        if k in selected_options and selected_options[k] != v:
+                                            skip = True
+                                            break
+                                    if skip:
+                                        continue
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+
                             needed = (bi.quantity or 0) * (ci.quantity or 0)
 
                             # 1차: bom_item_id 기반 PurchaseOrderItem 발주량 (정확)

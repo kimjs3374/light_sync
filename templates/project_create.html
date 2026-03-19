@@ -1,8 +1,18 @@
 {% extends 'base.html' %}
 
 {% block content %}
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">New Project</div>
+            <h2>신규 설계현장 등록</h2>
+            <div class="hero-sub">새로운 설계 현장 정보를 입력합니다</div>
+        </div>
+        <a href="{{ url_for('project.project_list') }}" class="btn btn-outline-light btn-sm">목록으로</a>
+    </div>
+</div>
+
 <div class="container-fluid bg-white p-3 p-md-4 rounded shadow-sm">
-    <h2 class="mb-4">📐 신규 설계현장 등록</h2>
     
     <form method="POST" action="{{ url_for('project.project_create') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>

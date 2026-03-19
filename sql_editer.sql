@@ -1,3 +1,68 @@
+-- 견적서 테이블 생성 (2026-03-19)
+CREATE TABLE IF NOT EXISTS quotations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quote_no VARCHAR(20) UNIQUE NOT NULL,
+    quote_date DATE NOT NULL,
+    validity_period VARCHAR(100) DEFAULT '견적일로부터 1개월',
+    delivery_date VARCHAR(100) DEFAULT '협의',
+    payment_method VARCHAR(100) DEFAULT '현금',
+    bank_account VARCHAR(200),
+    project_name VARCHAR(500),
+    customer_name VARCHAR(200),
+    customer_contact VARCHAR(100),
+    customer_address VARCHAR(500),
+    customer_tel VARCHAR(50),
+    customer_fax VARCHAR(50),
+    customer_email VARCHAR(200),
+    total_amount REAL DEFAULT 0,
+    tax_included BOOLEAN DEFAULT 0,
+    note TEXT,
+    status VARCHAR(20) DEFAULT '작성중',
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS quotation_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quotation_id INTEGER NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+    seq INTEGER DEFAULT 0,
+    item_id INTEGER,
+    item_name VARCHAR(300) NOT NULL,
+    item_spec VARCHAR(500),
+    unit VARCHAR(50) DEFAULT '개',
+    quantity REAL DEFAULT 0,
+    unit_price REAL DEFAULT 0,
+    amount REAL DEFAULT 0,
+    note VARCHAR(500)
+);
+
+-- 견적서 부과금/템플릿 확장 (2026-03-19)
+ALTER TABLE quotations ADD COLUMN surcharges_json TEXT;
+ALTER TABLE quotations ADD COLUMN grand_total REAL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS quote_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_name VARCHAR(200) NOT NULL,
+    note TEXT,
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS quote_template_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_id INTEGER NOT NULL REFERENCES quote_templates(id) ON DELETE CASCADE,
+    seq INTEGER DEFAULT 0,
+    item_name VARCHAR(300) NOT NULL,
+    item_spec VARCHAR(500),
+    unit VARCHAR(50) DEFAULT '개',
+    quantity REAL DEFAULT 0,
+    unit_price REAL DEFAULT 0,
+    amount REAL DEFAULT 0,
+    note VARCHAR(500)
+);
+
 -- history-board-ux v1.1 마이그레이션 (2026-03-19)
 -- 매그나텍 업무 프로세스 연동: 검수(PHASE 7) / 대금(PHASE 8) / 설계확인(PHASE 2-3)
 
@@ -116,3 +181,20 @@ CREATE TABLE IF NOT EXISTS light_sync.stock_movements (
     created_by VARCHAR(50),
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- stock_audits: 누락 컬럼 보정 (테이블이 이미 생성된 경우)
+ALTER TABLE light_sync.stock_audits ADD COLUMN confirmed_at TIMESTAMP;
+ALTER TABLE light_sync.stock_audits ADD COLUMN auditor_id INTEGER;
+ALTER TABLE light_sync.stock_audits ADD COLUMN auditor_name VARCHAR(50);
+ALTER TABLE light_sync.stock_audits ADD COLUMN total_items INTEGER DEFAULT 0;
+ALTER TABLE light_sync.stock_audits ADD COLUMN diff_items INTEGER DEFAULT 0;
+ALTER TABLE light_sync.stock_audits ADD COLUMN updated_at TIMESTAMP DEFAULT NOW();
+
+-- daily_reports: 자동수집 항목 수정 가능
+ALTER TABLE light_sync.daily_reports ADD COLUMN auto_items_json TEXT;
+
+-- ===================================================================
+-- 슈퍼BOM: 옵션별 BOM 필터링 (2026-03-19)
+-- ===================================================================
+ALTER TABLE light_sync.bom_headers ADD COLUMN option_schema TEXT;
+ALTER TABLE light_sync.bom_items ADD COLUMN option_filter TEXT;

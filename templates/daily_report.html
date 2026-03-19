@@ -1,110 +1,302 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
 {% block content %}
-<div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <h4 class="mb-0">일일업무보고</h4>
-        <div class="d-flex gap-2 align-items-center">
-            <a href="{{ url_for('daily_report.daily_report_view', date=prev_date) }}" class="btn btn-sm btn-outline-secondary">&laquo;</a>
-            <input type="date" id="dateSelector" class="form-control form-control-sm" style="width:160px"
-                   value="{{ target_date.isoformat() }}"
+
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+    .dr { font-family: 'DM Sans', sans-serif; color: #0f172a; }
+    .dr .mono { font-family: 'JetBrains Mono', monospace; }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+    .a-in { animation: fadeUp .45s cubic-bezier(.4,0,.2,1) both; }
+
+    /* Hero */
+    .dr-hero {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+        border-radius: 1rem;
+        padding: 1.3rem 1.8rem;
+        position: relative;
+        overflow: hidden;
+        margin-bottom: 1rem;
+    }
+    .dr-hero::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -5%;
+        width: 400px;
+        height: 400px;
+        background: radial-gradient(circle, rgba(245,158,11,.1) 0%, transparent 65%);
+        pointer-events: none;
+    }
+    .dr-hero h2 { color: #f8fafc; font-size: 1.35rem; font-weight: 800; letter-spacing: -.03em; margin: 0; }
+    .dr-hero .sub { color: #94a3b8; font-size: .8rem; margin-top: .2rem; }
+    .dr-hero .eyebrow {
+        display: inline-flex; align-items: center; gap: .35rem;
+        padding: .18rem .5rem; border-radius: 999px;
+        background: rgba(245,158,11,.15); color: #fbbf24;
+        font-size: .62rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+        margin-bottom: .35rem;
+    }
+
+    /* Date nav */
+    .date-nav {
+        display: flex;
+        align-items: center;
+        gap: .35rem;
+    }
+    .date-nav .btn {
+        background: rgba(255,255,255,.08);
+        color: #cbd5e1;
+        border: 1px solid rgba(255,255,255,.1);
+        font-size: .8rem; font-weight: 600;
+        padding: .25rem .5rem;
+        border-radius: .4rem;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: all .15s;
+    }
+    .date-nav .btn:hover { background: rgba(255,255,255,.14); color: #fff; }
+    .date-nav input[type="date"] {
+        background: rgba(255,255,255,.06);
+        color: #f8fafc;
+        border: 1px solid rgba(255,255,255,.12);
+        font-size: .8rem; font-weight: 600;
+        padding: .25rem .5rem;
+        border-radius: .4rem;
+        width: 150px;
+    }
+    .date-nav .wd-badge {
+        font-size: .7rem; font-weight: 700;
+        padding: .2rem .5rem; border-radius: .35rem;
+        background: rgba(255,255,255,.1); color: #f8fafc;
+        white-space: nowrap;
+    }
+
+    /* Dept card */
+    .dept-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: .75rem;
+        overflow: hidden;
+        margin-bottom: .75rem;
+        transition: all .2s;
+    }
+    .dept-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.04); }
+    .dept-card.is-mine { border-color: #2563eb; }
+    .dept-head {
+        padding: .6rem 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #f1f5f9;
+        background: #fafbfc;
+    }
+    .dept-card.is-mine .dept-head {
+        background: linear-gradient(135deg, #1e40af, #2563eb);
+        border-bottom-color: transparent;
+    }
+    .dept-card.is-mine .dept-head * { color: #fff !important; }
+    .dept-name { font-size: .88rem; font-weight: 800; color: #0f172a; }
+    .dept-badge {
+        font-size: .65rem; font-weight: 700;
+        padding: .12rem .4rem; border-radius: .3rem;
+        white-space: nowrap;
+    }
+    .dept-badge.auto { background: #dbeafe; color: #1e40af; }
+    .dept-badge.manual { background: #fef3c7; color: #92400e; }
+    .dept-card.is-mine .dept-badge.auto { background: rgba(255,255,255,.2); color: #fff; }
+    .dept-card.is-mine .dept-badge.manual { background: rgba(255,255,255,.15); color: #fff; }
+
+    .dept-body { padding: .85rem 1rem; }
+
+    /* Item list */
+    .item-list { list-style: none; padding: 0; margin: 0; }
+    .item-list li {
+        font-size: .82rem;
+        color: #334155;
+        padding: .3rem 0;
+        border-bottom: 1px solid #f8fafc;
+        display: flex;
+        gap: .4rem;
+    }
+    .item-list li:last-child { border-bottom: none; }
+    .item-num {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: .72rem;
+        font-weight: 600;
+        color: #94a3b8;
+        min-width: 1.5rem;
+    }
+    .item-section-label {
+        font-size: .7rem;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        margin-bottom: .3rem;
+        margin-top: .5rem;
+    }
+
+    /* KakaoTalk preview */
+    .kakao-preview {
+        background: #fef9c3;
+        border: 1px solid #eab308;
+        border-radius: .6rem;
+        padding: .75rem;
+        font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+        font-size: .82rem;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-height: 80px;
+        color: #1c1c1e;
+    }
+    .kakao-preview.empty {
+        background: #f8fafc;
+        border-color: #e2e8f0;
+        color: #94a3b8;
+        text-align: center;
+        padding-top: 2rem;
+    }
+
+    /* Copy button */
+    .copy-btn {
+        font-size: .72rem; font-weight: 700;
+        padding: .25rem .6rem; border-radius: .4rem;
+        background: #16a34a; color: #fff; border: none;
+        white-space: nowrap; cursor: pointer; transition: all .15s;
+    }
+    .copy-btn:hover { background: #15803d; transform: translateY(-1px); }
+    .dept-card.is-mine .copy-btn { background: rgba(255,255,255,.2); color: #fff; border: 1px solid rgba(255,255,255,.3); }
+
+    /* Form */
+    .dr-form label { font-size: .68rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+    .dr-form .form-control { font-size: .82rem; }
+
+    @media (max-width: 767.98px) {
+        .dr-hero { padding: 1rem; border-radius: .75rem; }
+        .dr-hero h2 { font-size: 1.1rem; }
+    }
+</style>
+
+<div class="dr">
+
+{# ═══ Hero ═══ #}
+<div class="dr-hero a-in">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="eyebrow">Daily Report</div>
+            <h2>일일업무보고</h2>
+            <div class="sub">ERP 자동수집 + 수동추가 → 카카오톡 복사</div>
+        </div>
+        <div class="date-nav">
+            <a href="{{ url_for('daily_report.daily_report_view', date=prev_date) }}" class="btn">&laquo;</a>
+            <input type="date" value="{{ target_date.isoformat() }}"
                    onchange="location.href='{{ url_for('daily_report.daily_report_view') }}?date='+this.value">
-            <a href="{{ url_for('daily_report.daily_report_view', date=next_date) }}" class="btn btn-sm btn-outline-secondary">&raquo;</a>
-            <span class="badge bg-dark">{{ weekday_kr }}</span>
+            <a href="{{ url_for('daily_report.daily_report_view', date=next_date) }}" class="btn">&raquo;</a>
+            <span class="wd-badge">{{ weekday_kr }}</span>
         </div>
     </div>
-
-    {% for dept in dept_reports %}
-    <div class="card mb-4 {{ 'border-primary' if dept.is_my_dept else '' }}">
-        <div class="card-header d-flex justify-content-between align-items-center {{ 'bg-primary text-white' if dept.is_my_dept else '' }}">
-            <div>
-                <strong>{{ dept.department }}</strong>
-                {% if dept.auto_items %}
-                <span class="badge bg-info ms-1">자동 {{ dept.auto_items|length }}건</span>
-                {% endif %}
-                {% if dept.manual_items %}
-                <span class="badge bg-warning text-dark ms-1">수동 {{ dept.manual_items|length }}건</span>
-                {% endif %}
-            </div>
-            <button class="btn btn-sm {{ 'btn-light' if dept.is_my_dept else 'btn-outline-success' }}"
-                    onclick="copyDeptReport('{{ dept.department }}')">카톡 복사</button>
-        </div>
-        <div class="card-body">
-            <div class="row">
-                <!-- 왼쪽: 자동수집 + 수동추가 -->
-                <div class="col-lg-7">
-                    {% if dept.auto_items %}
-                    <h6 class="text-info">ERP 자동 수집</h6>
-                    <ol class="mb-3" style="font-size:0.9rem">
-                        {% for item in dept.auto_items %}
-                        <li>{{ item }}</li>
-                        {% endfor %}
-                    </ol>
-                    {% endif %}
-
-                    {% if dept.is_my_dept %}
-                    <form method="POST" action="{{ url_for('daily_report.daily_report_save') }}">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="report_date" value="{{ target_date.isoformat() }}">
-                        <input type="hidden" name="department" value="{{ dept.department }}">
-
-                        <div class="row mb-2">
-                            <div class="col-4">
-                                <label class="form-label small fw-bold">총 인원</label>
-                                <input type="number" name="headcount_total" class="form-control form-control-sm"
-                                       value="{{ dept.headcount_total }}" min="0">
-                            </div>
-                            <div class="col-4">
-                                <label class="form-label small fw-bold">재실</label>
-                                <input type="number" name="headcount_present" class="form-control form-control-sm"
-                                       value="{{ dept.headcount_present }}" min="0">
-                            </div>
-                            <div class="col-4">
-                                <label class="form-label small fw-bold">부재 사유</label>
-                                <input type="text" name="headcount_absence_info" class="form-control form-control-sm"
-                                       value="{{ dept.headcount_absence_info }}">
-                            </div>
-                        </div>
-
-                        <div class="mb-2">
-                            <label class="form-label small fw-bold">수동 추가 항목 <small class="text-muted">(한 줄에 한 항목)</small></label>
-                            <textarea name="manual_items" class="form-control form-control-sm" rows="5">{% for item in dept.manual_items %}{{ item }}{% if not loop.last %}
-{% endif %}{% endfor %}</textarea>
-                        </div>
-
-                        <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-sm btn-primary">저장</button>
-                        </div>
-                    </form>
-                    {% else %}
-                        {% if dept.manual_items %}
-                        <h6 class="text-warning">수동 추가</h6>
-                        <ol start="{{ dept.auto_items|length + 1 }}" style="font-size:0.9rem">
-                            {% for item in dept.manual_items %}
-                            <li>{{ item }}</li>
-                            {% endfor %}
-                        </ol>
-                        {% endif %}
-                    {% endif %}
-                </div>
-
-                <!-- 오른쪽: 카톡 미리보기 -->
-                <div class="col-lg-5">
-                    <pre id="preview-{{ loop.index }}" class="mb-0"
-                         style="white-space:pre-wrap; font-family:'Malgun Gothic',sans-serif; font-size:0.88rem; background:#fef9c3; padding:15px; border-radius:8px; border:1px solid #eab308; min-height:100px;"></pre>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endfor %}
-
-    {% if dept_reports|length > 1 %}
-    <div class="text-center mb-4">
-        <button class="btn btn-success" onclick="copyAllReports()">전체 부서 한번에 복사</button>
-    </div>
-    {% endif %}
 </div>
 
-<!-- 토스트 -->
+{# ═══ Department Cards ═══ #}
+{% for dept in dept_reports %}
+<div class="dept-card {{ 'is-mine' if dept.is_my_dept }} a-in" style="animation-delay:{{ 0.05 + loop.index0 * 0.05 }}s">
+    <div class="dept-head">
+        <div class="d-flex align-items-center gap-2">
+            <span class="dept-name">{{ dept.department }}</span>
+            {% if dept.auto_items %}
+            <span class="dept-badge auto">자동 {{ dept.auto_items|length }}</span>
+            {% endif %}
+            {% if dept.manual_items %}
+            <span class="dept-badge manual">수동 {{ dept.manual_items|length }}</span>
+            {% endif %}
+        </div>
+        <button class="copy-btn" onclick="copyDeptReport('{{ dept.department }}')">카톡 복사</button>
+    </div>
+    <div class="dept-body">
+        <div class="row g-3">
+            <div class="col-lg-7">
+                {% if dept.is_my_dept %}
+                <form method="POST" action="{{ url_for('daily_report.daily_report_save') }}" class="dr-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="report_date" value="{{ target_date.isoformat() }}">
+                    <input type="hidden" name="department" value="{{ dept.department }}">
+
+                    {% if dept.auto_items %}
+                    <div class="mb-2">
+                        <label>
+                            ERP 자동 수집
+                            <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#94a3b8;">(수정 가능, 한 줄에 한 항목)</span>
+                            {% if dept.auto_modified %}<span style="font-weight:400;color:#f59e0b;"> · 수정됨</span>{% endif %}
+                        </label>
+                        <textarea name="auto_items" class="form-control form-control-sm" rows="{{ [dept.auto_items|length + 1, 3]|max }}" style="font-size:.82rem;">{% for item in dept.auto_items %}{{ item }}{% if not loop.last %}
+{% endif %}{% endfor %}</textarea>
+                    </div>
+                    {% endif %}
+
+                    <div class="row g-2 mb-2">
+                        <div class="col-4">
+                            <label>총 인원</label>
+                            <input type="number" name="headcount_total" class="form-control form-control-sm"
+                                   value="{{ dept.headcount_total }}" min="0">
+                        </div>
+                        <div class="col-4">
+                            <label>재실</label>
+                            <input type="number" name="headcount_present" class="form-control form-control-sm"
+                                   value="{{ dept.headcount_present }}" min="0">
+                        </div>
+                        <div class="col-4">
+                            <label>부재 사유</label>
+                            <input type="text" name="headcount_absence_info" class="form-control form-control-sm"
+                                   value="{{ dept.headcount_absence_info }}">
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label>수동 추가 항목 <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#94a3b8;">(한 줄에 한 항목)</span></label>
+                        <textarea name="manual_items" class="form-control form-control-sm" rows="4">{% for item in dept.manual_items %}{{ item }}{% if not loop.last %}
+{% endif %}{% endfor %}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary" style="font-size:.75rem;font-weight:700;white-space:nowrap;">저장</button>
+                </form>
+                {% else %}
+                    {% if dept.auto_items %}
+                    <div class="item-section-label">ERP 자동 수집</div>
+                    <ul class="item-list">
+                        {% for item in dept.auto_items %}
+                        <li><span class="item-num">{{ loop.index }}.</span> {{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% if dept.manual_items %}
+                    <div class="item-section-label">수동 추가</div>
+                    <ul class="item-list">
+                        {% for item in dept.manual_items %}
+                        <li><span class="item-num">{{ dept.auto_items|length + loop.index }}.</span> {{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                {% endif %}
+            </div>
+            <div class="col-lg-5">
+                <div class="item-section-label">카카오톡 미리보기</div>
+                <pre id="preview-{{ loop.index }}" class="kakao-preview"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+{% if dept_reports|length > 1 %}
+<div class="text-center mb-4 a-in" style="animation-delay:.4s">
+    <button class="btn btn-success fw-bold" style="font-size:.82rem;white-space:nowrap;" onclick="copyAllReports()">전체 부서 한번에 복사</button>
+</div>
+{% endif %}
+
+</div>
+
+{# Toast #}
 <div class="position-fixed bottom-0 end-0 p-3" style="z-index:1080">
     <div id="copyToast" class="toast align-items-center text-bg-success border-0" role="alert">
         <div class="d-flex">
@@ -136,15 +328,13 @@ function buildText(dept, allItems) {
     return lines.join('\n');
 }
 
-// 미리보기 초기화
 deptData.forEach(function(dept, idx) {
     var el = document.getElementById('preview-' + (idx+1));
     if (!el) return;
     var allItems = dept.auto_items.concat(dept.manual_items);
     if (allItems.length === 0) {
         el.textContent = '(업무 내역 없음)';
-        el.style.background = '#f1f5f9';
-        el.style.borderColor = '#cbd5e1';
+        el.classList.add('empty');
     } else {
         el.textContent = buildText(dept, allItems);
     }
@@ -160,12 +350,10 @@ function copyDeptReport(department) {
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (d.ok) {
-                navigator.clipboard.writeText(d.text).then(function() {
-                    showToast(department + ' 복사 완료!');
-                });
+                navigator.clipboard.writeText(d.text).then(function() { showToast(department + ' 복사 완료!'); });
             } else { showToast(d.error || '복사 실패'); }
         })
-        .catch(function() { showToast('네트워크 오류가 발생했습니다.'); });
+        .catch(function() { showToast('네트워크 오류'); });
 }
 
 function copyAllReports() {
@@ -173,46 +361,37 @@ function copyAllReports() {
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (d.ok) {
-                navigator.clipboard.writeText(d.text).then(function() {
-                    showToast('전체 보고서 복사 완료!');
-                });
+                navigator.clipboard.writeText(d.text).then(function() { showToast('전체 보고서 복사 완료!'); });
             } else { showToast(d.error || '데이터 없음'); }
         })
-        .catch(function() { showToast('네트워크 오류가 발생했습니다.'); });
+        .catch(function() { showToast('네트워크 오류'); });
 }
 
-// 실시간 미리보기: 수동 항목/기본사항 입력 시 오른쪽 즉시 반영
 document.querySelectorAll('textarea[name="manual_items"]').forEach(function(ta) {
     var form = ta.closest('form');
     var deptName = form.querySelector('[name="department"]').value;
     var idx = deptData.findIndex(function(d) { return d.department === deptName; });
     if (idx < 0) return;
-
     function updatePreview() {
         var dept = deptData[idx];
         var manualLines = ta.value.split('\n').filter(function(l) { return l.trim(); });
         var allItems = dept.auto_items.concat(manualLines);
-
         var updated = {
             department: dept.department,
             headcount_total: parseInt(form.querySelector('[name="headcount_total"]').value) || 0,
             headcount_present: parseInt(form.querySelector('[name="headcount_present"]').value) || 0,
             headcount_absence_info: form.querySelector('[name="headcount_absence_info"]').value || '',
         };
-
         var el = document.getElementById('preview-' + (idx+1));
         if (!el) return;
         if (allItems.length > 0) {
             el.textContent = buildText(updated, allItems);
-            el.style.background = '#fef9c3';
-            el.style.borderColor = '#eab308';
+            el.classList.remove('empty');
         } else {
             el.textContent = '(업무 내역 없음)';
-            el.style.background = '#f1f5f9';
-            el.style.borderColor = '#cbd5e1';
+            el.classList.add('empty');
         }
     }
-
     ta.addEventListener('input', updatePreview);
     form.querySelector('[name="headcount_total"]').addEventListener('input', updatePreview);
     form.querySelector('[name="headcount_present"]').addEventListener('input', updatePreview);

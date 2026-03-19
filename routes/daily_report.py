@@ -8,7 +8,7 @@ from modules.db_context import get_db
 from modules.models import (
     DailyReport, User, HistoryLog, Project, Contract, ContractItem,
     Delivery, MaterialOrder, ProductionProcess, ProductionDailyLog,
-    WarrantyCase,
+    WarrantyCase, PurchaseOrder, Receiving, StockAudit, StockMovement,
 )
 
 daily_report_bp = Blueprint('daily_report', __name__)
@@ -119,18 +119,71 @@ def _collect_auto_items(db, target_date):
             f"{site} 하자/AS 접수 ({c.defect_type or '기타'})"
         )
 
-    # ─── 7. 히스토리 로그 (system 이벤트만, 댓글/답글 제외) ───
+    # ─── 7. 발주서 생성/발송 (현장별 그룹핑, 3건 이상 압축) ───
+    po_by_site = {}
+    for po in db.query(PurchaseOrder).filter(
+        PurchaseOrder.created_at >= day_start, PurchaseOrder.created_at <= day_end,
+    ).all():
+        site = po.project.temp_name if po.project else '(현장미지정)'
+        po_by_site.setdefault(site, []).append(po)
+    for site, pos in po_by_site.items():
+        if len(pos) <= 2:
+            for po in pos:
+                vendor_name = po.vendor.name if po.vendor else '(거래처미상)'
+                dept_items.setdefault('경영관리부', []).append(
+                    f"{site} 발주서 {po.po_no} ({vendor_name})")
+        else:
+            total_amt = sum(int(po.total_amount or 0) for po in pos)
+            first_no = pos[0].po_no
+            amt_str = f", 합계 {total_amt:,}원" if total_amt else ''
+            dept_items.setdefault('경영관리부', []).append(
+                f"{site} 발주서 {first_no} 외 {len(pos)-1}건 생성{amt_str}")
+
+    # ─── 8. 입고 처리 (현장별 그룹핑) ───
+    rcv_by_site = {}
+    for rcv in db.query(Receiving).filter(
+        Receiving.created_at >= day_start, Receiving.created_at <= day_end,
+    ).all():
+        site = '(현장미지정)'
+        if rcv.purchase_order and rcv.purchase_order.project:
+            site = rcv.purchase_order.project.temp_name
+        rcv_by_site.setdefault(site, []).append(rcv)
+    for site, rcvs in rcv_by_site.items():
+        if len(rcvs) <= 2:
+            for rcv in rcvs:
+                vendor_name = rcv.vendor.name if rcv.vendor else '(거래처미상)'
+                dept_items.setdefault('경영관리부', []).append(
+                    f"{site} 입고 {rcv.rcv_no} ({vendor_name})")
+        else:
+            dept_items.setdefault('경영관리부', []).append(
+                f"{site} 입고 {rcvs[0].rcv_no} 외 {len(rcvs)-1}건 처리")
+
+    # ─── 9. 재고실사 확정 ───
+    for audit in db.query(StockAudit).filter(
+        StockAudit.confirmed_at >= day_start, StockAudit.confirmed_at <= day_end,
+        StockAudit.status == '완료',
+    ).all():
+        dept_items.setdefault('경영관리부', []).append(
+            f"재고실사 {audit.audit_no} 확정 ({audit.total_items or 0}개 품목)"
+        )
+
+    # ─── 10. 히스토리 로그 (system 이벤트만, 댓글/답글 제외) ───
+    # 발주서/입고/실사는 7~9에서 이미 수집하므로 중복 제거
+    _skip_keywords = {'발주서를 생성', '일괄발주서', '입고', '재고실사'}
     for log in db.query(HistoryLog).filter(
         HistoryLog.created_at >= day_start, HistoryLog.created_at <= day_end,
         HistoryLog.log_kind == 'system',
     ).options(joinedload(HistoryLog.project)).all():
+        content = log.content or ''
+        if any(kw in content for kw in _skip_keywords):
+            continue
         dept = SCOPE_TO_DEPT.get(log.log_scope)
         if dept is None:
             dept = user_dept_map.get(log.user_name)
         if not dept:
             continue
         site = log.project.temp_name if log.project else ''
-        item = f"{site} {log.content}" if site else log.content
+        item = f"{site} {log.content}" if site else content
         if len(item) > 80:
             item = item[:77] + '...'
         dept_items.setdefault(dept, []).append(item)
@@ -169,6 +222,7 @@ def daily_report_view():
                 'headcount_present': r.headcount_present,
                 'headcount_absence_info': r.headcount_absence_info or '',
                 'manual_items': r.items,
+                'auto_items': r.auto_items,  # None이면 실시간, 리스트면 수정된 버전
             }
 
         all_depts = sorted(set(list(auto_items.keys()) + list(saved_map.keys())))
@@ -183,18 +237,23 @@ def daily_report_view():
 
         dept_reports = []
         for dept in all_depts:
-            auto = auto_items.get(dept, [])
+            live_auto = auto_items.get(dept, [])
             saved = saved_map.get(dept, {})
             hc = dept_headcounts.get(dept, 0)
+            # 저장된 auto_items가 있으면 그걸 사용 (수정된 버전), 없으면 실시간 수집
+            saved_auto = saved.get('auto_items')
+            auto = saved_auto if saved_auto is not None else live_auto
             dept_reports.append({
                 'department': dept,
                 'auto_items': auto,
+                'live_auto_items': live_auto,  # 실시간 수집 원본 (새로고침용)
                 'manual_items': saved.get('manual_items', []),
                 'headcount_total': saved.get('headcount_total', hc),
                 'headcount_present': saved.get('headcount_present', hc),
                 'headcount_absence_info': saved.get('headcount_absence_info', ''),
                 'is_my_dept': dept == user_group,
                 'is_saved': dept in saved_map,
+                'auto_modified': saved_auto is not None,
             })
 
         if user_group and not any(d['department'] == user_group for d in dept_reports):
@@ -256,6 +315,9 @@ def daily_report_save():
     manual_raw = request.form.get('manual_items', '').strip()
     manual_items = [line.strip() for line in manual_raw.splitlines() if line.strip()]
 
+    auto_raw = request.form.get('auto_items', '').strip()
+    auto_items_edited = [line.strip() for line in auto_raw.splitlines() if line.strip()] if auto_raw else None
+
     with get_db() as db:
         existing = db.query(DailyReport).filter(
             DailyReport.report_date == target_date,
@@ -269,6 +331,8 @@ def daily_report_save():
             existing.headcount_present = headcount_present
             existing.headcount_absence_info = headcount_absence_info
             existing.items = manual_items
+            if auto_items_edited is not None:
+                existing.auto_items = auto_items_edited
         else:
             report = DailyReport(
                 report_date=target_date,
@@ -280,6 +344,8 @@ def daily_report_save():
                 headcount_absence_info=headcount_absence_info,
             )
             report.items = manual_items
+            if auto_items_edited is not None:
+                report.auto_items = auto_items_edited
             db.add(report)
 
         db.commit()

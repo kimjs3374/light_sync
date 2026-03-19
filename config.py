@@ -19,6 +19,7 @@ MENU_REGISTRY = OrderedDict([
     ("project",        {"label": "설계관리",   "group": "영업부", "endpoint": "project.project_list"}),
     ("contract",       {"label": "계약관리",   "group": "영업부", "endpoint": "project.contract_list"}),
     ("sales",          {"label": "영업관리",   "group": "영업부", "endpoint": "sales.sales_list"}),
+    ("quotation",      {"label": "견적관리",   "group": "영업부", "endpoint": "quotation.quotation_list"}),
     ("delivery",       {"label": "납품관리",   "group": "영업부", "endpoint": "delivery.delivery_management"}),
     # --- 관리부 ---
     ("item",           {"label": "품목관리",   "group": "관리부", "endpoint": "item.item_list"}),
@@ -41,12 +42,22 @@ MENU_REGISTRY = OrderedDict([
 
 COMMON_MENU_KEYS = {"dashboard", "overview", "daily_report"}
 
+# 사이드바 그룹 아이콘 매핑
+GROUP_ICONS = {
+    "공통":   "📊",
+    "영업부": "💼",
+    "관리부": "📋",
+    "공유":   "🔗",
+    "생산부": "🏭",
+    "시스템": "⚙️",
+}
+
 # 부서별 기본 메뉴 (GroupPermission 초기값 세팅용)
 DEFAULT_GROUP_MENUS = {
-    "영업부": "project,contract,sales,delivery,procurement,procurement_summary,warranty",
+    "영업부": "project,contract,sales,quotation,delivery,procurement,procurement_summary,warranty",
     "관리부": "item,material,vendor,purchase_order,receiving,bom,financial,inventory,procurement,procurement_summary,warranty",
     "생산부": "production,warranty",
-    "임원진": "project,contract,sales,delivery,item,material,vendor,purchase_order,receiving,bom,financial,inventory,procurement,procurement_summary,warranty,production",
+    "임원진": "project,contract,sales,quotation,delivery,item,material,vendor,purchase_order,receiving,bom,financial,inventory,procurement,procurement_summary,warranty,production",
 }
 
 

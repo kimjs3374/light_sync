@@ -26,18 +26,24 @@
     }
 </style>
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
-    <h2 class="text-primary fw-bold">🏭 생산관리 리스트</h2>
-    <div class="prod-header-actions">
-        <form method="POST" class="m-0">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <input type="hidden" name="action" value="sync_production_processes">
-            <button class="btn btn-primary fw-bold">생산공정 자동생성/동기화</button>
-        </form>
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Production Management</div>
+            <h2>생산관리</h2>
+            <div class="hero-sub">현장별 생산 공정 진행 상태를 추적합니다</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <form method="POST" class="m-0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="action" value="sync_production_processes">
+                <button class="btn btn-primary fw-bold">생산공정 자동생성/동기화</button>
+            </form>
+        </div>
     </div>
 </div>
 
-<div class="row g-3 mb-3">
+<div class="row g-3 mb-3 mg-fade" style="animation-delay:.05s">
     <div class="col-md-2 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">전체 현장</small><div class="fw-bold fs-5">{{ stats.total_projects }}</div></div></div></div>
     <div class="col-md-2 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">조회 현장</small><div class="fw-bold fs-5">{{ stats.filtered_projects }}</div></div></div></div>
     <div class="col-md-2 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">전체 품목</small><div class="fw-bold fs-5">{{ stats.total_items }}</div></div></div></div>

@@ -23,12 +23,7 @@
     }
 </style>
 <div class="history-summary-bar mb-3" id="historySummaryBar"
-     {% if history_panel_target %}
-     data-bs-toggle="offcanvas" data-bs-target="{{ history_panel_target }}"
-     {% endif %}
-     {% if history_panel_js_action %}
-     onclick="{{ history_panel_js_action }}"
-     {% endif %}>
+     onclick="openHistoryFab()">
     <div class="d-flex align-items-center gap-2">
         <span class="badge bg-dark" style="white-space:nowrap;">히스토리</span>
         {% if _latest %}
@@ -43,3 +38,4 @@
         <span class="badge bg-outline-dark border text-dark" style="white-space:nowrap; font-size:.72rem;">열기</span>
     </div>
 </div>
+{# FAB은 base.html에서 전역 렌더 — fab_offcanvas_target 변수로 연동 #}

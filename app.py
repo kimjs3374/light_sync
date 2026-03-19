@@ -7,7 +7,7 @@ from flask import Flask, redirect, url_for, request, session, render_template
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from config import ProductionConfig, DevelopmentConfig, MENU_REGISTRY, COMMON_MENU_KEYS
+from config import ProductionConfig, DevelopmentConfig, MENU_REGISTRY, COMMON_MENU_KEYS, GROUP_ICONS
 from modules.models import init_db
 from routes.auth import auth_bp
 from routes.dashboard import dashboard_bp
@@ -35,6 +35,7 @@ from routes.bom import bom_bp
 from routes.item import item_bp
 from routes.financial import financial_bp
 from routes.inventory import inventory_bp
+from routes.quotation import quotation_bp
 from modules.pagination import pagination_query
 
 # =====================================================================
@@ -137,6 +138,7 @@ app.register_blueprint(bom_bp)
 app.register_blueprint(item_bp)
 app.register_blueprint(financial_bp)
 app.register_blueprint(inventory_bp)
+app.register_blueprint(quotation_bp)
 app.register_blueprint(api_bp)
 
 # NAS 동기화 API는 외부(NAS cron)에서 호출하므로 CSRF 면제
@@ -171,6 +173,7 @@ def inject_sidebar_menus():
 
     return {
         "sidebar_menu_groups": menu_groups,
+        "sidebar_group_icons": GROUP_ICONS,
         "is_admin": is_admin,
     }
 

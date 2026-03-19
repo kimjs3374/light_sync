@@ -9,24 +9,26 @@
 .prod-tbl .text-end { text-align:right; }
 
 @media print {
-    @page { size: A4 landscape; margin: 8mm; }
+    @page { size: A4 landscape; margin: 5mm; }
     body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
-    .sidebar, .mobile-menu-btn, .sidebar-backdrop, .no-print, .alert { display:none !important; }
-    .main-content { margin-left:0 !important; padding:0 !important; }
-    .card { box-shadow:none !important; border:1px solid #dee2e6 !important; margin-bottom:3px !important; }
-    .card-body { padding:4px 6px !important; }
+    .sidebar, .sidebar-backdrop, .mobile-menu-btn, .no-print, .alert,
+    .history-fab, .page-hero, .pagination { display:none !important; }
+    .main-content { margin-left:0 !important; padding:2px !important; overflow:visible !important; }
     .print-title { display:block !important; }
+    .card { box-shadow:none !important; border:1px solid #dee2e6 !important; margin-bottom:3px !important; overflow:visible !important; }
+    .card-body { padding:3px 4px !important; overflow:visible !important; }
     canvas { display:none !important; }
-    .chart-print-img { display:block !important; max-height:190px; width:auto; margin:0 auto; }
+    .chart-print-img { display:block !important; max-height:160px; width:auto; margin:0 auto; }
     .row { display:flex !important; flex-wrap:wrap !important; }
     .col-lg-5 { flex:0 0 41.666% !important; max-width:41.666% !important; }
     .col-lg-6 { flex:0 0 50% !important; max-width:50% !important; }
     .col-lg-7 { flex:0 0 58.333% !important; max-width:58.333% !important; }
     .col-lg-12 { flex:0 0 100% !important; max-width:100% !important; }
-    .g-2 > * { padding:2px !important; }
+    .g-2 > * { padding:1px !important; }
     .mb-2 { margin-bottom:2px !important; }
-    .prod-tbl { font-size:10px !important; }
-    .prod-tbl th, .prod-tbl td { padding:2px 6px !important; }
+    .table-responsive { overflow:visible !important; width:100% !important; }
+    .prod-tbl { font-size:6.5pt !important; table-layout:auto !important; }
+    .prod-tbl th, .prod-tbl td { padding:1px 2px !important; white-space:nowrap !important; }
     .print-page { break-inside:avoid; }
 }
 @media screen { .print-title { display:none; } .chart-print-img { display:none; } }
@@ -36,19 +38,25 @@
     <h6 class="fw-bold mb-0">📊 매그나텍 조달내역 분석 보고서 {% if sel_year %}({{ sel_year }}년){% else %}(전체){% endif %} <small class="text-muted fw-normal">출력일: {{ current_date }}</small></h6>
 </div>
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3 no-print">
-    <h5 class="text-primary fw-bold mb-0">📊 조달내역 분석 {% if sel_year %}<span class="badge bg-primary">{{ sel_year }}년</span>{% endif %}</h5>
-    <div class="d-flex gap-2 align-items-center">
-        <form class="d-flex align-items-center" method="GET">
-            <select class="form-select form-select-sm" name="year" style="width:auto;" onchange="this.form.submit()">
-                <option value="">전체</option>
-                {% for y in year_options %}
-                <option value="{{ y }}" {% if sel_year == y|string %}selected{% endif %}>{{ y }}</option>
-                {% endfor %}
-            </select>
-        </form>
-        <button class="btn btn-outline-dark btn-sm py-0" onclick="printReport()">🖨️ 인쇄</button>
-        <a href="{{ url_for('procurement.procurement_list') }}" class="btn btn-outline-secondary btn-sm py-0">← 목록</a>
+<div class="page-hero mg-fade no-print">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Procurement Report</div>
+            <h2>조달내역 분석 {% if sel_year %}<span class="badge bg-primary">{{ sel_year }}년</span>{% endif %}</h2>
+            <div class="hero-sub">조달 실적을 분석하고 품목별/연도별 추이를 확인합니다</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <form class="d-flex align-items-center" method="GET">
+                <select class="form-select form-select-sm" name="year" style="width:auto;" onchange="this.form.submit()">
+                    <option value="">전체</option>
+                    {% for y in year_options %}
+                    <option value="{{ y }}" {% if sel_year == y|string %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            <button class="btn btn-outline-dark btn-sm py-0" onclick="printReport()">인쇄</button>
+            <a href="{{ url_for('procurement.procurement_list') }}" class="btn btn-outline-secondary btn-sm py-0">← 목록</a>
+        </div>
     </div>
 </div>
 
@@ -56,7 +64,7 @@
 {# === 품목별 현황 + 수요기관 TOP10 (공통) === #}
 {# ================================================================ #}
 {% set total_amt = products.amounts | sum %}
-<div class="row g-2 mb-2 print-page">
+<div class="row g-2 mb-2 print-page mg-fade" style="animation-delay:.05s">
     <div class="col-lg-6">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body p-2">

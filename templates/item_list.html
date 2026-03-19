@@ -1,17 +1,23 @@
 {% extends 'base.html' %}
 {% block content %}
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
-    <h2 class="text-primary fw-bold mb-0">품목관리</h2>
-    <div style="white-space:nowrap;">
-        <a href="{{ url_for('item.item_export') }}" class="btn btn-success btn-sm">엑셀 다운로드</a>
-        <a href="{{ url_for('item.item_import') }}" class="btn btn-outline-primary btn-sm">엑셀 가져오기</a>
-        <a href="{{ url_for('item.item_create') }}" class="btn btn-primary btn-sm">+ 품목 등록</a>
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Item Management</div>
+            <h2>품목관리</h2>
+            <div class="hero-sub">품목 정보를 등록하고 분류별로 관리합니다</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('item.item_export') }}" class="btn btn-success btn-sm">엑셀 다운로드</a>
+            <a href="{{ url_for('item.item_import') }}" class="btn btn-outline-primary btn-sm">엑셀 가져오기</a>
+            <a href="{{ url_for('item.item_create') }}" class="btn btn-primary btn-sm">+ 품목 등록</a>
+        </div>
     </div>
 </div>
 
 {# --- 검색/필터 --- #}
-<div class="card border-0 shadow-sm mb-2">
+<div class="card border-0 shadow-sm mb-2 mg-fade" style="animation-delay:.05s">
     <div class="card-body py-2">
         <form method="GET" class="row g-2 align-items-end">
             <div class="col-md-4 col-12">
@@ -39,39 +45,37 @@
     </div>
 </div>
 
+<style>
+.item-tbl { width:100%; border-collapse:collapse; font-size:.82rem; }
+.item-tbl th, .item-tbl td { padding:6px 8px; border-bottom:1px solid #e2e8f0; white-space:nowrap; vertical-align:middle; }
+.item-tbl th { background:#f8fafc; font-weight:700; font-size:.72rem; color:#64748b; text-transform:uppercase; letter-spacing:.03em; position:sticky; top:0; z-index:1; }
+.item-tbl tbody tr { cursor:pointer; transition:background .12s, box-shadow .12s; }
+.item-tbl tbody tr:hover { background:#eef2ff; box-shadow:inset 3px 0 0 #2563eb; }
+.item-tbl .ellipsis { max-width:200px; overflow:hidden; text-overflow:ellipsis; }
+.item-tbl .mono { font-family:var(--mg-mono); font-size:.78rem; }
+.item-tbl .text-end { text-align:right; }
+</style>
+
 {# --- 품목 테이블 --- #}
+<div class="d-flex gap-3 mb-2 align-items-center">
+    <small class="text-muted fw-bold">조회 결과: <span class="text-dark">{{ "{:,}".format(total) }}건</span></small>
+</div>
 <div class="card border-0 shadow-sm">
-    <div class="card-header bg-white py-1">
-        <strong class="small">품목 목록</strong>
-        <span class="badge bg-primary ms-1">{{ "{:,}".format(total) }}건</span>
-    </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.8rem; border-color:#dee2e6;">
-                <colgroup>
-                    <col style="width:100px">
-                    <col style="width:22%">
-                    <col style="width:18%">
-                    <col style="width:40px">
-                    <col style="width:70px">
-                    <col style="width:55px">
-                    <col style="width:50px">
-                    <col style="width:50px">
-                    <col style="width:12%">
-                    <col style="width:45px">
-                </colgroup>
+            <table class="item-tbl">
                 <thead>
-                    <tr style="background:#f0f0f0; border-bottom:2px solid #999;">
-                        <th class="py-1 text-center">품번</th>
-                        <th class="py-1 text-center">품명</th>
-                        <th class="py-1 text-center">규격</th>
-                        <th class="py-1 text-center">단위</th>
-                        <th class="py-1 text-center">분류</th>
-                        <th class="py-1 text-center" title="실재고">실재고</th>
-                        <th class="py-1 text-center" title="예약수량">예약</th>
-                        <th class="py-1 text-center" title="가용재고 (실재고 - 예약)">가용</th>
-                        <th class="py-1 text-center">제조사</th>
-                        <th class="py-1 text-center">거래</th>
+                    <tr>
+                        <th style="width:90px">품번</th>
+                        <th style="width:24%">품명</th>
+                        <th style="width:16%">규격</th>
+                        <th style="width:40px">단위</th>
+                        <th style="width:70px">분류</th>
+                        <th class="text-end" style="width:55px">실재고</th>
+                        <th class="text-end" style="width:50px">예약</th>
+                        <th class="text-end" style="width:50px">가용</th>
+                        <th style="width:12%">제조사</th>
+                        <th style="width:45px">거래</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -79,31 +83,29 @@
                     {% set stock = (item.stock_qty or 0)|round(0)|int %}
                     {% set reserved = (item.reserved_qty or 0)|round(0)|int %}
                     {% set available = stock - reserved %}
-                    <tr style="cursor:pointer; border-bottom:1px solid #eee;" onclick="location.href='{{ url_for('item.item_detail', item_id=item.id) }}'">
-                        <td class="py-0" style="border-right:1px solid #ccc;"><code style="font-size:0.75rem;">{{ item.icube_item_cd or '-' }}</code></td>
-                        <td class="py-0 fw-bold" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_name }}">{{ item.item_name }}</td>
-                        <td class="py-0" style="overflow:hidden;text-overflow:ellipsis; color:#808080;" title="{{ item.item_spec or '' }}">{{ item.item_spec or '-' }}</td>
-                        <td class="py-0 text-center">{{ item.unit or '-' }}</td>
-                        <td class="py-0 text-center">
-                            {% if item.category %}
-                            <span style="font-size:0.7rem; color:#0066cc;">{{ item.category }}</span>
-                            {% else %}-{% endif %}
+                    <tr onclick="location.href='{{ url_for('item.item_detail', item_id=item.id) }}'">
+                        <td><span class="mono" style="color:#64748b;">{{ item.icube_item_cd or '-' }}</span></td>
+                        <td class="ellipsis fw-bold" title="{{ item.item_name }}">{{ item.item_name }}</td>
+                        <td class="ellipsis" style="color:#64748b;" title="{{ item.item_spec or '' }}">{{ item.item_spec or '-' }}</td>
+                        <td style="text-align:center;color:#94a3b8;">{{ item.unit or '-' }}</td>
+                        <td style="text-align:center;">
+                            {% if item.category %}<span style="font-size:.72rem;color:#2563eb;font-weight:600;">{{ item.category }}</span>{% else %}-{% endif %}
                         </td>
-                        <td class="py-0 text-end">{% if stock > 0 %}<strong>{{ stock }}</strong>{% else %}<span class="text-muted">0</span>{% endif %}</td>
-                        <td class="py-0 text-end">{% if reserved > 0 %}{{ reserved }}{% else %}<span class="text-muted">0</span>{% endif %}</td>
-                        <td class="py-0 text-end">
-                            {% if available > 0 %}<span class="text-success">{{ available }}</span>
-                            {% elif available < 0 %}<span class="text-danger">{{ available }}</span>
-                            {% else %}<span class="text-muted">0</span>{% endif %}
+                        <td class="text-end mono">{% if stock > 0 %}<b>{{ stock }}</b>{% else %}<span style="color:#cbd5e1;">0</span>{% endif %}</td>
+                        <td class="text-end mono" style="color:#d97706;">{% if reserved > 0 %}{{ reserved }}{% else %}<span style="color:#cbd5e1;">0</span>{% endif %}</td>
+                        <td class="text-end mono">
+                            {% if available > 0 %}<span style="color:#16a34a;font-weight:700;">{{ available }}</span>
+                            {% elif available < 0 %}<span style="color:#dc2626;font-weight:700;">{{ available }}</span>
+                            {% else %}<span style="color:#cbd5e1;">0</span>{% endif %}
                         </td>
-                        <td class="py-0" style="overflow:hidden;text-overflow:ellipsis; color:#008000;" title="{{ item.manufacturer or '' }}">{{ item.manufacturer or '-' }}</td>
-                        <td class="py-0 text-center">
+                        <td class="ellipsis" style="color:#16a34a;font-size:.78rem;">{{ item.manufacturer or '-' }}</td>
+                        <td style="text-align:center;font-size:.78rem;">
                             {% set tc = trade_counts.get(item.id, 0) %}
-                            {% if tc > 0 %}{{ tc }}건{% else %}-{% endif %}
+                            {% if tc > 0 %}<span class="mono">{{ tc }}</span>{% else %}<span style="color:#cbd5e1;">-</span>{% endif %}
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="10" class="text-center text-muted py-4">조회된 품목이 없습니다.</td></tr>
+                    <tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:2.5rem;">조회된 품목이 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

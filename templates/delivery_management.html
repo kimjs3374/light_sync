@@ -23,18 +23,24 @@
     }
 </style>
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
-    <h2 class="text-primary fw-bold">🚚 납품관리 리스트</h2>
-    <div class="delivery-header-actions">
-        <form method="POST" class="m-0">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <input type="hidden" name="action" value="sync_deliveries">
-            <button class="btn btn-primary fw-bold">납품 자동동기화</button>
-        </form>
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Delivery Management</div>
+            <h2>납품관리</h2>
+            <div class="hero-sub">현장별 납품 일정과 진행 상태를 관리합니다</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <form method="POST" class="m-0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="action" value="sync_deliveries">
+                <button class="btn btn-primary fw-bold">납품 자동동기화</button>
+            </form>
+        </div>
     </div>
 </div>
 
-<div class="row g-3 mb-3">
+<div class="row g-3 mb-3 mg-fade" style="animation-delay:.05s">
     <div class="col-md-2 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">전체 현장</small><div class="fw-bold fs-5">{{ stats.total_projects }}</div></div></div></div>
     <div class="col-md-2 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">조회 현장</small><div class="fw-bold fs-5">{{ stats.filtered_projects }}</div></div></div></div>
     <div class="col-md-2 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">납품건</small><div class="fw-bold fs-5">{{ stats.total_deliveries }}</div></div></div></div>

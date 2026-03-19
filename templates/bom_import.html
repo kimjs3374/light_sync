@@ -1,11 +1,17 @@
 {% extends 'base.html' %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h2 class="text-primary fw-bold mb-0">BOM 엑셀 가져오기</h2>
-    <div style="white-space:nowrap;">
-        <a href="{{ url_for('bom.bom_export') }}" class="btn btn-success btn-sm">현재 BOM 다운로드</a>
-        <a href="{{ url_for('bom.bom_list') }}" class="btn btn-outline-secondary btn-sm">목록</a>
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">BOM Import</div>
+            <h2>BOM 엑셀 가져오기</h2>
+            <div class="hero-sub">엑셀 파일에서 BOM 데이터를 일괄 가져옵니다</div>
+        </div>
+        <div class="d-flex gap-2" style="white-space:nowrap;">
+            <a href="{{ url_for('bom.bom_export') }}" class="btn btn-outline-light btn-sm">현재 BOM 다운로드</a>
+            <a href="{{ url_for('bom.bom_list') }}" class="btn btn-outline-light btn-sm">목록</a>
+        </div>
     </div>
 </div>
 

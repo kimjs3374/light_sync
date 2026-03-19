@@ -1,8 +1,15 @@
 {% extends 'base.html' %}
 {% block content %}
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
-    <h2 class="text-primary fw-bold">하자보증 정보 등록 - {{ contract.contract_name }}</h2>
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Warranty Register</div>
+            <h2>하자보증 정보 등록</h2>
+            <div class="hero-sub">{{ contract.contract_name }}</div>
+        </div>
+        <a href="{{ url_for('warranty.warranty_list') }}" class="btn btn-outline-light btn-sm">목록으로</a>
+    </div>
 </div>
 
 <!-- 계약/현장 정보 -->

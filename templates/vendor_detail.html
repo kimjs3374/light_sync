@@ -21,20 +21,21 @@
     .nav-tabs .nav-link.active { color: #0f172a; font-weight: 700; border-bottom: 3px solid #0f172a; background: transparent; }
 </style>
 
-{# ─── 헤더 ─── #}
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
-    <div>
-        <div class="d-flex align-items-center gap-2 mb-1">
-            <h2 class="fw-bold mb-0" style="color:#0f172a;">{{ vendor.TR_NM }}</h2>
-            {% if vendor.USE_YN == 'Y' %}
-                <span class="badge-use-lg" style="background:#dcfce7;color:#166534;">사용</span>
-            {% else %}
-                <span class="badge-use-lg" style="background:#f1f5f9;color:#64748b;">미사용</span>
-            {% endif %}
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Vendor Detail</div>
+            <h2>{{ vendor.TR_NM }}
+                {% if vendor.USE_YN == 'Y' %}
+                    <span class="badge-use-lg" style="background:#dcfce7;color:#166534;">사용</span>
+                {% else %}
+                    <span class="badge-use-lg" style="background:#f1f5f9;color:#64748b;">미사용</span>
+                {% endif %}
+            </h2>
+            <div class="hero-sub">거래처코드: {{ vendor.TR_CD }}</div>
         </div>
-        <small class="text-muted" style="font-family:monospace;">{{ vendor.TR_CD }}</small>
+        <a href="{{ url_for('vendor.vendor_list') }}" class="btn btn-outline-light btn-sm">목록</a>
     </div>
-    <a href="{{ url_for('vendor.vendor_list') }}" class="btn btn-outline-secondary btn-sm" style="border-radius:8px;">목록</a>
 </div>
 
 {# ─── 기본정보 카드 ─── #}

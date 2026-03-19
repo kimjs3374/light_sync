@@ -1,12 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>알림센터</h2>
-    <button class="btn btn-sm btn-outline-primary" id="readAllBtn">전체 읽음</button>
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Notifications</div>
+            <h2>알림센터</h2>
+            <div class="hero-sub">시스템 알림과 업무 변경 사항을 확인합니다</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-sm btn-outline-primary" id="readAllBtn">전체 읽음</button>
+        </div>
+    </div>
 </div>
 
 {% if items %}
-<div class="list-group">
+<div class="list-group mg-fade" style="animation-delay:.05s">
     {% for noti in items %}
     <a href="{{ noti.link or '#' }}"
        class="list-group-item list-group-item-action {% if not noti.is_read %}list-group-item-light border-start border-primary border-3{% endif %}"

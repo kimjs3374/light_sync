@@ -23,6 +23,25 @@
 | history-board-ux | 통합히스토리보드 UX + 연락처 재배치 + 매그나텍 연동 | 97% | 2026-03-19 | 4 |
 | delivery-summary | 납품집계 (G2B 조달내역 피벗+차트+엑셀) | 95% | 2026-03-19 | 4 |
 | inventory-management | 재고관리 (대시보드+실사+회전율+BOM재고+변동이력) | 95% | 2026-03-19 | 4 |
+| sidebar-collapse | 접이식 사이드바 + 즐겨찾기 (250px↔60px, 플라이아웃, FOUC방지) | 95% | 2026-03-19 | 4 |
+
+## sidebar-collapse
+
+- **Duration**: 2026-03-19 (1 session)
+- **Iterations**: 0 (first-pass 95%)
+- **Key Result**: 접이식 사이드바(250px↔60px), 그룹 아이콘 플라이아웃, 즐겨찾기 ⭐(최대 8개), FOUC 완전 제거
+- **Modified**: config.py, app.py, templates/base.html
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [sidebar-collapse.plan.md](sidebar-collapse/sidebar-collapse.plan.md) |
+| Design | [sidebar-collapse.design.md](sidebar-collapse/sidebar-collapse.design.md) |
+| Analysis | [sidebar-collapse.analysis.md](sidebar-collapse/sidebar-collapse.analysis.md) |
+| Report | [sidebar-collapse.report.md](sidebar-collapse/sidebar-collapse.report.md) |
+
+---
 
 ## delivery-summary
 

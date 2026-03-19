@@ -1,169 +1,203 @@
 {% extends 'base.html' %}
 {% block content %}
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
-    <div>
-        <h2 class="text-primary fw-bold mb-0">{{ bom.product_code }}</h2>
-        <small class="text-muted">
-            {% if bom.product_category %}<span class="badge bg-light text-dark border me-1">{{ bom.product_category }}</span>{% endif %}
-            {% if bom.certification_no %}인증: {{ bom.certification_no }}{% endif %}
-            (v{{ bom.version }})
-        </small>
-    </div>
-    <div class="d-flex gap-2">
-        <a href="{{ url_for('bom.bom_list') }}" class="btn btn-outline-secondary btn-sm">목록</a>
-        <a href="{{ url_for('bom.material_requirement') }}" class="btn btn-outline-info btn-sm">소요자재 계산</a>
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">BOM Detail</div>
+            <h2 class="mb-0">{{ bom.product_code }}</h2>
+            <div class="hero-sub">
+                {% if bom.product_category %}<span class="badge bg-light text-dark border me-1" style="white-space:nowrap;">{{ bom.product_category }}</span>{% endif %}
+                {% if bom.certification_no %}<span style="white-space:nowrap;">인증: {{ bom.certification_no }}</span>{% endif %}
+                <span style="white-space:nowrap;">(v{{ bom.version }})</span>
+                {% if option_schema %}<span class="badge bg-info ms-1" style="white-space:nowrap;">슈퍼BOM</span>{% endif %}
+            </div>
+        </div>
+        <div class="d-flex gap-2" style="white-space:nowrap;">
+            <a href="{{ url_for('bom.bom_list') }}" class="btn btn-outline-light btn-sm">목록</a>
+            <a href="{{ url_for('bom.material_requirement') }}" class="btn btn-outline-light btn-sm">소요자재</a>
+        </div>
     </div>
 </div>
 
-{# --- 제품 정보 (편집 모드) --- #}
 <form method="POST" action="{{ url_for('bom.bom_edit', bom_id=bom.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+    {# --- 제품 정보 --- #}
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
             <strong>제품 정보</strong>
-            {% if bom.is_active %}
-            <span class="badge bg-success">활성</span>
-            {% else %}
-            <span class="badge bg-secondary">비활성</span>
-            {% endif %}
+            {% if bom.is_active %}<span class="badge bg-success" style="white-space:nowrap;">활성</span>
+            {% else %}<span class="badge bg-secondary" style="white-space:nowrap;">비활성</span>{% endif %}
         </div>
-        <div class="card-body">
-            <div class="row g-3">
+        <div class="card-body py-2">
+            <div class="row g-2">
                 <div class="col-md-3">
-                    <label class="form-label fw-bold">제품코드</label>
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">제품코드</label>
                     <input type="text" class="form-control form-control-sm bg-light" value="{{ bom.product_code }}" readonly>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label fw-bold">제품명</label>
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">제품명</label>
                     <input type="text" name="product_name" class="form-control form-control-sm" value="{{ bom.product_name }}">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-bold">제품군</label>
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">제품군</label>
                     <input type="text" class="form-control form-control-sm bg-light" value="{{ bom.product_category or '' }}" readonly>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-bold">버전</label>
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">버전</label>
                     <input type="text" name="version" class="form-control form-control-sm" value="{{ bom.version }}">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-bold">활성</label>
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">활성</label>
                     <div class="form-check mt-1">
                         <input type="checkbox" name="is_active" class="form-check-input" {{ 'checked' if bom.is_active }}>
-                        <label class="form-check-label">사용</label>
+                        <label class="form-check-label" style="font-size:.82rem;">사용</label>
                     </div>
                 </div>
                 <div class="col-12">
-                    <label class="form-label fw-bold">비고</label>
-                    <textarea name="note" class="form-control form-control-sm" rows="2">{{ bom.note or '' }}</textarea>
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">비고</label>
+                    <textarea name="note" class="form-control form-control-sm" rows="1">{{ bom.note or '' }}</textarea>
                 </div>
             </div>
         </div>
     </div>
 
-    {# --- BOM 품목 --- #}
+    {# --- 슈퍼BOM 옵션 필터 --- #}
+    {% if option_schema %}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white py-2">
+            <strong>옵션 필터</strong>
+            <span class="text-muted small ms-2">옵션 선택 시 해당 부품만 표시</span>
+        </div>
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap gap-3 align-items-end">
+                {% for key, values in option_schema.items() %}
+                <div>
+                    <label class="form-label fw-bold mb-0" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;">{{ key }}</label>
+                    <select class="form-select form-select-sm option-filter-select" data-option-key="{{ key }}" style="min-width:110px;">
+                        <option value="">전체</option>
+                        {% for v in values %}
+                        <option value="{{ v }}">{{ v }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endfor %}
+                <button type="button" class="btn btn-outline-secondary btn-xs" id="resetOptionFilter">초기화</button>
+                <span class="small text-muted" id="filteredCount"></span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# --- BOM 품목 테이블 --- #}
     {% set can_see_price = session.get('role') == 'admin' or session.get('position') in ['팀장', '부장', '이사', '상무', '전무', '부사장', '사장', '대표'] %}
+    {% set has_opts = option_schema is not none and option_schema %}
     {% set ns = namespace(total=0) %}
     {% for bi in bom.bom_items %}
         {% set lp = latest_prices.get(bi.item_code) or latest_prices.get(bi.item_name) %}
-        {% if lp %}
-            {% set ns.total = ns.total + lp.unit_price * bi.quantity %}
-        {% elif bi.amount %}
-            {% set ns.total = ns.total + bi.amount %}
-        {% endif %}
+        {% if lp %}{% set ns.total = ns.total + lp.unit_price * bi.quantity %}
+        {% elif bi.amount %}{% set ns.total = ns.total + bi.amount %}{% endif %}
     {% endfor %}
+
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
-            <div>
+            <div style="white-space:nowrap;">
                 <strong>소요 부품 ({{ bom.bom_items|length }}건)</strong>
                 {% if can_see_price and ns.total %}<span class="text-muted fw-normal ms-2" id="totalLabel">합계: <span id="totalAmount">{{ '{:,.0f}'.format(ns.total) }}</span>원</span>{% endif %}
             </div>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2" style="white-space:nowrap;">
                 {% if can_see_price %}
                 <div class="form-check form-switch mb-0">
                     <input class="form-check-input" type="checkbox" id="useLatestPrice" checked>
-                    <label class="form-check-label small" for="useLatestPrice">최신입고단가</label>
+                    <label class="form-check-label" style="font-size:.75rem;" for="useLatestPrice">최신입고단가</label>
                 </div>
                 {% endif %}
-                <button type="button" class="btn btn-outline-primary btn-xs" id="addItemBtn">+ 부품 추가</button>
+                <button type="button" class="btn btn-outline-primary btn-xs" id="addItemBtn">+ 추가</button>
             </div>
         </div>
         <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-sm mb-0 no-stack-table" style="table-layout:fixed;font-size:0.82rem;">
+            <div id="bomWrap" class="table-responsive">
+                <table id="bomTable" class="table table-sm table-hover mb-0 no-stack-table" style="table-layout:fixed;font-size:.78rem;min-width:{{ '1200px' if can_see_price else '750px' }};">
                     <colgroup>
-                        <col style="width:28px">
-                        <col style="width:90px">
-                        <col style="width:{{ '18%' if can_see_price else '30%' }}">
-                        <col style="width:{{ '15%' if can_see_price else '25%' }}">
-                        <col style="width:50px">
-                        {% if can_see_price %}<col style="width:70px">
-                        <col style="width:75px">
-                        <col class="col-latest-price" style="width:85px">
-                        <col style="width:75px">{% endif %}
-                        <col style="width:12%">
-                        <col style="width:32px">
+                        <col style="width:2.5%">{# # #}
+                        <col style="width:10%">{# 품번 #}
+                        <col style="width:{{ '18%' if has_opts else '22%' }}">{# 부품명 #}
+                        <col style="width:{{ '14%' if has_opts else '18%' }}">{# 규격 #}
+                        <col style="width:4%">{# 수량 #}
+                        {% if can_see_price %}
+                        <col style="width:6%">{# 직전단가 #}
+                        <col style="width:6%">{# BOM단가 #}
+                        <col class="col-latest-price" style="width:7%">{# 입고단가 #}
+                        <col style="width:7%">{# 금액 #}
+                        {% endif %}
+                        <col style="width:9%">{# 업체 #}
+                        {% if has_opts %}<col style="width:8%">{# 옵션 #}{% endif %}
+                        <col style="width:2.5%">{# X #}
                     </colgroup>
                     <thead class="table-light">
                         <tr>
                             <th>#</th>
                             <th>품번</th>
                             <th>부품명</th>
-                            <th>규격/비고</th>
-                            <th class="text-end">소요량</th>
-                            {% if can_see_price %}<th class="text-end">직전단가</th>
+                            <th>규격</th>
+                            <th class="text-end">수량</th>
+                            {% if can_see_price %}
+                            <th class="text-end">직전단가</th>
                             <th class="text-end">BOM단가</th>
-                            <th class="text-end col-latest-price">최신입고단가</th>
-                            <th class="text-end">금액</th>{% endif %}
-                            <th>납품업체</th>
+                            <th class="text-end col-latest-price">입고단가</th>
+                            <th class="text-end">금액</th>
+                            {% endif %}
+                            <th>업체</th>
+                            {% if has_opts %}<th>옵션</th>{% endif %}
                             <th></th>
                         </tr>
                     </thead>
                     <tbody id="itemsBody">
                         {% for item in bom.bom_items %}
-                        <tr>
-                            <td>{{ loop.index }}</td>
-                            <td class="text-nowrap" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_code or '' }}">
-                                {% if item.item_id %}
-                                <a href="{{ url_for('item.item_detail', item_id=item.item_id) }}" class="text-decoration-none" onclick="event.stopPropagation();" title="품목 상세"><code style="font-size:0.75rem;">{{ item.item_code or '-' }}</code></a>
-                                {% elif item.item_code %}
-                                <code style="font-size:0.75rem; color:#999;">{{ item.item_code }}</code>
-                                {% else %}-{% endif %}
-                            </td>
+                        <tr data-option-filter="{{ item.option_filter or '' }}">
+                            <td class="text-muted">{{ loop.index }}</td>
+                            <td title="{{ item.item_code or '' }}">{% if item.item_id %}<a href="{{ url_for('item.item_detail', item_id=item.item_id) }}" class="text-decoration-none" onclick="event.stopPropagation();" style="font-size:.72rem;font-family:var(--mg-mono);">{{ item.item_code or '-' }}</a>{% elif item.item_code %}<span style="font-size:.72rem;font-family:var(--mg-mono);color:var(--mg-subtle);">{{ item.item_code }}</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
                             <td>
-                                <input type="text" name="item_name[]" class="form-control form-control-sm" value="{{ item.item_name }}">
+                                <input type="text" name="item_name[]" class="form-control form-control-sm border-0 bg-transparent px-0" value="{{ item.item_name }}" style="font-size:.78rem;">
                                 <input type="hidden" name="item_spec[]" value="{{ item.item_spec or '' }}">
                             </td>
-                            <td class="text-muted small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ item.item_spec or item.note or '' }}">{{ item.item_spec or item.note or '-' }}</td>
-                            <td><input type="number" name="quantity[]" class="form-control form-control-sm text-end" value="{{ item.quantity }}" step="any" min="0"></td>
+                            <td class="text-muted" title="{{ item.item_spec or item.note or '' }}">{{ item.item_spec or item.note or '-' }}</td>
+                            <td><input type="number" name="quantity[]" class="form-control form-control-sm text-end border-0 bg-transparent px-0" value="{{ item.quantity }}" step="any" min="0" style="font-size:.78rem;"></td>
                             {% if can_see_price %}
                             {% set lp = latest_prices.get(item.item_code) or latest_prices.get(item.item_name) %}
-                            <td class="text-end text-nowrap text-muted" style="font-size:0.75rem;">
+                            <td class="text-end text-muted" style="font-size:.72rem;">
                                 {% if item.prev_unit_price %}<del>{{ '{:,.0f}'.format(item.prev_unit_price) }}</del>{% else %}-{% endif %}
                             </td>
-                            <td class="text-end text-nowrap price-bom">
-                                <input type="number" name="unit_price[]" class="form-control form-control-sm text-end px-1" value="{{ item.unit_price|int if item.unit_price else '' }}" placeholder="-" step="any" min="0" style="width:100%;">
+                            <td class="text-end price-bom">
+                                <input type="number" name="unit_price[]" class="form-control form-control-sm text-end border-0 bg-transparent px-0" value="{{ item.unit_price|int if item.unit_price else '' }}" placeholder="-" step="any" min="0" style="font-size:.78rem;width:100%;">
                             </td>
-                            <td class="text-end text-nowrap col-latest-price price-latest">
+                            <td class="text-end col-latest-price price-latest">
                                 {% if lp %}
                                 <span class="{{ 'text-danger fw-bold' if lp.unit_price != (item.unit_price or 0) else 'text-success' }}" title="{{ lp.date }} ({{ lp.source }})">{{ '{:,.0f}'.format(lp.unit_price) }}</span>
                                 {% else %}<span class="text-muted">-</span>{% endif %}
                             </td>
-                            <td class="text-end text-nowrap price-amount" data-bom="{{ item.amount or 0 }}" data-latest="{{ (lp.unit_price * item.quantity) if lp else (item.amount or 0) }}">
+                            <td class="text-end fw-semibold price-amount" data-bom="{{ item.amount or 0 }}" data-latest="{{ (lp.unit_price * item.quantity) if lp else (item.amount or 0) }}">
                                 {% if lp %}{{ '{:,.0f}'.format(lp.unit_price * item.quantity) }}{% elif item.amount %}{{ '{:,.0f}'.format(item.amount) }}{% else %}-{% endif %}
                             </td>
                             {% endif %}
-                            <td class="text-nowrap" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.supplier or '' }}">{{ item.supplier or '-' }}</td>
+                            <td title="{{ item.supplier or '' }}">{{ item.supplier or '-' }}</td>
+                            {% if has_opts %}
                             <td>
+                                <input type="text" name="option_filter[]" class="form-control form-control-sm border-0 bg-transparent px-0" value="{{ item._option_display or '' }}" placeholder="공통" style="font-size:.72rem;" title="예: 렌즈=20도,반사판=420">
+                            </td>
+                            {% else %}
+                            <input type="hidden" name="option_filter[]" value="">
+                            {% endif %}
+                            <td class="text-center">
                                 <input type="hidden" name="unit[]" value="{{ item.unit or '' }}">
                                 <input type="hidden" name="item_note[]" value="{{ item.note or '' }}">
-                                <button type="button" class="btn btn-outline-danger btn-xs remove-btn">X</button>
+                                <button type="button" class="btn btn-outline-danger btn-xs remove-btn" style="padding:.1rem .3rem;font-size:.65rem;">X</button>
                             </td>
                         </tr>
                         {% else %}
                         <tr id="emptyRow">
-                            <td colspan="{{ 11 if can_see_price else 7 }}" class="text-center text-muted py-3">부품이 없습니다.</td>
+                            <td colspan="99" class="text-center text-muted py-3">부품이 없습니다.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -175,99 +209,177 @@
     <div class="d-flex justify-content-between">
         <form method="POST" action="{{ url_for('bom.bom_delete', bom_id=bom.id) }}" class="d-inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('이 BOM을 삭제하시겠습니까?');">BOM 삭제</button>
+            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('이 BOM을 삭제하시겠습니까?');">삭제</button>
         </form>
-        <button type="submit" class="btn btn-primary btn-sm">저장</button>
+        <button type="submit" class="btn btn-primary btn-sm px-4">저장</button>
     </div>
 </form>
 
-{% if can_see_price %}
 <style>
-    /* FR-02: visibility:collapse 방식으로 컬럼 숨김 (레이아웃 유지) */
-    .col-latest-hidden .col-latest-price,
-    .col-latest-hidden .price-latest {
-        visibility: collapse;
-        /* fallback for browsers that don't support visibility:collapse on td */
-        width: 0 !important;
-        padding: 0 !important;
-        border: 0 !important;
-        font-size: 0 !important;
-        overflow: hidden;
+/* ============================================
+   BOM 테이블 전용: 줄바꿈 완전 차단
+   base.html의 mobile-stack, td:has(input) 오버라이드 모두 무효화
+   ============================================ */
+
+/* 1) .table-responsive의 overflow-x:visible 무효화 */
+#bomWrap.table-responsive {
+    overflow-x: auto !important;
+}
+
+/* 2) 모든 셀 nowrap 강제 */
+#bomTable,
+#bomTable th,
+#bomTable td {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    vertical-align: middle !important;
+}
+#bomTable td {
+    padding: .3rem .45rem !important;
+    max-width: 0 !important;  /* table-layout:fixed에서 colgroup 비율 강제 적용 */
+}
+
+/* 3) base.html의 td:has(input) overflow:visible 무효화 */
+#bomTable td:has(input),
+#bomTable td:has(select),
+#bomTable td:has(textarea) {
+    overflow: hidden !important;
+    max-width: 0 !important;
+}
+
+/* 4) input, code, a 등 inline 요소 전부 block + ellipsis */
+#bomTable input[type="text"],
+#bomTable input[type="number"] {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+#bomTable code,
+#bomTable a,
+#bomTable td > span {
+    display: block !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 100% !important;
+}
+
+/* 5) 1199px 이하 미디어쿼리 방어 */
+@media (max-width: 1199.98px) {
+    #bomWrap.table-responsive {
+        overflow-x: auto !important;
     }
-</style>
+    #bomTable {
+        table-layout: fixed !important;
+    }
+    #bomTable th,
+    #bomTable td {
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        display: table-cell !important;
+    }
+}
+
+{% if can_see_price %}
+.col-latest-hidden .col-latest-price,
+.col-latest-hidden .price-latest {
+    visibility: collapse;
+    width: 0 !important; padding: 0 !important;
+    border: 0 !important; font-size: 0 !important; overflow: hidden;
+}
 {% endif %}
+</style>
 
 <script>
 (function() {
     var idx = {{ bom.bom_items|length }};
     var canSeePrice = {{ 'true' if can_see_price else 'false' }};
+    var hasOpts = {{ 'true' if has_opts else 'false' }};
 
+    /* --- 슈퍼BOM 옵션 필터링 --- */
+    if (hasOpts) {
+        var selects = document.querySelectorAll('.option-filter-select');
+        var resetBtn = document.getElementById('resetOptionFilter');
+        var countEl = document.getElementById('filteredCount');
+
+        function applyOptionFilter() {
+            var filters = {};
+            selects.forEach(function(s) { if (s.value) filters[s.dataset.optionKey] = s.value; });
+            var rows = document.querySelectorAll('#itemsBody tr[data-option-filter]');
+            var shown = 0;
+            rows.forEach(function(row) {
+                var of = row.getAttribute('data-option-filter');
+                var vis = true;
+                if (of && Object.keys(filters).length) {
+                    try {
+                        var pf = JSON.parse(of);
+                        for (var k in filters) { if (k in pf && pf[k] !== filters[k]) { vis = false; break; } }
+                    } catch(e) {}
+                }
+                row.style.display = vis ? '' : 'none';
+                if (vis) shown++;
+            });
+            countEl.textContent = Object.keys(filters).length ? shown + '/' + rows.length + '건' : '';
+        }
+        selects.forEach(function(s) { s.addEventListener('change', applyOptionFilter); });
+        if (resetBtn) resetBtn.addEventListener('click', function() {
+            selects.forEach(function(s) { s.value = ''; }); applyOptionFilter();
+        });
+    }
+
+    /* --- 부품 추가 --- */
     document.getElementById('addItemBtn').addEventListener('click', function() {
-        var empty = document.getElementById('emptyRow');
-        if (empty) empty.remove();
+        var empty = document.getElementById('emptyRow'); if (empty) empty.remove();
         idx++;
         var tr = document.createElement('tr');
-        var priceCols = canSeePrice
-            ? '<td class="text-end text-muted" style="font-size:0.75rem;">-</td>' +
-              '<td class="text-end text-nowrap price-bom"><input type="number" name="unit_price[]" class="form-control form-control-sm text-end px-1" placeholder="-" step="any" min="0" style="width:100%;"></td>' +
-              '<td class="text-end text-nowrap col-latest-price price-latest"><span class="text-muted">-</span></td>' +
-              '<td class="text-end text-nowrap price-amount" data-bom="0" data-latest="0">-</td>'
-            : '';
+        var pc = canSeePrice
+            ? '<td class="text-end text-muted" style="font-size:.72rem;">-</td>' +
+              '<td class="text-end price-bom"><input type="number" name="unit_price[]" class="form-control form-control-sm text-end border-0 bg-transparent px-0" placeholder="-" step="any" min="0" style="font-size:.78rem;width:100%;"></td>' +
+              '<td class="text-end col-latest-price price-latest"><span class="text-muted">-</span></td>' +
+              '<td class="text-end price-amount" data-bom="0" data-latest="0">-</td>' : '';
+        var oc = hasOpts
+            ? '<td><input type="text" name="option_filter[]" class="form-control form-control-sm border-0 bg-transparent px-0" placeholder="공통" style="font-size:.72rem;"></td>' : '<input type="hidden" name="option_filter[]" value="">';
         tr.innerHTML =
-            '<td>' + idx + '</td>' +
-            '<td>-</td>' +
-            '<td><input type="text" name="item_name[]" class="form-control form-control-sm" placeholder="부품명" required><input type="hidden" name="item_spec[]" value=""></td>' +
-            '<td>-</td>' +
-            '<td><input type="number" name="quantity[]" class="form-control form-control-sm text-end" value="1" step="any" min="0"></td>' +
-            priceCols +
-            '<td><input type="hidden" name="unit[]" value="EA"><input type="hidden" name="item_note[]" value=""><button type="button" class="btn btn-outline-danger btn-xs remove-btn">X</button></td>';
+            '<td class="text-muted">' + idx + '</td>' +
+            '<td><span class="text-muted">-</span></td>' +
+            '<td><input type="text" name="item_name[]" class="form-control form-control-sm border-0 bg-transparent px-0" placeholder="부품명" required style="font-size:.78rem;"><input type="hidden" name="item_spec[]" value=""></td>' +
+            '<td class="text-muted">-</td>' +
+            '<td><input type="number" name="quantity[]" class="form-control form-control-sm text-end border-0 bg-transparent px-0" value="1" step="any" min="0" style="font-size:.78rem;"></td>' +
+            pc +
+            '<td>-</td>' + oc +
+            '<td class="text-center"><input type="hidden" name="unit[]" value="EA"><input type="hidden" name="item_note[]" value=""><button type="button" class="btn btn-outline-danger btn-xs remove-btn" style="padding:.1rem .3rem;font-size:.65rem;">X</button></td>';
         document.getElementById('itemsBody').appendChild(tr);
         tr.querySelector('.remove-btn').addEventListener('click', function() { tr.remove(); });
     });
 
-    document.querySelectorAll('.remove-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() { this.closest('tr').remove(); });
+    document.querySelectorAll('.remove-btn').forEach(function(b) {
+        b.addEventListener('click', function() { this.closest('tr').remove(); });
     });
 
-    // FR-01 + FR-02: 최신입고단가 토글 - localStorage 저장 및 복원
+    /* --- 최신입고단가 토글 --- */
     var toggle = document.getElementById('useLatestPrice');
     if (toggle) {
-        var STORAGE_KEY = 'bom_detail_useLatestPrice';
-
-        function applyToggleState(useLatest) {
-            var table = document.querySelector('.table-responsive');
-            if (!table) return;
-
-            if (useLatest) {
-                table.classList.remove('col-latest-hidden');
-            } else {
-                table.classList.add('col-latest-hidden');
-            }
-
-            // 금액 컬럼 값 전환
+        var SK = 'bom_detail_useLatestPrice';
+        function applyToggle(use) {
+            var tbl = document.querySelector('.table-responsive');
+            if (!tbl) return;
+            tbl.classList.toggle('col-latest-hidden', !use);
             var total = 0;
             document.querySelectorAll('.price-amount').forEach(function(el) {
-                var val = parseFloat(useLatest ? el.dataset.latest : el.dataset.bom) || 0;
-                el.textContent = val ? val.toLocaleString('ko-KR', {maximumFractionDigits:0}) : '-';
-                total += val;
+                var v = parseFloat(use ? el.dataset.latest : el.dataset.bom) || 0;
+                el.textContent = v ? v.toLocaleString('ko-KR', {maximumFractionDigits:0}) : '-';
+                total += v;
             });
-            var totalEl = document.getElementById('totalAmount');
-            if (totalEl) totalEl.textContent = total.toLocaleString('ko-KR', {maximumFractionDigits:0});
+            var te = document.getElementById('totalAmount');
+            if (te) te.textContent = total.toLocaleString('ko-KR', {maximumFractionDigits:0});
         }
-
-        // FR-01: localStorage에서 저장된 상태 복원
-        var savedState = localStorage.getItem(STORAGE_KEY);
-        if (savedState !== null) {
-            var restored = savedState === 'true';
-            toggle.checked = restored;
-            applyToggleState(restored);
-        }
-
+        var saved = localStorage.getItem(SK);
+        if (saved !== null) { var r = saved === 'true'; toggle.checked = r; applyToggle(r); }
         toggle.addEventListener('change', function() {
-            var useLatest = this.checked;
-            // FR-01: localStorage에 상태 저장
-            localStorage.setItem(STORAGE_KEY, useLatest ? 'true' : 'false');
-            applyToggleState(useLatest);
+            localStorage.setItem(SK, this.checked ? 'true' : 'false'); applyToggle(this.checked);
         });
     }
 })();

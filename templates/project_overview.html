@@ -1,97 +1,327 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
 {% block content %}
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
-    <h2 class="text-primary fw-bold">📊 프로젝트 종합현황</h2>
+
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+
+    .ov { font-family: 'DM Sans', sans-serif; color: #0f172a; }
+    .ov .mono { font-family: 'JetBrains Mono', monospace; }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+    .a-in { animation: fadeUp .45s cubic-bezier(.4,0,.2,1) both; }
+
+    /* Hero */
+    .ov-hero {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+        border-radius: 1rem;
+        padding: 1.4rem 1.8rem;
+        position: relative;
+        overflow: hidden;
+        margin-bottom: 1rem;
+    }
+    .ov-hero::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -8%;
+        width: 420px;
+        height: 420px;
+        background: radial-gradient(circle, rgba(139,92,246,.1) 0%, transparent 65%);
+        pointer-events: none;
+    }
+    .ov-hero h2 {
+        color: #f8fafc;
+        font-size: 1.4rem;
+        font-weight: 800;
+        letter-spacing: -.03em;
+        margin: 0;
+    }
+    .ov-hero .sub { color: #94a3b8; font-size: .8rem; margin-top: .2rem; }
+    .ov-hero .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .18rem .5rem;
+        border-radius: 999px;
+        background: rgba(139,92,246,.15);
+        color: #a78bfa;
+        font-size: .62rem;
+        font-weight: 700;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        margin-bottom: .4rem;
+    }
+
+    /* Stat cards */
+    .stat-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: .65rem;
+        margin-bottom: 1rem;
+    }
+    .stat-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: .65rem;
+        padding: .75rem .85rem;
+        position: relative;
+        overflow: hidden;
+        transition: all .25s;
+    }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.05); }
+    .stat-card .s-label { font-size: .68rem; color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+    .stat-card .s-val { font-family: 'JetBrains Mono', monospace; font-size: 1.2rem; font-weight: 700; margin-top: .15rem; }
+    .stat-card .s-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; }
+    .stat-card.c-all .s-bar { background: linear-gradient(90deg, #6366f1, #a78bfa); }
+    .stat-card.c-all .s-val { color: #6366f1; }
+    .stat-card.c-filt .s-bar { background: linear-gradient(90deg, #2563eb, #60a5fa); }
+    .stat-card.c-filt .s-val { color: #2563eb; }
+    .stat-card.c-prog .s-bar { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .stat-card.c-prog .s-val { color: #d97706; }
+    .stat-card.c-done .s-bar { background: linear-gradient(90deg, #16a34a, #4ade80); }
+    .stat-card.c-done .s-val { color: #16a34a; }
+
+    /* Filter bar */
+    .filter-bar {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: .65rem;
+        padding: .65rem .85rem;
+        margin-bottom: 1rem;
+    }
+
+    /* Project cards */
+    .proj-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: .65rem;
+        padding: .85rem 1rem;
+        margin-bottom: .55rem;
+        transition: all .2s;
+        text-decoration: none;
+        display: block;
+        color: inherit;
+    }
+    .proj-card:hover {
+        border-color: #cbd5e1;
+        box-shadow: 0 6px 20px rgba(0,0,0,.04);
+        transform: translateY(-1px);
+        color: inherit;
+    }
+
+    /* Progress pipeline */
+    .pipe {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: .35rem;
+        margin-top: .6rem;
+    }
+    .pipe-stage {
+        text-align: center;
+    }
+    .pipe-label {
+        font-size: .62rem;
+        font-weight: 600;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        margin-bottom: .25rem;
+    }
+    .pipe-bar-wrap {
+        height: 6px;
+        border-radius: 3px;
+        background: #f1f5f9;
+        overflow: hidden;
+    }
+    .pipe-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width .6s cubic-bezier(.4,0,.2,1);
+    }
+    .pipe-bar-fill.p-sales { background: linear-gradient(90deg, #2563eb, #60a5fa); }
+    .pipe-bar-fill.p-material { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .pipe-bar-fill.p-production { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+    .pipe-bar-fill.p-delivery { background: linear-gradient(90deg, #16a34a, #4ade80); }
+    .pipe-pct {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: .7rem;
+        font-weight: 700;
+        margin-top: .2rem;
+    }
+    .pipe-pct.done { color: #16a34a; }
+    .pipe-pct.mid { color: #d97706; }
+    .pipe-pct.zero { color: #cbd5e1; }
+
+    /* Overall badge */
+    .ov-badge {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: .85rem;
+        font-weight: 700;
+        padding: .25rem .6rem;
+        border-radius: .4rem;
+        white-space: nowrap;
+    }
+    .ov-badge.done { background: #dcfce7; color: #166534; }
+    .ov-badge.high { background: #dbeafe; color: #1e40af; }
+    .ov-badge.mid { background: #fef3c7; color: #92400e; }
+    .ov-badge.low { background: #f1f5f9; color: #64748b; }
+
+    /* Overall progress bar */
+    .ov-bar {
+        height: 4px;
+        border-radius: 2px;
+        background: #f1f5f9;
+        margin-top: .4rem;
+        overflow: hidden;
+    }
+    .ov-bar-fill {
+        height: 100%;
+        border-radius: 2px;
+        background: linear-gradient(90deg, #6366f1, #a78bfa);
+        transition: width .6s cubic-bezier(.4,0,.2,1);
+    }
+    .ov-bar-fill.done { background: linear-gradient(90deg, #16a34a, #4ade80); }
+
+    .proj-name { font-size: .88rem; font-weight: 800; color: #0f172a; }
+    .proj-no { font-size: .72rem; color: #64748b; }
+    .proj-meta { font-size: .7rem; color: #94a3b8; }
+
+    @media (max-width: 991.98px) {
+        .stat-row { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 767.98px) {
+        .ov-hero { padding: 1rem; border-radius: .75rem; }
+        .ov-hero h2 { font-size: 1.15rem; }
+        .stat-row { grid-template-columns: repeat(2, 1fr); }
+        .pipe { grid-template-columns: repeat(2, 1fr); }
+    }
+</style>
+
+<div class="ov">
+
+{# ═══ Hero ═══ #}
+<div class="ov-hero a-in">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="eyebrow">Project Overview</div>
+            <h2>프로젝트 종합현황</h2>
+            <div class="sub">전체 현장의 영업→자재→생산→납품 진행률을 한눈에 파악</div>
+        </div>
+        <div class="d-flex gap-2" style="flex-shrink:0;">
+            <a href="{{ url_for('dashboard.dashboard_view') }}" class="btn btn-sm" style="background:rgba(255,255,255,.08);color:#cbd5e1;border:1px solid rgba(255,255,255,.1);font-size:.75rem;font-weight:600;white-space:nowrap;border-radius:.5rem;padding:.3rem .65rem;">메인 대시보드</a>
+            <a href="{{ url_for('project.contract_list') }}" class="btn btn-sm" style="background:rgba(255,255,255,.08);color:#cbd5e1;border:1px solid rgba(255,255,255,.1);font-size:.75rem;font-weight:600;white-space:nowrap;border-radius:.5rem;padding:.3rem .65rem;">계약관리</a>
+        </div>
+    </div>
 </div>
 
-<div class="row g-3 mb-3">
-    <div class="col-md-3 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">전체 프로젝트</small><div class="fw-bold fs-5">{{ stats.total_projects }}</div></div></div></div>
-    <div class="col-md-3 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">조회 결과</small><div class="fw-bold fs-5">{{ stats.filtered }}</div></div></div></div>
-    <div class="col-md-3 col-6"><div class="card border-0 shadow-sm border-start border-4 border-warning"><div class="card-body py-2"><small class="text-muted">진행중</small><div class="fw-bold fs-5 text-warning">{{ stats.in_progress }}</div></div></div></div>
-    <div class="col-md-3 col-6"><div class="card border-0 shadow-sm border-start border-4 border-success"><div class="card-body py-2"><small class="text-muted">완료</small><div class="fw-bold fs-5 text-success">{{ stats.completed }}</div></div></div></div>
+{# ═══ Stat Cards ═══ #}
+<div class="stat-row">
+    <div class="stat-card c-all a-in" style="animation-delay:.05s">
+        <div class="s-label">전체 프로젝트</div>
+        <div class="s-val mono">{{ stats.total_projects }}</div>
+        <div class="s-bar"></div>
+    </div>
+    <div class="stat-card c-filt a-in" style="animation-delay:.1s">
+        <div class="s-label">조회 결과</div>
+        <div class="s-val mono">{{ stats.filtered }}</div>
+        <div class="s-bar"></div>
+    </div>
+    <div class="stat-card c-prog a-in" style="animation-delay:.15s">
+        <div class="s-label">진행중</div>
+        <div class="s-val mono">{{ stats.in_progress }}</div>
+        <div class="s-bar"></div>
+    </div>
+    <div class="stat-card c-done a-in" style="animation-delay:.2s">
+        <div class="s-label">완료</div>
+        <div class="s-val mono">{{ stats.completed }}</div>
+        <div class="s-bar"></div>
+    </div>
 </div>
 
-<form class="card border-0 shadow-sm mb-4" method="GET">
-    <div class="card-body row g-2 align-items-end">
+{# ═══ Filter Bar ═══ #}
+<form class="filter-bar a-in" method="GET" style="animation-delay:.25s">
+    <div class="row g-2 align-items-end">
         <div class="col-md-3">
-            <label class="small fw-bold">검색</label>
-            <input type="text" class="form-control" name="search" value="{{ filters.search }}" placeholder="관리번호/현장명/약칭">
+            <label class="s-label" style="font-size:.68rem;display:block;margin-bottom:.2rem;">검색</label>
+            <input type="text" class="form-control form-control-sm" name="search" value="{{ filters.search }}" placeholder="관리번호 / 현장명 / 약칭">
         </div>
         <div class="col-md-3">
-            <label class="small fw-bold">진행상태</label>
-            <select class="form-select" name="progress">
-                <option value="all" {% if filters.progress == 'all' %}selected{% endif %}>전체</option>
-                <option value="not_started" {% if filters.progress == 'not_started' %}selected{% endif %}>미착수 (0%)</option>
-                <option value="in_progress" {% if filters.progress == 'in_progress' %}selected{% endif %}>진행중 (1~99%)</option>
-                <option value="completed" {% if filters.progress == 'completed' %}selected{% endif %}>완료 (100%)</option>
+            <label class="s-label" style="font-size:.68rem;display:block;margin-bottom:.2rem;">진행상태</label>
+            <select class="form-select form-select-sm" name="progress">
+                <option value="all" {{ 'selected' if filters.progress == 'all' }}>전체</option>
+                <option value="not_started" {{ 'selected' if filters.progress == 'not_started' }}>미착수 (0%)</option>
+                <option value="in_progress" {{ 'selected' if filters.progress == 'in_progress' }}>진행중 (1~99%)</option>
+                <option value="completed" {{ 'selected' if filters.progress == 'completed' }}>완료 (100%)</option>
             </select>
         </div>
         <div class="col-md-3">
-            <label class="small fw-bold">정렬</label>
-            <select class="form-select" name="sort">
-                <option value="id_desc" {% if filters.sort == 'id_desc' %}selected{% endif %}>최신등록순</option>
-                <option value="pct_asc" {% if filters.sort == 'pct_asc' %}selected{% endif %}>진행률 낮은순</option>
-                <option value="pct_desc" {% if filters.sort == 'pct_desc' %}selected{% endif %}>진행률 높은순</option>
+            <label class="s-label" style="font-size:.68rem;display:block;margin-bottom:.2rem;">정렬</label>
+            <select class="form-select form-select-sm" name="sort">
+                <option value="id_desc" {{ 'selected' if filters.sort == 'id_desc' }}>최신등록순</option>
+                <option value="pct_asc" {{ 'selected' if filters.sort == 'pct_asc' }}>진행률 낮은순</option>
+                <option value="pct_desc" {{ 'selected' if filters.sort == 'pct_desc' }}>진행률 높은순</option>
             </select>
         </div>
-        <div class="col-md-3 text-md-end mobile-actions">
-            <a href="{{ url_for('overview.project_overview') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
-            <button class="btn btn-primary btn-sm fw-bold">검색</button>
+        <div class="col-md-3 d-flex gap-2 justify-content-end">
+            <a href="{{ url_for('overview.project_overview') }}" class="btn btn-sm btn-outline-secondary" style="font-size:.75rem;font-weight:600;white-space:nowrap;">초기화</a>
+            <button class="btn btn-sm btn-primary" style="font-size:.75rem;font-weight:700;white-space:nowrap;">검색</button>
         </div>
     </div>
 </form>
 
+{# ═══ Project Cards ═══ #}
 {% for entry in entries %}
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start mb-2">
-            <div>
-                <span class="fw-bold">{{ entry.project.project_no }}</span>
-                <span class="fw-bold ms-2">{{ entry.project.temp_name }}</span>
-                {% if entry.project.short_name %}<small class="badge bg-light text-dark border ms-1">{{ entry.project.short_name }}</small>{% endif %}
-                <small class="text-muted ms-2">품목 {{ entry.total_items }}건</small>
+<a href="{{ url_for('project.contract_detail', project_id=entry.project.id) }}" class="proj-card a-in" style="animation-delay:{{ 0.3 + loop.index0 * 0.03 }}s">
+    <div class="d-flex justify-content-between align-items-start gap-2">
+        <div style="min-width:0;flex:1;">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="proj-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px;">{{ entry.project.temp_name }}</span>
+                {% if entry.project.short_name %}
+                <span style="font-size:.65rem;font-weight:600;padding:.1rem .35rem;border-radius:.3rem;background:#f1f5f9;color:#64748b;white-space:nowrap;">{{ entry.project.short_name }}</span>
+                {% endif %}
+                {% if entry.project.is_urgent %}
+                <span style="font-size:.6rem;font-weight:700;padding:.1rem .35rem;border-radius:.3rem;background:#fee2e2;color:#dc2626;white-space:nowrap;">긴급</span>
+                {% endif %}
             </div>
-            <span class="badge fs-6 {% if entry.overall_pct == 100 %}bg-success{% elif entry.overall_pct >= 50 %}bg-warning text-dark{% elif entry.overall_pct > 0 %}bg-info text-dark{% else %}bg-secondary{% endif %}">
-                {{ entry.overall_pct }}%
-            </span>
+            <div class="proj-no">{{ entry.project.project_no }} · 품목 {{ entry.total_items }}건 · 납품 {{ entry.total_deliveries }}건</div>
         </div>
-
-        <div class="progress mb-3" style="height: 8px;">
-            <div class="progress-bar {% if entry.overall_pct == 100 %}bg-success{% elif entry.overall_pct >= 50 %}bg-warning{% else %}bg-info{% endif %}"
-                 style="width: {{ entry.overall_pct }}%"></div>
-        </div>
-
-        <div class="row g-2 text-center">
-            <div class="col-6 col-md-3">
-                <small class="text-muted d-block">영업협의</small>
-                <span class="badge {% if entry.sales_pct == 100 %}bg-success{% elif entry.sales_pct > 0 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-                    {{ entry.sales_pct }}%
-                </span>
-            </div>
-            <div class="col-6 col-md-3">
-                <small class="text-muted d-block">자재입고</small>
-                <span class="badge {% if entry.material_pct == 100 %}bg-success{% elif entry.material_pct > 0 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-                    {{ entry.material_pct }}%
-                </span>
-            </div>
-            <div class="col-6 col-md-3">
-                <small class="text-muted d-block">생산</small>
-                <span class="badge {% if entry.production_pct == 100 %}bg-success{% elif entry.production_pct > 0 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-                    {{ entry.production_pct }}%
-                </span>
-            </div>
-            <div class="col-6 col-md-3">
-                <small class="text-muted d-block">납품</small>
-                <span class="badge {% if entry.delivery_pct == 100 %}bg-success{% elif entry.delivery_pct > 0 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-                    {{ entry.delivery_pct }}%
-                </span>
-            </div>
+        <div class="ov-badge {% if entry.overall_pct == 100 %}done{% elif entry.overall_pct >= 50 %}high{% elif entry.overall_pct > 0 %}mid{% else %}low{% endif %}">
+            {{ entry.overall_pct }}%
         </div>
     </div>
-</div>
+
+    <div class="ov-bar">
+        <div class="ov-bar-fill {% if entry.overall_pct == 100 %}done{% endif %}" style="width:{{ entry.overall_pct }}%"></div>
+    </div>
+
+    <div class="pipe">
+        <div class="pipe-stage">
+            <div class="pipe-label">영업협의</div>
+            <div class="pipe-bar-wrap"><div class="pipe-bar-fill p-sales" style="width:{{ entry.sales_pct }}%"></div></div>
+            <div class="pipe-pct {% if entry.sales_pct == 100 %}done{% elif entry.sales_pct > 0 %}mid{% else %}zero{% endif %}">{{ entry.sales_pct }}%</div>
+        </div>
+        <div class="pipe-stage">
+            <div class="pipe-label">자재입고</div>
+            <div class="pipe-bar-wrap"><div class="pipe-bar-fill p-material" style="width:{{ entry.material_pct }}%"></div></div>
+            <div class="pipe-pct {% if entry.material_pct == 100 %}done{% elif entry.material_pct > 0 %}mid{% else %}zero{% endif %}">{{ entry.material_pct }}%</div>
+        </div>
+        <div class="pipe-stage">
+            <div class="pipe-label">생산</div>
+            <div class="pipe-bar-wrap"><div class="pipe-bar-fill p-production" style="width:{{ entry.production_pct }}%"></div></div>
+            <div class="pipe-pct {% if entry.production_pct == 100 %}done{% elif entry.production_pct > 0 %}mid{% else %}zero{% endif %}">{{ entry.production_pct }}%</div>
+        </div>
+        <div class="pipe-stage">
+            <div class="pipe-label">납품</div>
+            <div class="pipe-bar-wrap"><div class="pipe-bar-fill p-delivery" style="width:{{ entry.delivery_pct }}%"></div></div>
+            <div class="pipe-pct {% if entry.delivery_pct == 100 %}done{% elif entry.delivery_pct > 0 %}mid{% else %}zero{% endif %}">{{ entry.delivery_pct }}%</div>
+        </div>
+    </div>
+</a>
 {% else %}
-<div class="text-center text-muted py-5">조건에 맞는 프로젝트가 없습니다.</div>
+<div style="text-align:center;color:#94a3b8;padding:3rem 1rem;font-size:.88rem;">조건에 맞는 프로젝트가 없습니다.</div>
 {% endfor %}
 
 {% include 'components/pagination.html' %}
+
+</div>
 {% endblock %}

@@ -1,9 +1,15 @@
 {% extends 'base.html' %}
 {% block content %}
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
-    <h2 class="text-primary fw-bold">소요자재 계산</h2>
-    <a href="{{ url_for('bom.bom_list') }}" class="btn btn-outline-secondary btn-sm">BOM 목록</a>
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">BOM Requirements</div>
+            <h2>소요자재 계산</h2>
+            <div class="hero-sub">계약 기준 BOM 소요자재를 자동 계산합니다</div>
+        </div>
+        <a href="{{ url_for('bom.bom_list') }}" class="btn btn-outline-light btn-sm">BOM 목록</a>
+    </div>
 </div>
 
 {# --- 계약 선택 --- #}

@@ -1003,6 +1003,8 @@ class DailyReport(Base):
 
     # 업무 항목 (JSON 배열: ["항목1", "항목2", ...])
     items_json = Column(Text, nullable=False, default='[]')
+    # 자동수집 항목 (수정 가능, NULL이면 실시간 수집 사용)
+    auto_items_json = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
@@ -1017,6 +1019,19 @@ class DailyReport(Base):
     @items.setter
     def items(self, value):
         self.items_json = json.dumps(value, ensure_ascii=False)
+
+    @property
+    def auto_items(self):
+        if self.auto_items_json is None:
+            return None  # None = 아직 저장 안 됨, 실시간 수집 사용
+        try:
+            return json.loads(self.auto_items_json)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    @auto_items.setter
+    def auto_items(self, value):
+        self.auto_items_json = json.dumps(value, ensure_ascii=False) if value is not None else None
 
 
 # -------------------------------------------------------------------
@@ -1081,6 +1096,7 @@ class BomHeader(Base):
     certification_no = Column(String(50), nullable=True)     # 인증번호
     version = Column(String(20), default='1.0')
     is_active = Column(Boolean, default=True)
+    option_schema = Column(Text, nullable=True)            # JSON: 옵션 종류/값 정의 (슈퍼BOM)
     note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
@@ -1104,6 +1120,7 @@ class BomItem(Base):
     amount = Column(Float, nullable=True)                     # 금액
     supplier = Column(String(200), nullable=True)             # 납품업체
     unit = Column(String(50), nullable=True)
+    option_filter = Column(Text, nullable=True)             # JSON: 옵션조건 (null=공통, {"lens_angle":"20도"}=옵션부품)
     note = Column(Text, nullable=True)
 
     bom_header = relationship("BomHeader", back_populates="bom_items")
@@ -1208,6 +1225,7 @@ class StockAudit(Base):
     note = Column(Text, nullable=True)
     total_items = Column(Integer, default=0)
     diff_items = Column(Integer, default=0)
+    confirmed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
@@ -1253,6 +1271,121 @@ class StockMovement(Base):
     created_at = Column(DateTime, default=datetime.datetime.now)
 
     item = relationship("Item")
+
+
+# -------------------------------------------------------------------
+# 17. 견적서 관리 (Quotation)
+# -------------------------------------------------------------------
+QUOTE_STATUS_CHOICES = ['작성중', '발송', '만료']
+
+
+class Quotation(Base):
+    """견적서"""
+    __tablename__ = 'quotations'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    quote_no = Column(String(20), unique=True, nullable=False)  # MT-YYMMDD-순번
+    quote_date = Column(Date, nullable=False)
+
+    # 견적 조건
+    validity_period = Column(String(100), default='견적일로부터 1개월')
+    delivery_date = Column(String(100), default='협의')
+    payment_method = Column(String(100), default='현금')
+    bank_account = Column(String(200), nullable=True)
+
+    # 건명
+    project_name = Column(String(500), nullable=True)
+
+    # 수급자 정보
+    customer_name = Column(String(200), nullable=True)
+    customer_contact = Column(String(100), nullable=True)
+    customer_address = Column(String(500), nullable=True)
+    customer_tel = Column(String(50), nullable=True)
+    customer_fax = Column(String(50), nullable=True)
+    customer_email = Column(String(200), nullable=True)
+
+    # 금액
+    total_amount = Column(Float, default=0)         # 품목 공급가액 합계
+    surcharges_json = Column(Text, nullable=True)   # JSON: [{"name":"부가세","rate":10,"amount":...}, ...]
+    grand_total = Column(Float, default=0)           # 공급가액 + 부과금 합계
+    tax_included = Column(Boolean, default=False)
+
+    # 비고
+    note = Column(Text, nullable=True)
+
+    # 상태
+    status = Column(String(20), default='작성중')
+
+    # 메타
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    items = relationship("QuotationItem", back_populates="quotation",
+                         cascade="all, delete-orphan", order_by="QuotationItem.seq")
+
+    @property
+    def surcharges(self):
+        try:
+            return json.loads(self.surcharges_json or '[]')
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    @surcharges.setter
+    def surcharges(self, value):
+        self.surcharges_json = json.dumps(value, ensure_ascii=False)
+
+
+class QuotationItem(Base):
+    """견적 품목"""
+    __tablename__ = 'quotation_items'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    quotation_id = Column(Integer, ForeignKey('quotations.id'), nullable=False)
+    seq = Column(Integer, default=0)
+    item_id = Column(Integer, nullable=True)
+    item_name = Column(String(300), nullable=False)
+    item_spec = Column(String(500), nullable=True)
+    unit = Column(String(50), default='개')
+    quantity = Column(Float, default=0)
+    unit_price = Column(Float, default=0)
+    amount = Column(Float, default=0)
+    note = Column(String(500), nullable=True)
+
+    quotation = relationship("Quotation", back_populates="items")
+
+
+class QuoteTemplate(Base):
+    """견적 세부 템플릿 (품목 세트 재사용)"""
+    __tablename__ = 'quote_templates'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    template_name = Column(String(200), nullable=False)  # ex) "15M 조명타워 기초공사"
+    note = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    items = relationship("QuoteTemplateItem", back_populates="template",
+                         cascade="all, delete-orphan", order_by="QuoteTemplateItem.seq")
+
+
+class QuoteTemplateItem(Base):
+    """세부견적 템플릿 품목"""
+    __tablename__ = 'quote_template_items'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    template_id = Column(Integer, ForeignKey('quote_templates.id'), nullable=False)
+    seq = Column(Integer, default=0)
+    item_name = Column(String(300), nullable=False)
+    item_spec = Column(String(500), nullable=True)
+    unit = Column(String(50), default='개')
+    quantity = Column(Float, default=0)
+    unit_price = Column(Float, default=0)
+    amount = Column(Float, default=0)
+    note = Column(String(500), nullable=True)
+
+    template = relationship("QuoteTemplate", back_populates="items")
 
 
 class PaymentRecord(Base):
