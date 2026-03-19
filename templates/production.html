@@ -1,0 +1,726 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+/* ── 공장 작업자 인터페이스 ── */
+:root {
+    --status-working: #f59e0b;   /* amber */
+    --status-ready:   #3b82f6;   /* blue  */
+    --status-waiting: #94a3b8;   /* slate */
+    --status-done:    #22c55e;   /* green */
+    --status-blocked: #ef4444;   /* red   */
+    --dday-safe:      #16a34a;
+    --dday-warn:      #d97706;
+    --dday-danger:    #dc2626;
+    --dday-overdue:   #7f1d1d;
+}
+
+/* Page header */
+.prod-header {
+    background: #0f172a;
+    color: #f1f5f9;
+    border-radius: 14px;
+    padding: 18px 24px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.prod-header h1 {
+    font-size: 1.45rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.3px;
+}
+
+/* KPI bar */
+.kpi-bar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+.kpi-tile {
+    flex: 1 1 80px;
+    min-width: 72px;
+    background: #fff;
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    text-align: center;
+}
+.kpi-tile .kpi-val {
+    font-size: 1.7rem;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+.kpi-tile .kpi-label {
+    font-size: .72rem;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    white-space: nowrap;
+}
+.kpi-total  .kpi-val { color: #1e293b; }
+.kpi-working .kpi-val { color: var(--status-working); }
+.kpi-ready   .kpi-val { color: var(--status-ready); }
+.kpi-waiting .kpi-val { color: var(--status-waiting); }
+.kpi-done    .kpi-val { color: var(--status-done); }
+
+/* Filter bar */
+.filter-bar {
+    background: #fff;
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    margin-bottom: 22px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+.filter-bar select,
+.filter-bar input {
+    height: 44px;
+    font-size: .9rem;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+.filter-bar select { min-width: 140px; }
+.filter-bar input  { min-width: 180px; flex: 1; }
+
+/* Section header */
+.section-hdr {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    padding: 10px 4px;
+    margin-bottom: 12px;
+}
+.section-hdr h2 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 0;
+    color: #1e293b;
+    white-space: nowrap;
+}
+.section-hdr .section-count {
+    font-size: .8rem;
+    font-weight: 700;
+    background: #f1f5f9;
+    color: #475569;
+    border-radius: 20px;
+    padding: 2px 10px;
+    white-space: nowrap;
+}
+.section-hdr .chevron {
+    margin-left: auto;
+    font-size: .8rem;
+    color: #94a3b8;
+    transition: transform .2s;
+}
+.section-hdr.collapsed .chevron { transform: rotate(-90deg); }
+
+/* Card grid */
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 28px;
+}
+@media (max-width: 1100px) { .card-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .card-grid { grid-template-columns: 1fr; } }
+
+/* Process card */
+.proc-card {
+    background: #fff;
+    border-radius: 14px;
+    border-left: 5px solid var(--status-waiting);
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: box-shadow .15s;
+}
+.proc-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.13); }
+.proc-card.status-working { border-left-color: var(--status-working); }
+.proc-card.status-ready   { border-left-color: var(--status-ready); }
+.proc-card.status-waiting { border-left-color: var(--status-waiting); }
+.proc-card.status-done    { border-left-color: var(--status-done); opacity: .72; }
+.proc-card.status-blocked { border-left-color: var(--status-blocked); }
+
+/* Card top row */
+.card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+.card-proc-name {
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.25;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.card-step-badge {
+    font-size: .72rem;
+    font-weight: 700;
+    background: #f1f5f9;
+    color: #475569;
+    border-radius: 6px;
+    padding: 3px 7px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Info rows */
+.card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.card-info-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: .83rem;
+    color: #475569;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.card-info-row .lbl {
+    font-size: .72rem;
+    color: #94a3b8;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.card-info-row .val {
+    font-weight: 600;
+    color: #334155;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* D-day badge */
+.dday-badge {
+    font-size: .75rem;
+    font-weight: 800;
+    border-radius: 8px;
+    padding: 3px 9px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.dday-safe    { background: #dcfce7; color: var(--dday-safe); }
+.dday-warn    { background: #fef3c7; color: var(--dday-warn); }
+.dday-danger  { background: #fee2e2; color: var(--dday-danger); }
+.dday-overdue { background: #7f1d1d; color: #fecaca; }
+
+/* Progress bar */
+.prog-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.prog-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: .78rem;
+    color: #64748b;
+    font-weight: 600;
+}
+.prog-bar-outer {
+    height: 10px;
+    background: #e2e8f0;
+    border-radius: 99px;
+    overflow: hidden;
+}
+.prog-bar-inner {
+    height: 100%;
+    border-radius: 99px;
+    background: var(--status-working);
+    transition: width .3s ease;
+}
+.proc-card.status-ready   .prog-bar-inner { background: var(--status-ready); }
+.proc-card.status-waiting .prog-bar-inner { background: var(--status-waiting); }
+.proc-card.status-done    .prog-bar-inner { background: var(--status-done); }
+
+/* Action area */
+.card-action {
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: nowrap;
+}
+
+/* Daily qty input */
+.daily-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+.daily-input-wrap label {
+    font-size: .78rem;
+    font-weight: 700;
+    color: #475569;
+    white-space: nowrap;
+}
+.daily-qty-input {
+    width: 68px;
+    height: 44px;
+    font-size: 1rem;
+    font-weight: 700;
+    text-align: center;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #1e293b;
+    appearance: none;
+    -moz-appearance: textfield;
+    flex-shrink: 0;
+}
+.daily-qty-input::-webkit-outer-spin-button,
+.daily-qty-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.daily-qty-input:focus { border-color: var(--status-working); outline: none; background: #fff; }
+
+/* Autosave dot */
+.save-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #cbd5e1;
+    flex-shrink: 0;
+    transition: background .2s;
+    title: "저장 상태";
+}
+.save-dot.saving  { background: var(--status-working); }
+.save-dot.saved   { background: var(--status-done); }
+.save-dot.error   { background: var(--status-blocked); }
+
+/* Action buttons — large touch targets */
+.btn-start, .btn-complete, .btn-uncomplete {
+    height: 44px;
+    padding: 0 16px;
+    font-size: .88rem;
+    font-weight: 700;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: filter .15s;
+}
+.btn-start:hover, .btn-complete:hover, .btn-uncomplete:hover { filter: brightness(.9); }
+.btn-start     { background: var(--status-ready); color: #fff; }
+.btn-complete  { background: var(--status-done);  color: #fff; }
+.btn-uncomplete { background: #e2e8f0; color: #475569; }
+
+/* Waiting reason */
+.wait-reason {
+    font-size: .83rem;
+    color: #64748b;
+    font-style: italic;
+    padding: 8px 10px;
+    background: #f8fafc;
+    border-radius: 8px;
+}
+.wait-reason.blocked { color: #dc2626; background: #fef2f2; }
+
+/* Done timestamp */
+.done-ts {
+    font-size: .8rem;
+    color: #94a3b8;
+    padding: 6px 0;
+}
+
+/* Empty section */
+.section-empty {
+    color: #94a3b8;
+    font-size: .88rem;
+    padding: 12px 4px;
+    font-style: italic;
+}
+
+/* Print */
+@media print {
+    .filter-bar, .prod-header .btn, .btn-start, .btn-complete, .btn-uncomplete,
+    .daily-input-wrap, .save-dot { display: none !important; }
+    .card-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .proc-card { box-shadow: none; border: 1px solid #e2e8f0; }
+    .prod-header { background: #fff; color: #000; border: 1px solid #ccc; }
+}
+</style>
+
+{# ── Header ── #}
+<div class="prod-header">
+    <h1>🏭 생산관리</h1>
+    <button class="btn btn-sm btn-light fw-bold px-3"
+            style="white-space:nowrap;"
+            id="btnSync" onclick="doSync()">
+        <span id="syncSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
+        공정 동기화
+    </button>
+</div>
+
+{# ── KPI bar ── #}
+<div class="kpi-bar">
+    <div class="kpi-tile kpi-total">
+        <div class="kpi-val">{{ stats.total }}</div>
+        <div class="kpi-label">전체</div>
+    </div>
+    <div class="kpi-tile kpi-working">
+        <div class="kpi-val">{{ stats.working }}</div>
+        <div class="kpi-label">진행중</div>
+    </div>
+    <div class="kpi-tile kpi-ready">
+        <div class="kpi-val">{{ stats.ready }}</div>
+        <div class="kpi-label">시작가능</div>
+    </div>
+    <div class="kpi-tile kpi-waiting">
+        <div class="kpi-val">{{ stats.waiting }}</div>
+        <div class="kpi-label">대기</div>
+    </div>
+    <div class="kpi-tile kpi-done">
+        <div class="kpi-val">{{ stats.done }}</div>
+        <div class="kpi-label">완료</div>
+    </div>
+</div>
+
+{# ── Filter bar ── #}
+<div class="filter-bar">
+    <select id="filterSite" class="form-select" onchange="applyFilters()">
+        <option value="">전체 현장</option>
+        {% for s in sites %}
+        <option value="{{ s.id }}" {% if site_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+    </select>
+    <select id="filterCategory" class="form-select" onchange="applyFilters()">
+        <option value="">전체 제품군</option>
+        {% for cat in categories %}
+        <option value="{{ cat }}">{{ cat }}</option>
+        {% endfor %}
+    </select>
+    <input type="search" id="filterSearch" class="form-control"
+           placeholder="현장명·모델·공정 검색…"
+           oninput="applyFilters()">
+</div>
+
+{# ── Macro: D-day badge ── #}
+{% macro dday_badge(dday) %}
+    {% if dday is none %}
+    {% elif dday < 0 %}
+        <span class="dday-badge dday-overdue">D+{{ dday|abs }}</span>
+    {% elif dday < 7 %}
+        <span class="dday-badge dday-danger">D-{{ dday }}</span>
+    {% elif dday < 14 %}
+        <span class="dday-badge dday-warn">D-{{ dday }}</span>
+    {% else %}
+        <span class="dday-badge dday-safe">D-{{ dday }}</span>
+    {% endif %}
+{% endmacro %}
+
+{# ── Macro: Process card ── #}
+{% macro proc_card(card) %}
+{% set is_blocked = not card.materials_ready or not card.can_start %}
+<div class="proc-card status-{{ 'blocked' if is_blocked and card.status == '대기' else card.status | replace('진행중','working') | replace('대기','waiting') | replace('완료','done') | replace('스킵','done') }}"
+     data-site="{{ card.site_name }}"
+     data-site-id="{{ card.process_id }}"
+     data-category="{{ card.category }}"
+     data-search="{{ card.process_name }} {{ card.model_name }} {{ card.site_name }}"
+     id="card-{{ card.process_id }}">
+
+    {# Top row #}
+    <div class="card-top">
+        <div class="card-proc-name" title="{{ card.process_name }}">{{ card.process_name }}</div>
+        <span class="card-step-badge">{{ card.step_order }}단계</span>
+    </div>
+
+    {# Info #}
+    <div class="card-info">
+        <div class="card-info-row">
+            <span class="lbl">모델</span>
+            <span class="val">{{ card.model_name }}</span>
+            <span class="ms-1 text-muted" style="font-size:.75rem;">/ {{ card.category }}</span>
+        </div>
+        <div class="card-info-row">
+            <span class="lbl">현장</span>
+            <span class="val" style="flex:1;overflow:hidden;text-overflow:ellipsis;">{{ card.site_name }}</span>
+            {{ dday_badge(card.dday) }}
+        </div>
+        <div class="card-info-row">
+            <span class="lbl">납기</span>
+            <span class="val">{{ card.delivery_date or '미정' }}</span>
+            <span class="lbl ms-2">수량</span>
+            <span class="val">{{ card.quantity }}개</span>
+        </div>
+        {% if card.started_at %}
+        <div class="card-info-row">
+            <span class="lbl">시작</span>
+            <span class="val">{{ card.started_at }}</span>
+        </div>
+        {% endif %}
+    </div>
+
+    {# Progress bar #}
+    <div class="prog-wrap">
+        <div class="prog-meta">
+            <span>{{ card.progress_qty }} / {{ card.quantity }}개</span>
+            <span>{{ "%.0f"|format(card.progress_pct) }}%</span>
+        </div>
+        <div class="prog-bar-outer">
+            <div class="prog-bar-inner" style="width:{{ card.progress_pct|round|int }}%"></div>
+        </div>
+    </div>
+
+    {# Action area #}
+    <div class="card-action">
+        {% if card.status == '진행중' %}
+            <div class="daily-input-wrap">
+                <label for="qty-{{ card.process_id }}">오늘:</label>
+                <input type="number" inputmode="numeric" min="0"
+                       class="daily-qty-input"
+                       id="qty-{{ card.process_id }}"
+                       data-pid="{{ card.process_id }}"
+                       value="{{ card.today_qty or '' }}"
+                       placeholder="0"
+                       onchange="saveDailyQty({{ card.process_id }}, this)">
+                <span class="save-dot" id="dot-{{ card.process_id }}" title="저장 상태"></span>
+            </div>
+            <button class="btn-complete"
+                    onclick="doComplete({{ card.process_id }}, true)">완료</button>
+
+        {% elif card.status == '대기' and card.can_start and card.materials_ready %}
+            <button class="btn-start w-100"
+                    onclick="doStart({{ card.process_id }})">시작하기</button>
+
+        {% elif card.status == '대기' %}
+            <div class="wait-reason {% if not card.materials_ready %}blocked{% endif %}">
+                {% if not card.materials_ready %}
+                    자재 미입고 대기 중
+                {% elif not card.can_start %}
+                    선행 공정 완료 대기 중
+                {% else %}
+                    대기 중
+                {% endif %}
+            </div>
+
+        {% elif card.status in ('완료', '스킵') %}
+            <div class="done-ts flex-fill">
+                {% if card.completed_at %}완료: {{ card.completed_at }}{% else %}완료됨{% endif %}
+            </div>
+            <button class="btn-uncomplete"
+                    onclick="doComplete({{ card.process_id }}, false)">되돌리기</button>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+{# ── Section: 진행중 ── #}
+<div class="section-wrapper" data-section="working">
+    <div class="section-hdr" onclick="toggleSection(this)">
+        <span>🔴</span>
+        <h2>진행중</h2>
+        <span class="section-count">{{ working|length }}건</span>
+        <span class="chevron">▼</span>
+    </div>
+    <div class="section-body">
+        {% if working %}
+        <div class="card-grid" id="grid-working">
+            {% for card in working %}{{ proc_card(card) }}{% endfor %}
+        </div>
+        {% else %}
+        <div class="section-empty">진행중인 공정이 없습니다.</div>
+        {% endif %}
+    </div>
+</div>
+
+{# ── Section: 시작가능 ── #}
+<div class="section-wrapper" data-section="ready">
+    <div class="section-hdr" onclick="toggleSection(this)">
+        <span>🟢</span>
+        <h2>시작가능</h2>
+        <span class="section-count">{{ ready|length }}건</span>
+        <span class="chevron">▼</span>
+    </div>
+    <div class="section-body">
+        {% if ready %}
+        <div class="card-grid" id="grid-ready">
+            {% for card in ready %}{{ proc_card(card) }}{% endfor %}
+        </div>
+        {% else %}
+        <div class="section-empty">시작 가능한 공정이 없습니다.</div>
+        {% endif %}
+    </div>
+</div>
+
+{# ── Section: 대기 ── #}
+<div class="section-wrapper" data-section="waiting">
+    <div class="section-hdr" onclick="toggleSection(this)">
+        <span>⚪</span>
+        <h2>대기</h2>
+        <span class="section-count">{{ waiting|length }}건</span>
+        <span class="chevron">▼</span>
+    </div>
+    <div class="section-body">
+        {% if waiting %}
+        <div class="card-grid" id="grid-waiting">
+            {% for card in waiting %}{{ proc_card(card) }}{% endfor %}
+        </div>
+        {% else %}
+        <div class="section-empty">대기 중인 공정이 없습니다.</div>
+        {% endif %}
+    </div>
+</div>
+
+{# ── Section: 완료 (기본 접힘) ── #}
+<div class="section-wrapper" data-section="done">
+    <div class="section-hdr collapsed" onclick="toggleSection(this)">
+        <span>✅</span>
+        <h2>완료</h2>
+        <span class="section-count">{{ done|length }}건</span>
+        <span class="chevron">▼</span>
+    </div>
+    <div class="section-body" style="display:none;">
+        {% if done %}
+        <div class="card-grid" id="grid-done">
+            {% for card in done %}{{ proc_card(card) }}{% endfor %}
+        </div>
+        {% else %}
+        <div class="section-empty">완료된 공정이 없습니다.</div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    /* ── CSRF token ── */
+    function getCsrf() {
+        return document.querySelector('meta[name="csrf-token"]')?.content || '';
+    }
+
+    /* ── JSON POST helper ── */
+    async function apiPost(url, body) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrf()
+            },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+    }
+
+    /* ── Section collapse ── */
+    window.toggleSection = function(hdr) {
+        const body = hdr.nextElementSibling;
+        const collapsed = hdr.classList.toggle('collapsed');
+        body.style.display = collapsed ? 'none' : '';
+    };
+
+    /* ── Client-side filter (AND logic) ── */
+    window.applyFilters = function() {
+        const siteEl   = document.getElementById('filterSite');
+        const siteId   = siteEl.value;
+        const siteTxt  = siteId ? siteEl.options[siteEl.selectedIndex].text : '';
+        const category = document.getElementById('filterCategory').value.toLowerCase();
+        const search   = document.getElementById('filterSearch').value.toLowerCase().trim();
+
+        document.querySelectorAll('.proc-card').forEach(card => {
+            const matchSite = !siteId || (card.dataset.site || '').includes(siteTxt);
+            const matchCat  = !category || (card.dataset.category || '').toLowerCase().includes(category);
+            const matchSrch = !search   || (card.dataset.search || '').toLowerCase().includes(search);
+            card.style.display = matchSite && matchCat && matchSrch ? '' : 'none';
+        });
+    };
+
+    /* ── Autosave: daily qty ── */
+    let saveTimers = {};
+
+    window.saveDailyQty = function(pid, input) {
+        const dot = document.getElementById('dot-' + pid);
+        const qty = parseInt(input.value, 10);
+        if (isNaN(qty) || qty < 0) return;
+
+        dot.className = 'save-dot saving';
+        clearTimeout(saveTimers[pid]);
+        saveTimers[pid] = setTimeout(async () => {
+            try {
+                await apiPost('/api/production/process/' + pid + '/daily-log', { daily_qty: qty });
+                dot.className = 'save-dot saved';
+                setTimeout(() => { dot.className = 'save-dot'; }, 2500);
+            } catch(e) {
+                dot.className = 'save-dot error';
+                console.error('daily-log error:', e);
+            }
+        }, 800);
+    };
+
+    /* ── Start process ── */
+    window.doStart = async function(pid) {
+        const btn = document.querySelector('#card-' + pid + ' .btn-start');
+        if (!btn) return;
+        btn.disabled = true;
+        btn.textContent = '처리중…';
+        try {
+            await apiPost('/api/production/process/' + pid + '/toggle', { is_active: true });
+            location.reload();
+        } catch(e) {
+            btn.disabled = false;
+            btn.textContent = '시작하기';
+            alert('오류가 발생했습니다. 다시 시도해주세요.');
+        }
+    };
+
+    /* ── Complete / Uncomplete ── */
+    window.doComplete = async function(pid, complete) {
+        const label = complete ? '완료' : '되돌리기';
+        const confirmed = confirm(complete
+            ? '이 공정을 완료 처리하시겠습니까?'
+            : '완료를 취소하고 진행중으로 되돌리시겠습니까?');
+        if (!confirmed) return;
+        try {
+            await apiPost('/api/production/process/' + pid + '/complete', { complete: complete });
+            location.reload();
+        } catch(e) {
+            alert('오류가 발생했습니다. 다시 시도해주세요.');
+        }
+    };
+
+    /* ── Sync ── */
+    window.doSync = async function() {
+        const btn     = document.getElementById('btnSync');
+        const spinner = document.getElementById('syncSpinner');
+        btn.disabled  = true;
+        spinner.classList.remove('d-none');
+        try {
+            await apiPost('/api/production/sync', {});
+            location.reload();
+        } catch(e) {
+            alert('동기화 중 오류가 발생했습니다.');
+            btn.disabled = false;
+            spinner.classList.add('d-none');
+        }
+    };
+
+})();
+</script>
+
+{% endblock %}

@@ -1,6 +1,7 @@
 import datetime
 
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, abort
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from modules.auth_decorators import login_required
 
@@ -12,12 +13,18 @@ from modules.models import (
     Project,
     Contract,
     ContractItem,
+    ProductionProcess,
+    ProductionDailyLog,
     CONTRACT_ITEM_SPEC_SCHEMA,
     normalize_detail_item,
 )
 from modules.production_logic import (
     sync_production_processes,
     refresh_production_statuses,
+    can_start_process,
+    are_materials_ready,
+    set_process_status,
+    recompute_process_progress,
 )
 from modules.priority_utils import (
     append_due_priority_reason,
@@ -413,6 +420,9 @@ ACTION_HANDLERS = {
 @production_bp.route('/production_management', methods=['GET', 'POST'])
 @login_required
 def production_management():
+    # GET → 새 카드형 메인으로 redirect
+    if request.method == 'GET':
+        return redirect(url_for('production.production_main'))
 
     with get_db() as db:
         current_user = session.get('full_name') or '사용자'
@@ -661,3 +671,293 @@ def production_detail(project_id):
             today=datetime.date.today(),
         )
         return response
+
+
+# ===================================================================
+# 카드형 생산관리 (재설계)
+# ===================================================================
+
+@production_bp.route('/production')
+@login_required
+def production_main():
+    """카드형 생산관리 메인 — 공정 단위 플랫 리스트"""
+    view = (request.args.get('view') or 'process').strip()
+    site_id = safe_int(request.args.get('site'), 0) or None
+
+    with get_db() as db:
+        sync_production_processes(db)
+        refresh_production_statuses(db)
+        db.commit()
+
+        today = datetime.date.today()
+
+        # 전체 공정 로드
+        q = db.query(ProductionProcess).options(
+            joinedload(ProductionProcess.contract_item)
+            .joinedload(ContractItem.contract)
+            .joinedload(Contract.project),
+            joinedload(ProductionProcess.contract_item)
+            .joinedload(ContractItem.material_orders),
+        )
+        if site_id:
+            q = q.filter(ProductionProcess.project_id == site_id)
+
+        all_processes = q.order_by(ProductionProcess.id).all()
+
+        # 오늘 일일로그 합산 (process_id → today_qty)
+        today_logs = dict(
+            db.query(
+                ProductionDailyLog.production_process_id,
+                func.sum(ProductionDailyLog.daily_qty),
+            ).filter(
+                ProductionDailyLog.work_date == today,
+            ).group_by(ProductionDailyLog.production_process_id).all()
+        )
+
+        # 카드 데이터 빌드
+        cards = []
+        for p in all_processes:
+            item = p.contract_item
+            if not item:
+                continue
+            contract = item.contract
+            project = contract.project if contract else None
+            if not project:
+                continue
+
+            mat_ready = are_materials_ready(item)
+            can_go = can_start_process(item, p)
+            delivery_date = contract.delivery_due_date if contract else None
+            dday = (delivery_date - today).days if delivery_date else None
+
+            cards.append({
+                'process_id': p.id,
+                'process_name': p.process_name,
+                'step_order': p.step_order,
+                'status': p.status or '대기',
+                'is_forced': bool(p.is_forced),
+                'progress_qty': p.progress_qty or 0,
+                'progress_pct': round(p.progress_percent or 0, 1),
+                'started_at': p.started_at.strftime('%m/%d %H:%M') if p.started_at else None,
+                'completed_at': p.completed_at.strftime('%m/%d %H:%M') if p.completed_at else None,
+                'item_id': item.id,
+                'model_name': item.model_name or '-',
+                'category': item.category or '-',
+                'quantity': int(item.quantity or 0),
+                'item_status': item.status_prod or '자재대기중',
+                'project_id': project.id,
+                'site_name': project.temp_name or '-',
+                'project_no': project.project_no or '-',
+                'delivery_date': delivery_date.strftime('%m/%d') if delivery_date else None,
+                'dday': dday,
+                'materials_ready': mat_ready,
+                'can_start': can_go,
+                'today_qty': int(today_logs.get(p.id) or 0),
+            })
+
+        # 상태별 그룹핑
+        working = [c for c in cards if c['status'] == '진행중']
+        ready = [c for c in cards if c['status'] == '대기' and c['materials_ready'] and c['can_start']]
+        waiting = [c for c in cards if c['status'] == '대기' and not (c['materials_ready'] and c['can_start'])]
+        done = [c for c in cards if c['status'] in ('완료', '스킵')]
+
+        # 납기순 정렬
+        sort_key = lambda c: (c['dday'] if c['dday'] is not None else 9999, c['site_name'])
+        working.sort(key=sort_key)
+        ready.sort(key=sort_key)
+
+        stats = {
+            'total': len(cards),
+            'working': len(working),
+            'ready': len(ready),
+            'waiting': len(waiting),
+            'done': len(done),
+        }
+
+        # 현장 목록 (필터용)
+        sites = db.query(Project.id, Project.temp_name).filter(
+            Project.is_contracted.is_(True)
+        ).order_by(Project.temp_name).all()
+
+        # 카테고리 목록
+        categories = sorted(set(c['category'] for c in cards if c['category'] != '-'))
+
+    return render_template(
+        'production.html',
+        working=working,
+        ready=ready,
+        waiting=waiting,
+        done=done,
+        stats=stats,
+        view=view,
+        site_id=site_id,
+        sites=[{'id': s[0], 'name': s[1]} for s in sites],
+        categories=categories,
+        today=today.strftime('%Y-%m-%d'),
+    )
+
+
+# --- AJAX API ---
+
+@production_bp.route('/api/production/process/<int:process_id>/toggle', methods=['POST'])
+@login_required
+def api_process_toggle(process_id):
+    """공정 ON/OFF 토글 (대기↔진행중)"""
+    data = request.get_json() or {}
+    is_active = data.get('is_active', True)
+    off_reason = (data.get('off_reason') or '').strip()
+    current_user = session.get('full_name') or '사용자'
+
+    with get_db() as db:
+        p = db.query(ProductionProcess).get(process_id)
+        if not p:
+            return jsonify({'ok': False, 'message': '공정을 찾을 수 없습니다.'}), 404
+
+        item = db.query(ContractItem).get(p.contract_item_id)
+        if not item:
+            return jsonify({'ok': False, 'message': '품목을 찾을 수 없습니다.'}), 404
+
+        if is_active:
+            if not can_start_process(item, p):
+                return jsonify({'ok': False, 'message': '선행 공정이 완료/진행되지 않았습니다.'}), 400
+            set_process_status(p, '진행중')
+        else:
+            if not off_reason:
+                off_reason = '작업자 OFF'
+            set_process_status(p, '대기')
+            p.started_at = None
+            p.completed_at = None
+
+        recompute_process_progress(db, p, item.quantity)
+        refresh_production_statuses(db, project_id=p.project_id)
+
+        append_history_log(
+            db, project_id=p.project_id, user_name='시스템',
+            content=f"{current_user} 공정토글: {item.model_name}/{p.process_name} → {p.status}" + (f" ({off_reason})" if not is_active else ""),
+            scope='production', kind='system',
+        )
+        db.commit()
+
+        return jsonify({
+            'ok': True,
+            'process_id': p.id,
+            'process_status': p.status,
+            'item_status': item.status_prod,
+            'progress_pct': round(p.progress_percent or 0, 1),
+        })
+
+
+@production_bp.route('/api/production/process/<int:process_id>/daily-log', methods=['POST'])
+@login_required
+def api_process_daily_log(process_id):
+    """일일 수량 입력"""
+    data = request.get_json() or {}
+    daily_qty = max(0, safe_int(data.get('daily_qty'), 0))
+    current_user = session.get('full_name') or '사용자'
+
+    with get_db() as db:
+        p = db.query(ProductionProcess).get(process_id)
+        if not p:
+            return jsonify({'ok': False, 'message': '공정을 찾을 수 없습니다.'}), 404
+
+        item = db.query(ContractItem).get(p.contract_item_id)
+        if not item:
+            return jsonify({'ok': False, 'message': '품목을 찾을 수 없습니다.'}), 404
+
+        # clamp
+        item_qty = int(item.quantity or 0)
+        current_total = p.progress_qty or 0
+        remain = max(0, item_qty - current_total)
+        actual_qty = min(daily_qty, remain)
+
+        if daily_qty > 0 and actual_qty <= 0:
+            return jsonify({'ok': False, 'message': '계약수량에 이미 도달했습니다.'}), 400
+
+        if actual_qty > 0:
+            db.add(ProductionDailyLog(
+                production_process_id=p.id,
+                work_date=datetime.date.today(),
+                daily_qty=actual_qty,
+                created_by=current_user,
+            ))
+
+            if (p.status or '대기') == '대기':
+                set_process_status(p, '진행중')
+
+            recompute_process_progress(db, p, item.quantity)
+            refresh_production_statuses(db, project_id=p.project_id)
+
+            append_history_log(
+                db, project_id=p.project_id, user_name='시스템',
+                content=f"{current_user} 수량입력: {item.model_name}/{p.process_name} +{actual_qty}개 (누적 {p.progress_qty}/{item_qty})",
+                scope='production', kind='system',
+            )
+            db.commit()
+
+        # 오늘 합계
+        today_total = db.query(func.coalesce(func.sum(ProductionDailyLog.daily_qty), 0)).filter(
+            ProductionDailyLog.production_process_id == p.id,
+            ProductionDailyLog.work_date == datetime.date.today(),
+        ).scalar()
+
+        return jsonify({
+            'ok': True,
+            'process_id': p.id,
+            'progress_qty': p.progress_qty or 0,
+            'progress_pct': round(p.progress_percent or 0, 1),
+            'remain': max(0, item_qty - (p.progress_qty or 0)),
+            'item_status': item.status_prod,
+            'today_total': int(today_total),
+            'clamped': actual_qty < daily_qty,
+            'actual_qty': actual_qty,
+        })
+
+
+@production_bp.route('/api/production/process/<int:process_id>/complete', methods=['POST'])
+@login_required
+def api_process_complete(process_id):
+    """공정 완료/완료해제"""
+    data = request.get_json() or {}
+    complete = data.get('complete', True)
+    current_user = session.get('full_name') or '사용자'
+
+    with get_db() as db:
+        p = db.query(ProductionProcess).get(process_id)
+        if not p:
+            return jsonify({'ok': False, 'message': '공정을 찾을 수 없습니다.'}), 404
+
+        item = db.query(ContractItem).get(p.contract_item_id)
+        if not item:
+            return jsonify({'ok': False, 'message': '품목을 찾을 수 없습니다.'}), 404
+
+        target = '완료' if complete else '진행중'
+        set_process_status(p, target)
+        recompute_process_progress(db, p, item.quantity)
+        refresh_production_statuses(db, project_id=p.project_id)
+
+        append_history_log(
+            db, project_id=p.project_id, user_name='시스템',
+            content=f"{current_user} 공정{'완료' if complete else '완료해제'}: {item.model_name}/{p.process_name}",
+            scope='production', kind='system',
+        )
+        db.commit()
+
+        return jsonify({
+            'ok': True,
+            'process_id': p.id,
+            'process_status': p.status,
+            'item_status': item.status_prod,
+            'completed_at': p.completed_at.strftime('%m/%d %H:%M') if p.completed_at else None,
+        })
+
+
+@production_bp.route('/api/production/sync', methods=['POST'])
+@login_required
+def api_production_sync():
+    """전체 공정 동기화"""
+    current_user = session.get('full_name') or '사용자'
+    with get_db() as db:
+        sync_production_processes(db)
+        refresh_production_statuses(db)
+        db.commit()
+    return jsonify({'ok': True, 'message': '공정 동기화 완료'})

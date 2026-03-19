@@ -34,7 +34,7 @@ MENU_REGISTRY = OrderedDict([
     ("procurement_summary", {"label": "납품집계", "group": "공유",   "endpoint": "procurement.procurement_summary"}),
     ("warranty",       {"label": "하자관리",   "group": "공유",   "endpoint": "warranty.warranty_list"}),
     # --- 생산부 ---
-    ("production",     {"label": "생산관리",   "group": "생산부", "endpoint": "production.production_management"}),
+    ("production",     {"label": "생산관리",   "group": "생산부", "endpoint": "production.production_main"}),
     # --- 시스템 (admin only) ---
     ("admin_settings", {"label": "시스템관리", "group": "시스템", "endpoint": "auth.admin_settings", "admin_only": True}),
 ])
