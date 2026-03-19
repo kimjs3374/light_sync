@@ -1,0 +1,303 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<style>
+.pivot-tbl { width:100%; border-collapse:collapse; font-size:0.82rem; }
+.pivot-tbl th, .pivot-tbl td { padding:3px 6px; border:1px solid #dee2e6; text-align:right; white-space:nowrap; }
+.pivot-tbl th { background:#f0f0f0; font-weight:600; text-align:center; border-bottom:2px solid #999; }
+.pivot-tbl td:first-child { text-align:left; font-weight:500; overflow:hidden; text-overflow:ellipsis; max-width:220px; }
+.pivot-tbl .sum-row { background:#e2e8f0; font-weight:700; }
+.pivot-tbl .sum-col { background:#f8fafc; font-weight:600; }
+.pivot-tbl .zero { color:#ccc; }
+.pivot-tbl .qty-val { color:#1e40af; }
+.pivot-tbl .amt-val { color:#64748b; font-size:0.78rem; }
+.table-scroll { overflow-x:auto; max-height:65vh; overflow-y:auto; }
+
+@media print {
+    @page { size:A4 landscape; margin:8mm; }
+    body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    .sidebar, .mobile-menu-btn, .sidebar-backdrop, .no-print, .alert { display:none !important; }
+    .main-content { margin-left:0 !important; padding:0 !important; }
+    .card { box-shadow:none !important; border:1px solid #dee2e6 !important; }
+    canvas { display:none !important; }
+    .pivot-tbl { font-size:8px !important; }
+    .pivot-tbl th, .pivot-tbl td { padding:2px 3px !important; }
+    .print-title { display:block !important; }
+    .table-scroll { max-height:none; overflow:visible; }
+}
+@media screen { .print-title { display:none; } }
+</style>
+
+<div class="print-title mb-1">
+    <h6 class="fw-bold mb-0">납품집계 ({{ filters.years }}) {% if filters.category %}— {{ filters.category }}{% endif %} <small class="text-muted fw-normal">{{ current_date }}</small></h6>
+</div>
+
+{# === 타이틀 + 버튼 === #}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-2 no-print">
+    <h5 class="text-primary fw-bold mb-0">납품집계
+        {% if filters.category %}<span class="badge bg-primary fw-normal" style="font-size:0.8rem;">{{ filters.category }}</span>{% endif %}
+        {% if filters.q %}<span class="badge bg-secondary fw-normal" style="font-size:0.8rem;">"{{ filters.q }}"</span>{% endif %}
+    </h5>
+    <div style="white-space:nowrap;">
+        <a href="{{ url_for('procurement.procurement_summary_excel', years=filters.years, category=filters.category, q=filters.q) }}"
+           class="btn btn-success btn-sm">엑셀 다운로드</a>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">인쇄</button>
+    </div>
+</div>
+
+{# === 검색/필터 (품목관리 스타일) === #}
+<div class="card border-0 shadow-sm mb-2 no-print">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-2 col-5">
+                <select name="category" class="form-select form-select-sm">
+                    <option value="">전체 품목</option>
+                    {% for c in filter_options.categories %}
+                    <option value="{{ c }}" {% if filters.category == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 col-7">
+                <div class="position-relative">
+                    <input type="text" name="q" id="modelInput" class="form-control form-control-sm"
+                           placeholder="모델명 검색 (입력 시 모델별 집계)" value="{{ filters.q }}" autocomplete="off">
+                    <div id="modelDropdown" class="position-absolute w-100 bg-white border shadow-sm rounded-bottom"
+                         style="display:none; z-index:1050; max-height:240px; overflow-y:auto; font-size:0.82rem;"></div>
+                </div>
+            </div>
+            <div class="col-md-auto col-12">
+                <div class="d-flex flex-wrap align-items-center gap-1">
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input" type="checkbox" id="yrAll"
+                               {% if selected_years|length == filter_options.years|length %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="yrAll" style="font-size:0.82rem;">전체</label>
+                    </div>
+                    {% for y in filter_options.years %}
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input yr-chk" type="checkbox" name="years" value="{{ y }}" id="yr{{ y }}"
+                               {% if y in selected_years %}checked{% endif %}>
+                        <label class="form-check-label" for="yr{{ y }}" style="font-size:0.82rem;">{{ y }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="col-auto d-flex align-items-center gap-2">
+                <button type="submit" class="btn btn-primary btn-sm">검색</button>
+                <a href="{{ url_for('procurement.procurement_summary') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+                <div class="form-check form-switch mb-0 ms-2">
+                    <input class="form-check-input" type="checkbox" id="toggleAmt" checked>
+                    <label class="form-check-label" for="toggleAmt" style="font-size:0.82rem;">금액</label>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# === 차트 === #}
+{% if pivot.models %}
+<div class="card border-0 shadow-sm mb-2 no-print">
+    <div class="card-body py-2" style="height:260px;">
+        <canvas id="summaryChart"></canvas>
+    </div>
+</div>
+{% endif %}
+
+{# === 피벗 테이블 === #}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-1">
+        <strong class="small">{% if filters.view == 'model' %}모델별{% else %}대분류별{% endif %} 집계</strong>
+        <span class="badge bg-primary ms-1">{{ pivot.models|length }}건</span>
+    </div>
+    <div class="card-body p-0">
+        {% if pivot.models %}
+        <div class="table-scroll">
+            <table class="pivot-tbl">
+                <thead>
+                    <tr>
+                        <th style="min-width:180px;">{% if filters.view == 'model' %}모델(규격명){% else %}품목(대분류){% endif %}</th>
+                        {% for m in range(1, 13) %}
+                        <th style="min-width:70px;">{{ m }}월</th>
+                        {% endfor %}
+                        <th class="sum-col" style="min-width:90px;">합계</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mdl in pivot.models %}
+                    {# 합계행 (년도 여러개면 소계 역할) #}
+                    <tr {% if mdl.sub_rows %}class="fw-bold" style="background:#f8fafc;"{% endif %}>
+                        <td title="{{ mdl.name }}">{{ mdl.name }}{% if mdl.sub_rows %} <span class="text-muted fw-normal" style="font-size:0.75rem;">(합계)</span>{% endif %}</td>
+                        {% for m in range(1, 13) %}
+                        {% set qty = mdl.months[m].qty %}
+                        {% set amt = mdl.months[m].amt %}
+                        <td {% if qty == 0 %}class="zero"{% endif %}>
+                            {% if qty > 0 %}
+                            <span class="qty-val">{{ qty }}</span><br>
+                            <span class="amt-val">{{ "{:,.0f}".format(amt / 10000) }}만</span>
+                            {% else %}-{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="sum-col">
+                            <span class="qty-val fw-bold">{{ mdl.total_qty }}</span><br>
+                            <span class="amt-val fw-bold">{{ "{:,.0f}".format(mdl.total_amt / 10000) }}만</span>
+                        </td>
+                    </tr>
+                    {# 년도별 상세행 #}
+                    {% for sub in mdl.sub_rows %}
+                    <tr style="background:#fff;">
+                        <td class="ps-3 text-muted" style="font-size:0.78rem;">↳ {{ sub.year }}년</td>
+                        {% for m in range(1, 13) %}
+                        {% set qty = sub.months[m].qty %}
+                        {% set amt = sub.months[m].amt %}
+                        <td {% if qty == 0 %}class="zero"{% endif %} style="font-size:0.78rem;">
+                            {% if qty > 0 %}
+                            <span class="qty-val">{{ qty }}</span><br>
+                            <span class="amt-val">{{ "{:,.0f}".format(amt / 10000) }}만</span>
+                            {% else %}-{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="sum-col" style="font-size:0.78rem;">
+                            <span class="qty-val">{{ sub.total_qty }}</span><br>
+                            <span class="amt-val">{{ "{:,.0f}".format(sub.total_amt / 10000) }}만</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% endfor %}
+                    <tr class="sum-row">
+                        <td>합계</td>
+                        {% for m in range(1, 13) %}
+                        {% set gm = pivot.grand_total.months[m] %}
+                        <td>
+                            {% if gm.qty > 0 %}
+                            <span class="qty-val">{{ gm.qty }}</span><br>
+                            <span class="amt-val">{{ "{:,.0f}".format(gm.amt / 10000) }}만</span>
+                            {% else %}-{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="sum-col">
+                            <span class="qty-val">{{ pivot.grand_total.total_qty }}</span><br>
+                            <span class="amt-val">{{ "{:,.0f}".format(pivot.grand_total.total_amt / 10000) }}만</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <p class="mt-2 mb-0">조회 결과가 없습니다.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if pivot.models %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+(function() {
+    var ctx = document.getElementById('summaryChart').getContext('2d');
+    var chartData = {{ chart_data_json|safe }};
+    new Chart(ctx, {
+        type: 'bar',
+        data: { labels: chartData.labels, datasets: chartData.datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { position: 'top', labels: { font: { size: 10 }, usePointStyle: true, boxWidth: 12 } },
+                tooltip: { callbacks: { label: function(ctx) {
+                    return ctx.dataset.label + ': ' + (ctx.parsed.y/10000).toLocaleString() + '만원';
+                }}}
+            },
+            scales: {
+                x: { stacked: true },
+                y: { stacked: true, beginAtZero: true,
+                     ticks: { callback: function(v) { return (v/100000000).toFixed(1)+'억'; } } }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+
+{# === 년도 전체선택 === #}
+<script>
+(function() {
+    var all = document.getElementById('yrAll');
+    var chks = document.querySelectorAll('.yr-chk');
+    all.addEventListener('change', function() {
+        chks.forEach(function(c){ c.checked = all.checked; });
+    });
+    chks.forEach(function(c) {
+        c.addEventListener('change', function() {
+            all.checked = Array.from(chks).every(function(x){ return x.checked; });
+        });
+    });
+})();
+</script>
+
+{# === 금액 토글 === #}
+<script>
+(function() {
+    var chk = document.getElementById('toggleAmt');
+    var KEY = 'summary_show_amt';
+    var saved = localStorage.getItem(KEY);
+    if (saved === '0') {
+        chk.checked = false;
+        document.querySelectorAll('.amt-val').forEach(function(el) { el.style.display = 'none'; });
+    }
+    chk.addEventListener('change', function() {
+        localStorage.setItem(KEY, this.checked ? '1' : '0');
+        document.querySelectorAll('.amt-val').forEach(function(el) {
+            el.style.display = chk.checked ? '' : 'none';
+        });
+    });
+})();
+</script>
+
+{# === 모델명 자동완성 === #}
+<script>
+(function() {
+    var input = document.getElementById('modelInput');
+    var dropdown = document.getElementById('modelDropdown');
+    var catSelect = document.querySelector('select[name="category"]');
+    var timer = null;
+
+    function fetchModels(q) {
+        var cat = catSelect ? catSelect.value : '';
+        var url = '{{ url_for("procurement.procurement_model_suggest") }}?q=' + encodeURIComponent(q);
+        if (cat) url += '&category=' + encodeURIComponent(cat);
+        fetch(url).then(function(r){ return r.json(); }).then(function(data) {
+            if (!data.length) { dropdown.style.display='none'; return; }
+            var html = '';
+            data.forEach(function(item) {
+                html += '<div class="px-2 py-1 border-bottom" style="cursor:pointer;" onmousedown="event.preventDefault();" onclick="selectModel(this)">'
+                    + '<span>' + item.name + '</span>'
+                    + '<span class="text-muted float-end">' + item.count + '건</span></div>';
+            });
+            dropdown.innerHTML = html;
+            dropdown.style.display = 'block';
+        });
+    }
+
+    window.selectModel = function(el) {
+        input.value = el.querySelector('span').textContent;
+        dropdown.style.display = 'none';
+    };
+
+    input.addEventListener('input', function() {
+        clearTimeout(timer);
+        var q = this.value.trim();
+        if (q.length < 1) { dropdown.style.display='none'; return; }
+        timer = setTimeout(function(){ fetchModels(q); }, 200);
+    });
+
+    input.addEventListener('focus', function() {
+        if (this.value.trim().length >= 1) fetchModels(this.value.trim());
+    });
+
+    input.addEventListener('blur', function() {
+        setTimeout(function(){ dropdown.style.display='none'; }, 150);
+    });
+})();
+</script>
+
+{% endblock %}

@@ -11,6 +11,13 @@
 - [ ] MCP 제작해서 로컬LLM과 연동 & 대화형 업무프로세스
 - [ ] 모바일환경 최적화
 
+## 2026-03-19
+- [x] 전사 현황판 디스플레이 (MAGNATECH /production/display) — 6컬럼 칸반+전광판+날씨
+- [x] 통합 히스토리보드 UX 개선 + 연락처 재배치
+- [x] 납품집계 (G2B 조달내역 대분류/모델별 월별 피벗 + stacked bar 차트 + 엑셀 + 모델 자동완성 + 금액토글 + 년도별 sub_rows)
+- [x] 세금계산서 매출관리 (tax_invoice_import + financial dashboard)
+- [x] 투광등기구 → LED투광등기구 데이터 병합 (3건)
+
 ## 2026-03-18
 - [x] 품목관리 페이지 (품번/품명/규격 분류 + CRUD + 카테고리 체계 + 거래처 자동완성)
 - [x] iCUBE USE_YN 매핑 버그 수정 (전 품목 is_active=False 문제)

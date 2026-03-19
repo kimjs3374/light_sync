@@ -21,6 +21,26 @@
 | dept-weekly-report | 부서별 주간보고서 (영업/생산/관리 + 접근 제어 + 메뉴 트리) | 100% | 2026-03-18 | 4 |
 | production-display | MAGNATECH 전사 현황판 (6컬럼 칸반 + 전광판 + 날씨 + 캘린더) | 100% | 2026-03-19 | 4 |
 | history-board-ux | 통합히스토리보드 UX + 연락처 재배치 + 매그나텍 연동 | 97% | 2026-03-19 | 4 |
+| delivery-summary | 납품집계 (G2B 조달내역 피벗+차트+엑셀) | 95% | 2026-03-19 | 4 |
+
+## delivery-summary
+
+- **Duration**: 2026-03-19 (1 session)
+- **Iterations**: 0 (first-pass 95%)
+- **Key Result**: G2B 조달내역 대분류/모델별 월별 피벗 집계, stacked bar 차트, 엑셀 다운로드, 모델 자동완성, 금액 토글, 년도별 sub_rows
+- **New Modules**: modules/services/procurement_summary.py, templates/procurement_summary.html
+- **Modified**: routes/procurement.py, config.py
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [delivery-summary.plan.md](delivery-summary/delivery-summary.plan.md) |
+| Design | [delivery-summary.design.md](delivery-summary/delivery-summary.design.md) |
+| Analysis | [delivery-summary.analysis.md](delivery-summary/delivery-summary.analysis.md) |
+| Report | [delivery-summary.report.md](delivery-summary/delivery-summary.report.md) |
+
+---
 
 ## production-display
 

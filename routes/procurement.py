@@ -2,8 +2,9 @@ import datetime
 
 from collections import OrderedDict
 
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, make_response
 from sqlalchemy import func, extract, or_, distinct
+from urllib.parse import quote
 
 from modules.auth_decorators import login_required
 from modules.db_context import get_db
@@ -11,6 +12,9 @@ from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.models import G2bProcurement, Contract, ContractItem, Project
 from modules.services.g2b_procurement_sync import sync_daily, sync_bulk
+from modules.services.procurement_summary import (
+    get_filter_options, get_summary_pivot, build_chart_data, generate_excel,
+)
 
 procurement_bp = Blueprint('procurement', __name__)
 
@@ -701,3 +705,112 @@ def g2b_match_unlink(contract_id):
         db.commit()
 
     return jsonify({'ok': True})
+
+
+# ===================================================================
+# 납품집계 (Delivery Summary)
+# ===================================================================
+
+def _parse_years():
+    """년도 파라미터 파싱 (multi-select + comma-sep)"""
+    current_year = datetime.date.today().year
+    years = []
+    for v in request.args.getlist('years'):
+        for part in v.split(','):
+            part = part.strip()
+            if part:
+                try:
+                    years.append(int(part))
+                except ValueError:
+                    pass
+    return years or [current_year]
+
+
+@procurement_bp.route('/procurement/summary')
+@login_required
+def procurement_summary():
+    """납품집계 — 대분류 선택 필수, 모델 검색 시 모델별 전환"""
+    years = _parse_years()
+    category = (request.args.get('category') or '').strip()
+    q = (request.args.get('q') or '').strip()
+
+    # 모델 검색어 있으면 모델별, 없으면 대분류별
+    view = 'model' if q else 'category'
+
+    with get_db() as db:
+        filter_options = get_filter_options(db)
+        pivot = get_summary_pivot(
+            db, years=years, category=category or None,
+            q=q or None, group_by=view,
+        )
+        chart_data = build_chart_data(pivot)
+
+    import json
+    return render_template(
+        'procurement_summary.html',
+        pivot=pivot,
+        chart_data_json=json.dumps(chart_data, ensure_ascii=False),
+        filters={'years': ','.join(str(y) for y in years), 'category': category, 'q': q, 'view': view},
+        filter_options=filter_options,
+        selected_years=years,
+        current_date=datetime.date.today().strftime('%Y-%m-%d'),
+    )
+
+
+@procurement_bp.route('/procurement/summary/excel')
+@login_required
+def procurement_summary_excel():
+    """납품집계 엑셀 다운로드"""
+    years = _parse_years()
+    category = (request.args.get('category') or '').strip()
+    q = (request.args.get('q') or '').strip()
+    view = 'model' if q else 'category'
+
+    with get_db() as db:
+        pivot = get_summary_pivot(
+            db, years=years, category=category or None,
+            q=q or None, group_by=view,
+        )
+
+    title = f'납품집계_{category}' if category else '납품집계'
+    try:
+        buf = generate_excel(pivot, years, title=title)
+    except ImportError:
+        flash('openpyxl 모듈이 설치되지 않았습니다.', 'danger')
+        return redirect(url_for('procurement.procurement_summary'))
+
+    year_str = '_'.join(str(y) for y in years)
+    filename = f'{title}_{year_str}.xlsx'
+    encoded = quote(filename)
+
+    resp = make_response(buf.read())
+    resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    resp.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{encoded}"
+    return resp
+
+
+@procurement_bp.route('/api/procurement-models')
+@login_required
+def procurement_model_suggest():
+    """모델(규격명) 자동완성 API"""
+    category = (request.args.get('category') or '').strip()
+    q = (request.args.get('q') or '').strip()
+
+    with get_db() as db:
+        filters = [
+            G2bProcurement.prdct_amt > 0,
+            G2bProcurement.prdct_idnt_no_nm.isnot(None),
+        ]
+        if category:
+            filters.append(G2bProcurement.dtil_prdct_clsfc_no_nm == category)
+        if q:
+            filters.append(G2bProcurement.prdct_idnt_no_nm.ilike(f'%{q}%'))
+
+        rows = db.query(
+            G2bProcurement.prdct_idnt_no_nm,
+            func.count().label('cnt'),
+        ).filter(*filters).group_by(
+            G2bProcurement.prdct_idnt_no_nm,
+        ).order_by(func.count().desc()).limit(20).all()
+
+    return jsonify([{'name': r[0], 'count': r[1]} for r in rows])

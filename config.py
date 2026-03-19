@@ -27,8 +27,11 @@ MENU_REGISTRY = OrderedDict([
     ("purchase_order", {"label": "발주관리",   "group": "관리부", "endpoint": "purchase_order.po_list"}),
     ("receiving",      {"label": "입고관리",   "group": "관리부", "endpoint": "receiving.receiving_list"}),
     ("bom",            {"label": "BOM관리",   "group": "관리부", "endpoint": "bom.bom_list"}),
+    ("financial",      {"label": "매출/수금",  "group": "관리부", "endpoint": "financial.financial_dashboard"}),
+    ("inventory",      {"label": "재고관리",  "group": "관리부", "endpoint": "inventory.inventory_dashboard"}),
     # --- 공유 (여러 부서 공통) ---
     ("procurement",    {"label": "조달내역",   "group": "공유",   "endpoint": "procurement.procurement_list"}),
+    ("procurement_summary", {"label": "납품집계", "group": "공유",   "endpoint": "procurement.procurement_summary"}),
     ("warranty",       {"label": "하자관리",   "group": "공유",   "endpoint": "warranty.warranty_list"}),
     # --- 생산부 ---
     ("production",     {"label": "생산관리",   "group": "생산부", "endpoint": "production.production_management"}),
@@ -40,10 +43,10 @@ COMMON_MENU_KEYS = {"dashboard", "overview", "daily_report"}
 
 # 부서별 기본 메뉴 (GroupPermission 초기값 세팅용)
 DEFAULT_GROUP_MENUS = {
-    "영업부": "project,contract,sales,delivery,procurement,warranty",
-    "관리부": "item,material,vendor,purchase_order,receiving,bom,procurement,warranty",
+    "영업부": "project,contract,sales,delivery,procurement,procurement_summary,warranty",
+    "관리부": "item,material,vendor,purchase_order,receiving,bom,financial,inventory,procurement,procurement_summary,warranty",
     "생산부": "production,warranty",
-    "임원진": "project,contract,sales,delivery,item,material,vendor,purchase_order,receiving,bom,procurement,warranty,production",
+    "임원진": "project,contract,sales,delivery,item,material,vendor,purchase_order,receiving,bom,financial,inventory,procurement,procurement_summary,warranty,production",
 }
 
 
