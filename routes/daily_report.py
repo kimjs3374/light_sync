@@ -119,10 +119,10 @@ def _collect_auto_items(db, target_date):
             f"{site} 하자/AS 접수 ({c.defect_type or '기타'})"
         )
 
-    # ─── 7. 사용자 코멘트 ───
+    # ─── 7. 히스토리 로그 (system 이벤트만, 댓글/답글 제외) ───
     for log in db.query(HistoryLog).filter(
         HistoryLog.created_at >= day_start, HistoryLog.created_at <= day_end,
-        HistoryLog.log_kind == 'comment',
+        HistoryLog.log_kind == 'system',
     ).options(joinedload(HistoryLog.project)).all():
         dept = SCOPE_TO_DEPT.get(log.log_scope)
         if dept is None:

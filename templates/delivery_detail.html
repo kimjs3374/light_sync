@@ -370,6 +370,8 @@
 {# 히스토리 한줄 바 #}
 {% set history_panel_target = '#deliveryHistoryOffcanvas' %}
 {% include 'components/history_summary_bar.html' %}
+{% block fab_attrs %}data-bs-toggle="offcanvas" data-bs-target="#deliveryHistoryOffcanvas"{% endblock %}
+{% block fab_badge %}{% if history_counts and history_counts.all %}<span class="fab-badge">{{ history_counts.all if history_counts.all < 100 else '99+' }}</span>{% endif %}{% endblock %}
 
 {% set contact_collapse_id = 'deliveryContactCollapse' %}
 {% include 'components/contact_collapse_bar.html' %}
