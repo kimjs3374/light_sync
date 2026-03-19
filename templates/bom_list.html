@@ -3,7 +3,9 @@
 
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
     <h2 class="text-primary fw-bold">BOM 관리</h2>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2" style="white-space:nowrap;">
+        <a href="{{ url_for('bom.bom_export') }}" class="btn btn-success btn-sm">엑셀 다운로드</a>
+        <a href="{{ url_for('bom.bom_import') }}" class="btn btn-outline-primary btn-sm">엑셀 가져오기</a>
         <a href="{{ url_for('bom.material_requirement') }}" class="btn btn-outline-info btn-sm">소요자재 계산</a>
         <a href="{{ url_for('bom.bom_create') }}" class="btn btn-primary btn-sm">+ 신규 BOM</a>
     </div>
@@ -39,69 +41,116 @@
     {% endfor %}
 </div>
 
-{# --- 검색/필터 --- #}
+{# --- 제품군 필터 버튼 (고정 순서) --- #}
+{% set cat_order = ['투광등기구', '보안등기구', '가로등기구', '조명타워', '스텐가로등주', '철제가로등주', '태양광가로등'] %}
+{% set cat_map = dict(stats.categories) %}
+<div class="mb-2 d-flex flex-wrap gap-1">
+    <a href="{{ url_for('bom.bom_list', q=filters.q) }}" class="btn btn-sm {{ 'btn-primary' if not filters.category else 'btn-outline-primary' }}">전체 ({{ stats.total }})</a>
+    {% for cat in cat_order %}
+    {% if cat in cat_map %}
+    <a href="{{ url_for('bom.bom_list', category=cat, q=filters.q) }}" class="btn btn-sm {{ 'btn-primary' if filters.category == cat else 'btn-outline-secondary' }}">{{ cat }} ({{ cat_map[cat] }})</a>
+    {% endif %}
+    {% endfor %}
+    {% for cat, cnt in stats.categories %}
+    {% if cat not in cat_order %}
+    <a href="{{ url_for('bom.bom_list', category=cat, q=filters.q) }}" class="btn btn-sm {{ 'btn-primary' if filters.category == cat else 'btn-outline-secondary' }}">{{ cat }} ({{ cnt }})</a>
+    {% endif %}
+    {% endfor %}
+</div>
+
+{# --- 검색 --- #}
 <div class="card border-0 shadow-sm mb-3">
     <div class="card-body py-2">
-        <form method="GET" class="row g-2 align-items-end">
-            <div class="col-md-3 col-6">
-                <input type="text" name="q" class="form-control form-control-sm" placeholder="제품코드 또는 제품명 검색" value="{{ filters.q }}">
-            </div>
-            <div class="col-md-3 col-4">
-                <select name="category" class="form-select form-select-sm">
-                    <option value="">전체 제품군</option>
-                    {% for cat, cnt in stats.categories %}
-                    <option value="{{ cat }}" {{ 'selected' if filters.category == cat }}>{{ cat }} ({{ cnt }})</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm">검색</button>
-                <a href="{{ url_for('bom.bom_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
-            </div>
+        <form method="GET" class="d-flex gap-2 align-items-center">
+            {% if filters.category %}<input type="hidden" name="category" value="{{ filters.category }}">{% endif %}
+            <input type="text" name="q" class="form-control form-control-sm" placeholder="제품코드 또는 제품명 검색" value="{{ filters.q }}" style="max-width:300px;">
+            <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;">검색</button>
+            <a href="{{ url_for('bom.bom_list') }}" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">초기화</a>
         </form>
     </div>
 </div>
 
 {# --- BOM 목록 --- #}
 {% set can_see_price = session.get('role') == 'admin' or session.get('position') in ['팀장', '부장', '이사', '상무', '전무', '부사장', '사장', '대표'] %}
-<div class="card border-0 shadow-sm">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover table-sm mb-0" style="font-size:0.85rem;">
-                <thead class="table-light">
-                    <tr>
-                        <th style="width:130px">제품코드</th>
-                        <th style="width:90px">제품군</th>
-                        <th style="width:110px">인증번호</th>
-                        <th style="width:60px" class="text-center">부품수</th>
-                        {% if can_see_price %}<th style="width:100px" class="text-end">총 금액</th>{% endif %}
-                        <th style="width:60px">상태</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for bom in boms %}
-                    <tr style="cursor:pointer;" onclick="location.href='{{ url_for('bom.bom_detail', bom_id=bom.id) }}'">
-                        <td data-label="제품코드"><a href="{{ url_for('bom.bom_detail', bom_id=bom.id) }}" class="text-primary fw-bold text-decoration-none text-nowrap" style="overflow:hidden;text-overflow:ellipsis;max-width:130px;display:inline-block;">{{ bom.product_code }}</a></td>
-                        <td data-label="제품군"><span class="badge bg-light text-dark border text-nowrap">{{ bom.product_category or '-' }}</span></td>
-                        <td data-label="인증번호" class="text-nowrap" style="overflow:hidden;text-overflow:ellipsis;max-width:110px;">{{ bom.certification_no or '-' }}</td>
-                        <td data-label="부품수" class="text-center"><span class="badge bg-secondary">{{ bom._item_count }}</span></td>
-                        {% if can_see_price %}<td data-label="총금액" class="text-end text-nowrap">{{ '{:,.0f}'.format(bom._total_amount) if bom._total_amount else '-' }}</td>{% endif %}
-                        <td data-label="상태">
-                            {% if bom.is_active %}
-                            <span class="badge bg-success">활성</span>
-                            {% else %}
-                            <span class="badge bg-secondary">비활성</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="6" class="text-center text-muted py-4">등록된 BOM이 없습니다.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+<form method="POST" action="{{ url_for('bom.bom_bulk_delete') }}" id="bulkForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white py-1 d-flex justify-content-between align-items-center">
+            <span class="small fw-bold">BOM 목록</span>
+            <span id="bulkActions" style="display:none; white-space:nowrap;">
+                <button type="submit" formaction="{{ url_for('bom.bom_bulk_deactivate') }}" class="btn btn-outline-warning btn-sm">
+                    선택 비활성화 (<span class="bulk-count">0</span>건)
+                </button>
+                <button type="submit" class="btn btn-outline-danger btn-sm"
+                    onclick="return confirm('선택한 BOM을 삭제하시겠습니까? (BOM 부품 목록만 삭제, 품목 마스터는 유지)');">
+                    선택 삭제 (<span class="bulk-count">0</span>건)
+                </button>
+            </span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0" style="font-size:0.85rem;">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:32px" class="text-center"><input type="checkbox" id="checkAll"></th>
+                            <th style="width:130px">제품코드</th>
+                            <th style="width:90px">제품군</th>
+                            <th style="width:110px">인증번호</th>
+                            <th style="width:60px" class="text-center">부품수</th>
+                            {% if can_see_price %}<th style="width:100px" class="text-end">총 금액</th>{% endif %}
+                            <th style="width:60px">상태</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for bom in boms %}
+                        <tr style="cursor:pointer;" onclick="if(event.target.type!=='checkbox')location.href='{{ url_for('bom.bom_detail', bom_id=bom.id) }}'">
+                            <td class="text-center" onclick="event.stopPropagation();">
+                                <input type="checkbox" name="bom_ids" value="{{ bom.id }}" class="bom-check">
+                            </td>
+                            <td data-label="제품코드"><a href="{{ url_for('bom.bom_detail', bom_id=bom.id) }}" class="text-primary fw-bold text-decoration-none text-nowrap" style="overflow:hidden;text-overflow:ellipsis;max-width:130px;display:inline-block;" onclick="event.stopPropagation();">{{ bom.product_code }}</a></td>
+                            <td data-label="제품군"><span class="badge bg-light text-dark border text-nowrap">{{ bom.product_category or '-' }}</span></td>
+                            <td data-label="인증번호" class="text-nowrap" style="overflow:hidden;text-overflow:ellipsis;max-width:110px;">{{ bom.certification_no or '-' }}</td>
+                            <td data-label="부품수" class="text-center"><span class="badge bg-secondary">{{ bom._item_count }}</span></td>
+                            {% if can_see_price %}<td data-label="총금액" class="text-end text-nowrap">{{ '{:,.0f}'.format(bom._total_amount) if bom._total_amount else '-' }}</td>{% endif %}
+                            <td data-label="상태">
+                                {% if bom.is_active %}
+                                <span class="badge bg-success">활성</span>
+                                {% else %}
+                                <span class="badge bg-secondary">비활성</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="text-center text-muted py-4">등록된 BOM이 없습니다.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
-</div>
+</form>
+<script>
+(function() {
+    var checks = document.querySelectorAll('.bom-check');
+    var checkAll = document.getElementById('checkAll');
+    var actions = document.getElementById('bulkActions');
+    var countEls = document.querySelectorAll('.bulk-count');
+
+    function update() {
+        var cnt = 0;
+        checks.forEach(function(c) { if (c.checked) cnt++; });
+        countEls.forEach(function(el) { el.textContent = cnt; });
+        actions.style.display = cnt > 0 ? '' : 'none';
+    }
+    checks.forEach(function(c) { c.addEventListener('click', update); });
+    if (checkAll) {
+        checkAll.addEventListener('click', function() {
+            checks.forEach(function(c) { c.checked = checkAll.checked; });
+            update();
+        });
+    }
+})();
+</script>
 
 {# --- 페이지네이션 --- #}
 {% if pagination.total_pages > 1 %}

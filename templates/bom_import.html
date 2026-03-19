@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="text-primary fw-bold mb-0">BOM 엑셀 가져오기</h2>
+    <div style="white-space:nowrap;">
+        <a href="{{ url_for('bom.bom_export') }}" class="btn btn-success btn-sm">현재 BOM 다운로드</a>
+        <a href="{{ url_for('bom.bom_list') }}" class="btn btn-outline-secondary btn-sm">목록</a>
+    </div>
+</div>
+
+{% if step == 'upload' %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="upload">
+            <div class="mb-3">
+                <label class="form-label fw-bold">엑셀 파일 선택</label>
+                <input type="file" name="file" class="form-control" accept=".xlsx,.xls" required>
+                <div class="form-text">
+                    <strong>"제품 및 자재LIST"</strong> 양식의 엑셀 파일을 업로드하세요.<br>
+                    시트별 제품군, 헤더에 <strong>완제품코드/품목명/소요량/단가/부품업체</strong> 컬럼이 필요합니다.<br>
+                    기존 BOM과 완제품코드 기준으로 자동 비교합니다.
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">업로드 &amp; 비교</button>
+        </form>
+    </div>
+</div>
+
+{% elif step == 'compare' %}
+<div class="card border-0 shadow-sm mb-2">
+    <div class="card-header bg-white py-2">
+        <strong>비교 결과</strong>
+        <span class="badge bg-success ms-1">신규 {{ new_count }}건</span>
+        <span class="badge bg-warning text-dark ms-1">변경 {{ changed_count }}건</span>
+        <span class="badge bg-secondary ms-1">동일 {{ same_count }}건</span>
+        <span class="badge bg-primary ms-1">전체 {{ results|length }}건</span>
+    </div>
+    <div class="card-body p-0">
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="apply">
+            <input type="hidden" name="cache_id" value="{{ cache_id }}">
+
+            <div class="px-3 py-2 border-bottom bg-light d-flex gap-2 align-items-center flex-wrap">
+                <button type="button" class="btn btn-outline-success btn-sm filter-btn active" data-filter="new">신규 ({{ new_count }})</button>
+                <button type="button" class="btn btn-outline-warning btn-sm filter-btn active" data-filter="changed">변경 ({{ changed_count }})</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm filter-btn" data-filter="same">동일 ({{ same_count }})</button>
+                <span class="ms-auto" style="white-space:nowrap;">
+                    <button type="button" class="btn btn-outline-dark btn-sm" id="selectAll">전체선택</button>
+                    <button type="button" class="btn btn-outline-dark btn-sm" id="selectNone">선택해제</button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="selectNewChanged">신규+변경 선택</button>
+                </span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.8rem;">
+                    <colgroup>
+                        <col style="width:32px">
+                        <col style="width:55px">
+                        <col style="width:130px">
+                        <col style="width:100px">
+                        <col style="width:70px">
+                        <col style="width:70px">
+                        <col style="width:60px">
+                        <col style="width:60px">
+                        <col style="width:auto">
+                    </colgroup>
+                    <thead>
+                        <tr style="background:#f0f0f0; border-bottom:2px solid #999;">
+                            <th class="py-1 text-center"><input type="checkbox" id="headerCheck"></th>
+                            <th class="py-1 text-center">상태</th>
+                            <th class="py-1">완제품코드</th>
+                            <th class="py-1">시트(제품군)</th>
+                            <th class="py-1 text-center">엑셀 품목수</th>
+                            <th class="py-1 text-center">DB 품목수</th>
+                            <th class="py-1 text-center">신규</th>
+                            <th class="py-1 text-center">변경</th>
+                            <th class="py-1">변경 내역</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in results %}
+                        {% set bg = '#e8ffe8' if r.status == 'new' else ('#fff8e0' if r.status == 'changed' else '#f8f8f8') %}
+                        <tr class="import-row" data-status="{{ r.status }}" style="background:{{ bg }}; {% if r.status == 'same' %}display:none;{% endif %}">
+                            <td class="py-0 text-center">
+                                <input type="checkbox" name="selected" value="{{ loop.index0 }}" class="row-check"
+                                    {% if r.status in ('new', 'changed') %}checked{% endif %}>
+                            </td>
+                            <td class="py-0 text-center">
+                                {% if r.status == 'new' %}
+                                <span class="badge bg-success" style="font-size:0.65rem;">신규</span>
+                                {% elif r.status == 'changed' %}
+                                <span class="badge bg-warning text-dark" style="font-size:0.65rem;">변경</span>
+                                {% else %}
+                                <span class="badge bg-secondary" style="font-size:0.65rem;">동일</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-0 fw-bold" style="overflow:hidden;text-overflow:ellipsis;" title="{{ r.product_code }}">
+                                {% if r.db_id %}
+                                <a href="{{ url_for('bom.bom_detail', bom_id=r.db_id) }}" class="text-decoration-none" onclick="event.stopPropagation();">{{ r.product_code }}</a>
+                                {% else %}
+                                {{ r.product_code }}
+                                {% endif %}
+                            </td>
+                            <td class="py-0" style="overflow:hidden;text-overflow:ellipsis;">{{ r.sheet }}</td>
+                            <td class="py-0 text-center">{{ r.excel_item_count }}</td>
+                            <td class="py-0 text-center">{{ r.db_item_count or '-' }}</td>
+                            <td class="py-0 text-center">{% if r.new_items %}<span class="text-success fw-bold">+{{ r.new_items }}</span>{% else %}-{% endif %}</td>
+                            <td class="py-0 text-center">{% if r.changed_items %}<span class="text-warning fw-bold">{{ r.changed_items }}</span>{% else %}-{% endif %}</td>
+                            <td class="py-0" style="overflow:hidden;text-overflow:ellipsis; font-size:0.7rem; color:#666;">
+                                {% for ic in r.item_changes[:3] %}
+                                {{ ic.name }}: {{ ic.diffs|join(', ') }}{% if not loop.last %}; {% endif %}
+                                {% endfor %}
+                                {% if r.item_changes|length > 3 %}...+{{ r.item_changes|length - 3 }}건{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="px-3 py-2 border-top bg-light d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('bom.bom_import') }}" class="btn btn-outline-secondary btn-sm">다시 업로드</a>
+                <button type="submit" class="btn btn-primary btn-sm" id="applyBtn">선택 항목 적용</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var rows = document.querySelectorAll('.import-row');
+    var checks = document.querySelectorAll('.row-check');
+
+    document.querySelectorAll('.filter-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            this.classList.toggle('active');
+            var activeFilters = [];
+            document.querySelectorAll('.filter-btn.active').forEach(function(b) { activeFilters.push(b.dataset.filter); });
+            rows.forEach(function(row) { row.style.display = activeFilters.indexOf(row.dataset.status) !== -1 ? '' : 'none'; });
+        });
+    });
+
+    function getVisibleChecks() {
+        var result = [];
+        checks.forEach(function(cb) { if (cb.closest('tr').style.display !== 'none') result.push(cb); });
+        return result;
+    }
+
+    document.getElementById('selectAll').addEventListener('click', function(e) {
+        e.preventDefault(); getVisibleChecks().forEach(function(cb) { cb.checked = true; }); updateCount();
+    });
+    document.getElementById('selectNone').addEventListener('click', function(e) {
+        e.preventDefault(); checks.forEach(function(cb) { cb.checked = false; }); updateCount();
+    });
+    document.getElementById('selectNewChanged').addEventListener('click', function(e) {
+        e.preventDefault();
+        checks.forEach(function(cb) { cb.checked = false; });
+        document.querySelectorAll('.import-row[data-status="new"] .row-check, .import-row[data-status="changed"] .row-check').forEach(function(cb) { cb.checked = true; });
+        updateCount();
+    });
+    document.getElementById('headerCheck').addEventListener('click', function() {
+        var checked = this.checked;
+        getVisibleChecks().forEach(function(cb) { cb.checked = checked; });
+        updateCount();
+    });
+
+    function updateCount() {
+        var cnt = 0; checks.forEach(function(cb) { if (cb.checked) cnt++; });
+        document.getElementById('applyBtn').textContent = '선택 항목 적용 (' + cnt + '건)';
+    }
+    checks.forEach(function(cb) { cb.addEventListener('click', updateCount); });
+    updateCount();
+});
+</script>
+{% endif %}
+
+{% endblock %}

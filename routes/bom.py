@@ -6,10 +6,14 @@ BOM 관리 Blueprint (Phase 4).
 """
 
 import datetime
+import io
+import json
 import logging
+import os
+import tempfile
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
-    flash, jsonify, abort, session,
+    flash, jsonify, abort, session, send_file,
 )
 from sqlalchemy import desc, func
 from sqlalchemy.orm import joinedload
@@ -17,7 +21,6 @@ from modules.auth_decorators import login_required
 from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.db_context import get_db
-import json
 from modules.models import (
     BomHeader, BomItem, Contract, ContractItem, Project,
     PurchaseOrder, PurchaseOrderItem, MaterialOrder,
@@ -342,6 +345,453 @@ def bom_delete(bom_id):
         db.commit()
         flash('BOM이 삭제되었습니다.', 'success')
         return redirect(url_for('bom.bom_list'))
+
+
+# ===================================================================
+# 5-1. BOM 일괄 삭제
+# ===================================================================
+@bom_bp.route('/bom/bulk-delete', methods=['POST'])
+@login_required
+def bom_bulk_delete():
+    ids = request.form.getlist('bom_ids')
+    if not ids:
+        flash('삭제할 BOM을 선택해주세요.', 'warning')
+        return redirect(url_for('bom.bom_list'))
+
+    with get_db() as db:
+        deleted = 0
+        for bom_id_str in ids:
+            bom_id = safe_int(bom_id_str, 0)
+            if not bom_id:
+                continue
+            bom = db.query(BomHeader).get(bom_id)
+            if bom:
+                db.delete(bom)
+                deleted += 1
+        db.commit()
+
+    flash(f'BOM {deleted}건이 삭제되었습니다.', 'success')
+    return redirect(url_for('bom.bom_list'))
+
+
+# ===================================================================
+# 5-1b. BOM 일괄 비활성화
+# ===================================================================
+@bom_bp.route('/bom/bulk-deactivate', methods=['POST'])
+@login_required
+def bom_bulk_deactivate():
+    ids = request.form.getlist('bom_ids')
+    if not ids:
+        flash('비활성화할 BOM을 선택해주세요.', 'warning')
+        return redirect(url_for('bom.bom_list'))
+
+    with get_db() as db:
+        count = 0
+        for bom_id_str in ids:
+            bom_id = safe_int(bom_id_str, 0)
+            if not bom_id:
+                continue
+            bom = db.query(BomHeader).get(bom_id)
+            if bom and bom.is_active:
+                bom.is_active = False
+                count += 1
+        db.commit()
+
+    flash(f'BOM {count}건이 비활성화되었습니다.', 'info')
+    return redirect(url_for('bom.bom_list'))
+
+
+# ===================================================================
+# 5-2. BOM 엑셀 다운로드
+# ===================================================================
+@bom_bp.route('/bom/export')
+@login_required
+def bom_export():
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    with get_db() as db:
+        boms = db.query(BomHeader).options(
+            joinedload(BomHeader.bom_items),
+        ).order_by(BomHeader.product_category, BomHeader.product_code).all()
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+        header_font = Font(color='FFFFFF', bold=True, size=9)
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin'),
+        )
+
+        # 제품군별 시트
+        categories = {}
+        for bom in boms:
+            cat = bom.product_category or '기타'
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append(bom)
+
+        for cat, cat_boms in categories.items():
+            ws_name = cat[:31]  # 시트명 31자 제한
+            ws = wb.create_sheet(title=ws_name)
+
+            headers = ['No', '완제품코드', '제품명', '인증번호', '품목코드', '품목명',
+                        '규격', '소요량', '단가', '금액', '납품업체', '비고']
+            for col, h in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=h)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center')
+                cell.border = thin_border
+
+            row = 2
+            for bom in cat_boms:
+                for idx, bi in enumerate(bom.bom_items):
+                    row_data = [
+                        idx + 1 if idx == 0 else '',
+                        bom.product_code if idx == 0 else '',
+                        bom.product_name if idx == 0 else '',
+                        bom.certification_no or '' if idx == 0 else '',
+                        bi.item_code or '',
+                        bi.item_name or '',
+                        bi.item_spec or '',
+                        bi.quantity or 0,
+                        bi.unit_price or 0,
+                        bi.amount or 0,
+                        bi.supplier or '',
+                        bi.note or '',
+                    ]
+                    for col, val in enumerate(row_data, 1):
+                        cell = ws.cell(row=row, column=col, value=val)
+                        cell.border = thin_border
+                        cell.font = Font(size=9)
+                    row += 1
+
+                # 제품 구분선
+                if bom.bom_items:
+                    row += 1
+
+            widths = [6, 18, 20, 15, 15, 25, 20, 8, 10, 12, 15, 15]
+            for i, w in enumerate(widths, 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='BOM_목록.xlsx',
+    )
+
+
+# ===================================================================
+# 5-3. BOM 엑셀 임포트
+# ===================================================================
+@bom_bp.route('/bom/import', methods=['GET', 'POST'])
+@login_required
+def bom_import():
+    if request.method == 'POST':
+        action = request.form.get('action', '')
+
+        # --- 1단계: 엑셀 업로드 → 비교 ---
+        if action == 'upload':
+            file = request.files.get('file')
+            if not file or not file.filename.endswith(('.xlsx', '.xls')):
+                flash('엑셀 파일(.xlsx)을 선택해주세요.', 'warning')
+                return redirect(url_for('bom.bom_import'))
+
+            import openpyxl
+            try:
+                wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
+            except Exception as e:
+                flash(f'엑셀 파일 읽기 실패: {e}', 'danger')
+                return redirect(url_for('bom.bom_import'))
+
+            # 시트별 BOM 파싱
+            parsed_boms = {}  # {product_code: {header_info, items: [...]}}
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                rows = list(ws.iter_rows(values_only=True))
+                if not rows:
+                    continue
+
+                # 헤더 행 찾기: "No" 또는 "완제품코드" 또는 "품목코드" 포함 행
+                header_idx = None
+                col_map = {}
+                for ri, row in enumerate(rows):
+                    cells = [str(c).strip() if c else '' for c in row]
+                    for ci, cv in enumerate(cells):
+                        lv = cv.lower()
+                        if cv in ('No', 'NO', 'no', 'No.'):
+                            col_map['no'] = ci
+                        elif cv in ('완제품코드', '제품코드') or lv == 'product_code':
+                            col_map['product_code'] = ci
+                        elif cv in ('품목코드', '부품코드') or lv == 'item_code':
+                            col_map['item_code'] = ci
+                        elif cv in ('품목명', '부품명', '품명') or lv == 'item_name':
+                            col_map['item_name'] = ci
+                        elif cv in ('소요량', '수량') or lv == 'quantity':
+                            col_map['quantity'] = ci
+                        elif cv in ('단가',) or lv == 'unit_price':
+                            col_map['unit_price'] = ci
+                        elif cv in ('부품업체', '납품업체', '업체') or lv == 'supplier':
+                            col_map['supplier'] = ci
+                        elif cv in ('비고', '원수') or lv == 'note':
+                            if 'note' not in col_map:
+                                col_map['note'] = ci
+                        elif cv in ('규격', '사양') or lv == 'spec':
+                            col_map['spec'] = ci
+                    if 'item_name' in col_map or 'item_code' in col_map:
+                        header_idx = ri
+                        break
+
+                if header_idx is None:
+                    continue
+
+                # 데이터 파싱
+                for row in rows[header_idx + 1:]:
+                    cells = [str(c).strip() if c else '' for c in row]
+
+                    def get_col(key):
+                        idx = col_map.get(key)
+                        return cells[idx] if idx is not None and idx < len(cells) else ''
+
+                    item_name = get_col('item_name')
+                    if not item_name:
+                        continue
+
+                    product_code = get_col('product_code')
+                    if not product_code:
+                        continue
+
+                    # 수량/단가 숫자 변환
+                    qty_str = get_col('quantity')
+                    try:
+                        qty = float(qty_str) if qty_str and not qty_str.startswith('=') else 1
+                    except (ValueError, TypeError):
+                        qty = 1
+
+                    price_str = get_col('unit_price')
+                    try:
+                        price = float(price_str) if price_str and not price_str.startswith('=') else 0
+                    except (ValueError, TypeError):
+                        price = 0
+
+                    if product_code not in parsed_boms:
+                        parsed_boms[product_code] = {
+                            'product_code': product_code,
+                            'sheet': sheet_name,
+                            'items': [],
+                        }
+
+                    parsed_boms[product_code]['items'].append({
+                        'item_code': get_col('item_code'),
+                        'item_name': item_name,
+                        'item_spec': get_col('spec'),
+                        'quantity': qty,
+                        'unit_price': price,
+                        'supplier': get_col('supplier'),
+                        'note': get_col('note'),
+                    })
+
+                wb.close()
+
+            if not parsed_boms:
+                flash('엑셀에서 BOM 데이터를 찾을 수 없습니다. 헤더(완제품코드/품목명 등)를 확인해주세요.', 'warning')
+                return redirect(url_for('bom.bom_import'))
+
+            # DB 기존 BOM과 비교
+            with get_db() as db:
+                existing_boms = db.query(BomHeader).options(
+                    joinedload(BomHeader.bom_items),
+                ).all()
+                db_by_code = {b.product_code: b for b in existing_boms}
+
+                results = []
+                for pc, parsed in parsed_boms.items():
+                    db_bom = db_by_code.get(pc)
+                    if db_bom:
+                        # 비교: 품목 수 차이, 변경된 품목 감지
+                        db_items = {(bi.item_name, bi.item_code or ''): bi for bi in db_bom.bom_items}
+                        excel_items = parsed['items']
+
+                        item_changes = []
+                        new_items = 0
+                        changed_items = 0
+                        for ei in excel_items:
+                            key = (ei['item_name'], ei['item_code'])
+                            if key in db_items:
+                                dbi = db_items[key]
+                                diffs = []
+                                if ei['quantity'] != (dbi.quantity or 0):
+                                    diffs.append(f"소요량: {dbi.quantity}→{ei['quantity']}")
+                                if ei['unit_price'] and ei['unit_price'] != (dbi.unit_price or 0):
+                                    diffs.append(f"단가: {dbi.unit_price or 0}→{ei['unit_price']}")
+                                if ei['supplier'] and ei['supplier'] != (dbi.supplier or ''):
+                                    diffs.append(f"업체: {dbi.supplier or ''}→{ei['supplier']}")
+                                if diffs:
+                                    changed_items += 1
+                                    item_changes.append({'name': ei['item_name'], 'diffs': diffs})
+                            else:
+                                new_items += 1
+                                item_changes.append({'name': ei['item_name'], 'diffs': ['신규 품목']})
+
+                        status = 'changed' if (new_items > 0 or changed_items > 0) else 'same'
+                        results.append({
+                            'product_code': pc,
+                            'sheet': parsed['sheet'],
+                            'excel_item_count': len(excel_items),
+                            'db_item_count': len(db_bom.bom_items),
+                            'db_id': db_bom.id,
+                            'db_category': db_bom.product_category or '',
+                            'status': status,
+                            'new_items': new_items,
+                            'changed_items': changed_items,
+                            'item_changes': item_changes[:5],  # 표시용 최대 5건
+                        })
+                    else:
+                        results.append({
+                            'product_code': pc,
+                            'sheet': parsed['sheet'],
+                            'excel_item_count': len(parsed['items']),
+                            'db_item_count': 0,
+                            'db_id': None,
+                            'db_category': '',
+                            'status': 'new',
+                            'new_items': len(parsed['items']),
+                            'changed_items': 0,
+                            'item_changes': [],
+                        })
+
+            # 임시 파일에 저장
+            import hashlib
+            cache_data = {'parsed': parsed_boms, 'results': results}
+            cache_id = hashlib.md5(json.dumps(cache_data, ensure_ascii=False, default=str).encode()).hexdigest()[:12]
+            cache_dir = os.path.join(tempfile.gettempdir(), 'lightsync_bom_import')
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_path = os.path.join(cache_dir, f'{cache_id}.json')
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, ensure_ascii=False, default=str)
+
+            new_count = sum(1 for r in results if r['status'] == 'new')
+            changed_count = sum(1 for r in results if r['status'] == 'changed')
+            same_count = sum(1 for r in results if r['status'] == 'same')
+
+            return render_template('bom_import.html',
+                                   results=results,
+                                   new_count=new_count,
+                                   changed_count=changed_count,
+                                   same_count=same_count,
+                                   cache_id=cache_id,
+                                   step='compare')
+
+        # --- 2단계: 선택 항목 적용 ---
+        elif action == 'apply':
+            import os
+            cache_id = request.form.get('cache_id', '')
+            cache_path = os.path.join(tempfile.gettempdir(), 'lightsync_bom_import', f'{cache_id}.json')
+            if not cache_id or not os.path.exists(cache_path):
+                flash('비교 데이터가 만료되었습니다. 다시 업로드해주세요.', 'warning')
+                return redirect(url_for('bom.bom_import'))
+
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                cache_data = json.load(f)
+            os.remove(cache_path)
+
+            parsed_boms = cache_data['parsed']
+            results = cache_data['results']
+            selected = set(request.form.getlist('selected'))
+
+            with get_db() as db:
+                added_boms = 0
+                updated_boms = 0
+
+                for i, r in enumerate(results):
+                    if str(i) not in selected:
+                        continue
+
+                    pc = r['product_code']
+                    parsed = parsed_boms.get(pc)
+                    if not parsed:
+                        continue
+
+                    if r['status'] == 'new':
+                        # 신규 BOM 생성
+                        bom = BomHeader(
+                            product_code=pc,
+                            product_name=pc,
+                            product_category=parsed['sheet'],
+                            is_active=True,
+                        )
+                        db.add(bom)
+                        db.flush()
+
+                        for ei in parsed['items']:
+                            db.add(BomItem(
+                                bom_id=bom.id,
+                                item_code=ei['item_code'] or None,
+                                item_name=ei['item_name'],
+                                item_spec=ei.get('item_spec') or None,
+                                quantity=ei['quantity'],
+                                unit_price=ei['unit_price'] or None,
+                                amount=(ei['quantity'] * ei['unit_price']) if ei['unit_price'] else None,
+                                supplier=ei['supplier'] or None,
+                                note=ei.get('note') or None,
+                            ))
+                        added_boms += 1
+
+                    elif r['status'] == 'changed' and r['db_id']:
+                        # 기존 BOM 갱신: 기존 품목 업데이트 + 신규 추가
+                        bom = db.query(BomHeader).get(r['db_id'])
+                        if not bom:
+                            continue
+
+                        existing_items = {(bi.item_name, bi.item_code or ''): bi for bi in bom.bom_items}
+
+                        for ei in parsed['items']:
+                            key = (ei['item_name'], ei['item_code'])
+                            if key in existing_items:
+                                bi = existing_items[key]
+                                if ei['quantity']:
+                                    bi.quantity = ei['quantity']
+                                if ei['unit_price']:
+                                    if bi.unit_price and ei['unit_price'] != bi.unit_price:
+                                        bi.prev_unit_price = bi.unit_price
+                                    bi.unit_price = ei['unit_price']
+                                    bi.amount = ei['quantity'] * ei['unit_price']
+                                if ei['supplier']:
+                                    bi.supplier = ei['supplier']
+                            else:
+                                db.add(BomItem(
+                                    bom_id=bom.id,
+                                    item_code=ei['item_code'] or None,
+                                    item_name=ei['item_name'],
+                                    item_spec=ei.get('item_spec') or None,
+                                    quantity=ei['quantity'],
+                                    unit_price=ei['unit_price'] or None,
+                                    amount=(ei['quantity'] * ei['unit_price']) if ei['unit_price'] else None,
+                                    supplier=ei['supplier'] or None,
+                                    note=ei.get('note') or None,
+                                ))
+                        updated_boms += 1
+
+                db.commit()
+
+            msg_parts = []
+            if added_boms:
+                msg_parts.append(f'신규 {added_boms}건 생성')
+            if updated_boms:
+                msg_parts.append(f'{updated_boms}건 갱신')
+            flash(', '.join(msg_parts) + ' 완료!', 'success')
+            return redirect(url_for('bom.bom_list'))
+
+    # GET
+    return render_template('bom_import.html', step='upload')
 
 
 # ===================================================================
