@@ -335,6 +335,30 @@ def receiving_create():
                 )
                 db.add(ri)
 
+                # 품목 자동등록 + 재고 반영 (직접입고 시)
+                if qty > 0 and not linked_po_item_id:
+                    item = db.query(Item).filter(
+                        Item.item_name == name,
+                        Item.item_spec == spec,
+                    ).first()
+                    if not item:
+                        item = Item(
+                            item_name=name,
+                            item_spec=spec,
+                            unit=unit or 'EA',
+                            is_active=True,
+                        )
+                        db.add(item)
+                        db.flush()
+                    if price > 0:
+                        item.last_unit_price = price
+                    record_stock_movement(
+                        db, item_id=item.id, movement_type='입고',
+                        quantity=qty, reference_type='receiving',
+                        reference_id=rcv.id, unit_price=price,
+                        note=f'직접입고 {rcv.rcv_no}',
+                    )
+
             # 발주서 상태 업데이트
             if po_id:
                 _update_po_status_on_receiving(db, po_id)
