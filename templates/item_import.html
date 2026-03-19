@@ -1,0 +1,209 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="text-primary fw-bold mb-0">품목 엑셀 가져오기</h2>
+    <div style="white-space:nowrap;">
+        <a href="{{ url_for('item.item_export') }}" class="btn btn-success btn-sm">현재 품목 다운로드</a>
+        <a href="{{ url_for('item.item_list') }}" class="btn btn-outline-secondary btn-sm">목록</a>
+    </div>
+</div>
+
+{% if step == 'upload' %}
+{# ========== 1단계: 파일 업로드 ========== #}
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="upload">
+            <div class="mb-3">
+                <label class="form-label fw-bold">엑셀 파일 선택</label>
+                <input type="file" name="file" class="form-control" accept=".xlsx,.xls" required>
+                <div class="form-text">
+                    엑셀 파일에 <strong>품번, 품명, 규격</strong> 컬럼이 포함되어야 합니다.
+                    기존 DB 품목과 품번/품명 기준으로 자동 비교합니다.
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">업로드 &amp; 비교</button>
+        </form>
+    </div>
+</div>
+
+{% elif step == 'compare' %}
+{# ========== 2단계: 비교 결과 ========== #}
+<div class="card border-0 shadow-sm mb-2">
+    <div class="card-header bg-white py-2">
+        <strong>비교 결과</strong>
+        <span class="badge bg-success ms-1">신규 {{ new_count }}건</span>
+        <span class="badge bg-warning text-dark ms-1">변경 {{ changed_count }}건</span>
+        <span class="badge bg-secondary ms-1">동일 {{ same_count }}건</span>
+        <span class="badge bg-primary ms-1">전체 {{ results|length }}건</span>
+    </div>
+    <div class="card-body p-0">
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="apply">
+            <input type="hidden" name="cache_id" value="{{ cache_id }}">
+
+            {# 필터 버튼 #}
+            <div class="px-3 py-2 border-bottom bg-light d-flex gap-2 align-items-center flex-wrap">
+                <button type="button" class="btn btn-outline-success btn-sm filter-btn active" data-filter="new">신규 ({{ new_count }})</button>
+                <button type="button" class="btn btn-outline-warning btn-sm filter-btn active" data-filter="changed">변경 ({{ changed_count }})</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm filter-btn" data-filter="same">동일 ({{ same_count }})</button>
+                <span class="ms-auto" style="white-space:nowrap;">
+                    <button type="button" class="btn btn-outline-dark btn-sm" id="selectAll">전체선택</button>
+                    <button type="button" class="btn btn-outline-dark btn-sm" id="selectNone">선택해제</button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="selectNewChanged">신규+변경 선택</button>
+                </span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.8rem;">
+                    <colgroup>
+                        <col style="width:35px">
+                        <col style="width:50px">
+                        <col style="width:80px">
+                        <col style="width:22%">
+                        <col style="width:15%">
+                        <col style="width:4px">
+                        <col style="width:80px">
+                        <col style="width:22%">
+                        <col style="width:15%">
+                        <col style="width:15%">
+                    </colgroup>
+                    <thead>
+                        <tr style="background:#f0f0f0; border-bottom:2px solid #999;">
+                            <th class="py-1 text-center"></th>
+                            <th class="py-1 text-center">상태</th>
+                            <th class="py-1 text-center" colspan="3" style="background:#e8f4e8;">엑셀 데이터</th>
+                            <th class="py-1"></th>
+                            <th class="py-1 text-center" colspan="3" style="background:#e8e8f4;">기존 DB 데이터</th>
+                            <th class="py-1 text-center">변경사항</th>
+                        </tr>
+                        <tr style="background:#f8f8f8;">
+                            <th class="py-1 text-center"><input type="checkbox" id="headerCheck"></th>
+                            <th class="py-1 text-center"></th>
+                            <th class="py-1 text-center" style="background:#f0f8f0;">품번</th>
+                            <th class="py-1 text-center" style="background:#f0f8f0;">품명</th>
+                            <th class="py-1 text-center" style="background:#f0f8f0;">규격</th>
+                            <th class="py-1"></th>
+                            <th class="py-1 text-center" style="background:#f0f0f8;">품번</th>
+                            <th class="py-1 text-center" style="background:#f0f0f8;">품명</th>
+                            <th class="py-1 text-center" style="background:#f0f0f8;">규격</th>
+                            <th class="py-1 text-center"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in results %}
+                        {% set bg = '#e8ffe8' if r.status == 'new' else ('#fff8e0' if r.status == 'changed' else '#f8f8f8') %}
+                        <tr class="import-row" data-status="{{ r.status }}" style="background:{{ bg }}; border-bottom:1px solid #eee; {% if r.status == 'same' %}display:none;{% endif %}">
+                            <td class="py-0 text-center">
+                                <input type="checkbox" name="selected" value="{{ loop.index0 }}" class="row-check"
+                                    {% if r.status in ('new', 'changed') %}checked{% endif %}>
+                            </td>
+                            <td class="py-0 text-center">
+                                {% if r.status == 'new' %}
+                                <span class="badge bg-success" style="font-size:0.65rem;">신규</span>
+                                {% elif r.status == 'changed' %}
+                                <span class="badge bg-warning text-dark" style="font-size:0.65rem;">변경</span>
+                                {% else %}
+                                <span class="badge bg-secondary" style="font-size:0.65rem;">동일</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-0"><code style="font-size:0.75rem;">{{ r.excel.code or '-' }}</code></td>
+                            <td class="py-0 fw-bold" style="overflow:hidden;text-overflow:ellipsis;" title="{{ r.excel.name }}">{{ r.excel.name }}</td>
+                            <td class="py-0" style="overflow:hidden;text-overflow:ellipsis; color:#808080;" title="{{ r.excel.spec }}">{{ r.excel.spec or '-' }}</td>
+                            <td class="py-0 text-center" style="background:#ddd;">{% if r.status == 'changed' %}<strong style="color:#cc6600;">&rarr;</strong>{% endif %}</td>
+                            <td class="py-0"><code style="font-size:0.75rem;">{{ r.db_code or '-' }}</code></td>
+                            <td class="py-0" style="overflow:hidden;text-overflow:ellipsis;" title="{{ r.db_name }}">{{ r.db_name or '-' }}</td>
+                            <td class="py-0" style="overflow:hidden;text-overflow:ellipsis; color:#808080;" title="{{ r.db_spec }}">{{ r.db_spec or '-' }}</td>
+                            <td class="py-0" style="overflow:hidden;text-overflow:ellipsis; color:#cc6600; font-size:0.7rem;" title="{{ r.changes|join(', ') }}">
+                                {{ r.changes|join(', ') if r.changes else '-' }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="px-3 py-2 border-top bg-light d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('item.item_import') }}" class="btn btn-outline-secondary btn-sm">다시 업로드</a>
+                <button type="submit" class="btn btn-primary btn-sm" id="applyBtn">
+                    선택 항목 적용
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var rows = document.querySelectorAll('.import-row');
+    var checks = document.querySelectorAll('.row-check');
+
+    // 필터 토글
+    document.querySelectorAll('.filter-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            this.classList.toggle('active');
+            applyFilters();
+        });
+    });
+
+    function applyFilters() {
+        var activeFilters = [];
+        document.querySelectorAll('.filter-btn.active').forEach(function(b) {
+            activeFilters.push(b.dataset.filter);
+        });
+        rows.forEach(function(row) {
+            var show = activeFilters.indexOf(row.dataset.status) !== -1;
+            row.style.display = show ? '' : 'none';
+        });
+    }
+
+    function getVisibleChecks() {
+        var result = [];
+        checks.forEach(function(cb) {
+            if (cb.closest('tr').style.display !== 'none') result.push(cb);
+        });
+        return result;
+    }
+
+    // 전체선택
+    document.getElementById('selectAll').addEventListener('click', function(e) {
+        e.preventDefault();
+        getVisibleChecks().forEach(function(cb) { cb.checked = true; });
+        updateApplyCount();
+    });
+    // 선택해제
+    document.getElementById('selectNone').addEventListener('click', function(e) {
+        e.preventDefault();
+        checks.forEach(function(cb) { cb.checked = false; });
+        updateApplyCount();
+    });
+    // 신규+변경 선택
+    document.getElementById('selectNewChanged').addEventListener('click', function(e) {
+        e.preventDefault();
+        checks.forEach(function(cb) { cb.checked = false; });
+        document.querySelectorAll('.import-row[data-status="new"] .row-check, .import-row[data-status="changed"] .row-check').forEach(function(cb) { cb.checked = true; });
+        updateApplyCount();
+    });
+    // 헤더 체크
+    document.getElementById('headerCheck').addEventListener('click', function() {
+        var checked = this.checked;
+        getVisibleChecks().forEach(function(cb) { cb.checked = checked; });
+        updateApplyCount();
+    });
+
+    // 적용 버튼 건수
+    function updateApplyCount() {
+        var cnt = 0;
+        checks.forEach(function(cb) { if (cb.checked) cnt++; });
+        document.getElementById('applyBtn').textContent = '선택 항목 적용 (' + cnt + '건)';
+    }
+    checks.forEach(function(cb) { cb.addEventListener('click', updateApplyCount); });
+    updateApplyCount();
+});
+</script>
+{% endif %}
+
+{% endblock %}

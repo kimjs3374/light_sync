@@ -7,9 +7,11 @@
 - 카테고리 목록 API
 """
 
+import io
 import json
 import logging
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+import tempfile
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, session
 from sqlalchemy import or_, func, distinct, desc
 from modules.auth_decorators import login_required
 from modules.pagination import make_pagination
@@ -484,3 +486,265 @@ def stock_match():
             })
 
     return render_template('item_stock_match.html', unmatched=unmatched)
+
+
+# ===================================================================
+# 엑셀 다운로드 (현재 품목 전체)
+# ===================================================================
+@item_bp.route('/item/export')
+@login_required
+def item_export():
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    with get_db() as db:
+        items = db.query(Item).order_by(Item.icube_item_cd).all()
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = '품목목록'
+
+        # 헤더
+        headers = ['품번', '품명', '규격', '단위', '분류', '제조사', '실재고', '비고', '상태']
+        header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+        header_font = Font(color='FFFFFF', bold=True, size=10)
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin'),
+        )
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = thin_border
+
+        # 데이터
+        for r, item in enumerate(items, 2):
+            row_data = [
+                item.icube_item_cd or '',
+                item.item_name or '',
+                item.item_spec or '',
+                item.unit or '',
+                item.category or '',
+                item.manufacturer or '',
+                item.stock_qty or 0,
+                item.note or '',
+                '사용' if item.is_active else '미사용',
+            ]
+            for col, val in enumerate(row_data, 1):
+                cell = ws.cell(row=r, column=col, value=val)
+                cell.border = thin_border
+                cell.font = Font(size=9)
+
+        # 컬럼 너비
+        widths = [12, 30, 25, 8, 12, 15, 10, 20, 8]
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+        # 필터 설정
+        ws.auto_filter.ref = f'A1:I{len(items) + 1}'
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='품목목록.xlsx',
+    )
+
+
+# ===================================================================
+# 엑셀 업로드 → 비교/마이그레이션
+# ===================================================================
+@item_bp.route('/item/import', methods=['GET', 'POST'])
+@login_required
+def item_import():
+    if request.method == 'POST':
+        action = request.form.get('action', '')
+
+        # --- 1단계: 엑셀 업로드 → 비교 결과 표시 ---
+        if action == 'upload':
+            file = request.files.get('file')
+            if not file or not file.filename.endswith(('.xlsx', '.xls')):
+                flash('엑셀 파일(.xlsx)을 선택해주세요.', 'warning')
+                return redirect(url_for('item.item_import'))
+
+            import openpyxl
+            try:
+                wb = openpyxl.load_workbook(file, read_only=True)
+                ws = wb.active
+            except Exception as e:
+                flash(f'엑셀 파일 읽기 실패: {e}', 'danger')
+                return redirect(url_for('item.item_import'))
+
+            # 헤더 자동 감지 (품번/품명/규격 컬럼 위치)
+            header_row = None
+            col_map = {}
+            for row_idx, row in enumerate(ws.iter_rows(values_only=True), 1):
+                cells = [str(c).strip() if c else '' for c in row]
+                for ci, cv in enumerate(cells):
+                    if cv in ('품번', '품목코드', 'item_cd', 'item_code', 'code'):
+                        col_map['code'] = ci
+                    elif cv in ('품명', '품목명', 'item_name', 'name'):
+                        col_map['name'] = ci
+                    elif cv in ('규격', 'spec', 'item_spec', '사양'):
+                        col_map['spec'] = ci
+                if 'name' in col_map:
+                    header_row = row_idx
+                    break
+
+            if header_row is None:
+                flash('헤더를 찾을 수 없습니다. 품번/품명/규격 컬럼이 필요합니다.', 'warning')
+                return redirect(url_for('item.item_import'))
+
+            # 엑셀 데이터 파싱
+            excel_items = []
+            for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
+                cells = [str(c).strip() if c else '' for c in row]
+                code = cells[col_map.get('code', 0)] if 'code' in col_map else ''
+                name = cells[col_map.get('name', 1)] if 'name' in col_map else ''
+                spec = cells[col_map.get('spec', 2)] if 'spec' in col_map else ''
+                if not name:
+                    continue
+                excel_items.append({'code': code, 'name': name, 'spec': spec})
+
+            wb.close()
+
+            if not excel_items:
+                flash('엑셀에 유효한 데이터가 없습니다.', 'warning')
+                return redirect(url_for('item.item_import'))
+
+            # DB 기존 품목과 비교
+            with get_db() as db:
+                existing = db.query(Item).all()
+                db_by_code = {}
+                db_by_name = {}
+                for it in existing:
+                    if it.icube_item_cd:
+                        db_by_code[it.icube_item_cd] = it
+                    db_by_name[it.item_name] = it
+
+                results = []
+                for ei in excel_items:
+                    match = None
+                    match_type = 'new'
+
+                    # 1) 품번으로 매칭
+                    if ei['code'] and ei['code'] in db_by_code:
+                        match = db_by_code[ei['code']]
+                    # 2) 품명으로 매칭
+                    elif ei['name'] in db_by_name:
+                        match = db_by_name[ei['name']]
+
+                    if match:
+                        # 변경 여부 체크
+                        changes = []
+                        if ei['code'] and ei['code'] != (match.icube_item_cd or ''):
+                            changes.append(f"품번: {match.icube_item_cd or '없음'} → {ei['code']}")
+                        if ei['name'] != (match.item_name or ''):
+                            changes.append(f"품명: {match.item_name} → {ei['name']}")
+                        if ei['spec'] != (match.item_spec or ''):
+                            changes.append(f"규격: {match.item_spec or '없음'} → {ei['spec']}")
+
+                        match_type = 'changed' if changes else 'same'
+                        results.append({
+                            'excel': ei,
+                            'db_id': match.id,
+                            'db_code': match.icube_item_cd or '',
+                            'db_name': match.item_name,
+                            'db_spec': match.item_spec or '',
+                            'status': match_type,
+                            'changes': changes,
+                        })
+                    else:
+                        results.append({
+                            'excel': ei,
+                            'db_id': None,
+                            'db_code': '',
+                            'db_name': '',
+                            'db_spec': '',
+                            'status': 'new',
+                            'changes': [],
+                        })
+
+            # 결과를 임시 파일에 저장 (세션 쿠키 크기 제한 회피)
+            import os, hashlib
+            cache_id = hashlib.md5(json.dumps(results, ensure_ascii=False).encode()).hexdigest()[:12]
+            cache_dir = os.path.join(tempfile.gettempdir(), 'lightsync_import')
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_path = os.path.join(cache_dir, f'{cache_id}.json')
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump(results, f, ensure_ascii=False)
+
+            new_count = sum(1 for r in results if r['status'] == 'new')
+            changed_count = sum(1 for r in results if r['status'] == 'changed')
+            same_count = sum(1 for r in results if r['status'] == 'same')
+
+            return render_template('item_import.html',
+                                   results=results,
+                                   new_count=new_count,
+                                   changed_count=changed_count,
+                                   same_count=same_count,
+                                   cache_id=cache_id,
+                                   step='compare')
+
+        # --- 2단계: 선택 항목 적용 ---
+        elif action == 'apply':
+            import os
+            cache_id = request.form.get('cache_id', '')
+            cache_path = os.path.join(tempfile.gettempdir(), 'lightsync_import', f'{cache_id}.json')
+            if not cache_id or not os.path.exists(cache_path):
+                flash('비교 데이터가 만료되었습니다. 다시 업로드해주세요.', 'warning')
+                return redirect(url_for('item.item_import'))
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                results = json.load(f)
+            os.remove(cache_path)
+            if not results:
+                flash('비교 데이터가 없습니다. 다시 업로드해주세요.', 'warning')
+                return redirect(url_for('item.item_import'))
+
+            selected = request.form.getlist('selected')
+            selected_set = set(selected)
+
+            with get_db() as db:
+                added = 0
+                updated = 0
+                for i, r in enumerate(results):
+                    if str(i) not in selected_set:
+                        continue
+
+                    if r['status'] == 'new':
+                        new_item = Item(
+                            icube_item_cd=r['excel']['code'] or None,
+                            item_name=r['excel']['name'],
+                            item_spec=r['excel']['spec'] or None,
+                            is_active=True,
+                        )
+                        db.add(new_item)
+                        added += 1
+
+                    elif r['status'] == 'changed' and r['db_id']:
+                        item = db.query(Item).get(r['db_id'])
+                        if item:
+                            if r['excel']['code']:
+                                item.icube_item_cd = r['excel']['code']
+                            item.item_name = r['excel']['name']
+                            item.item_spec = r['excel']['spec'] or None
+                            updated += 1
+
+                db.commit()
+
+            msg_parts = []
+            if added:
+                msg_parts.append(f'신규 {added}건 등록')
+            if updated:
+                msg_parts.append(f'{updated}건 수정')
+            flash(', '.join(msg_parts) + ' 완료!', 'success')
+            return redirect(url_for('item.item_list'))
+
+    # GET: 업로드 폼
+    return render_template('item_import.html', step='upload')
