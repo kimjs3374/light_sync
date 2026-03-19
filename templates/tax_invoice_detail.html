@@ -1,0 +1,263 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+.detail-label { font-size: 0.78rem; color: #64748b; font-weight: 600; margin-bottom: 2px; }
+.detail-value { font-size: 0.9rem; font-weight: 500; }
+.cmp-tbl { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
+.cmp-tbl th, .cmp-tbl td { padding: 4px 8px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+.cmp-tbl th { background: #f1f5f9; font-weight: 700; width: 30%; }
+.cmp-tbl .col-inv { background: #eff6ff; }
+.cmp-tbl .col-g2b { background: #f0fdf4; }
+.cmp-match { color: #16a34a; }
+.cmp-diff { color: #dc2626; font-weight: 700; }
+</style>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
+    <div>
+        <h5 class="text-primary fw-bold mb-1">세금계산서 상세</h5>
+        <small class="text-muted">승인번호: {{ inv.approval_no }}</small>
+    </div>
+    <div class="d-flex gap-2" style="white-space:nowrap;">
+        <a href="{{ url_for('financial.tax_invoice_list') }}" class="btn btn-outline-secondary btn-sm">목록</a>
+        <form method="POST" action="{{ url_for('financial.tax_invoice_delete', invoice_id=inv.id) }}" onsubmit="return confirm('삭제하시겠습니까?');" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <button type="submit" class="btn btn-outline-danger btn-sm">삭제</button>
+        </form>
+    </div>
+</div>
+
+{# ====== 세금계산서 기본정보 ====== #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-dark text-white py-2">
+        <span class="fw-bold small">세금계산서 정보</span>
+        {% if inv.invoice_type == '수정세금계산서' %}
+        <span class="badge bg-warning text-dark ms-2" style="white-space:nowrap;">수정</span>
+        {% endif %}
+        {% if inv.match_status == '자동매칭' %}
+        <span class="badge bg-primary ms-2" style="white-space:nowrap;">G2B 자동매칭</span>
+        {% elif inv.match_status == '수동매칭' %}
+        <span class="badge bg-info ms-2" style="white-space:nowrap;">G2B 수동매칭</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <div class="row g-2 mb-2">
+            <div class="col-md-3">
+                <div class="detail-label">작성일자</div>
+                <div class="detail-value">{{ inv.issue_date.strftime('%Y-%m-%d') if inv.issue_date else '-' }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="detail-label">전송일자</div>
+                <div class="detail-value">{{ inv.send_date.strftime('%Y-%m-%d') if inv.send_date else '-' }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="detail-label">공급자</div>
+                <div class="detail-value">{{ inv.supplier_name or '-' }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="detail-label">공급받는자</div>
+                <div class="detail-value">{{ inv.buyer_name or '-' }}</div>
+            </div>
+        </div>
+        <div class="row g-2 mb-2">
+            <div class="col-md-4">
+                <div class="detail-label">공급가액</div>
+                <div class="detail-value">{{ fmt_money(inv.supply_amount) }}원</div>
+            </div>
+            <div class="col-md-4">
+                <div class="detail-label">세액</div>
+                <div class="detail-value">{{ fmt_money(inv.tax_amount) }}원</div>
+            </div>
+            <div class="col-md-4">
+                <div class="detail-label">합계금액</div>
+                <div class="detail-value fw-bold text-primary">{{ fmt_money(inv.total_amount) }}원</div>
+            </div>
+        </div>
+        {% if inv.item_name %}
+        <hr class="my-2">
+        <div class="row g-2">
+            <div class="col-md-4"><div class="detail-label">품목명</div><div class="detail-value">{{ inv.item_name }}</div></div>
+            <div class="col-md-3"><div class="detail-label">규격</div><div class="detail-value">{{ inv.item_spec or '-' }}</div></div>
+            <div class="col-md-2"><div class="detail-label">수량</div><div class="detail-value">{{ inv.item_qty }}</div></div>
+            <div class="col-md-3"><div class="detail-label">단가</div><div class="detail-value">{{ fmt_money(inv.item_unit_price) }}원</div></div>
+        </div>
+        {% endif %}
+        {% if inv.remark %}
+        <hr class="my-2">
+        <div class="detail-label">비고</div>
+        <div style="font-size:0.78rem; white-space:pre-wrap; max-height:80px; overflow-y:auto; background:#f8fafc; padding:6px 8px; border-radius:4px;">{{ inv.remark }}</div>
+        {% endif %}
+    </div>
+</div>
+
+{# ====== 세금계산서 vs G2B 조달내역 비교 ====== #}
+{% if g2b_procs %}
+{% set g2b_first = g2b_procs[0] %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header py-2" style="background:#1e40af; color:#fff;">
+        <span class="fw-bold small">세금계산서 ↔ G2B 조달내역 비교</span>
+        <small class="ms-2 opacity-75">G2B번호: {{ inv.g2b_contract_no }} ({{ g2b_procs|length }}품목)</small>
+    </div>
+    <div class="card-body p-0">
+        {# 요약 비교 #}
+        <table class="cmp-tbl">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th class="text-center col-inv">세금계산서</th>
+                    <th class="text-center col-g2b">G2B 조달내역</th>
+                    <th class="text-center" style="width:60px;">일치</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <th>계약명</th>
+                    <td class="col-inv" style="max-width:250px; overflow:hidden; text-overflow:ellipsis;" title="{{ inv.g2b_contract_name or '' }}">{{ inv.g2b_contract_name or '-' }}</td>
+                    <td class="col-g2b" style="max-width:250px; overflow:hidden; text-overflow:ellipsis;" title="{{ g2b_first.cntrct_dlvr_req_nm or '' }}">{{ g2b_first.cntrct_dlvr_req_nm or '-' }}</td>
+                    <td class="text-center">-</td>
+                </tr>
+                <tr>
+                    <th>수요기관</th>
+                    <td class="col-inv">{{ inv.buyer_name or '-' }}</td>
+                    <td class="col-g2b">{{ g2b_first.dminstt_nm or '-' }}</td>
+                    <td class="text-center">
+                        {% if inv.buyer_name and g2b_first.dminstt_nm and (inv.buyer_name in g2b_first.dminstt_nm or g2b_first.dminstt_nm in (inv.buyer_name or '')) %}
+                        <span class="cmp-match">&#10003;</span>
+                        {% else %}
+                        <span class="cmp-diff">&#10007;</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <th>업체명</th>
+                    <td class="col-inv">{{ inv.supplier_name or '-' }}</td>
+                    <td class="col-g2b">{{ g2b_first.corp_nm or '-' }}</td>
+                    <td class="text-center">
+                        {% if inv.supplier_name and g2b_first.corp_nm and (inv.supplier_name in g2b_first.corp_nm or g2b_first.corp_nm in inv.supplier_name) %}
+                        <span class="cmp-match">&#10003;</span>
+                        {% else %}
+                        <span class="cmp-diff">&#10007;</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <th>계약일 / 납품기한</th>
+                    <td class="col-inv">{{ inv.issue_date.strftime('%Y-%m-%d') if inv.issue_date else '-' }}</td>
+                    <td class="col-g2b">
+                        {{ g2b_first.cntrct_dlvr_req_date.strftime('%Y-%m-%d') if g2b_first.cntrct_dlvr_req_date else '-' }}
+                        {% if g2b_first.dlvr_tmlmt_date %}
+                        <small class="text-muted">~ {{ g2b_first.dlvr_tmlmt_date.strftime('%Y-%m-%d') }}</small>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">-</td>
+                </tr>
+                <tr style="border-top:2px solid #334155;">
+                    <th>총 금액(부가세포함)</th>
+                    <td class="col-inv fw-bold text-primary" style="font-size:0.95rem;">{{ fmt_money(inv.total_amount) }}원</td>
+                    <td class="col-g2b fw-bold text-success" style="font-size:0.95rem;">{{ fmt_money(g2b_total_amt) }}원</td>
+                    <td class="text-center">
+                        {% if inv.total_amount and g2b_total_amt and inv.total_amount == g2b_total_amt %}
+                        <span class="cmp-match">&#10003;</span>
+                        {% elif inv.total_amount and g2b_total_amt %}
+                        <span class="cmp-diff">&#10007;</span>
+                        {% else %}-{% endif %}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        {# G2B 품목 상세 목록 #}
+        {% if g2b_procs|length > 0 %}
+        <div style="border-top:1px solid #cbd5e1; padding:8px 12px; background:#f8fafc;">
+            <small class="fw-bold text-dark">G2B 품목 내역 ({{ g2b_procs|length }}건)</small>
+        </div>
+        <table class="cmp-tbl">
+            <thead>
+                <tr style="background:#e2e8f0;">
+                    <th>품명</th>
+                    <th>규격</th>
+                    <th class="text-end">수량</th>
+                    <th class="text-end">단가</th>
+                    <th class="text-end">금액</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in g2b_procs %}
+                <tr>
+                    <td>{{ p.prdct_clsfc_no_nm or '-' }}</td>
+                    <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;" title="{{ p.prdct_idnt_no_nm or '' }}">{{ p.prdct_idnt_no_nm or '-' }}</td>
+                    <td class="text-end">{{ p.prdct_qty or '-' }}</td>
+                    <td class="text-end">{{ fmt_money(p.prdct_uprc) }}</td>
+                    <td class="text-end fw-bold">{{ fmt_money(p.prdct_amt) }}</td>
+                </tr>
+                {% endfor %}
+                <tr style="border-top:2px solid #334155; background:#f1f5f9;">
+                    <td colspan="2" class="fw-bold">합계</td>
+                    <td class="text-end fw-bold">{{ g2b_total_qty }}</td>
+                    <td></td>
+                    <td class="text-end fw-bold text-success">{{ fmt_money(g2b_total_amt) }}원</td>
+                </tr>
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+</div>
+
+{# 매칭된 ERP 계약 링크 #}
+{% if inv.contract %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <small class="fw-bold text-success">ERP 계약 연결:</small>
+        <a href="{{ url_for('project.contract_detail', project_id=inv.project_id) }}" class="text-decoration-none fw-bold ms-1">
+            {{ inv.contract.contract_name }}
+        </a>
+        {% if inv.project %}
+        <small class="text-muted ms-2">| {{ inv.project.temp_name }}</small>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+{# G2B 매칭 안 된 경우 #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-secondary text-white py-2">
+        <span class="fw-bold small">G2B 매칭 정보</span>
+        <span class="badge bg-secondary ms-2" style="white-space:nowrap;">미매칭</span>
+    </div>
+    <div class="card-body">
+        <div class="row g-2 mb-2">
+            <div class="col-6">
+                <div class="detail-label">G2B 번호</div>
+                <div class="detail-value">{{ inv.g2b_contract_no or '-' }}</div>
+            </div>
+            <div class="col-3">
+                <div class="detail-label">납품요구 (JG)</div>
+                <div class="detail-value">{{ inv.g2b_delivery_req_no or '-' }}</div>
+            </div>
+            <div class="col-3">
+                <div class="detail-label">납품서 (NS)</div>
+                <div class="detail-value">{{ inv.g2b_delivery_no or '-' }}</div>
+            </div>
+        </div>
+        {% if contracts %}
+        <div class="mt-2 p-2 border rounded">
+            <small class="fw-bold text-warning">수동 매칭</small>
+            <form method="POST" action="{{ url_for('financial.tax_invoice_match', invoice_id=inv.id) }}" class="mt-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="d-flex gap-2 align-items-center">
+                    <select class="form-select form-select-sm" name="contract_id" required style="max-width:400px;">
+                        <option value="">-- 계약 선택 --</option>
+                        {% for c in contracts %}
+                        <option value="{{ c.id }}">{{ c.contract_name }} ({{ c.project.temp_name if c.project else '-' }})</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;">매칭</button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

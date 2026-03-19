@@ -33,6 +33,8 @@ from routes.purchase_order import purchase_order_bp
 from routes.receiving import receiving_bp
 from routes.bom import bom_bp
 from routes.item import item_bp
+from routes.financial import financial_bp
+from routes.inventory import inventory_bp
 from modules.pagination import pagination_query
 
 # =====================================================================
@@ -133,6 +135,8 @@ app.register_blueprint(purchase_order_bp)
 app.register_blueprint(receiving_bp)
 app.register_blueprint(bom_bp)
 app.register_blueprint(item_bp)
+app.register_blueprint(financial_bp)
+app.register_blueprint(inventory_bp)
 app.register_blueprint(api_bp)
 
 # NAS 동기화 API는 외부(NAS cron)에서 호출하므로 CSRF 면제

@@ -34,7 +34,7 @@ def is_true_value(value):
     return str(value).lower() in ('1', 'true', 'on', 'yes') if value else False
 
 
-ALLOWED_EXTENSIONS = {'pdf', 'dwg', 'png', 'jpg', 'jpeg', 'gif', 'xlsx', 'docx'}
+ALLOWED_EXTENSIONS = {'pdf', 'dwg', 'png', 'jpg', 'jpeg', 'gif', 'xls', 'xlsx', 'docx'}
 
 
 def validate_upload(file):

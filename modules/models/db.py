@@ -175,6 +175,19 @@ def init_db():
                 except Exception:
                     pass  # 이미 존재하면 무시
 
+            # items: safety_stock, last_unit_price 추가 (v2026-03-19, 재고관리)
+            for col, col_type in [
+                ('safety_stock', 'FLOAT DEFAULT 0'),
+                ('last_unit_price', 'FLOAT DEFAULT 0'),
+            ]:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE {quote_ident(DB_SCHEMA)}.items "
+                        f"ADD COLUMN {col} {col_type}"
+                    ))
+                except Exception:
+                    pass  # 이미 존재하면 무시
+
             # projects: 시방서 반영 확인 컬럼 추가 (v2026-03-19, 매그나텍 PHASE 2-3)
             for col, col_type in [
                 ('spec_confirmed', 'BOOLEAN DEFAULT FALSE'),

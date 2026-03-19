@@ -56,6 +56,9 @@ CREATE TABLE IF NOT EXISTS light_sync.tax_invoices (
 -- 기존 임포트 데이터 초기화 (매칭 로직 수정 후 재임포트 필요)
 DELETE FROM light_sync.tax_invoices;
 
+-- tax_invoices: 비고에서 파싱한 계약명 컬럼 추가
+ALTER TABLE light_sync.tax_invoices ADD COLUMN g2b_contract_name VARCHAR(300);
+
 CREATE TABLE IF NOT EXISTS light_sync.payment_records (
     id SERIAL PRIMARY KEY,
     tax_invoice_id INTEGER NOT NULL REFERENCES light_sync.tax_invoices(id) ON DELETE CASCADE,
@@ -64,5 +67,52 @@ CREATE TABLE IF NOT EXISTS light_sync.payment_records (
     payment_method VARCHAR(30) DEFAULT '계좌이체',
     note TEXT,
     created_by VARCHAR(50) DEFAULT '사용자',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ===================================================================
+-- 재고관리 (inventory-management) 마이그레이션 (2026-03-19)
+-- ===================================================================
+
+-- items: 안전재고 + 최근단가
+ALTER TABLE light_sync.items ADD COLUMN safety_stock FLOAT DEFAULT 0;
+ALTER TABLE light_sync.items ADD COLUMN last_unit_price FLOAT DEFAULT 0;
+
+-- stock_audits: 재고실사 회차
+CREATE TABLE IF NOT EXISTS light_sync.stock_audits (
+    id SERIAL PRIMARY KEY,
+    audit_no VARCHAR(30) NOT NULL,
+    audit_date DATE NOT NULL,
+    status VARCHAR(20) DEFAULT '진행중',
+    category_filter VARCHAR(50),
+    note TEXT,
+    created_by VARCHAR(50),
+    created_at TIMESTAMP DEFAULT NOW(),
+    confirmed_at TIMESTAMP
+);
+
+-- stock_audit_items: 재고실사 품목별
+CREATE TABLE IF NOT EXISTS light_sync.stock_audit_items (
+    id SERIAL PRIMARY KEY,
+    audit_id INTEGER NOT NULL REFERENCES light_sync.stock_audits(id) ON DELETE CASCADE,
+    item_id INTEGER NOT NULL REFERENCES light_sync.items(id),
+    system_qty FLOAT DEFAULT 0,
+    actual_qty FLOAT,
+    diff_qty FLOAT DEFAULT 0,
+    note TEXT
+);
+
+-- stock_movements: 재고 변동 이력
+CREATE TABLE IF NOT EXISTS light_sync.stock_movements (
+    id SERIAL PRIMARY KEY,
+    item_id INTEGER NOT NULL REFERENCES light_sync.items(id),
+    movement_type VARCHAR(30) NOT NULL,
+    quantity FLOAT DEFAULT 0,
+    before_qty FLOAT DEFAULT 0,
+    after_qty FLOAT DEFAULT 0,
+    reference_type VARCHAR(30),
+    reference_id INTEGER,
+    note TEXT,
+    created_by VARCHAR(50),
     created_at TIMESTAMP DEFAULT NOW()
 );

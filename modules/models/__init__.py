@@ -63,6 +63,16 @@ from .entities import (
     ReceivingItem,
     BomHeader,
     BomItem,
+    TaxInvoice,
+    PaymentRecord,
+    PAYMENT_STATUS_CHOICES,
+    MATCH_STATUS_CHOICES,
+    PAYMENT_METHOD_CHOICES,
+    MOVEMENT_TYPES,
+    MOVEMENT_TYPE_LABELS,
+    StockAudit,
+    StockAuditItem,
+    StockMovement,
 )
 from .db import SessionLocal, engine, init_db
 
@@ -133,4 +143,14 @@ __all__ = [
     "ReceivingItem",
     "BomHeader",
     "BomItem",
+    "TaxInvoice",
+    "PaymentRecord",
+    "PAYMENT_STATUS_CHOICES",
+    "MATCH_STATUS_CHOICES",
+    "PAYMENT_METHOD_CHOICES",
+    "MOVEMENT_TYPES",
+    "MOVEMENT_TYPE_LABELS",
+    "StockAudit",
+    "StockAuditItem",
+    "StockMovement",
 ]

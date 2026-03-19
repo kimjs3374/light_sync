@@ -1,0 +1,226 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+.kpi-card { border: none; border-radius: 12px; transition: transform 0.15s; }
+.kpi-card:hover { transform: translateY(-2px); }
+.kpi-value { font-size: 1.6rem; font-weight: 800; line-height: 1.2; }
+.kpi-label { font-size: 0.78rem; color: #64748b; font-weight: 600; }
+.kpi-unit { font-size: 0.8rem; font-weight: 400; color: #94a3b8; }
+.chart-card { border: none; border-radius: 10px; }
+.chart-card .card-body { padding: 12px 16px; }
+.chart-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 8px; }
+</style>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
+    <h5 class="text-primary fw-bold mb-0">조달 매출 대시보드</h5>
+    <div class="d-flex gap-2 align-items-center" style="white-space:nowrap;">
+        <a href="{{ url_for('financial.tax_invoice_list') }}" class="btn btn-outline-dark btn-sm">세금계산서 목록</a>
+    </div>
+</div>
+
+{# ====== KPI ====== #}
+<div class="row g-2 mb-3">
+    <div class="col-4">
+        <div class="card kpi-card shadow-sm bg-white">
+            <div class="card-body text-center py-3">
+                <div class="kpi-label">당월 매출(공급가액)</div>
+                <div class="kpi-value text-primary">{{ fmt_money(kpi.monthly_supply) }}<span class="kpi-unit">원</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="card kpi-card shadow-sm bg-white">
+            <div class="card-body text-center py-3">
+                <div class="kpi-label">누적 매출(공급가액)</div>
+                <div class="kpi-value text-success">{{ fmt_money(kpi.total_supply) }}<span class="kpi-unit">원</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="card kpi-card shadow-sm bg-white">
+            <div class="card-body text-center py-3">
+                <div class="kpi-label">세금계산서 건수</div>
+                <div class="kpi-value text-dark">{{ kpi.total_cnt }}<span class="kpi-unit">건</span></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ====== Charts ====== #}
+<div class="row g-2 mb-2">
+    <div class="col-lg-7">
+        <div class="card chart-card shadow-sm">
+            <div class="card-body">
+                <div class="chart-title">월별 매출 추이 (공급가액)</div>
+                <div style="height:300px;"><canvas id="chartMonthlySales"></canvas></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card chart-card shadow-sm">
+            <div class="card-body">
+                <div class="chart-title">월별 세금계산서 발행 건수</div>
+                <div style="height:300px;"><canvas id="chartMonthlyCount"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-2 mb-2">
+    <div class="col-12">
+        <div class="card chart-card shadow-sm">
+            <div class="card-body">
+                <div class="chart-title">수요기관별 매출 TOP 10 (공급가액)</div>
+                <div style="height:300px;"><canvas id="chartTopBuyers"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ====== 년도별 계약 대비 매출 테이블 ====== #}
+<div class="card border-0 shadow-sm mb-2">
+    <div class="card-header bg-dark text-white py-2">
+        <span class="fw-bold small">년도별 계약 대비 매출 / 이월 현황</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0" style="font-size:0.82rem; white-space:nowrap;">
+                <thead style="background:#f1f5f9;">
+                    <tr>
+                        <th class="text-center">년도</th>
+                        <th class="text-end">계약건수</th>
+                        <th class="text-end">계약금액</th>
+                        <th class="text-end">매출금액(발행)</th>
+                        <th class="text-center">매출율</th>
+                        <th class="text-end">이월건수</th>
+                        <th class="text-end">이월금액</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for d in yearly_data %}
+                <tr>
+                    <td class="text-center fw-bold">{{ d.year }}</td>
+                    <td class="text-end">{{ d.contract_cnt }}건</td>
+                    <td class="text-end">{{ fmt_money(d.contract_amt) }}원</td>
+                    <td class="text-end text-primary fw-bold">{{ fmt_money(d.invoiced_amt) }}원</td>
+                    <td class="text-center">
+                        {% if d.sales_rate >= 80 %}
+                        <span class="badge bg-success" style="white-space:nowrap;">{{ d.sales_rate }}%</span>
+                        {% elif d.sales_rate >= 50 %}
+                        <span class="badge bg-warning text-dark" style="white-space:nowrap;">{{ d.sales_rate }}%</span>
+                        {% elif d.sales_rate > 0 %}
+                        <span class="badge bg-danger" style="white-space:nowrap;">{{ d.sales_rate }}%</span>
+                        {% else %}
+                        <span class="badge bg-secondary" style="white-space:nowrap;">0%</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end {% if d.carryover_cnt > 0 %}text-danger fw-bold{% endif %}">{{ d.carryover_cnt }}건</td>
+                    <td class="text-end {% if d.carryover_amt > 0 %}text-danger fw-bold{% endif %}">{{ fmt_money(d.carryover_amt) }}원</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ====== 년도별 계약 vs 매출 차트 ====== #}
+<div class="row g-2 mb-2">
+    <div class="col-12">
+        <div class="card chart-card shadow-sm">
+            <div class="card-body">
+                <div class="chart-title">년도별 계약금액 vs 매출(발행)금액 vs 이월금액</div>
+                <div style="height:300px;"><canvas id="chartYearly"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+function fmtAmt(v) {
+    if (v >= 1e8) return (v/1e8).toFixed(1)+'억';
+    if (v >= 1e4) return (v/1e4).toFixed(0)+'만';
+    return v.toLocaleString();
+}
+
+new Chart(document.getElementById('chartMonthlySales'), {
+    type: 'bar',
+    data: {
+        labels: {{ monthly_labels|tojson }},
+        datasets: [{
+            label: '공급가액',
+            data: {{ monthly_amounts|tojson }},
+            backgroundColor: '#3b82f6',
+            borderRadius: 4,
+        }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtAmt(ctx.raw) + '원' } } },
+        scales: { y: { ticks: { callback: v => fmtAmt(v), font: { size: 10 } }, beginAtZero: true } }
+    }
+});
+
+new Chart(document.getElementById('chartMonthlyCount'), {
+    type: 'line',
+    data: {
+        labels: {{ count_labels|tojson }},
+        datasets: [{
+            label: '건수',
+            data: {{ count_values|tojson }},
+            borderColor: '#8b5cf6',
+            backgroundColor: 'rgba(139,92,246,0.1)',
+            fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#8b5cf6',
+        }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.raw + '건' } } },
+        scales: { y: { ticks: { stepSize: 1, font: { size: 10 } }, beginAtZero: true } }
+    }
+});
+
+new Chart(document.getElementById('chartTopBuyers'), {
+    type: 'bar',
+    data: {
+        labels: {{ buyer_labels|tojson }},
+        datasets: [{
+            label: '공급가액',
+            data: {{ buyer_amounts|tojson }},
+            backgroundColor: '#10b981',
+            borderRadius: 3,
+        }]
+    },
+    options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtAmt(ctx.raw) + '원' } } },
+        scales: {
+            x: { ticks: { callback: v => fmtAmt(v), font: { size: 10 } }, beginAtZero: true },
+            y: { ticks: { font: { size: 10 }, autoSkip: false } }
+        }
+    }
+});
+
+// Chart: 년도별 계약 vs 매출 vs 이월
+new Chart(document.getElementById('chartYearly'), {
+    type: 'bar',
+    data: {
+        labels: {{ yearly_chart.labels|tojson }},
+        datasets: [
+            { label: '계약금액', data: {{ yearly_chart.contract|tojson }}, backgroundColor: '#94a3b8', borderRadius: 3 },
+            { label: '매출(발행)', data: {{ yearly_chart.invoiced|tojson }}, backgroundColor: '#3b82f6', borderRadius: 3 },
+            { label: '이월금액', data: {{ yearly_chart.carryover|tojson }}, backgroundColor: '#ef4444', borderRadius: 3 },
+        ]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+            legend: { position: 'top', labels: { font: { size: 11 } } },
+            tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + fmtAmt(ctx.raw) + '원' } }
+        },
+        scales: { y: { ticks: { callback: v => fmtAmt(v), font: { size: 10 } }, beginAtZero: true } }
+    }
+});
+</script>
+{% endblock %}
