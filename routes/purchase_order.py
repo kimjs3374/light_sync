@@ -407,8 +407,11 @@ def po_delete(po_id):
         if not po:
             abort(404)
 
-        if po.status != '작성중':
-            flash('작성중 상태의 발주서만 삭제할 수 있습니다.', 'warning')
+        # 연결된 입고가 있으면 삭제 불가
+        from modules.models import Receiving
+        linked_rcv = db.query(Receiving).filter(Receiving.po_id == po_id).first()
+        if linked_rcv:
+            flash(f'입고({linked_rcv.rcv_no})가 연결되어 삭제할 수 없습니다. 입고를 먼저 삭제해주세요.', 'warning')
             return redirect(url_for('purchase_order.po_detail', po_id=po_id))
 
         db.delete(po)
@@ -719,7 +722,9 @@ def api_item_search():
         if q:
             like_q = f"%{q}%"
             query = query.filter(
-                (Item.item_name.ilike(like_q)) | (Item.icube_item_cd.ilike(like_q))
+                (Item.item_name.ilike(like_q)) |
+                (Item.icube_item_cd.ilike(like_q)) |
+                (Item.item_spec.ilike(like_q))
             )
         items = query.order_by(Item.item_name).limit(20).all()
         return jsonify([{

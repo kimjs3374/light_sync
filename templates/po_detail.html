@@ -44,9 +44,7 @@
     <div class="d-flex gap-2 flex-wrap" style="white-space:nowrap;">
         <a href="{{ url_for('purchase_order.po_list') }}" class="btn btn-outline-secondary btn-sm action-btn">목록</a>
         <a href="{{ url_for('purchase_order.po_pdf', po_id=po.id) }}" class="btn btn-outline-info btn-sm action-btn" target="_blank">PDF</a>
-        {% if po.status == '작성중' %}
         <button type="button" class="btn btn-outline-danger btn-sm action-btn" data-bs-toggle="modal" data-bs-target="#deleteModal">삭제</button>
-        {% endif %}
     </div>
 </div>
 
