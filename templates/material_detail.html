@@ -33,9 +33,9 @@
 
 {# 히스토리 한줄 바 #}
 {% set history_panel_target = '#materialHistoryOffcanvas' %}
+{% set fab_offcanvas_target = '#materialHistoryOffcanvas' %}
+{% set fab_count = history_counts.all|default(0) %}
 {% include 'components/history_summary_bar.html' %}
-{% block fab_attrs %}data-bs-toggle="offcanvas" data-bs-target="#materialHistoryOffcanvas"{% endblock %}
-{% block fab_badge %}{% if history_counts and history_counts.all %}<span class="fab-badge">{{ history_counts.all if history_counts.all < 100 else '99+' }}</span>{% endif %}{% endblock %}
 
 {# --- 탭 네비게이션 --- #}
 <ul class="nav nav-tabs mb-3" id="materialTabs" role="tablist">

@@ -370,10 +370,11 @@
         @media (max-width: 767.98px) { .history-fab { bottom: 1rem; right: 1rem; width: 46px; height: 46px; font-size: 1rem; } }
     </style>
     <button type="button" class="history-fab" id="globalFab"
-            {% block fab_attrs %}{% endblock %}
+            {% if fab_offcanvas_target %}data-bs-toggle="offcanvas" data-bs-target="{{ fab_offcanvas_target }}"{% endif %}
+            {% if fab_js_action %}onclick="{{ fab_js_action }}"{% endif %}
             title="히스토리 보드">
         📜
-        {% block fab_badge %}{% endblock %}
+        {% if fab_count %}<span class="fab-badge">{{ fab_count if fab_count < 100 else '99+' }}</span>{% endif %}
     </button>
     {% endif %}
 

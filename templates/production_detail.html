@@ -96,9 +96,9 @@
 
 {# 히스토리 한줄 바 - 클릭 시 prodInfoPanel 히스토리 탭 오픈 #}
 {% set history_panel_js_action = "openProdHistoryTab()" %}
+{% set fab_js_action = "openProdHistoryTab()" %}
+{% set fab_count = history_counts.all|default(0) %}
 {% include 'components/history_summary_bar.html' %}
-{% block fab_attrs %}onclick="openProdHistoryTab()"{% endblock %}
-{% block fab_badge %}{% if history_counts and history_counts.all %}<span class="fab-badge">{{ history_counts.all if history_counts.all < 100 else '99+' }}</span>{% endif %}{% endblock %}
 
 <div class="row g-3">
     <div class="col-12">
