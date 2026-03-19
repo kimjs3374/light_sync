@@ -41,6 +41,10 @@ class Project(Base):
     status = Column(String(50), default="설계/영업")
     is_urgent = Column(Boolean, default=False) # 긴급 현장 여부
     
+    # 설계 시방서 반영 확인 (매그나텍 PHASE 2-3)
+    spec_confirmed = Column(Boolean, default=False)              # 시방서 반영 확인 여부
+    spec_confirmed_date = Column(Date, nullable=True)            # 시방서 반영 확인일
+
     is_contracted = Column(Boolean, default=False) # 계약 체결 여부
     contract_date = Column(Date, nullable=True) # 설계에서 넘어올 때의 기준일
     expected_contract_date = Column(Date, nullable=True) # 계약 예정일
@@ -92,6 +96,11 @@ class Contract(Base):
     is_urgent_prod = Column(Boolean, default=False)     # 긴급제작건 여부 (💡 체크 시 빨간 음영)
     g2b_contract_no = Column(String(30), nullable=True)  # G2B 계약납품요구번호 (매칭 연동)
 
+    # 대금 관련 필드 (매그나텍 PHASE 8)
+    payment_status = Column(String(20), default='미청구')       # 미청구/청구완료/입금완료
+    invoice_date = Column(Date, nullable=True)                   # 세금계산서 발행일
+    payment_date = Column(Date, nullable=True)                   # 대금 입금확인일
+
     project = relationship("Project", back_populates="contracts")
     # 💡 계약별 품목 (1계약 : N품목)
     items = relationship("ContractItem", back_populates="contract", cascade="all, delete-orphan")
@@ -106,6 +115,11 @@ class Delivery(Base):
     contract_id = Column(Integer, ForeignKey('contracts.id'), nullable=True)
 
     delivery_status = Column(String(30), default='납품대기')
+
+    # 검수 관련 필드 (매그나텍 PHASE 7)
+    inspection_status = Column(String(20), default='미검수')    # 미검수/합격/불합격/보완
+    inspection_date = Column(Date, nullable=True)                # 검수일
+    inspection_note = Column(Text, nullable=True)                # 검수 비고
 
     planned_total_qty = Column(Integer, default=0)
     delivered_total_qty = Column(Integer, default=0)
@@ -1092,3 +1106,81 @@ class BomItem(Base):
 
     bom_header = relationship("BomHeader", back_populates="bom_items")
     item = relationship("Item", foreign_keys=[item_id])
+
+
+# -------------------------------------------------------------------
+# 15. 매출 세금계산서 + 수금관리
+# -------------------------------------------------------------------
+PAYMENT_STATUS_CHOICES = ['미수금', '부분입금', '입금완료']
+MATCH_STATUS_CHOICES = ['자동매칭', '수동매칭', '미매칭']
+PAYMENT_METHOD_CHOICES = ['계좌이체', '카드', '어음', '기타']
+
+
+class TaxInvoice(Base):
+    """국세청 매출전자세금계산서"""
+    __tablename__ = 'tax_invoices'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    approval_no = Column(String(50), unique=True, nullable=False)   # 국세청 승인번호
+    issue_date = Column(Date, nullable=True)                         # 작성일자
+    send_date = Column(Date, nullable=True)                          # 전송일자
+    invoice_type = Column(String(20), default='세금계산서')           # 세금계산서/수정세금계산서
+
+    # 공급자
+    supplier_business_no = Column(String(20), nullable=True)         # 공급자 사업자번호
+    supplier_name = Column(String(200), nullable=True)               # 공급자 상호
+
+    # 공급받는자
+    buyer_business_no = Column(String(20), nullable=True)            # 공급받는자 사업자번호
+    buyer_name = Column(String(200), nullable=True)                  # 공급받는자 상호
+    buyer_ceo = Column(String(100), nullable=True)                   # 공급받는자 대표자명
+
+    # 금액
+    total_amount = Column(Integer, default=0)                         # 합계금액
+    supply_amount = Column(Integer, default=0)                        # 공급가액
+    tax_amount = Column(Integer, default=0)                           # 세액
+
+    # 품목 정보
+    item_date = Column(Date, nullable=True)                           # 품목 작성일
+    item_name = Column(String(200), nullable=True)                    # 품목명
+    item_spec = Column(String(200), nullable=True)                    # 품목규격
+    item_qty = Column(Integer, default=0)                             # 품목수량
+    item_unit_price = Column(Integer, default=0)                      # 품목단가
+
+    # 비고 + G2B 파싱
+    remark = Column(Text, nullable=True)                              # 비고 원문
+    g2b_contract_no = Column(String(30), nullable=True)               # R##TB
+    g2b_delivery_req_no = Column(String(30), nullable=True)           # R##JG
+    g2b_delivery_no = Column(String(30), nullable=True)               # R##NS
+
+    # 매칭
+    contract_id = Column(Integer, ForeignKey('contracts.id'), nullable=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)
+    match_status = Column(String(20), default='미매칭')               # 자동매칭/수동매칭/미매칭
+
+    # 수금
+    payment_status = Column(String(20), default='미수금')             # 미수금/부분입금/입금완료
+    paid_amount = Column(Integer, default=0)                          # 입금 누계액
+
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    contract = relationship("Contract", foreign_keys=[contract_id])
+    project = relationship("Project", foreign_keys=[project_id])
+    payment_records = relationship("PaymentRecord", back_populates="tax_invoice", cascade="all, delete-orphan", order_by="PaymentRecord.payment_date.desc()")
+
+
+class PaymentRecord(Base):
+    """수금 기록"""
+    __tablename__ = 'payment_records'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tax_invoice_id = Column(Integer, ForeignKey('tax_invoices.id'), nullable=False)
+    payment_date = Column(Date, nullable=False)                       # 입금일
+    amount = Column(Integer, default=0)                               # 입금액
+    payment_method = Column(String(30), default='계좌이체')           # 계좌이체/카드/어음/기타
+    note = Column(Text, nullable=True)                                # 비고
+    created_by = Column(String(50), default='사용자')                 # 등록자
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+    tax_invoice = relationship("TaxInvoice", back_populates="payment_records")

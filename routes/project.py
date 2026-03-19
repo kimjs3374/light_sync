@@ -30,6 +30,7 @@ from routes.material import compute_admin_status_from_orders
 from modules.services.project_actions import (
     handle_update_design_basis, handle_update_project,
     handle_update_priority_override, handle_update_work_path, handle_update_material,
+    handle_confirm_spec,
 )
 from modules.services.contract_actions import (
     handle_update_contract, handle_add_contract, handle_delete_contract,
@@ -43,6 +44,7 @@ from modules.services.barcode_actions import (
 from modules.services.contact_actions import (
     handle_add_contact, handle_update_contact, handle_delete_contact,
     handle_add_material, handle_add_chat, handle_add_history_reply,
+    handle_update_payment,
 )
 
 project_bp = Blueprint('project', __name__)
@@ -72,6 +74,8 @@ ACTION_HANDLERS = {
     'add_material': handle_add_material,
     'add_chat': handle_add_chat,
     'add_history_reply': handle_add_history_reply,
+    'update_payment': handle_update_payment,
+    'confirm_spec': handle_confirm_spec,
 }
 
 

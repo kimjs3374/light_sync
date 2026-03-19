@@ -26,6 +26,14 @@
 
 {% include 'components/priority_override_panel.html' %}
 
+{# 히스토리 한줄 바 #}
+{% set history_panel_target = '#projectHistoryOffcanvas' %}
+{% include 'components/history_summary_bar.html' %}
+
+{% set contact_show_delete = true %}
+{% set contact_collapse_id = 'projectContactCollapse' %}
+{% include 'components/contact_collapse_bar.html' %}
+
 <div class="mb-4">
     <div class="p-2 bg-white border-start border-4 border-warning rounded shadow-sm">
         <small class="text-muted fw-bold d-block mb-1">📝 현장 특이사항 및 메모</small>
@@ -45,6 +53,24 @@
             </div>
             <div class="card-body bg-white">
                 <p class="text-dark m-0" style="white-space: pre-wrap; font-size: 0.95rem;">{{ project.design_basis or '기준 미입력' }}</p>
+                {# 시방서 반영 확인 (매그나텍 PHASE 2-3) #}
+                <div class="mt-2 pt-2 border-top">
+                    <form method="POST" class="d-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="action" value="confirm_spec">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" name="spec_confirmed"
+                                   id="specConfirmed" {{ 'checked' if project.spec_confirmed }}
+                                   onchange="this.form.submit()">
+                            <label class="form-check-label small" for="specConfirmed">
+                                시방서 반영 확인
+                                {% if project.spec_confirmed_date %}
+                                  <span class="text-muted">({{ project.spec_confirmed_date }})</span>
+                                {% endif %}
+                            </label>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
@@ -63,39 +89,7 @@
 </div>
 
 <div class="row">
-    <div class="col-md-8">
-        <div class="card shadow-sm border-0 mb-4">
-            <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                <h6 class="fw-bold m-0 text-primary">👥 현장 담당자 연락처</h6>
-                <button class="btn btn-xs btn-dark" data-bs-toggle="modal" data-bs-target="#addContactModal">+ 담당자 추가</button>
-            </div>
-            <div class="card-body p-0 table-responsive">
-                <table class="table table-sm table-hover mb-0 align-middle text-center">
-                    <thead class="table-light"><tr><th>구분</th><th>이름</th><th>연락처</th><th>이메일</th><th>수정</th><th>X</th></tr></thead>
-                    <tbody>
-                        {% for con in project.contacts %}
-                        <tr>
-                            <td><span class="badge bg-secondary">{{ con.category }}</span></td>
-                            <td><b>{{ con.name }}</b></td>
-                            <td>{{ con.phone }}</td>
-                            <td><small>{{ con.email }}</small></td>
-                            <td>
-                                <button type="button" class="btn btn-sm btn-outline-secondary py-0"
-                                        data-id="{{ con.id }}"
-                                        data-category="{{ con.category or '' }}"
-                                        data-name="{{ con.name or '' }}"
-                                        data-phone="{{ con.phone or '' }}"
-                                        data-email="{{ con.email or '' }}"
-                                        onclick="openContactEditFromBtn(this)">수정</button>
-                            </td>
-                            <td><button type="button" class="btn btn-link text-danger p-0" onclick="deleteWithReason('{{ con.id }}', '{{ con.name }}')">❌</button></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
+    <div class="col-12">
         <div class="card shadow-sm border-0 mb-4">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
                 <h6 class="fw-bold m-0 text-primary">📦 설계 반영 자재 목록</h6>
@@ -181,14 +175,15 @@
         </div>
     </div>
 
-    <div class="col-md-4">
-        {% set history_board_title = '📜 통합 히스토리 보드' %}
-        {% set history_post_action = 'add_chat' %}
-        {% set history_board_id = 'project-history-board' %}
-        {% set history_default_filter = 'all' %}
-        {% include 'components/history_board.html' %}
-    </div>
+    {# 히스토리보드는 offcanvas 패널로 이동 #}
 </div>
+
+{% set history_board_title = '통합 히스토리 보드' %}
+{% set history_post_action = 'add_chat' %}
+{% set history_board_id = 'project-history-board' %}
+{% set history_default_filter = 'all' %}
+{% set history_offcanvas_id = 'projectHistoryOffcanvas' %}
+{% include 'components/history_offcanvas.html' %}
 
 <div class="modal fade" id="basisHistoryModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content border-0 shadow">
     <div class="modal-header bg-dark text-white"><h5 class="modal-title">📜 설계 기준 변경 이력</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>

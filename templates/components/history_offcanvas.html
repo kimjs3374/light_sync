@@ -1,0 +1,13 @@
+{# 독립 히스토리 offcanvas 패널 - project/contract/sales/material/delivery 상세용 #}
+{% set _oc_id = history_offcanvas_id or 'historyOffcanvas' %}
+<div class="offcanvas offcanvas-end" tabindex="-1" id="{{ _oc_id }}"
+     aria-labelledby="{{ _oc_id }}Label"
+     style="width:min(520px, 100vw);">
+    <div class="offcanvas-header border-bottom">
+        <h5 class="offcanvas-title fw-bold" id="{{ _oc_id }}Label">{{ history_board_title or '히스토리 보드' }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body p-2">
+        {% include 'components/history_board.html' %}
+    </div>
+</div>

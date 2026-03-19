@@ -1,9 +1,10 @@
 """바코드 CRUD action 핸들러."""
 from modules.utils import safe_int
 from modules.models import (
-    Contract, ContractItem, ContractBarcode, HistoryLog,
+    Contract, ContractItem, ContractBarcode,
     LIGHTING_DETAIL_ITEMS,
 )
+from modules.history_board import append_history_log
 from routes.barcode import parse_barcode_xlsx_rows
 
 
@@ -82,25 +83,21 @@ def handle_update_barcodes_manual(db, project, form, current_user, **ctx):
             created_by=current_user or '사용자'
         ))
         if old_code and old_code != new_code:
-            db.add(HistoryLog(
-                project_id=project.id,
-                user_name="시스템 🤖",
+            append_history_log(db, project_id=project.id, user_name="시스템 🤖",
                 content=(
                     f"{current_user}님이 바코드 교체: {item.model_name or '-'} "
                     f"{old_code} ➡️ {new_code}" +
                     (f" (사유: {replace_reason})" if replace_reason else "")
-                )
-            ))
+                ),
+                scope='contract', kind='system')
 
     item.barcode_id = (parsed[0].get('barcode') if parsed else None)
-    db.add(HistoryLog(
-        project_id=project.id,
-        user_name="시스템 🤖",
+    append_history_log(db, project_id=project.id, user_name="시스템 🤖",
         content=(
             f"{current_user}님이 바코드 수기 저장: {item.model_name or '-'} "
             f"({old_count}건 ➡️ {len(parsed)}건)"
-        )
-    ))
+        ),
+        scope='contract', kind='system')
     return {}
 
 
@@ -161,25 +158,21 @@ def handle_upload_barcodes(db, project, form, current_user, **ctx):
             created_by=current_user or '사용자'
         ))
         if old_code and old_code != new_code:
-            db.add(HistoryLog(
-                project_id=project.id,
-                user_name="시스템 🤖",
+            append_history_log(db, project_id=project.id, user_name="시스템 🤖",
                 content=(
                     f"{current_user}님이 바코드 교체: {item.model_name or '-'} "
                     f"{old_code} ➡️ {new_code}" +
                     (f" (사유: {replace_reason})" if replace_reason else "")
-                )
-            ))
+                ),
+                scope='contract', kind='system')
 
     item.barcode_id = ((parsed[0].get('barcode') or parsed[0].get('바코드번호')) if parsed else None)
-    db.add(HistoryLog(
-        project_id=project.id,
-        user_name="시스템 🤖",
+    append_history_log(db, project_id=project.id, user_name="시스템 🤖",
         content=(
             f"{current_user}님이 바코드 파일 업로드: {item.model_name or '-'} "
             f"({old_count}건 ➡️ {len(parsed)}건)"
-        )
-    ))
+        ),
+        scope='contract', kind='system')
     return {}
 
 
@@ -196,11 +189,9 @@ def handle_delete_barcode(db, project, form, current_user, **ctx):
                 db.flush()
                 first_bc = db.query(ContractBarcode).filter_by(contract_item_id=item.id).order_by(ContractBarcode.seq.asc()).first()
                 item.barcode_id = first_bc.barcode if first_bc else None
-                db.add(HistoryLog(
-                    project_id=project.id,
-                    user_name="시스템 🤖",
-                    content=f"{current_user}님이 바코드 삭제: {item.model_name or '-'} / {del_code}"
-                ))
+                append_history_log(db, project_id=project.id, user_name="시스템 🤖",
+                    content=f"{current_user}님이 바코드 삭제: {item.model_name or '-'} / {del_code}",
+                    scope='contract', kind='system')
     return {}
 
 
@@ -240,19 +231,15 @@ def handle_update_barcode_meta(db, project, form, current_user, **ctx):
     bc.replaced_reason = replaced_reason or None
 
     if replaced_from and replaced_from != bc.barcode:
-        db.add(HistoryLog(
-            project_id=project.id,
-            user_name="시스템 🤖",
+        append_history_log(db, project_id=project.id, user_name="시스템 🤖",
             content=(
                 f"{current_user}님이 바코드 교체: {item.model_name or '-'} "
                 f"{replaced_from} ➡️ {bc.barcode}" +
                 (f" (사유: {replaced_reason})" if replaced_reason else "")
-            )
-        ))
+            ),
+            scope='contract', kind='system')
     elif old_code != bc.barcode:
-        db.add(HistoryLog(
-            project_id=project.id,
-            user_name="시스템 🤖",
-            content=f"{current_user}님이 바코드 수정: {item.model_name or '-'} {old_code} ➡️ {bc.barcode}"
-        ))
+        append_history_log(db, project_id=project.id, user_name="시스템 🤖",
+            content=f"{current_user}님이 바코드 수정: {item.model_name or '-'} {old_code} ➡️ {bc.barcode}",
+            scope='contract', kind='system')
     return {}

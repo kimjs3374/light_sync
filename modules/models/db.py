@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import sessionmaker
 
 from .base import Base
@@ -69,9 +69,9 @@ def init_db():
     _ensure_postgres_schema()
     try:
         Base.metadata.create_all(bind=engine)
-    except OperationalError as e:
-        # 간헐적으로 SQLite has_table 체크 타이밍 이슈로 "already exists"가 발생하는 경우 무시
-        if 'already exists' not in str(e).lower():
+    except (OperationalError, ProgrammingError) as e:
+        # "already exists" 또는 새 모델의 FK 참조 시 기존 테이블 컬럼 불일치 → 무시 후 ALTER TABLE에서 처리
+        if 'already exists' not in str(e).lower() and 'does not exist' not in str(e).lower():
             raise
     # PostgreSQL 컬럼 추가 마이그레이션 (안전: IF NOT EXISTS 패턴)
     if _is_postgres_engine():
@@ -143,6 +143,47 @@ def init_db():
                     conn.execute(text(
                         f"ALTER TABLE {quote_ident(DB_SCHEMA)}.items "
                         f"ADD COLUMN {col} FLOAT DEFAULT 0"
+                    ))
+                except Exception:
+                    pass  # 이미 존재하면 무시
+
+            # deliveries: 검수 관련 컬럼 추가 (v2026-03-19, 매그나텍 PHASE 7)
+            for col, col_type in [
+                ('inspection_status', "VARCHAR(20) DEFAULT '미검수'"),
+                ('inspection_date', 'DATE'),
+                ('inspection_note', 'TEXT'),
+            ]:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE {quote_ident(DB_SCHEMA)}.deliveries "
+                        f"ADD COLUMN {col} {col_type}"
+                    ))
+                except Exception:
+                    pass  # 이미 존재하면 무시
+
+            # contracts: 대금 관련 컬럼 추가 (v2026-03-19, 매그나텍 PHASE 8)
+            for col, col_type in [
+                ('payment_status', "VARCHAR(20) DEFAULT '미청구'"),
+                ('invoice_date', 'DATE'),
+                ('payment_date', 'DATE'),
+            ]:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE {quote_ident(DB_SCHEMA)}.contracts "
+                        f"ADD COLUMN {col} {col_type}"
+                    ))
+                except Exception:
+                    pass  # 이미 존재하면 무시
+
+            # projects: 시방서 반영 확인 컬럼 추가 (v2026-03-19, 매그나텍 PHASE 2-3)
+            for col, col_type in [
+                ('spec_confirmed', 'BOOLEAN DEFAULT FALSE'),
+                ('spec_confirmed_date', 'DATE'),
+            ]:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE {quote_ident(DB_SCHEMA)}.projects "
+                        f"ADD COLUMN {col} {col_type}"
                     ))
                 except Exception:
                     pass  # 이미 존재하면 무시

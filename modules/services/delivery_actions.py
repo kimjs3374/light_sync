@@ -265,6 +265,39 @@ def handle_delete_contact(db, project, form, current_user, **ctx):
     return {}
 
 
+def handle_update_inspection(db, project, form, current_user, **ctx):
+    """납품 검수 상태 업데이트 + 히스토리 자동 기록 (매그나텍 PHASE 7)"""
+    delivery_id = safe_int(form.get("delivery_id"))
+    delivery = db.query(Delivery).filter(
+        Delivery.id == delivery_id,
+        Delivery.project_id == project.id
+    ).first()
+    if not delivery:
+        return {}
+
+    old_status = delivery.inspection_status or '미검수'
+    new_status = (form.get("inspection_status") or "").strip()
+    if not new_status or new_status == old_status:
+        return {}
+
+    delivery.inspection_status = new_status
+    delivery.inspection_date = parse_date(form.get("inspection_date"))
+    delivery.inspection_note = (form.get("inspection_note") or "").strip() or None
+
+    content = f"[검수] {old_status} → {new_status}"
+    if delivery.inspection_note:
+        content += f" | 비고: {delivery.inspection_note}"
+    append_history_log(
+        db,
+        project_id=project.id,
+        user_name="System",
+        content=f"{current_user} {content}",
+        scope="delivery",
+        kind="system",
+    )
+    return {'flash': (f'검수 상태 변경: {new_status}', 'success')}
+
+
 def handle_add_chat(db, project, form, current_user, **ctx):
     msg = (form.get("chat_message") or "").strip()
     if msg:

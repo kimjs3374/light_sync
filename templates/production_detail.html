@@ -94,8 +94,12 @@
     </div>
 </div>
 
+{# 히스토리 한줄 바 - 클릭 시 prodInfoPanel 히스토리 탭 오픈 #}
+{% set history_panel_js_action = "openProdHistoryTab()" %}
+{% include 'components/history_summary_bar.html' %}
+
 <div class="row g-3">
-    <div class="col-lg-8">
+    <div class="col-12">
         {% for c in project.contracts %}
         <div class="contract-block shadow-sm mb-3">
             <div class="contract-head p-2 d-flex justify-content-between align-items-center">
@@ -220,14 +224,7 @@
         {% endfor %}
     </div>
 
-    <div class="col-lg-4">
-        {% set history_board_title = '📜 생산 히스토리 보드' %}
-        {% set history_post_action = 'add_chat' %}
-        {% set history_post_url = url_for('production.production_detail', project_id=project.id) %}
-        {% set history_board_id = 'production-history-board-detail' %}
-        {% set history_default_filter = 'production' %}
-        {% include 'components/history_board.html' %}
-    </div>
+    {# 히스토리보드는 prodInfoPanel 히스토리 탭으로 이동 #}
 </div>
 
 <script type="application/json" id="prodPanelPayloadMap">
@@ -268,6 +265,7 @@
             <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#prod-tab-sales" type="button" role="tab">협의내용</button></li>
             <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#prod-tab-contract" type="button" role="tab">계약내용</button></li>
             <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#prod-tab-source" type="button" role="tab">원문</button></li>
+            <li class="nav-item" role="presentation"><button class="nav-link" id="prod-tab-history-btn" data-bs-toggle="tab" data-bs-target="#prod-tab-history" type="button" role="tab">히스토리 <span class="badge bg-secondary">{{ history_counts.all or 0 }}</span></button></li>
         </ul>
 
         <div class="tab-content d-flex flex-column gap-3">
@@ -308,6 +306,15 @@
                         <a class="btn btn-outline-dark" id="panelContractLink" href="#">계약 원문 열기</a>
                     </div>
                 </div>
+            </div>
+
+            <div class="tab-pane fade" id="prod-tab-history" role="tabpanel">
+                {% set history_board_title = '생산 히스토리 보드' %}
+                {% set history_post_action = 'add_chat' %}
+                {% set history_post_url = url_for('production.production_detail', project_id=project.id) %}
+                {% set history_board_id = 'production-history-board-detail' %}
+                {% set history_default_filter = 'production' %}
+                {% include 'components/history_board.html' %}
             </div>
         </div>
     </div>
@@ -361,6 +368,17 @@
 {% endfor %}
 
 <script>
+window.openProdHistoryTab = function() {
+    const panelEl = document.getElementById('prodInfoPanel');
+    if (!panelEl || !window.bootstrap) return;
+    const panel = bootstrap.Offcanvas.getOrCreateInstance(panelEl);
+    panel.show();
+    setTimeout(() => {
+        const histTab = document.getElementById('prod-tab-history-btn');
+        if (histTab) bootstrap.Tab.getOrCreateInstance(histTab).show();
+    }, 150);
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     const historyRoot = document.getElementById('production-history-board-detail');
     const historyBoard = historyRoot ? historyRoot.querySelector('#historyBoard') : null;

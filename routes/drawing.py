@@ -203,7 +203,7 @@ def upload_drawing(project_id):
                 project_id=project_id,
                 user_name='시스템 🤖',
                 content=log_content,
-                scope='drawing',
+                scope='design',
                 kind='system'
             )
             db.commit()
@@ -313,7 +313,7 @@ def delete_drawing_version(version_id):
                 project_id=project_id,
                 user_name='시스템 🤖',
                 content=log_content,
-                scope='drawing',
+                scope='design',
                 kind='system'
             )
 

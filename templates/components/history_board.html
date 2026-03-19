@@ -34,17 +34,18 @@
     <button type="button" class="scope-chip" data-history-filter="material">📦 자재 <span class="badge bg-secondary ms-1">{{ history_counts.material or 0 }}</span></button>
     <button type="button" class="scope-chip" data-history-filter="production">🏭 생산 <span class="badge bg-secondary ms-1">{{ history_counts.production or 0 }}</span></button>
     <button type="button" class="scope-chip" data-history-filter="delivery">🚚 납품 <span class="badge bg-secondary ms-1">{{ history_counts.delivery or 0 }}</span></button>
-    <button type="button" class="scope-chip" data-history-filter="drawing">📐 도면 <span class="badge bg-secondary ms-1">{{ history_counts.drawing or 0 }}</span></button>
-    <button type="button" class="scope-chip" data-history-filter="technical">🛠 기술 <span class="badge bg-secondary ms-1">{{ history_counts.technical or 0 }}</span></button>
+    {# drawing/technical scope 제거 - 도면은 용도별(설계/자재)로 분배 #}
     <button type="button" class="scope-chip" data-history-filter="comments">💬 코멘트 <span class="badge bg-secondary ms-1">{{ history_counts.comments or 0 }}</span></button>
 </div>
 
-<form method="POST" {% if history_post_url %}action="{{ history_post_url }}"{% endif %} class="mb-2">
+<form class="mb-2 history-ajax-form" data-project-id="{{ project.id if project else '' }}"
+      data-default-scope="{{ history_default_filter or 'common' }}"
+      data-fallback-url="{% if history_post_url %}{{ history_post_url }}{% endif %}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="action" value="{{ history_post_action or 'add_chat' }}">
     <div class="input-group shadow-sm">
         <textarea name="chat_message" class="form-control" rows="2" placeholder="메모 입력..." required></textarea>
-        <button class="btn btn-warning fw-bold">등록</button>
+        <button type="submit" class="btn btn-warning fw-bold">등록</button>
     </div>
 </form>
 
@@ -95,13 +96,15 @@
                     <div class="text-end mt-1">
                         <button type="button" class="btn btn-xs btn-outline-secondary" onclick="toggleReplyForm('reply_form_{{ log.id }}')">답글</button>
                     </div>
-                    <form id="reply_form_{{ log.id }}" method="POST" {% if history_post_url %}action="{{ history_post_url }}"{% endif %} class="mt-1 d-none">
+                    <form id="reply_form_{{ log.id }}" class="mt-1 d-none history-ajax-form"
+                          data-project-id="{{ project.id if project else '' }}"
+                          data-default-scope="{{ history_default_filter or 'common' }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="add_history_reply">
                         <input type="hidden" name="parent_log_id" value="{{ log.id }}">
                         <div class="input-group input-group-sm">
                             <input type="text" name="reply_message" class="form-control" placeholder="대댓글 입력..." required>
-                            <button class="btn btn-outline-primary">등록</button>
+                            <button type="submit" class="btn btn-outline-primary">등록</button>
                         </div>
                     </form>
 
@@ -189,5 +192,54 @@
     });
 
     applyHistoryFilter(defaultFilter);
+
+    // AJAX 코멘트/답글 제출 — 페이지 새로고침 없이 보드만 갱신
+    root.querySelectorAll('.history-ajax-form').forEach(form => {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const projectId = form.dataset.projectId;
+            if (!projectId) { form.submit(); return; } // fallback
+
+            const btn = form.querySelector('button[type="submit"]');
+            const origText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '전송중...';
+
+            try {
+                const fd = new FormData(form);
+                fd.set('default_scope', form.dataset.defaultScope || 'common');
+                const resp = await fetch(`/api/history/${projectId}/add`, {
+                    method: 'POST', body: fd
+                });
+                const data = await resp.json();
+                if (data.ok && data.html) {
+                    // 보드 컨텐츠 교체
+                    const tmp = document.createElement('div');
+                    tmp.innerHTML = data.html;
+                    const newBoard = tmp.querySelector('.history-board-component');
+                    if (newBoard) {
+                        root.dataset.initialized = '0';
+                        root.innerHTML = newBoard.innerHTML;
+                        // 스크립트 재실행을 위해 이벤트 재바인딩
+                        const script = tmp.querySelector('script');
+                        if (script) { eval(script.textContent); }
+                    }
+                    // 한줄 바 건수 업데이트
+                    const barBadge = document.querySelector('#historySummaryBar .badge.bg-secondary');
+                    if (barBadge && data.total != null) {
+                        barBadge.textContent = data.total + '건';
+                    }
+                } else {
+                    alert(data.error || '등록 실패');
+                }
+            } catch (err) {
+                console.error('history ajax error', err);
+                form.submit(); // AJAX 실패 시 일반 제출 fallback
+            } finally {
+                btn.disabled = false;
+                btn.textContent = origText;
+            }
+        });
+    });
 })();
 </script>

@@ -31,6 +31,10 @@
     </div>
 </div>
 
+{# 히스토리 한줄 바 #}
+{% set history_panel_target = '#materialHistoryOffcanvas' %}
+{% include 'components/history_summary_bar.html' %}
+
 {# --- 탭 네비게이션 --- #}
 <ul class="nav nav-tabs mb-3" id="materialTabs" role="tablist">
     <li class="nav-item" role="presentation">
@@ -51,7 +55,7 @@
 </ul>
 
 <div class="row g-3">
-    <div class="col-lg-8">
+    <div class="col-12">
         <form method="POST" class="card border-0 shadow-sm mb-3 bulk-bar" id="bulkApplyForm">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="card-body">
@@ -379,15 +383,16 @@
         </div>
     </div>
 
-    <div class="col-lg-4">
-        {% set history_board_title = '자재 히스토리 보드' %}
-        {% set history_post_action = 'add_chat' %}
-        {% set history_post_url = url_for('material.material_detail', project_id=project.id) %}
-        {% set history_board_id = 'material-history-board-detail' %}
-        {% set history_default_filter = 'material' %}
-        {% include 'components/history_board.html' %}
-    </div>
+    {# 히스토리보드는 offcanvas 패널로 이동 #}
 </div>
+
+{% set history_board_title = '자재 히스토리 보드' %}
+{% set history_post_action = 'add_chat' %}
+{% set history_post_url = url_for('material.material_detail', project_id=project.id) %}
+{% set history_board_id = 'material-history-board-detail' %}
+{% set history_default_filter = 'material' %}
+{% set history_offcanvas_id = 'materialHistoryOffcanvas' %}
+{% include 'components/history_offcanvas.html' %}
 
 {# 모달은 테이블 밖에 배치해 배경/포커스 깨짐 방지 #}
 {% for c in project.contracts %}

@@ -14,8 +14,10 @@ from sqlalchemy import or_
 
 from modules.auth_decorators import login_required
 from modules.db_context import get_db
-from modules.history_board import append_history_log
-from modules.models import Project, ProductCatalog, G2bProcurement
+from flask import render_template, session
+
+from modules.history_board import append_history_log, get_project_history_context
+from modules.models import Project, ProductCatalog, G2bProcurement, HistoryLog
 from modules.services.g2b_procurement_sync import sync_daily, sync_bulk
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -285,3 +287,62 @@ def sync_g2b_procurement():
         'summary': f"동기화 완료: 신규 {result['created']}건, 갱신 {result['updated']}건"
                    + (f", 오류 {result['errors']}건" if result.get('errors') else '')
     })
+
+
+# ─── 히스토리보드 AJAX API ───────────────────────────────────
+
+@api_bp.route('/history/<int:project_id>/add', methods=['POST'])
+@login_required
+def history_add_comment(project_id):
+    """코멘트/답글 등록 (AJAX) → 히스토리 HTML 조각 반환"""
+    db = get_db()
+    project = db.query(Project).get(project_id)
+    if not project:
+        return jsonify({'ok': False, 'error': '현장 없음'}), 404
+
+    action = request.form.get('action', 'add_chat')
+    user_name = session.get('full_name', '사용자')
+
+    if action == 'add_chat':
+        msg = (request.form.get('chat_message') or '').strip()
+        if not msg:
+            return jsonify({'ok': False, 'error': '내용을 입력하세요'}), 400
+        append_history_log(db, project_id=project.id, user_name=user_name,
+                           content=msg, scope='common', kind='comment')
+    elif action == 'add_history_reply':
+        msg = (request.form.get('reply_message') or '').strip()
+        parent_id = request.form.get('parent_log_id', type=int)
+        if not msg or not parent_id:
+            return jsonify({'ok': False, 'error': '내용을 입력하세요'}), 400
+        parent = db.query(HistoryLog).get(parent_id)
+        origin = (parent.content or '')[:200] if parent else ''
+        append_history_log(db, project_id=project.id, user_name=user_name,
+                           content=msg, scope='common', kind='reply',
+                           parent_log_id=parent_id,
+                           root_log_id=parent.root_log_id or parent_id if parent else parent_id,
+                           origin_snapshot=origin)
+    else:
+        return jsonify({'ok': False, 'error': f'알 수 없는 action: {action}'}), 400
+
+    db.commit()
+    return _render_history_fragment(db, project_id, request.form.get('default_scope', 'common'))
+
+
+@api_bp.route('/history/<int:project_id>/fragment')
+@login_required
+def history_fragment(project_id):
+    """히스토리 HTML 조각만 반환 (AJAX 갱신용)"""
+    db = get_db()
+    default_scope = request.args.get('default_scope', 'common')
+    return _render_history_fragment(db, project_id, default_scope)
+
+
+def _render_history_fragment(db, project_id, default_scope='common'):
+    history, history_counts = get_project_history_context(db, project_id, default_scope=default_scope)
+    html = render_template('components/history_board.html',
+                           history=history, history_counts=history_counts,
+                           history_board_id='ajax-history-board',
+                           history_post_action='add_chat',
+                           history_default_filter='all')
+    return jsonify({'ok': True, 'html': html,
+                    'total': history_counts.get('all', 0)})

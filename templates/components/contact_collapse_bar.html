@@ -1,0 +1,76 @@
+{# 현장 담당자 접히는 바 - 기본 접힘, 클릭 시 펼침 #}
+{% set _contact_count = project.contacts|length %}
+{% set _collapse_id = contact_collapse_id or 'contactCollapsePanel' %}
+<style>
+    .contact-collapse-bar {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+        padding: .45rem .75rem; cursor: pointer; transition: all .2s;
+    }
+    .contact-collapse-bar:hover { background: #f8fafc; border-color: #cbd5e1; }
+    .contact-collapse-bar .contact-names {
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        max-width: 600px; font-size: .82rem; color: #475569;
+    }
+    .contact-collapse-body {
+        border: 1px solid #e2e8f0; border-top: 0; border-radius: 0 0 8px 8px;
+        background: #fff;
+    }
+    .contact-collapse-bar[aria-expanded="true"] {
+        border-radius: 8px 8px 0 0; border-bottom-color: transparent;
+    }
+    @media (max-width: 767.98px) {
+        .contact-collapse-bar .contact-names { max-width: 180px; }
+    }
+</style>
+<div class="mb-3">
+    <div class="contact-collapse-bar d-flex align-items-center gap-2"
+         data-bs-toggle="collapse" data-bs-target="#{{ _collapse_id }}"
+         aria-expanded="false" aria-controls="{{ _collapse_id }}">
+        <span class="badge bg-dark" style="white-space:nowrap;">👥 담당자</span>
+        {% if _contact_count > 0 %}
+        <span class="contact-names">
+            {% for con in project.contacts[:3] %}{{ con.name }}({{ con.category or '-' }}){% if not loop.last %}, {% endif %}{% endfor %}{% if _contact_count > 3 %} 외 {{ _contact_count - 3 }}명{% endif %}
+        </span>
+        {% else %}
+        <span class="text-muted small">등록된 담당자 없음</span>
+        {% endif %}
+        <span class="badge bg-secondary ms-auto" style="white-space:nowrap;">{{ _contact_count }}명</span>
+        <button type="button" class="btn btn-xs btn-dark fw-bold" style="white-space:nowrap;"
+                data-bs-toggle="modal" data-bs-target="#addContactModal"
+                onclick="event.stopPropagation();">+ 추가</button>
+        <span class="text-muted small" style="white-space:nowrap;">▼</span>
+    </div>
+    <div class="collapse contact-collapse-body" id="{{ _collapse_id }}">
+        <div class="p-2 table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle text-center" style="font-size:.85rem;">
+                <thead class="table-light">
+                    <tr><th style="width:15%">구분</th><th style="width:20%">이름</th><th style="width:22%">연락처</th><th style="width:25%">이메일</th><th style="width:18%">수정</th></tr>
+                </thead>
+                <tbody>
+                    {% for con in project.contacts %}
+                    <tr>
+                        <td><span class="badge bg-secondary">{{ con.category or '-' }}</span></td>
+                        <td><b>{{ con.name or '-' }}</b></td>
+                        <td>{{ con.phone or '-' }}</td>
+                        <td><small class="text-truncate d-inline-block" style="max-width:160px;">{{ con.email or '-' }}</small></td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                                    data-id="{{ con.id }}"
+                                    data-category="{{ con.category or '' }}"
+                                    data-name="{{ con.name or '' }}"
+                                    data-phone="{{ con.phone or '' }}"
+                                    data-email="{{ con.email or '' }}"
+                                    onclick="openContactEditFromBtn(this)">수정</button>
+                            {% if contact_show_delete %}
+                            <button type="button" class="btn btn-link text-danger p-0 ms-1" onclick="deleteWithReason('{{ con.id }}', '{{ con.name }}')">❌</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center text-muted py-2">등록된 담당자가 없습니다.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

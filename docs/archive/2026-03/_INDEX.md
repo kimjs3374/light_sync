@@ -20,6 +20,7 @@
 | dept-permission | 조직도 기반 부서별 권한 + 개인 추가 메뉴 + 임원진 전체 열람 | 95% | 2026-03-18 | 4 |
 | dept-weekly-report | 부서별 주간보고서 (영업/생산/관리 + 접근 제어 + 메뉴 트리) | 100% | 2026-03-18 | 4 |
 | production-display | MAGNATECH 전사 현황판 (6컬럼 칸반 + 전광판 + 날씨 + 캘린더) | 100% | 2026-03-19 | 4 |
+| history-board-ux | 통합히스토리보드 UX + 연락처 재배치 + 매그나텍 연동 | 97% | 2026-03-19 | 4 |
 
 ## production-display
 

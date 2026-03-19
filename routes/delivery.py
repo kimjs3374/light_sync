@@ -35,6 +35,7 @@ from modules.services.delivery_actions import (
     handle_delete_contact,
     handle_add_chat,
     handle_add_history_reply,
+    handle_update_inspection,
 )
 
 
@@ -86,6 +87,7 @@ ACTION_HANDLERS = {
     'delete_contact': handle_delete_contact,
     'add_chat': handle_add_chat,
     'add_history_reply': handle_add_history_reply,
+    'update_inspection': handle_update_inspection,
 }
 
 

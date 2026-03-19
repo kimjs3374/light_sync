@@ -121,13 +121,20 @@
     </div>
 </div>
 
-<p class="text-muted mb-4 contract-detail-meta">
-    <strong>현장주소:</strong> {{ project.site_address or '미입력' }} | 
-    <strong>납품주소:</strong> {{ project.shipping_address or '미입력' }} | 
+<p class="text-muted mb-3 contract-detail-meta">
+    <strong>현장주소:</strong> {{ project.site_address or '미입력' }} |
+    <strong>납품주소:</strong> {{ project.shipping_address or '미입력' }} |
     <strong>약칭:</strong> {{ project.short_name or '없음' }}
 </p>
 
+{# 히스토리 한줄 바 #}
+{% set history_panel_target = '#contractHistoryOffcanvas' %}
+{% include 'components/history_summary_bar.html' %}
+
 {% include 'components/priority_override_panel.html' %}
+
+{% set contact_collapse_id = 'contractContactCollapse' %}
+{% include 'components/contact_collapse_bar.html' %}
 
 <div class="row mb-4">
     <div class="col-md-8 contract-detail-main">
@@ -138,6 +145,24 @@
             </div>
             <div class="card-body bg-white">
                 <p class="text-dark m-0" style="white-space: pre-wrap; font-size: 0.95rem;">{{ project.design_basis or '기준 미입력' }}</p>
+                {# 시방서 반영 확인 (매그나텍 PHASE 2-3) #}
+                <div class="mt-2 pt-2 border-top">
+                    <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" class="d-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="action" value="confirm_spec">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" name="spec_confirmed"
+                                   id="specConfirmedContract" {{ 'checked' if project.spec_confirmed }}
+                                   onchange="this.form.submit()">
+                            <label class="form-check-label small" for="specConfirmedContract">
+                                시방서 반영 확인
+                                {% if project.spec_confirmed_date %}
+                                  <span class="text-muted">({{ project.spec_confirmed_date }})</span>
+                                {% endif %}
+                            </label>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
@@ -173,7 +198,7 @@
 {% endif %}
 
 <div class="row">
-    <div class="col-md-8">
+    <div class="col-12">
         <h5 class="fw-bold mb-3">🌳 계약 트리 기반 상세/수정</h5>
 
         {% for c in project.contracts %}
@@ -245,6 +270,48 @@
                     </form>
                 </div>
                 {% endif %}
+
+                {# 대금 상태 (매그나텍 PHASE 8) #}
+                <div class="mt-2 mx-2 mb-2 p-2 border rounded bg-white">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="fw-bold small">대금 상태</span>
+                        {% if c.payment_status == '입금완료' %}
+                          <span class="badge bg-success" style="white-space:nowrap">입금완료</span>
+                        {% elif c.payment_status == '청구완료' %}
+                          <span class="badge bg-primary" style="white-space:nowrap">청구완료</span>
+                        {% else %}
+                          <span class="badge bg-secondary" style="white-space:nowrap">미청구</span>
+                        {% endif %}
+                    </div>
+                    <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="action" value="update_payment">
+                        <input type="hidden" name="contract_id" value="{{ c.id }}">
+                        <div class="d-flex flex-wrap gap-2 align-items-end">
+                            <div>
+                                <label class="small fw-bold text-muted">상태</label>
+                                <select name="payment_status" class="form-select form-select-sm">
+                                    {% for st in ['미청구', '청구완료', '입금완료'] %}
+                                      <option value="{{ st }}" {{ 'selected' if c.payment_status == st }}>{{ st }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="small fw-bold text-muted">세금계산서 발행일</label>
+                                <input type="date" name="invoice_date" class="form-control form-control-sm"
+                                       value="{{ c.invoice_date.strftime('%Y-%m-%d') if c.invoice_date else '' }}">
+                            </div>
+                            <div>
+                                <label class="small fw-bold text-muted">입금확인일</label>
+                                <input type="date" name="payment_date" class="form-control form-control-sm"
+                                       value="{{ c.payment_date.strftime('%Y-%m-%d') if c.payment_date else '' }}">
+                            </div>
+                            <div>
+                                <button type="submit" class="btn btn-sm btn-outline-primary fw-bold" style="white-space:nowrap">저장</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             <div class="card-body bg-light p-2">
@@ -645,53 +712,87 @@
         </div>
     </div>
 
-    <div class="col-md-4 contract-detail-side">
-        <div class="d-flex justify-content-between align-items-center mb-3 contact-panel-header">
-            <h5 class="fw-bold m-0">👥 현장 담당자 연락처</h5>
-            <button class="btn btn-xs btn-dark fw-bold" data-bs-toggle="modal" data-bs-target="#addContactModal">+ 담당자 추가</button>
-        </div>
-
-        <div class="card shadow-sm border-0 mb-3">
-            <div class="card-body p-2" style="max-height: 220px; overflow-y: auto;">
-                <div class="table-responsive">
-                <table class="table table-sm mb-0 align-middle contact-mini-table">
-                    <thead class="table-light">
-                        <tr><th>구분</th><th>이름</th><th>연락처</th><th>이메일</th><th>수정</th></tr>
-                    </thead>
-                    <tbody>
-                        {% for con in project.contacts %}
-                        <tr>
-                            <td><small>{{ con.category or '-' }}</small></td>
-                            <td><b>{{ con.name }}</b></td>
-                            <td><small>{{ con.phone or '-' }}</small></td>
-                            <td><small>{{ con.email or '-' }}</small></td>
-                            <td>
-                                <button type="button" class="btn btn-sm btn-outline-secondary py-0"
-                                        data-id="{{ con.id }}"
-                                        data-category="{{ con.category or '' }}"
-                                        data-name="{{ con.name or '' }}"
-                                        data-phone="{{ con.phone or '' }}"
-                                        data-email="{{ con.email or '' }}"
-                                        onclick="openContactEditFromBtn(this)">수정</button>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="5" class="text-center text-muted">등록된 연락처 없음</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                </div>
-            </div>
-        </div>
-
-        {% set history_board_title = '📜 통합 히스토리 보드' %}
-        {% set history_post_action = 'add_chat' %}
-        {% set history_post_url = url_for('project.contract_detail', project_id=project.id) %}
-        {% set history_board_id = 'contract-history-board' %}
-        {% set history_default_filter = 'all' %}
-        {% include 'components/history_board.html' %}
     </div>
 </div>
+
+{# ====== 세금계산서/수금 현황 (매출관리 연동) ====== #}
+<div class="card border-0 shadow-sm mt-3">
+    <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center">
+        <span class="fw-bold small">세금계산서 / 수금 현황</span>
+        <a href="{{ url_for('financial.tax_invoice_list') }}?search={{ project.temp_name|urlencode }}" class="btn btn-outline-light btn-sm py-0 px-2" style="font-size:0.72rem; white-space:nowrap;">매출관리</a>
+    </div>
+    <div class="card-body p-2" id="contractInvoiceSection">
+        <div class="text-center py-2 text-muted small" id="invoiceLoading">불러오는 중...</div>
+    </div>
+</div>
+<script>
+(function(){
+    // 계약 ID별로 세금계산서 조회
+    const contracts = {{ project.contracts|map(attribute='id')|list|tojson }};
+    const section = document.getElementById('contractInvoiceSection');
+    if (!contracts.length) {
+        section.innerHTML = '<div class="text-center py-2 text-muted small">등록된 계약이 없습니다.</div>';
+        return;
+    }
+    let allHtml = '';
+    let loaded = 0;
+    contracts.forEach(cid => {
+        fetch('/financial/api/contract/' + cid + '/invoices')
+        .then(r => r.json())
+        .then(data => {
+            loaded++;
+            if (data.invoices && data.invoices.length > 0) {
+                let rows = data.invoices.map(i => {
+                    const payBadge = i.payment_status === '입금완료'
+                        ? '<span class="badge bg-success" style="font-size:0.68rem;white-space:nowrap;">완료</span>'
+                        : i.payment_status === '부분입금'
+                        ? '<span class="badge bg-warning text-dark" style="font-size:0.68rem;white-space:nowrap;">부분</span>'
+                        : '<span class="badge bg-danger" style="font-size:0.68rem;white-space:nowrap;">미수금</span>';
+                    return `<tr style="cursor:pointer;" onclick="location.href='/financial/tax-invoice/${i.id}'">
+                        <td>${i.issue_date||'-'}</td>
+                        <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${i.buyer_name||'-'}</td>
+                        <td class="text-end">${(i.total_amount||0).toLocaleString()}</td>
+                        <td class="text-end">${(i.paid_amount||0).toLocaleString()}</td>
+                        <td>${payBadge}</td>
+                    </tr>`;
+                }).join('');
+                const summ = data.summary;
+                const pct = summ.total_amount > 0 ? Math.round(summ.total_paid / summ.total_amount * 100) : 0;
+                allHtml += `<div class="mb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <small class="fw-bold">세금계산서 ${summ.count}건</small>
+                        <small class="text-muted">합계 ${summ.total_amount.toLocaleString()}원 | 수금 ${summ.total_paid.toLocaleString()}원 (${pct}%)</small>
+                    </div>
+                    <div class="progress" style="height:6px;border-radius:3px;">
+                        <div class="progress-bar ${pct>=100?'bg-success':pct>0?'bg-warning':'bg-danger'}" style="width:${pct}%;"></div>
+                    </div>
+                    <table class="table table-sm mb-0 mt-1" style="font-size:0.78rem;">
+                        <thead><tr><th style="white-space:nowrap;">발행일</th><th style="white-space:nowrap;">거래처</th><th class="text-end" style="white-space:nowrap;">합계</th><th class="text-end" style="white-space:nowrap;">입금</th><th style="white-space:nowrap;">상태</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>`;
+            }
+            if (loaded === contracts.length) {
+                section.innerHTML = allHtml || '<div class="text-center py-2 text-muted small">매칭된 세금계산서가 없습니다.</div>';
+            }
+        })
+        .catch(() => {
+            loaded++;
+            if (loaded === contracts.length && !allHtml) {
+                section.innerHTML = '<div class="text-center py-2 text-muted small">매칭된 세금계산서가 없습니다.</div>';
+            }
+        });
+    });
+})();
+</script>
+
+{% set history_board_title = '통합 히스토리 보드' %}
+{% set history_post_action = 'add_chat' %}
+{% set history_post_url = url_for('project.contract_detail', project_id=project.id) %}
+{% set history_board_id = 'contract-history-board' %}
+{% set history_default_filter = 'all' %}
+{% set history_offcanvas_id = 'contractHistoryOffcanvas' %}
+{% include 'components/history_offcanvas.html' %}
 
 <div class="modal fade" id="addContactModal" tabindex="-1">
     <div class="modal-dialog">

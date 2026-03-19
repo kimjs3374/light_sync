@@ -20,8 +20,15 @@
     계약관리 상세와 동일한 구조를 유지하며, 이 화면에서는 <b>협의내용(영업단계/납품예정일/품목 스펙)</b>만 수정 가능합니다.
 </p>
 
+{# 히스토리 한줄 바 #}
+{% set history_panel_target = '#salesHistoryOffcanvas' %}
+{% include 'components/history_summary_bar.html' %}
+
+{% set contact_collapse_id = 'salesContactCollapse' %}
+{% include 'components/contact_collapse_bar.html' %}
+
 <div class="row">
-    <div class="col-md-8">
+    <div class="col-12">
         <h5 class="fw-bold mb-3">🌳 계약 트리 기반 상세 (영업 수정 전용)</h5>
 
         {% for c in project.contracts %}
@@ -209,52 +216,15 @@
         {% endfor %}
     </div>
 
-    <div class="col-md-4">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="fw-bold m-0">👥 현장 담당자 연락처</h5>
-            <button class="btn btn-xs btn-dark fw-bold" data-bs-toggle="modal" data-bs-target="#addContactModal">+ 담당자 추가</button>
-        </div>
-
-        <div class="card shadow-sm border-0 mb-3">
-            <div class="card-body p-2" style="max-height: 220px; overflow-y: auto;">
-                <div class="table-responsive">
-                <table class="table table-sm mb-0 align-middle contact-mini-table">
-                    <thead class="table-light">
-                        <tr><th>구분</th><th>이름</th><th>연락처</th><th>이메일</th><th>수정</th></tr>
-                    </thead>
-                    <tbody>
-                        {% for con in project.contacts %}
-                        <tr>
-                            <td><small>{{ con.category or '-' }}</small></td>
-                            <td><b>{{ con.name }}</b></td>
-                            <td><small>{{ con.phone or '-' }}</small></td>
-                            <td><small>{{ con.email or '-' }}</small></td>
-                            <td>
-                                <button type="button" class="btn btn-sm btn-outline-secondary py-0"
-                                        data-id="{{ con.id }}"
-                                        data-category="{{ con.category or '' }}"
-                                        data-name="{{ con.name or '' }}"
-                                        data-phone="{{ con.phone or '' }}"
-                                        data-email="{{ con.email or '' }}"
-                                        onclick="openContactEditFromBtn(this)">수정</button>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="5" class="text-center text-muted">등록된 연락처 없음</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                </div>
-            </div>
-        </div>
-
-        {% set history_board_title = '📜 통합 히스토리 보드' %}
-        {% set history_post_action = 'add_sales_comment' %}
-        {% set history_board_id = 'sales-history-board' %}
-        {% set history_default_filter = 'all' %}
-        {% include 'components/history_board.html' %}
     </div>
 </div>
+
+{% set history_board_title = '통합 히스토리 보드' %}
+{% set history_post_action = 'add_sales_comment' %}
+{% set history_board_id = 'sales-history-board' %}
+{% set history_default_filter = 'all' %}
+{% set history_offcanvas_id = 'salesHistoryOffcanvas' %}
+{% include 'components/history_offcanvas.html' %}
 
 <div class="modal fade" id="addContactModal" tabindex="-1">
     <div class="modal-dialog">

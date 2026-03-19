@@ -3,10 +3,11 @@ import datetime
 from modules.utils import safe_int, parse_date
 from modules.spec_utils import extract_contract_item_spec, validate_contract_item_spec, format_spec_summary
 from modules.models import (
-    Contract, ContractItem, Material, MaterialOrder, HistoryLog,
+    Contract, ContractItem, Material, MaterialOrder,
     DETAIL_ITEM_OPTIONS, LIGHTING_DETAIL_ITEMS, normalize_detail_item,
     SALES_STATUS_STEPS, ADMIN_STATUS_STEPS, PROD_STATUS_STEPS,
 )
+from modules.history_board import append_history_log
 from routes.material import sync_material_orders_for_contract_item
 
 
@@ -40,7 +41,7 @@ def handle_update_contract(db, project, form, current_user, **ctx):
     ajax_log = None
     if old_info != new_info:
         log_content = f"{current_user}님이 계약정보 수정\n변경 전: {old_info}\n변경 후: {new_info}"
-        db.add(HistoryLog(project_id=project.id, user_name="시스템 🤖", content=log_content))
+        append_history_log(db, project_id=project.id, user_name="시스템 🤖", content=log_content, scope='contract', kind='system')
         ajax_log = {
             'user_name': '시스템 🤖',
             'content': log_content,
@@ -92,12 +93,10 @@ def handle_add_contract(db, project, form, current_user, **ctx):
         except (ValueError, TypeError):
             pass
 
-    db.add(HistoryLog(
-        project_id=project.id,
-        user_name="시스템 🤖",
+    append_history_log(db, project_id=project.id, user_name="시스템 🤖",
         content=f"{current_user}님이 계약 추가: {new_contract.contract_name} / 품목군:{new_contract.item_group}"
-        + (f" (G2B 연동: {g2b_no})" if g2b_no else "")
-    ))
+        + (f" (G2B 연동: {g2b_no})" if g2b_no else ""),
+        scope='contract', kind='system')
     return {}
 
 
@@ -113,11 +112,9 @@ def handle_delete_contract(db, project, form, current_user, **ctx):
         db.query(MaterialOrder).filter(MaterialOrder.contract_item_id == item.id).delete()
         db.delete(item)
     db.delete(con)
-    db.add(HistoryLog(
-        project_id=project.id,
-        user_name="시스템 🤖",
-        content=f"{current_user}님이 계약 삭제: {contract_name}"
-    ))
+    append_history_log(db, project_id=project.id, user_name="시스템 🤖",
+                       content=f"{current_user}님이 계약 삭제: {contract_name}",
+                       scope='contract', kind='system')
     return {'flash': (f'계약 [{contract_name}]이 삭제되었습니다.', 'success')}
 
 
@@ -196,7 +193,7 @@ def handle_update_contract_item(db, project, form, current_user, **ctx):
             f"{current_user}님이 계약품목 수정: {item.model_name or '-'}\n" +
             "\n".join(changed_logs)
         )
-        db.add(HistoryLog(project_id=project.id, user_name="시스템 🤖", content=log_content))
+        append_history_log(db, project_id=project.id, user_name="시스템 🤖", content=log_content, scope='contract', kind='system')
         ajax_log = {
             'user_name': '시스템 🤖',
             'content': log_content,
@@ -238,11 +235,9 @@ def handle_add_contract_item(db, project, form, current_user, **ctx):
         return {'flash': (f"필수 스펙 누락: {', '.join(missing_spec)}", 'warning')}
     new_item.item_spec = spec
     db.add(new_item)
-    db.add(HistoryLog(
-        project_id=project.id,
-        user_name="시스템 🤖",
-        content=f"{current_user}님이 계약품목 추가: {new_item.category}/{new_item.model_name}({new_item.quantity})"
-    ))
+    append_history_log(db, project_id=project.id, user_name="시스템 🤖",
+                       content=f"{current_user}님이 계약품목 추가: {new_item.category}/{new_item.model_name}({new_item.quantity})",
+                       scope='contract', kind='system')
     db.flush()
     sync_material_orders_for_contract_item(db, con, new_item)
     return {}
@@ -254,11 +249,9 @@ def handle_delete_contract_item(db, project, form, current_user, **ctx):
     if item:
         con = db.query(Contract).get(item.contract_id)
         if con and con.project_id == project.id:
-            db.add(HistoryLog(
-                project_id=project.id,
-                user_name="시스템 🤖",
-                content=f"{current_user}님이 계약품목 삭제: {item.category}/{item.model_name}({item.quantity})"
-            ))
+            append_history_log(db, project_id=project.id, user_name="시스템 🤖",
+                               content=f"{current_user}님이 계약품목 삭제: {item.category}/{item.model_name}({item.quantity})",
+                               scope='contract', kind='system')
             db.query(MaterialOrder).filter(MaterialOrder.contract_item_id == item.id).delete()
             db.delete(item)
     return {}
@@ -267,7 +260,8 @@ def handle_delete_contract_item(db, project, form, current_user, **ctx):
 def handle_delete_material(db, project, form, current_user, **ctx):
     mat = db.query(Material).get(safe_int(form.get('material_id')))
     if mat:
-        db.add(HistoryLog(project_id=project.id, user_name="시스템 🤖",
-                          content=f"{current_user}님이 품목 삭제: {mat.category}({mat.model_name})"))
+        append_history_log(db, project_id=project.id, user_name="시스템 🤖",
+                           content=f"{current_user}님이 품목 삭제: {mat.category}({mat.model_name})",
+                           scope='contract', kind='system')
         db.delete(mat)
     return {}

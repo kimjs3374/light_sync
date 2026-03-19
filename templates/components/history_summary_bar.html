@@ -1,0 +1,75 @@
+{# 히스토리 상단 한줄 바 - 최근 로그 1건 + 전체 건수 + 클릭 시 패널 오픈 #}
+{% set _latest = history[0] if history else none %}
+{% set _total = history_counts.all|default(0) %}
+<style>
+    .history-summary-bar {
+        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+        padding: .45rem .75rem; cursor: pointer; transition: all .2s;
+    }
+    .history-summary-bar:hover { background: #f1f5f9; border-color: #cbd5e1; }
+    .history-bar-pulse {
+        animation: history-pulse 1.5s ease-in-out 3;
+    }
+    @keyframes history-pulse {
+        0%, 100% { border-color: #e2e8f0; }
+        50% { border-color: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,.3); }
+    }
+    .history-bar-latest {
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        max-width: 500px; font-size: .82rem; color: #475569;
+    }
+    .history-fab {
+        position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 1040;
+        width: 52px; height: 52px; border-radius: 50%;
+        background: linear-gradient(135deg, #1e293b, #334155);
+        color: #fff; border: none; box-shadow: 0 4px 14px rgba(0,0,0,.25);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.2rem; cursor: pointer; transition: all .2s;
+    }
+    .history-fab:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(0,0,0,.35); }
+    .history-fab .fab-badge {
+        position: absolute; top: -4px; right: -4px;
+        background: #ef4444; color: #fff; font-size: .65rem; font-weight: 700;
+        min-width: 20px; height: 20px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        border: 2px solid #fff;
+    }
+    @media (max-width: 767.98px) {
+        .history-bar-latest { max-width: 200px; }
+        .history-fab { bottom: 1rem; right: 1rem; width: 46px; height: 46px; font-size: 1rem; }
+    }
+</style>
+<div class="history-summary-bar mb-3" id="historySummaryBar"
+     {% if history_panel_target %}
+     data-bs-toggle="offcanvas" data-bs-target="{{ history_panel_target }}"
+     {% endif %}
+     {% if history_panel_js_action %}
+     onclick="{{ history_panel_js_action }}"
+     {% endif %}>
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-dark" style="white-space:nowrap;">히스토리</span>
+        {% if _latest %}
+        <span class="history-bar-latest">
+            <b>{{ _latest.user_name }}</b>
+            {{ _latest.content[:60] }}{% if _latest.content|length > 60 %}...{% endif %}
+        </span>
+        {% else %}
+        <span class="text-muted small">기록 없음</span>
+        {% endif %}
+        <span class="badge bg-secondary ms-auto" style="white-space:nowrap;">{{ _total }}건</span>
+        <span class="badge bg-outline-dark border text-dark" style="white-space:nowrap; font-size:.72rem;">열기</span>
+    </div>
+</div>
+
+{# 플로팅 버튼 - 스크롤 내려도 항상 접근 가능 #}
+<button type="button" class="history-fab"
+        {% if history_panel_target %}
+        data-bs-toggle="offcanvas" data-bs-target="{{ history_panel_target }}"
+        {% endif %}
+        {% if history_panel_js_action %}
+        onclick="{{ history_panel_js_action }}"
+        {% endif %}
+        title="히스토리 보드 열기">
+    📜
+    {% if _total > 0 %}<span class="fab-badge">{{ _total if _total < 100 else '99+' }}</span>{% endif %}
+</button>

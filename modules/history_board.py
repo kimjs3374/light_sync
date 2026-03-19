@@ -3,7 +3,10 @@ import datetime
 from modules.models import HistoryLog
 
 
-VALID_SCOPES = {'common', 'design', 'contract', 'sales', 'material', 'production', 'delivery', 'drawing', 'technical'}
+# drawing → design으로 통합, technical → 미사용 (하자AS 별도 PDCA 예정)
+VALID_SCOPES = {'common', 'design', 'contract', 'sales', 'material', 'production', 'delivery'}
+# 기존 drawing/technical 데이터 호환: 입력 시 design으로 매핑
+_SCOPE_ALIAS = {'drawing': 'design', 'technical': 'design'}
 
 
 def append_history_log(
@@ -22,6 +25,7 @@ def append_history_log(
         resolved_kind = 'comment'
 
     resolved_scope = (scope or '').strip().lower()
+    resolved_scope = _SCOPE_ALIAS.get(resolved_scope, resolved_scope)
     if resolved_scope not in VALID_SCOPES:
         resolved_scope = 'common' if resolved_kind == 'comment' else 'design'
 
@@ -50,8 +54,6 @@ def build_history_view(history_rows, default_scope='common'):
         'material': 0,
         'production': 0,
         'delivery': 0,
-        'drawing': 0,
-        'technical': 0,
         'comments': 0,
     }
 
@@ -71,13 +73,16 @@ def build_history_view(history_rows, default_scope='common'):
             reply_map.get(log.id, []),
             key=lambda x: (x.created_at or datetime.datetime.min, x.id or 0)
         )
+
+    # reply 포함 전체 로그 대상 카운트 (기존 drawing/technical → design으로 매핑)
+    for log in history_rows:
         counts['all'] += 1
-        if log.log_kind == 'comment':
+        if log.log_kind in ('comment', 'reply'):
             counts['comments'] += 1
         else:
-            scope = log.log_scope if log.log_scope in ('design', 'contract', 'sales', 'material', 'production', 'delivery', 'drawing', 'technical') else default_scope
+            scope = _SCOPE_ALIAS.get(log.log_scope, log.log_scope)
             if scope not in counts:
-                scope = 'all'
+                scope = default_scope if default_scope in counts else 'design'
             counts[scope] += 1
 
     return top_logs, counts
