@@ -29,3 +29,8 @@ storage/drawings/
 .bkit/
 logs/
 image/
+*.mdf
+*.ldf
+debug_screenshot/
+reference/
+*.pdf

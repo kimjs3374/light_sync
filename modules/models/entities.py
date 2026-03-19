@@ -90,7 +90,8 @@ class Contract(Base):
     
     is_prof_inspection = Column(Boolean, default=False) # 전문기관검수여부 (💡 체크 시 파란 음영)
     is_urgent_prod = Column(Boolean, default=False)     # 긴급제작건 여부 (💡 체크 시 빨간 음영)
-    
+    g2b_contract_no = Column(String(30), nullable=True)  # G2B 계약납품요구번호 (매칭 연동)
+
     project = relationship("Project", back_populates="contracts")
     # 💡 계약별 품목 (1계약 : N품목)
     items = relationship("ContractItem", back_populates="contract", cascade="all, delete-orphan")
@@ -818,6 +819,8 @@ class Item(Base):
     manufacturer = Column(String(100), nullable=True)               # 제조사/납품업체
     note = Column(Text, nullable=True)                              # 비고
     is_active = Column(Boolean, default=True)
+    stock_qty = Column(Float, default=0)                              # 실재고 수량
+    reserved_qty = Column(Float, default=0)                           # 예약수량 (현장별)
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
@@ -1080,7 +1083,8 @@ class BomItem(Base):
     item_name = Column(String(300), nullable=False)
     item_spec = Column(String(500), nullable=True)
     quantity = Column(Float, default=1)       # 1개 완제품당 소요량
-    unit_price = Column(Float, nullable=True)                 # 단가
+    unit_price = Column(Float, nullable=True)                 # 현재 단가
+    prev_unit_price = Column(Float, nullable=True)            # 직전 단가
     amount = Column(Float, nullable=True)                     # 금액
     supplier = Column(String(200), nullable=True)             # 납품업체
     unit = Column(String(50), nullable=True)

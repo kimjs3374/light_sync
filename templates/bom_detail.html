@@ -98,9 +98,10 @@
                         <col style="width:{{ '18%' if can_see_price else '30%' }}">
                         <col style="width:{{ '15%' if can_see_price else '25%' }}">
                         <col style="width:50px">
-                        {% if can_see_price %}<col style="width:85px">
+                        {% if can_see_price %}<col style="width:70px">
+                        <col style="width:75px">
                         <col class="col-latest-price" style="width:85px">
-                        <col style="width:80px">{% endif %}
+                        <col style="width:75px">{% endif %}
                         <col style="width:12%">
                         <col style="width:32px">
                     </colgroup>
@@ -111,7 +112,8 @@
                             <th>부품명</th>
                             <th>규격/비고</th>
                             <th class="text-end">소요량</th>
-                            {% if can_see_price %}<th class="text-end">BOM단가</th>
+                            {% if can_see_price %}<th class="text-end">직전단가</th>
+                            <th class="text-end">BOM단가</th>
                             <th class="text-end col-latest-price">최신입고단가</th>
                             <th class="text-end">금액</th>{% endif %}
                             <th>납품업체</th>
@@ -122,7 +124,13 @@
                         {% for item in bom.bom_items %}
                         <tr>
                             <td>{{ loop.index }}</td>
-                            <td class="text-nowrap" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_code or '' }}">{{ item.item_code or '-' }}</td>
+                            <td class="text-nowrap" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_code or '' }}">
+                                {% if item.item_id %}
+                                <a href="{{ url_for('item.item_detail', item_id=item.item_id) }}" class="text-decoration-none" onclick="event.stopPropagation();" title="품목 상세"><code style="font-size:0.75rem;">{{ item.item_code or '-' }}</code></a>
+                                {% elif item.item_code %}
+                                <code style="font-size:0.75rem; color:#999;">{{ item.item_code }}</code>
+                                {% else %}-{% endif %}
+                            </td>
                             <td>
                                 <input type="text" name="item_name[]" class="form-control form-control-sm" value="{{ item.item_name }}">
                                 <input type="hidden" name="item_spec[]" value="{{ item.item_spec or '' }}">
@@ -131,11 +139,11 @@
                             <td><input type="number" name="quantity[]" class="form-control form-control-sm text-end" value="{{ item.quantity }}" step="any" min="0"></td>
                             {% if can_see_price %}
                             {% set lp = latest_prices.get(item.item_code) or latest_prices.get(item.item_name) %}
+                            <td class="text-end text-nowrap text-muted" style="font-size:0.75rem;">
+                                {% if item.prev_unit_price %}<del>{{ '{:,.0f}'.format(item.prev_unit_price) }}</del>{% else %}-{% endif %}
+                            </td>
                             <td class="text-end text-nowrap price-bom">
-                                <div class="position-relative">
-                                    <input type="number" name="unit_price[]" class="form-control form-control-sm text-end px-1" value="{{ item.unit_price|int if item.unit_price else '' }}" placeholder="-" step="any" min="0" data-orig-price="{{ item.unit_price|int if item.unit_price else '' }}" style="width:100%;">
-                                    {% if item.unit_price %}<small class="text-muted d-none prev-price-hint" style="font-size:0.65rem;"></small>{% endif %}
-                                </div>
+                                <input type="number" name="unit_price[]" class="form-control form-control-sm text-end px-1" value="{{ item.unit_price|int if item.unit_price else '' }}" placeholder="-" step="any" min="0" style="width:100%;">
                             </td>
                             <td class="text-end text-nowrap col-latest-price price-latest">
                                 {% if lp %}
@@ -155,7 +163,7 @@
                         </tr>
                         {% else %}
                         <tr id="emptyRow">
-                            <td colspan="{{ 10 if can_see_price else 7 }}" class="text-center text-muted py-3">부품이 없습니다.</td>
+                            <td colspan="{{ 11 if can_see_price else 7 }}" class="text-center text-muted py-3">부품이 없습니다.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -200,7 +208,8 @@
         idx++;
         var tr = document.createElement('tr');
         var priceCols = canSeePrice
-            ? '<td class="text-end text-nowrap price-bom"><input type="number" name="unit_price[]" class="form-control form-control-sm text-end px-1" placeholder="-" step="any" min="0" data-orig-price="" style="width:100%;"></td>' +
+            ? '<td class="text-end text-muted" style="font-size:0.75rem;">-</td>' +
+              '<td class="text-end text-nowrap price-bom"><input type="number" name="unit_price[]" class="form-control form-control-sm text-end px-1" placeholder="-" step="any" min="0" style="width:100%;"></td>' +
               '<td class="text-end text-nowrap col-latest-price price-latest"><span class="text-muted">-</span></td>' +
               '<td class="text-end text-nowrap price-amount" data-bom="0" data-latest="0">-</td>'
             : '';
@@ -218,23 +227,6 @@
 
     document.querySelectorAll('.remove-btn').forEach(function(btn) {
         btn.addEventListener('click', function() { this.closest('tr').remove(); });
-    });
-
-    // FR-03 + FR-04: BOM단가 수정 시 직전 단가를 취소선으로 표시
-    document.querySelectorAll('input[name="unit_price[]"]').forEach(function(input) {
-        var origPrice = input.getAttribute('data-orig-price');
-        var hintEl = input.parentElement.querySelector('.prev-price-hint');
-
-        input.addEventListener('input', function() {
-            if (!hintEl || !origPrice) return;
-            var newVal = this.value.trim();
-            if (newVal !== origPrice && origPrice !== '') {
-                hintEl.classList.remove('d-none');
-                hintEl.innerHTML = '<del>' + parseInt(origPrice).toLocaleString('ko-KR') + '</del>';
-            } else {
-                hintEl.classList.add('d-none');
-            }
-        });
     });
 
     // FR-01 + FR-02: 최신입고단가 토글 - localStorage 저장 및 복원

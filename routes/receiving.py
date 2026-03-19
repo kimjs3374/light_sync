@@ -22,7 +22,7 @@ from modules.db_context import get_db
 from modules.models import (
     Vendor, PurchaseOrder, PurchaseOrderItem, MaterialOrder,
     Receiving, ReceivingItem, ReceivingHistory,
-    RCV_STATUS_CHOICES,
+    RCV_STATUS_CHOICES, Item, BomItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ def _update_po_status_on_receiving(db, po_id):
     # 모든 품목 입고 완료
     po.status = '입고완료'
 
-    # MaterialOrder 입고완료 연동
+    # MaterialOrder 입고완료 연동 + 입고 시 stock_qty 증가 (FR-07)
     material_orders = db.query(MaterialOrder).filter(
         MaterialOrder.po_id == po_id,
     ).all()
@@ -94,6 +94,20 @@ def _update_po_status_on_receiving(db, po_id):
         mo.order_status = '입고완료'
         mo.in_confirmed = True
         mo.in_confirmed_at = datetime.datetime.now()
+
+    # 발주 품목별 입고 수량으로 Item.stock_qty 증가
+    for po_item in po.items:
+        total_received = db.query(func.coalesce(func.sum(ReceivingItem.received_qty), 0)).filter(
+            ReceivingItem.po_item_id == po_item.id,
+        ).scalar() or 0
+
+        # BomItem -> Item 연결이 있으면 stock_qty 증가
+        if po_item.bom_item_id:
+            bi = db.query(BomItem).get(po_item.bom_item_id)
+            if bi and bi.item_id:
+                linked_item = db.query(Item).get(bi.item_id)
+                if linked_item:
+                    linked_item.stock_qty = (linked_item.stock_qty or 0) + total_received
 
 
 # ===================================================================

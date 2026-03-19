@@ -53,7 +53,10 @@
 
         <div class="d-flex justify-content-between align-items-center mb-2">
             <h5 class="m-0 fw-bold">2) 계약 정보 (최대 9건)</h5>
-            <button type="button" class="btn btn-sm btn-outline-primary" id="addContractBtn">+ 계약 추가</button>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-success" id="g2bImportBtn">G2B 불러오기</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="addContractBtn">+ 계약 추가</button>
+            </div>
         </div>
 
         <div id="contractsWrap"></div>
@@ -66,9 +69,13 @@
 
 <template id="contractTemplate">
     <div class="card border-0 shadow-sm mb-3 contract-block" data-index="__IDX__">
+        <input type="hidden" name="g2b_contract_no___IDX__" class="g2b-no-input" value="">
         <div class="card-header bg-primary-subtle d-flex justify-content-between align-items-center">
             <span class="fw-bold">계약 <span class="contract-no">__NO__</span></span>
-            <button type="button" class="btn btn-sm btn-outline-danger remove-contract-btn">삭제</button>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-success d-none g2b-linked-badge" style="font-size:.75rem;"></span>
+                <button type="button" class="btn btn-sm btn-outline-danger remove-contract-btn">삭제</button>
+            </div>
         </div>
         <div class="card-body">
             <div class="row g-2">
@@ -145,6 +152,27 @@
         <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger remove-item-btn">X</button></td>
     </tr>
 </template>
+
+<!-- G2B 불러오기 모달 -->
+<div class="modal fade" id="g2bImportModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title fw-bold">G2B 조달내역 불러오기</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="input-group input-group-sm mb-3">
+                    <input type="text" class="form-control" id="g2bSearchInput" placeholder="계약명 또는 수요기관명 검색...">
+                    <button class="btn btn-outline-primary" type="button" id="g2bSearchBtn">검색</button>
+                </div>
+                <div id="g2bSearchResults" style="max-height:400px; overflow-y:auto;">
+                    <div class="text-center text-muted py-4">검색어를 입력하세요</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
     const contractsWrap = document.getElementById('contractsWrap');
@@ -263,5 +291,155 @@
     // 최초 1건 기본 생성
     addContract(1);
     applySameAddress();
+
+    // ── G2B 불러오기 ──
+    let g2bModal = null;
+    const g2bResults = document.getElementById('g2bSearchResults');
+
+    function getG2bModal() {
+        if (!g2bModal) g2bModal = new bootstrap.Modal(document.getElementById('g2bImportModal'));
+        return g2bModal;
+    }
+
+    document.getElementById('g2bImportBtn').addEventListener('click', () => {
+        document.getElementById('g2bSearchInput').value = '';
+        getG2bModal().show();
+        // 최근 30일 미연동 건 자동 로드
+        loadG2bList('');
+    });
+
+    function doG2bSearch() {
+        const q = document.getElementById('g2bSearchInput').value.trim();
+        loadG2bList(q);
+    }
+
+    function loadG2bList(q) {
+        g2bResults.innerHTML = '<div class="text-center py-4 text-muted">검색 중...</div>';
+        fetch('/api/g2b-search?q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(data => {
+            if (!data.results || data.results.length === 0) {
+                g2bResults.innerHTML = '<div class="text-center py-4 text-muted">결과 없음</div>';
+                return;
+            }
+            let html = '<div class="list-group list-group-flush">';
+            data.results.forEach(g => {
+                html += `
+                <a href="#" class="list-group-item list-group-item-action g2b-select-item"
+                   data-g2b='${JSON.stringify(g).replace(/'/g, "&#39;")}'>
+                    <div class="fw-bold" style="font-size:.9rem;">${g.req_nm}</div>
+                    <small class="text-muted">${g.dminstt} &middot; ${g.req_date} &middot; ${g.item_cnt}품목</small>
+                    ${g.dlvr_date ? ' &middot; 납품기한: ' + g.dlvr_date : ''}
+                </a>`;
+            });
+            html += '</div>';
+            g2bResults.innerHTML = html;
+
+            g2bResults.querySelectorAll('.g2b-select-item').forEach(el => {
+                el.addEventListener('click', e => {
+                    e.preventDefault();
+                    const g = JSON.parse(el.dataset.g2b);
+                    applyG2bToContract(g);
+                    getG2bModal().hide();
+                });
+            });
+        })
+        .catch(err => {
+            g2bResults.innerHTML = '<div class="alert alert-danger">오류: ' + err.message + '</div>';
+        });
+    }
+
+    document.getElementById('g2bSearchBtn').addEventListener('click', doG2bSearch);
+    document.getElementById('g2bSearchInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); doG2bSearch(); }
+    });
+
+    function applyG2bToContract(g) {
+        // 현재 첫 번째 빈 계약 블록에 채우거나, 없으면 새로 추가
+        let block = contractsWrap.querySelector('.contract-block');
+        // 첫 번째 블록의 계약명이 비어있으면 재사용, 아니면 새로 추가
+        const firstNameInput = block ? block.querySelector('input[name^="contract_name_"]') : null;
+        if (!firstNameInput || firstNameInput.value.trim()) {
+            const nextIdx = getNextIndex();
+            if (!nextIdx) { alert('계약은 최대 9건까지'); return; }
+            addContract(nextIdx);
+            block = contractsWrap.lastElementChild;
+        }
+
+        const idx = block.dataset.index;
+
+        // 기본 정보 채우기
+        const nameInput = block.querySelector(`input[name="contract_name_${idx}"]`);
+        if (nameInput) nameInput.value = g.req_nm || '';
+
+        const dateInput = block.querySelector(`input[name="contract_date_${idx}"]`);
+        if (dateInput && g.req_date) dateInput.value = g.req_date;
+
+        const dueInput = block.querySelector(`input[name="delivery_due_${idx}"]`);
+        if (dueInput && g.dlvr_date) dueInput.value = g.dlvr_date;
+
+        // 현장명도 비어있으면 채우기
+        const tempNameInput = document.querySelector('input[name="temp_name"]');
+        if (tempNameInput && !tempNameInput.value.trim()) {
+            tempNameInput.value = g.req_nm || '';
+        }
+
+        // 품목 채우기: 기존 행 제거 후 G2B 품목으로 대체
+        if (g.items && g.items.length > 0) {
+            const tbody = block.querySelector('.item-tbody');
+            tbody.innerHTML = '';
+
+            g.items.forEach(item => {
+                const html = itemTpl.replaceAll('__IDX__', idx);
+                tbody.insertAdjacentHTML('beforeend', html);
+                const row = tbody.lastElementChild;
+
+                // 상세품목 (세부품명 → select 매칭 시도)
+                const catSelect = row.querySelector('.item-category-select');
+                if (catSelect && item.detail_name) {
+                    // select option 중 일치하는 것 찾기
+                    let matched = false;
+                    for (const opt of catSelect.options) {
+                        if (item.detail_name.includes(opt.value) || opt.value.includes(item.detail_name)) {
+                            catSelect.value = opt.value;
+                            matched = true;
+                            break;
+                        }
+                    }
+                }
+
+                // 모델명 (규격명에서 가져옴)
+                const modelInput = row.querySelector(`input[name="item_model_${idx}[]"]`);
+                if (modelInput) modelInput.value = item.spec_name || item.detail_name || '';
+
+                // 수량
+                const qtyInput = row.querySelector(`input[name="item_qty_${idx}[]"]`);
+                if (qtyInput) qtyInput.value = item.qty || 1;
+
+                // 삭제 버튼
+                row.querySelector('.remove-item-btn').addEventListener('click', () => {
+                    if (tbody.querySelectorAll('tr').length <= 1) {
+                        alert('품목은 최소 1개 필요합니다.');
+                        return;
+                    }
+                    row.remove();
+                });
+            });
+
+            // 상세품목 그룹 동기화
+            syncAllItemCategoryWithGroup(block);
+        }
+
+        // G2B 연동 번호 저장
+        const g2bInput = block.querySelector('.g2b-no-input');
+        if (g2bInput) g2bInput.value = g.req_no;
+
+        // 연동 뱃지 표시
+        const badge = block.querySelector('.g2b-linked-badge');
+        if (badge) {
+            badge.textContent = 'G2B ' + g.req_no;
+            badge.classList.remove('d-none');
+        }
+    }
 </script>
 {% endblock %}

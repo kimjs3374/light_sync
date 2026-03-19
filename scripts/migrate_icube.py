@@ -184,6 +184,34 @@ def migrate_items(icube_conn, db):
     db.commit()
     logger.info("  완료: 신규 %d건, 업데이트 %d건", new_count, update_count)
 
+    # manufacturer 자동 채우기 (입고이력에서 최신 거래처)
+    from modules.models.entities import ReceivingHistory
+    empty_items = db.query(Item).filter(
+        Item.icube_item_cd.isnot(None),
+        (Item.manufacturer == None) | (Item.manufacturer == ''),
+    ).all()
+    if empty_items:
+        all_hists = db.query(ReceivingHistory).filter(
+            ReceivingHistory.items_json.isnot(None)
+        ).order_by(ReceivingHistory.receive_date.desc()).all()
+        vendor_map = {}
+        for h in all_hists:
+            try:
+                for it in json.loads(h.items_json):
+                    code = (it.get('item_cd') or '').strip()
+                    if code and code not in vendor_map and h.vendor_name:
+                        vendor_map[code] = h.vendor_name.strip()
+            except Exception:
+                continue
+        mfr_count = 0
+        for item in empty_items:
+            v = vendor_map.get(item.icube_item_cd)
+            if v:
+                item.manufacturer = v
+                mfr_count += 1
+        db.commit()
+        logger.info("  manufacturer 자동채움: %d건", mfr_count)
+
 
 # ---------------------------------------------------------------------------
 # 3. 발주이력 마이그레이션 (LPURCLS + LPURCLS_D -> PurchaseOrderHistory)

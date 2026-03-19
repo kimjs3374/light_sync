@@ -81,6 +81,8 @@ def init_db():
                 ('category', 'VARCHAR(50)'),
                 ('manufacturer', 'VARCHAR(100)'),
                 ('note', 'TEXT'),
+                ('stock_qty', 'FLOAT DEFAULT 0'),
+                ('reserved_qty', 'FLOAT DEFAULT 0'),
             ]:
                 try:
                     conn.execute(text(
@@ -99,6 +101,24 @@ def init_db():
             except Exception:
                 pass  # 이미 존재하면 무시
 
+            # contracts: g2b_contract_no 추가 (v2026-03-18, G2B 계약 매칭)
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE {quote_ident(DB_SCHEMA)}.contracts "
+                    f"ADD COLUMN g2b_contract_no VARCHAR(30)"
+                ))
+            except Exception:
+                pass
+
+            # bom_items: prev_unit_price 추가 (v2026-03-18, 직전 단가)
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE {quote_ident(DB_SCHEMA)}.bom_items "
+                    f"ADD COLUMN prev_unit_price FLOAT"
+                ))
+            except Exception:
+                pass
+
             # purchase_order_items: bom_item_id FK 추가 (v2026-03-18, BOM-발주 연동)
             try:
                 conn.execute(text(
@@ -116,6 +136,16 @@ def init_db():
                 ))
             except Exception:
                 pass  # 이미 존재하면 무시
+
+            # items: stock_qty, reserved_qty 추가 (v2026-03-18, 재고관리)
+            for col in ['stock_qty', 'reserved_qty']:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE {quote_ident(DB_SCHEMA)}.items "
+                        f"ADD COLUMN {col} FLOAT DEFAULT 0"
+                    ))
+                except Exception:
+                    pass  # 이미 존재하면 무시
 
     # GroupPermission 기본 메뉴 자동 세팅 (빈 값이면 DEFAULT_GROUP_MENUS 적용)
     if _is_postgres_engine():

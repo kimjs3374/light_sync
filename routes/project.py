@@ -32,7 +32,8 @@ from modules.services.project_actions import (
     handle_update_priority_override, handle_update_work_path, handle_update_material,
 )
 from modules.services.contract_actions import (
-    handle_update_contract, handle_add_contract, handle_update_contract_item,
+    handle_update_contract, handle_add_contract, handle_delete_contract,
+    handle_update_contract_item,
     handle_add_contract_item, handle_delete_contract_item, handle_delete_material,
 )
 from modules.services.barcode_actions import (
@@ -56,6 +57,7 @@ ACTION_HANDLERS = {
     'update_material': handle_update_material,
     'update_contract': handle_update_contract,
     'add_contract': handle_add_contract,
+    'delete_contract': handle_delete_contract,
     'update_contract_item': handle_update_contract_item,
     'add_contract_item': handle_add_contract_item,
     'delete_contract_item': handle_delete_contract_item,
@@ -611,6 +613,7 @@ def convert_to_contract(project_id):
                     )
                     db.commit()
                     flash('계약 현장으로 전환되었습니다.', 'success')
+                    return redirect(url_for('project.project_detail', project_id=project_id))
                 except Exception as e:
                     db.rollback()
                     current_app.logger.exception('convert_to_contract failed project=%s', project_id)
@@ -778,3 +781,132 @@ def project_delete(project_id):
             current_app.logger.exception('project_delete failed project=%s', project_id)
             flash('현장 삭제 처리 중 오류가 발생했습니다.', 'danger')
             return redirect(url_for('project.project_list'))
+
+
+# -------------------------------------------------------------------
+# 7. 설계현장 검색 API (계약현장에서 병합 대상 검색)
+# -------------------------------------------------------------------
+@project_bp.route('/api/design-projects/search')
+@login_required
+def api_design_projects_search():
+    q = (request.args.get('q') or '').strip().lower()
+    with get_db() as db:
+        query = db.query(Project).filter(
+            Project.is_contracted == False,
+            Project.status != '병합완료',
+        )
+        projects = query.order_by(Project.id.desc()).all()
+
+        results = []
+        for p in projects:
+            if q:
+                search_pool = [
+                    (p.project_no or '').lower(),
+                    (p.temp_name or '').lower(),
+                    (p.short_name or '').lower(),
+                ]
+                if not any(q in s for s in search_pool):
+                    continue
+
+            results.append({
+                'id': p.id,
+                'project_no': p.project_no,
+                'temp_name': p.temp_name or '',
+                'status': p.status or '',
+                'material_count': len(p.materials or []),
+                'contact_count': len(p.contacts or []),
+                'drawing_count': len(p.drawings or []),
+                'created_at': p.created_at.strftime('%Y-%m-%d') if p.created_at else '',
+            })
+
+        return jsonify({'results': results[:50]})
+
+
+# -------------------------------------------------------------------
+# 8. 설계현장 병합 API (계약현장에 설계현장 데이터 이관)
+# -------------------------------------------------------------------
+@project_bp.route('/api/project/<int:project_id>/merge-design/<int:design_id>', methods=['POST'])
+@login_required
+def api_merge_design_project(project_id, design_id):
+    if _is_prod_group():
+        return jsonify({'ok': False, 'error': '생산부는 병합 권한이 없습니다.'}), 403
+
+    with get_db() as db:
+        try:
+            target = db.query(Project).get(project_id)
+            source = db.query(Project).get(design_id)
+
+            if not target or not source:
+                return jsonify({'ok': False, 'error': '대상 프로젝트를 찾을 수 없습니다.'}), 404
+
+            if not target.is_contracted:
+                return jsonify({'ok': False, 'error': '계약현장만 병합 대상이 될 수 있습니다.'}), 400
+
+            if source.is_contracted:
+                return jsonify({'ok': False, 'error': '설계현장(미계약)만 병합할 수 있습니다.'}), 400
+
+            if source.status == '병합완료':
+                return jsonify({'ok': False, 'error': '이미 병합 완료된 프로젝트입니다.'}), 400
+
+            # 자식 엔티티 project_id 일괄 변경
+            merged_counts = {
+                'materials': 0,
+                'contacts': 0,
+                'drawings': 0,
+                'history_logs': 0,
+                'deliveries': 0,
+                'sports_modules': 0,
+            }
+
+            for mat in (source.materials or []):
+                mat.project_id = target.id
+                merged_counts['materials'] += 1
+
+            for contact in (source.contacts or []):
+                contact.project_id = target.id
+                merged_counts['contacts'] += 1
+
+            for drawing in (source.drawings or []):
+                drawing.project_id = target.id
+                merged_counts['drawings'] += 1
+
+            for log in (source.history_logs or []):
+                log.project_id = target.id
+                merged_counts['history_logs'] += 1
+
+            for delivery in (source.deliveries or []):
+                delivery.project_id = target.id
+                merged_counts['deliveries'] += 1
+
+            for sm in (source.sports_modules or []):
+                sm.project_id = target.id
+                merged_counts['sports_modules'] += 1
+
+            # 설계 프로젝트 비활성화
+            source.status = '병합완료'
+
+            # 병합 히스토리 기록
+            from modules.history_board import append_history_log
+            current_user = session.get('full_name') or '사용자'
+            merge_detail = ', '.join(f"{k} {v}건" for k, v in merged_counts.items() if v > 0)
+            append_history_log(
+                db,
+                project_id=target.id,
+                user_name="시스템",
+                content=f"{current_user}님이 설계현장 [{source.project_no} / {source.temp_name}]을 병합하였습니다. ({merge_detail})",
+                scope='contract',
+                kind='system',
+            )
+
+            db.commit()
+
+            return jsonify({
+                'ok': True,
+                'merged': merged_counts,
+                'design_project_no': source.project_no,
+            })
+
+        except Exception as e:
+            db.rollback()
+            current_app.logger.exception('merge_design_project failed project=%s design=%s', project_id, design_id)
+            return jsonify({'ok': False, 'error': '병합 처리 중 오류가 발생했습니다.'}), 500

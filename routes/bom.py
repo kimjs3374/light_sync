@@ -266,8 +266,8 @@ def bom_edit(bom_id):
         bom.note = (request.form.get('note') or '').strip()
         bom.is_active = request.form.get('is_active') == 'on'
 
-        # 기존 품목 삭제 후 재등록
-        db.query(BomItem).filter_by(bom_id=bom.id).delete()
+        # 기존 품목 업데이트 방식 (item_code, bom_item_id 연결 보존)
+        existing_items = db.query(BomItem).filter_by(bom_id=bom.id).order_by(BomItem.id).all()
 
         item_names = request.form.getlist('item_name[]')
         item_specs = request.form.getlist('item_spec[]')
@@ -276,6 +276,7 @@ def bom_edit(bom_id):
         item_notes = request.form.getlist('item_note[]')
         unit_prices = request.form.getlist('unit_price[]')
 
+        # 기존 아이템 업데이트 + 신규 추가
         for i in range(len(item_names)):
             name = (item_names[i] if i < len(item_names) else '').strip()
             if not name:
@@ -286,21 +287,40 @@ def bom_edit(bom_id):
             unit = (item_units[i] if i < len(item_units) else '').strip()
             item_note = (item_notes[i] if i < len(item_notes) else '').strip()
 
-            # FR-03: BOM단가 수정 지원
             up_str = (unit_prices[i] if i < len(unit_prices) else '').strip()
             up = float(up_str) if up_str else None
             amount = (up * qty) if up else None
 
-            db.add(BomItem(
-                bom_id=bom.id,
-                item_name=name,
-                item_spec=spec,
-                quantity=qty,
-                unit=unit,
-                note=item_note,
-                unit_price=up,
-                amount=amount,
-            ))
+            if i < len(existing_items):
+                # 기존 아이템 업데이트
+                bi = existing_items[i]
+                bi.item_name = name
+                bi.item_spec = spec
+                bi.quantity = qty
+                bi.unit = unit
+                bi.note = item_note
+                # 단가 변경 시 직전 단가 기록
+                if up is not None and bi.unit_price is not None and up != bi.unit_price:
+                    bi.prev_unit_price = bi.unit_price
+                bi.unit_price = up
+                bi.amount = amount
+            else:
+                # 신규 추가
+                db.add(BomItem(
+                    bom_id=bom.id,
+                    item_name=name,
+                    item_spec=spec,
+                    quantity=qty,
+                    unit=unit,
+                    note=item_note,
+                    unit_price=up,
+                    amount=amount,
+                ))
+
+        # form에서 제거된 아이템 삭제
+        if len(item_names) < len(existing_items):
+            for j in range(len(item_names), len(existing_items)):
+                db.delete(existing_items[j])
 
         db.commit()
         flash('BOM이 수정되었습니다.', 'success')

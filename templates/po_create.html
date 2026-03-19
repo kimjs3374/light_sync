@@ -1,8 +1,44 @@
 {% extends 'base.html' %}
 {% block content %}
+<style>
+    .po-section { border: none; border-radius: 12px; overflow: hidden; }
+    .po-section .card-header {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border-bottom: 2px solid #e2e8f0;
+        padding: 14px 20px;
+    }
+    .po-section .section-num {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 26px; height: 26px; border-radius: 50%;
+        background: #0f172a; color: #fff; font-size: .78rem; font-weight: 700;
+        margin-right: 8px;
+    }
+    .po-label { font-size: .82rem; color: #64748b; margin-bottom: 4px; font-weight: 600; }
+    .po-label .required { color: #ef4444; }
+    #itemsTable th { font-size: .78rem; color: #64748b; font-weight: 600; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+    #itemsTable td { vertical-align: middle; padding: 6px 8px; }
+    #itemsTable input { font-size: .85rem; }
+    #itemsTable .form-control:focus { box-shadow: 0 0 0 2px rgba(59,130,246,.15); }
+    .summary-row td { background: #f8fafc; border: none; }
+    .summary-total td { background: #0f172a !important; color: #fff !important; font-size: 1rem; }
+    .btn-add-item {
+        border: 2px dashed #cbd5e1; color: #64748b; font-weight: 600;
+        border-radius: 8px; transition: all .2s;
+    }
+    .btn-add-item:hover { border-color: #3b82f6; color: #3b82f6; background: #eff6ff; }
+    .remove-row-btn { opacity: .4; transition: opacity .15s; }
+    .remove-row-btn:hover { opacity: 1; }
+    @media (max-width: 767.98px) {
+        .po-section .card-body { padding: 12px; }
+        #itemsTable { font-size: .82rem; }
+    }
+</style>
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
-    <h2 class="text-primary fw-bold">신규 발주서 작성</h2>
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
+    <div>
+        <h2 class="fw-bold mb-0" style="color:#0f172a;">신규 발주서 작성</h2>
+        <small class="text-muted">거래처 선택 후 품목을 추가하세요</small>
+    </div>
     <a href="{{ url_for('purchase_order.po_list') }}" class="btn btn-outline-secondary btn-sm">목록으로</a>
 </div>
 
@@ -10,13 +46,17 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="vendor_id" id="vendorIdHidden" value="">
 
-    {# --- 기본정보 --- #}
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-header bg-white fw-bold">1) 발주 기본정보</div>
-        <div class="card-body">
+    {# ─── 1) 발주 기본정보 ─── #}
+    <div class="card po-section shadow-sm mb-4">
+        <div class="card-header">
+            <span class="section-num">1</span>
+            <strong>발주 기본정보</strong>
+        </div>
+        <div class="card-body p-3 p-md-4">
             <div class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">거래처 <span class="text-danger">*</span></label>
+                {# 거래처 + 발주일 (한 줄) #}
+                <div class="col-md-5">
+                    <div class="po-label">거래처 <span class="required">*</span></div>
                     <div class="input-group">
                         <input type="text" id="vendorSearchInput" class="form-control" placeholder="거래처명 입력 (자동완성)"
                                autocomplete="off" required
@@ -29,59 +69,64 @@
                     <small id="vendorInfo" class="text-muted"></small>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label fw-bold">발주일 <span class="text-danger">*</span></label>
+                    <div class="po-label">발주일 <span class="required">*</span></div>
                     <input type="date" name="po_date" class="form-control" required>
                 </div>
-                <div class="col-md-5">
-                    <label class="form-label fw-bold">거래처 이메일</label>
-                    <input type="text" id="vendorEmail" class="form-control" readonly disabled>
-                </div>
                 <div class="col-md-4">
-                    <label class="form-label fw-bold">담당자 (발송 서명)</label>
+                    <div class="po-label">거래처 이메일</div>
+                    <input type="text" id="vendorEmail" class="form-control bg-light" readonly disabled placeholder="자동 입력">
+                </div>
+
+                {# 담당자 + 계약건 + 비고 (한 줄) #}
+                <div class="col-md-4">
+                    <div class="po-label">담당자 (발송 서명)</div>
                     <select name="assigned_to" id="assignedTo" class="form-select">
-                        <option value="">-- 본인 ({{ session.full_name }}) --</option>
+                        <option value="">{{ session.full_name }} (본인)</option>
                         {% for u in users %}
-                        <option value="{{ u.id }}">{{ u.full_name }}{% if u.position %} {{ u.position }}{% endif %} ({{ u.user_group or '' }})</option>
+                        <option value="{{ u.id }}">{{ u.full_name }}{% if u.position %} {{ u.position }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label fw-bold">연결 계약건 (선택)</label>
+                    <div class="po-label">연결 계약건 <small class="text-muted fw-normal">(선택)</small></div>
                     <input type="text" id="contractSearchInput" class="form-control" placeholder="현장명 또는 계약명 검색" autocomplete="off">
                     <input type="hidden" name="contract_id" id="contractIdHidden" value="">
                     <small id="contractInfo" class="text-muted"></small>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label fw-bold">비고</label>
-                    <input type="text" name="note" class="form-control" placeholder="발주서 비고사항 (선택)">
+                    <div class="po-label">비고</div>
+                    <input type="text" name="note" class="form-control" placeholder="선택 입력">
                 </div>
             </div>
         </div>
     </div>
 
-    {# --- 품목 입력 --- #}
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center">
-            <span class="fw-bold">2) 발주 품목</span>
-            <button type="button" class="btn btn-sm btn-outline-primary" id="addItemBtn">+ 품목 추가</button>
+    {# ─── 2) 발주 품목 ─── #}
+    <div class="card po-section shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <span class="section-num">2</span>
+                <strong>발주 품목</strong>
+            </div>
+            <button type="button" class="btn btn-add-item btn-sm px-3" id="addItemBtn">+ 품목 추가</button>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-sm mb-0" id="itemsTable" style="table-layout:fixed;">
                     <colgroup>
-                        <col style="width:36px">
+                        <col style="width:38px">
                         <col>
-                        <col style="width:120px">
-                        <col style="width:70px">
-                        <col style="width:50px">
-                        <col style="width:100px">
-                        <col style="width:100px">
-                        <col style="width:100px">
-                        <col style="width:36px">
+                        <col style="width:130px">
+                        <col style="width:74px">
+                        <col style="width:54px">
+                        <col style="width:105px">
+                        <col style="width:105px">
+                        <col style="width:105px">
+                        <col style="width:38px">
                     </colgroup>
-                    <thead class="table-light">
+                    <thead>
                         <tr>
-                            <th>No</th>
+                            <th class="ps-3">No</th>
                             <th>품명 <span class="text-danger">*</span></th>
                             <th>규격</th>
                             <th class="text-end">수량</th>
@@ -94,19 +139,19 @@
                     </thead>
                     <tbody id="itemsBody"></tbody>
                     <tfoot>
-                        <tr class="table-light">
-                            <td colspan="6" class="text-end fw-bold">공급가액:</td>
-                            <td class="text-end fw-bold" id="totalAmount">0</td>
+                        <tr class="summary-row">
+                            <td colspan="6" class="text-end pe-3" style="font-size:.85rem;color:#64748b;">공급가액</td>
+                            <td class="text-end fw-bold" id="totalAmount" style="font-size:.95rem;">0</td>
                             <td colspan="2"></td>
                         </tr>
-                        <tr class="table-light">
-                            <td colspan="6" class="text-end">부가세 (10%):</td>
-                            <td class="text-end" id="taxAmount">0</td>
+                        <tr class="summary-row">
+                            <td colspan="6" class="text-end pe-3" style="font-size:.85rem;color:#64748b;">부가세 (10%)</td>
+                            <td class="text-end" id="taxAmount" style="font-size:.9rem;">0</td>
                             <td colspan="2"></td>
                         </tr>
-                        <tr class="table-warning">
-                            <td colspan="6" class="text-end fw-bold fs-6">총 합계:</td>
-                            <td class="text-end fw-bold fs-6" id="grandTotal">0</td>
+                        <tr class="summary-total">
+                            <td colspan="6" class="text-end pe-3 fw-bold">합계</td>
+                            <td class="text-end fw-bold" id="grandTotal">0</td>
                             <td colspan="2"></td>
                         </tr>
                     </tfoot>
@@ -115,17 +160,19 @@
         </div>
     </div>
 
-    <div class="d-grid">
-        <button type="submit" class="btn btn-primary btn-lg fw-bold">발주서 저장</button>
+    {# ─── 저장 버튼 ─── #}
+    <div class="d-flex justify-content-end gap-2 mb-5">
+        <a href="{{ url_for('purchase_order.po_list') }}" class="btn btn-outline-secondary px-4">취소</a>
+        <button type="submit" class="btn btn-primary px-5 fw-bold shadow-sm" style="border-radius:8px;">발주서 저장</button>
     </div>
 </form>
 
-{# --- 품목 검색 모달 --- #}
+{# ─── 품목 검색 모달 ─── #}
 <div class="modal fade" id="itemSearchModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">품목 검색</h5>
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <div class="modal-header" style="background:#f8fafc;">
+                <h6 class="modal-title fw-bold">품목 검색</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -138,53 +185,53 @@
     </div>
 </div>
 
-{# --- 거래처 신규등록 모달 --- #}
+{# ─── 거래처 신규등록 모달 ─── #}
 <div class="modal fade" id="vendorCreateModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">거래처 신규 등록</h5>
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <div class="modal-header" style="background:#f8fafc;">
+                <h6 class="modal-title fw-bold">거래처 신규 등록</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-2">
-                    <label class="form-label fw-bold">거래처명 <span class="text-danger">*</span></label>
+                <div class="mb-3">
+                    <label class="po-label">거래처명 <span class="required">*</span></label>
                     <input type="text" id="newVendorName" class="form-control" required>
                 </div>
                 <div class="row g-2 mb-2">
                     <div class="col-6">
-                        <label class="form-label small">대표자</label>
+                        <label class="form-label small text-muted">대표자</label>
                         <input type="text" id="newVendorCeo" class="form-control form-control-sm">
                     </div>
                     <div class="col-6">
-                        <label class="form-label small">사업자번호</label>
+                        <label class="form-label small text-muted">사업자번호</label>
                         <input type="text" id="newVendorBizNo" class="form-control form-control-sm">
                     </div>
                 </div>
                 <div class="row g-2 mb-2">
                     <div class="col-6">
-                        <label class="form-label small">전화</label>
+                        <label class="form-label small text-muted">전화</label>
                         <input type="text" id="newVendorTel" class="form-control form-control-sm">
                     </div>
                     <div class="col-6">
-                        <label class="form-label small">팩스</label>
+                        <label class="form-label small text-muted">팩스</label>
                         <input type="text" id="newVendorFax" class="form-control form-control-sm">
                     </div>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label small">이메일</label>
+                    <label class="form-label small text-muted">이메일</label>
                     <input type="email" id="newVendorEmail" class="form-control form-control-sm">
                 </div>
                 <div class="mb-2">
-                    <label class="form-label small">주소</label>
+                    <label class="form-label small text-muted">주소</label>
                     <input type="text" id="newVendorAddr" class="form-control form-control-sm">
                 </div>
                 <div class="mb-2">
-                    <label class="form-label small fw-bold">업체 메모 <small class="text-muted">(케이블류, LED드라이버, 스텐레이저가공 등)</small></label>
-                    <input type="text" id="newVendorNote" class="form-control form-control-sm" placeholder="업체별 담당자재, 특이사항 등 빠르게 확인가능한 코멘트">
+                    <label class="form-label small text-muted">업체 메모 <small>(케이블류, LED드라이버 등)</small></label>
+                    <input type="text" id="newVendorNote" class="form-control form-control-sm" placeholder="담당자재, 특이사항 등">
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer" style="background:#f8fafc;">
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
                 <button type="button" class="btn btn-primary btn-sm" id="saveNewVendorBtn">등록</button>
             </div>
@@ -196,7 +243,6 @@
 (function() {
     var rowIndex = 0;
     var currentSearchRow = null;
-    // 오늘 날짜
     var dateInput = document.querySelector('input[name="po_date"]');
     if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().split('T')[0];
 
@@ -227,7 +273,6 @@
                 document.getElementById('vendorEmail').value = d.email || '';
                 document.getElementById('vendorInfo').textContent = d.tel ? 'TEL: ' + d.tel : '';
                 bootstrap.Modal.getInstance(document.getElementById('vendorCreateModal')).hide();
-                // 폼 초기화
                 ['newVendorName','newVendorCeo','newVendorBizNo','newVendorTel','newVendorFax','newVendorEmail','newVendorAddr','newVendorNote'].forEach(function(id) {
                     document.getElementById(id).value = '';
                 });
@@ -253,21 +298,21 @@
         rowIndex++;
         var tr = document.createElement('tr');
         tr.innerHTML =
-            '<td class="text-muted">' + rowIndex + '</td>' +
+            '<td class="text-muted ps-3">' + rowIndex + '</td>' +
             '<td>' +
                 '<input type="hidden" name="item_id[]" value="' + (data.id || '') + '">' +
                 '<div class="input-group input-group-sm">' +
-                    '<input type="text" name="item_name[]" class="form-control" value="' + (data.item_name || '') + '" placeholder="품명" required>' +
+                    '<input type="text" name="item_name[]" class="form-control" value="' + (data.item_name || '') + '" placeholder="품명 입력" required>' +
                     '<button type="button" class="btn btn-outline-secondary search-item-btn" title="품목검색">Q</button>' +
                 '</div>' +
             '</td>' +
             '<td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="' + (data.item_spec || '') + '"></td>' +
             '<td><input type="number" name="quantity[]" class="form-control form-control-sm text-end calc-field" value="' + (data.qty || '') + '" min="0" step="any"></td>' +
-            '<td><input type="text" name="unit[]" class="form-control form-control-sm" value="' + (data.unit || 'EA') + '"></td>' +
+            '<td><input type="text" name="unit[]" class="form-control form-control-sm text-center" value="' + (data.unit || 'EA') + '"></td>' +
             '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end calc-field" value="' + (data.unit_price || '') + '" min="0" step="any"></td>' +
-            '<td class="text-end fw-bold row-amount">0</td>' +
+            '<td class="text-end fw-bold row-amount" style="color:#0f172a;">0</td>' +
             '<td><input type="text" name="item_note[]" class="form-control form-control-sm" value="' + (data.note || '') + '"></td>' +
-            '<td><button type="button" class="btn btn-sm btn-outline-danger remove-row-btn">X</button></td>';
+            '<td class="text-center"><button type="button" class="btn btn-sm text-danger remove-row-btn" style="font-size:1.1rem;line-height:1;" title="삭제">&times;</button></td>';
         document.getElementById('itemsBody').appendChild(tr);
         recalculate();
     }
@@ -328,7 +373,7 @@
                         document.getElementById('itemSearchResults').innerHTML = '<div class="text-center text-muted py-3">검색 결과 없음</div>';
                     } else {
                         document.getElementById('itemSearchResults').innerHTML = '<div class="list-group">' + items.map(function(item) {
-                            return '<a href="#" class="list-group-item list-group-item-action item-select-btn py-1" ' +
+                            return '<a href="#" class="list-group-item list-group-item-action item-select-btn py-2" ' +
                                 'data-id="' + item.id + '" data-name="' + item.item_name + '" data-spec="' + (item.item_spec || '') + '" data-unit="' + (item.unit || '') + '">' +
                                 '<strong>' + item.item_name + '</strong>' +
                                 (item.item_spec ? ' <small class="text-muted">(' + item.item_spec + ')</small>' : '') +
@@ -354,7 +399,7 @@
     });
 })();
 
-// ── 계약건 검색 (간단 자동완성) ──
+// ── 계약건 검색 (자동완성) ──
 (function() {
     var input = document.getElementById('contractSearchInput');
     var hidden = document.getElementById('contractIdHidden');

@@ -18,6 +18,26 @@
 | bom-excel-import | BOM 엑셀 임포트 (223 완성품, 3,762 부품, 14 제품군) | 100% | 2026-03-18 | 1 |
 | material-po-bom-integration | 자재-발주-BOM 통합 연동 (1클릭 발주, bom_item_id FK) | 97% | 2026-03-18 | 4 |
 | dept-permission | 조직도 기반 부서별 권한 + 개인 추가 메뉴 + 임원진 전체 열람 | 95% | 2026-03-18 | 4 |
+| dept-weekly-report | 부서별 주간보고서 (영업/생산/관리 + 접근 제어 + 메뉴 트리) | 100% | 2026-03-18 | 4 |
+
+## dept-weekly-report
+
+- **Duration**: 2026-03-18 (1 session, CTO Team Mode)
+- **Iterations**: 0 (first-pass 100%)
+- **Key Result**: 3개 부서 자동 집계 주간보고서, user_group 기반 접근 제어, admin 부서 드롭다운, 영업부 품목 상세 펼침+합계
+- **New Modules**: templates/report_weekly_production.html, templates/report_weekly_management.html
+- **Modified**: routes/report.py, templates/report_weekly.html, templates/base.html
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [dept-weekly-report.plan.md](dept-weekly-report/dept-weekly-report.plan.md) |
+| Design | [dept-weekly-report.design.md](dept-weekly-report/dept-weekly-report.design.md) |
+| Analysis | [dept-weekly-report.analysis.md](dept-weekly-report/dept-weekly-report.analysis.md) |
+| Report | [dept-weekly-report.report.md](dept-weekly-report/dept-weekly-report.report.md) |
+
+---
 
 ## dept-permission
 

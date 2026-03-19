@@ -50,6 +50,7 @@ def handle_update_contract(db, project, form, current_user, **ctx):
 
 
 def handle_add_contract(db, project, form, current_user, **ctx):
+    import json as _json
     contract_name = (form.get('contract_name') or '').strip()
     item_group = normalize_detail_item(form.get('item_group'), default=DETAIL_ITEM_OPTIONS[0])
     contract_date = parse_date(form.get('contract_date')) or datetime.date.today()
@@ -57,6 +58,8 @@ def handle_add_contract(db, project, form, current_user, **ctx):
 
     if not contract_name:
         return {'flash': ('계약명을 입력해 주세요.', 'warning')}
+
+    g2b_no = (form.get('g2b_contract_no') or '').strip() or None
 
     new_contract = Contract(
         project_id=project.id,
@@ -66,16 +69,56 @@ def handle_add_contract(db, project, form, current_user, **ctx):
         delivery_due_date=delivery_due_date,
         desired_delivery_date=parse_date(form.get('desired_delivery_date')),
         is_prof_inspection=form.get('is_prof_inspection') == '1',
-        is_urgent_prod=form.get('is_urgent_prod') == '1'
+        is_urgent_prod=form.get('is_urgent_prod') == '1',
+        g2b_contract_no=g2b_no,
     )
     db.add(new_contract)
     db.flush()
+
+    # G2B 품목 자동 생성
+    g2b_items_json = form.get('g2b_items_json', '').strip()
+    if g2b_items_json:
+        try:
+            g2b_items = _json.loads(g2b_items_json)
+            for gi in g2b_items:
+                model = gi.get('spec_name') or gi.get('detail_name') or '-'
+                qty = safe_int(gi.get('qty'), 1)
+                db.add(ContractItem(
+                    contract_id=new_contract.id,
+                    category=item_group,
+                    model_name=model,
+                    quantity=qty,
+                ))
+        except (ValueError, TypeError):
+            pass
+
     db.add(HistoryLog(
         project_id=project.id,
         user_name="시스템 🤖",
         content=f"{current_user}님이 계약 추가: {new_contract.contract_name} / 품목군:{new_contract.item_group}"
+        + (f" (G2B 연동: {g2b_no})" if g2b_no else "")
     ))
     return {}
+
+
+def handle_delete_contract(db, project, form, current_user, **ctx):
+    contract_id = safe_int(form.get('contract_id'))
+    con = db.query(Contract).filter_by(id=contract_id, project_id=project.id).first()
+    if not con:
+        return {'flash': ('계약을 찾을 수 없습니다.', 'warning')}
+
+    contract_name = con.contract_name
+    # 하위 품목의 자재발주 삭제 → 품목 삭제 → 계약 삭제
+    for item in con.items:
+        db.query(MaterialOrder).filter(MaterialOrder.contract_item_id == item.id).delete()
+        db.delete(item)
+    db.delete(con)
+    db.add(HistoryLog(
+        project_id=project.id,
+        user_name="시스템 🤖",
+        content=f"{current_user}님이 계약 삭제: {contract_name}"
+    ))
+    return {'flash': (f'계약 [{contract_name}]이 삭제되었습니다.', 'success')}
 
 
 def handle_update_contract_item(db, project, form, current_user, **ctx):

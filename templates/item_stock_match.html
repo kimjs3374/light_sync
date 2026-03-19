@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <a href="{{ url_for('item.item_list') }}" class="text-muted text-decoration-none small">&larr; 품목관리</a>
+        <h2 class="text-primary fw-bold mt-1">재고 매칭 도구</h2>
+        <small class="text-muted">엑셀 자재CHECK LIST에서 추출한 재고 중 자동 매칭 안 된 품목 (재고 > 0인 건만)</small>
+    </div>
+</div>
+
+{% if not unmatched %}
+<div class="alert alert-success">모든 품목이 매칭되었습니다.</div>
+{% else %}
+<form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+            <strong>미매칭 품목 ({{ unmatched|length }}건)</strong>
+            <button type="submit" class="btn btn-primary btn-sm">선택 항목 재고 반영</button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0" style="font-size:0.82rem;">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:100px;">시트</th>
+                            <th style="width:20%;">엑셀 품명</th>
+                            <th style="width:80px;" class="text-end">재고수량</th>
+                            <th>매칭할 품목 검색</th>
+                            <th style="width:60px;">상태</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in unmatched %}
+                        <tr>
+                            <td><span class="badge bg-light text-dark border" style="font-size:0.7rem;">{{ u.sheet }}</span></td>
+                            <td class="fw-bold">{{ u.item_name }}</td>
+                            <td class="text-end">
+                                <input type="number" name="stock_{{ u.idx }}" value="{{ u.stock|int }}" class="form-control form-control-sm text-end" style="width:70px;display:inline-block;" step="1" min="0">
+                            </td>
+                            <td>
+                                <div class="position-relative">
+                                    <input type="text" class="form-control form-control-sm item-search" placeholder="품번/품명으로 검색" data-idx="{{ u.idx }}" autocomplete="off" value="">
+                                    <input type="hidden" name="match_{{ u.idx }}" class="match-id" data-idx="{{ u.idx }}" value="">
+                                    <div class="item-dropdown position-absolute w-100 bg-white border shadow-sm rounded-bottom" style="display:none;z-index:1050;max-height:200px;overflow-y:auto;"></div>
+                                </div>
+                            </td>
+                            <td class="text-center match-status" data-idx="{{ u.idx }}">
+                                <span class="text-muted">-</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer bg-white d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary btn-sm">선택 항목 재고 반영</button>
+        </div>
+    </div>
+</form>
+{% endif %}
+
+<script>
+(function() {
+    document.querySelectorAll('.item-search').forEach(function(input) {
+        var idx = input.dataset.idx;
+        var dropdown = input.parentElement.querySelector('.item-dropdown');
+        var hiddenInput = input.parentElement.querySelector('.match-id');
+        var statusCell = document.querySelector('.match-status[data-idx="' + idx + '"]');
+        var timer = null;
+
+        input.addEventListener('input', function() {
+            clearTimeout(timer);
+            var q = this.value.trim();
+            hiddenInput.value = '';
+            statusCell.innerHTML = '<span class="text-muted">-</span>';
+            if (q.length < 1) { dropdown.style.display = 'none'; return; }
+            timer = setTimeout(function() {
+                fetch('/api/item/search?q=' + encodeURIComponent(q))
+                .then(function(r) { return r.json(); })
+                .then(function(items) {
+                    if (!items.length) { dropdown.style.display = 'none'; return; }
+                    dropdown.innerHTML = '';
+                    items.forEach(function(item) {
+                        var div = document.createElement('div');
+                        div.style.cssText = 'padding:4px 8px;cursor:pointer;font-size:0.8rem;border-bottom:1px solid #f0f0f0;';
+                        div.innerHTML = '<code style="font-size:0.7rem;">' + (item.code || '-') + '</code> <strong>' + item.name + '</strong>' +
+                            (item.spec ? ' <small class="text-muted">' + item.spec + '</small>' : '') +
+                            ' <small class="text-info">(현재고:' + item.stock + ')</small>';
+                        div.addEventListener('mousedown', function(e) {
+                            e.preventDefault();
+                            input.value = item.name;
+                            hiddenInput.value = item.id;
+                            dropdown.style.display = 'none';
+                            statusCell.innerHTML = '<span class="badge bg-success" style="font-size:0.65rem;">OK</span>';
+                        });
+                        div.addEventListener('mouseenter', function() { this.style.background = '#e8f0fe'; });
+                        div.addEventListener('mouseleave', function() { this.style.background = ''; });
+                        dropdown.appendChild(div);
+                    });
+                    dropdown.style.display = 'block';
+                });
+            }, 200);
+        });
+
+        input.addEventListener('blur', function() {
+            setTimeout(function() { dropdown.style.display = 'none'; }, 150);
+        });
+    });
+})();
+</script>
+
+{% endblock %}

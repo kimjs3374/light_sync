@@ -137,7 +137,13 @@
             {% for c in contracts %}
             <tr role="button" data-bs-toggle="collapse" data-bs-target="#detail-{{ loop.index }}" class="{% if c.status == 'cancelled' %}table-danger{% elif c.status == 'changed' %}table-warning{% elif c.status == 'spec_price' %}{% endif %}" {% if c.status == 'spec_price' %}style="background:#ede9fe;"{% endif %}>
                 <td>{{ c.req_date.strftime('%Y-%m-%d') if c.req_date else '-' }}</td>
-                <td>{{ status_badge(c.status) }}</td>
+                <td>
+                    {{ status_badge(c.status) }}
+                    {% if c.linked %}
+                    <a href="{{ url_for('project.contract_detail', project_id=c.linked.project_id) }}#contract-{{ c.linked.contract_id }}"
+                       class="badge bg-primary text-decoration-none" title="ERP 계약으로 이동" style="font-size:0.68rem;">ERP</a>
+                    {% endif %}
+                </td>
                 <td>
                     <span title="{{ c.req_nm or '' }}">
                         {{ (c.req_nm or '-')[:50] }}{% if c.req_nm and c.req_nm|length > 50 %}...{% endif %}

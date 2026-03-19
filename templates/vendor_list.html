@@ -1,58 +1,190 @@
 {% extends 'base.html' %}
 {% block content %}
+<style>
+    .stat-card-v { border: none; border-radius: 12px; transition: transform .15s; }
+    .stat-card-v:hover { transform: translateY(-2px); }
+    .stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
+    .stat-label { font-size: .78rem; color: #64748b; margin-top: 2px; }
+    .filter-bar { background: #f8fafc; border-radius: 10px; padding: 10px 14px; }
+    .v-table th { font-size: .78rem; color: #64748b; font-weight: 600; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+    .v-table td { vertical-align: middle; white-space: nowrap; font-size: .85rem; }
+    .v-table tbody tr { cursor: pointer; transition: background .1s; }
+    .v-table tbody tr:hover { background: #f8fafc; }
+    .v-code { font-family: 'SFMono-Regular', monospace; font-size: .78rem; color: #64748b; }
+    .badge-use { font-size: .7rem; padding: 3px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
+    .vendor-note { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #64748b; font-size: .82rem; }
+</style>
 
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-4">
-    <h2 class="text-primary fw-bold">🏢 거래처 목록</h2>
-    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#vendorCreateModal">+ 거래처 등록</button>
+    <div>
+        <h2 class="fw-bold mb-0" style="color:#0f172a;">거래처 관리</h2>
+        <small class="text-muted">거래처 정보 및 거래 이력 관리</small>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm shadow-sm" style="border-radius:8px;" data-bs-toggle="modal" data-bs-target="#vendorCreateModal">+ 거래처 등록</button>
 </div>
 
-{# --- 거래처 신규등록 모달 --- #}
+{# ─── 통계 카드 ─── #}
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-v shadow-sm text-center py-3">
+            <div class="stat-num" style="color:#0f172a;">{{ "{:,}".format(stats.total|int) }}</div>
+            <div class="stat-label">전체 거래처</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-v shadow-sm text-center py-3" style="border-left:3px solid #22c55e;">
+            <div class="stat-num" style="color:#22c55e;">{{ "{:,}".format(stats.active|int) }}</div>
+            <div class="stat-label">사용중</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-v shadow-sm text-center py-3" style="border-left:3px solid #94a3b8;">
+            <div class="stat-num" style="color:#94a3b8;">{{ "{:,}".format((stats.total|int) - (stats.active|int)) }}</div>
+            <div class="stat-label">미사용</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-v shadow-sm text-center py-3" style="border-left:3px solid #3b82f6;">
+            <div class="stat-num" style="color:#3b82f6;">{{ "{:,}".format(pagination.total) }}</div>
+            <div class="stat-label">검색 결과</div>
+        </div>
+    </div>
+</div>
+
+{# ─── 검색/필터 ─── #}
+<div class="filter-bar mb-3">
+    <form method="GET" class="row g-2 align-items-end">
+        <div class="col-md-5 col-12">
+            <input type="text" name="q" class="form-control form-control-sm" placeholder="거래처명, 사업자번호, 대표자, 메모" value="{{ filters.q }}">
+        </div>
+        <div class="col-md-2 col-6">
+            <select name="use_yn" class="form-select form-select-sm">
+                <option value="">전체</option>
+                <option value="Y" {{ 'selected' if filters.use_yn == 'Y' }}>사용</option>
+                <option value="N" {{ 'selected' if filters.use_yn == 'N' }}>미사용</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm">검색</button>
+            <a href="{{ url_for('vendor.vendor_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+        </div>
+    </form>
+</div>
+
+{# ─── 거래처 테이블 ─── #}
+<div class="card border-0 shadow-sm" style="border-radius:12px;overflow:hidden;">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 v-table">
+                <colgroup>
+                    <col style="width:85px">
+                    <col style="width:20%">
+                    <col>
+                    <col style="width:80px">
+                    <col style="width:120px">
+                    <col style="width:55px">
+                </colgroup>
+                <thead>
+                    <tr style="background:#f8fafc;">
+                        <th class="ps-3">코드</th>
+                        <th>거래처명</th>
+                        <th>메모</th>
+                        <th>대표자</th>
+                        <th>전화</th>
+                        <th>상태</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in vendors %}
+                    <tr onclick="location.href='{{ url_for('vendor.vendor_detail', tr_cd=v.TR_CD) }}'">
+                        <td class="ps-3"><span class="v-code">{{ v.TR_CD }}</span></td>
+                        <td><strong style="color:#0f172a;">{{ v.TR_NM or '-' }}</strong></td>
+                        <td><span class="vendor-note">{{ v.note or '' }}</span></td>
+                        <td>{{ v.CEO_NM or '-' }}</td>
+                        <td class="text-muted" style="font-size:.82rem;">{{ v.TEL or '-' }}</td>
+                        <td>
+                            {% if v.USE_YN == 'Y' %}
+                                <span class="badge-use" style="background:#dcfce7;color:#166534;">사용</span>
+                            {% else %}
+                                <span class="badge-use" style="background:#f1f5f9;color:#64748b;">미사용</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted py-4">조회된 거래처가 없습니다.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ─── 페이지네이션 ─── #}
+{% if pagination.total_pages > 1 %}
+<nav class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center mb-0">
+        {% if pagination.show_first %}
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(1) }}">1</a></li>
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+        {% for p in pagination.page_range %}
+        <li class="page-item {{ 'active' if p == pagination.page }}"><a class="page-link" href="?{{ pagination_query(p) }}">{{ p }}</a></li>
+        {% endfor %}
+        {% if pagination.show_last %}
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(pagination.total_pages) }}">{{ pagination.total_pages }}</a></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{# ─── 거래처 신규등록 모달 ─── #}
 <div class="modal fade" id="vendorCreateModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">거래처 신규 등록</h5>
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <div class="modal-header" style="background:#f8fafc;">
+                <h6 class="modal-title fw-bold">거래처 신규 등록</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-2">
-                    <label class="form-label fw-bold">거래처명 <span class="text-danger">*</span></label>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.85rem;">거래처명 <span class="text-danger">*</span></label>
                     <input type="text" id="newVendorName" class="form-control" required>
                 </div>
                 <div class="row g-2 mb-2">
                     <div class="col-6">
-                        <label class="form-label small">대표자</label>
+                        <label class="form-label small text-muted">대표자</label>
                         <input type="text" id="newVendorCeo" class="form-control form-control-sm">
                     </div>
                     <div class="col-6">
-                        <label class="form-label small">사업자번호</label>
+                        <label class="form-label small text-muted">사업자번호</label>
                         <input type="text" id="newVendorBizNo" class="form-control form-control-sm">
                     </div>
                 </div>
                 <div class="row g-2 mb-2">
                     <div class="col-6">
-                        <label class="form-label small">전화</label>
+                        <label class="form-label small text-muted">전화</label>
                         <input type="text" id="newVendorTel" class="form-control form-control-sm">
                     </div>
                     <div class="col-6">
-                        <label class="form-label small">팩스</label>
+                        <label class="form-label small text-muted">팩스</label>
                         <input type="text" id="newVendorFax" class="form-control form-control-sm">
                     </div>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label small">이메일</label>
+                    <label class="form-label small text-muted">이메일</label>
                     <input type="email" id="newVendorEmail" class="form-control form-control-sm">
                 </div>
                 <div class="mb-2">
-                    <label class="form-label small">주소</label>
+                    <label class="form-label small text-muted">주소</label>
                     <input type="text" id="newVendorAddr" class="form-control form-control-sm">
                 </div>
                 <div class="mb-2">
-                    <label class="form-label small fw-bold">업체 메모 <small class="text-muted">(케이블류, LED드라이버, 스텐레이저가공 등)</small></label>
-                    <input type="text" id="newVendorNote" class="form-control form-control-sm" placeholder="업체별 담당자재, 특이사항 등 빠르게 확인가능한 코멘트">
+                    <label class="form-label small text-muted">업체 메모 <small>(케이블류, LED드라이버 등)</small></label>
+                    <input type="text" id="newVendorNote" class="form-control form-control-sm" placeholder="담당자재, 특이사항 등">
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer" style="background:#f8fafc;">
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
                 <button type="button" class="btn btn-primary btn-sm" id="saveNewVendorBtn">등록</button>
             </div>
@@ -84,143 +216,10 @@ document.getElementById('saveNewVendorBtn').addEventListener('click', function()
         if (d.id) {
             bootstrap.Modal.getInstance(document.getElementById('vendorCreateModal')).hide();
             location.reload();
-        } else {
-            alert(d.error || '등록 실패');
-        }
+        } else { alert(d.error || '등록 실패'); }
     })
     .catch(function(e) { alert('오류: ' + e.message); });
 });
 </script>
-
-{# --- 통계 카드 --- #}
-<div class="row g-3 mb-3">
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm">
-            <div class="card-body py-2">
-                <small class="text-muted">전체 거래처</small>
-                <div class="fw-bold fs-5">{{ "{:,}".format(stats.total|int) }}개</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm border-start border-4 border-success">
-            <div class="card-body py-2">
-                <small class="text-muted">사용중</small>
-                <div class="fw-bold fs-5 text-success">{{ "{:,}".format(stats.active|int) }}개</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm border-start border-4 border-secondary">
-            <div class="card-body py-2">
-                <small class="text-muted">미사용</small>
-                <div class="fw-bold fs-5 text-secondary">{{ "{:,}".format((stats.total|int) - (stats.active|int)) }}개</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm border-start border-4 border-info">
-            <div class="card-body py-2">
-                <small class="text-muted">검색 결과</small>
-                <div class="fw-bold fs-5 text-info">{{ "{:,}".format(pagination.total) }}건</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-{# --- 검색 폼 --- #}
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-2">
-        <form method="GET" class="row g-2 align-items-end">
-            <div class="col-md-5 col-12">
-                <label class="form-label mb-0 small text-muted">검색</label>
-                <input type="text" name="q" class="form-control form-control-sm" placeholder="거래처명, 사업자번호, 대표자" value="{{ filters.q }}">
-            </div>
-            <div class="col-md-3 col-6">
-                <label class="form-label mb-0 small text-muted">사용여부</label>
-                <select name="use_yn" class="form-select form-select-sm">
-                    <option value="">전체</option>
-                    <option value="Y" {{ 'selected' if filters.use_yn == 'Y' }}>사용</option>
-                    <option value="N" {{ 'selected' if filters.use_yn == 'N' }}>미사용</option>
-                </select>
-            </div>
-            <div class="col-md-2 col-6">
-                <button type="submit" class="btn btn-primary btn-sm w-100">검색</button>
-            </div>
-            <div class="col-md-2 col-12">
-                <a href="{{ url_for('vendor.vendor_list') }}" class="btn btn-outline-secondary btn-sm w-100">초기화</a>
-            </div>
-        </form>
-    </div>
-</div>
-
-{# --- 거래처 테이블 --- #}
-<div class="card border-0 shadow-sm">
-    <div class="table-responsive">
-        <table class="table table-hover mb-0" style="table-layout:fixed;">
-            <colgroup>
-                <col style="width:90px">
-                <col style="width:20%">
-                <col>
-                <col style="width:80px">
-                <col style="width:120px">
-                <col style="width:55px">
-            </colgroup>
-            <thead class="table-light">
-                <tr>
-                    <th>거래처코드</th>
-                    <th>거래처명</th>
-                    <th>메모</th>
-                    <th>대표자</th>
-                    <th>전화</th>
-                    <th>상태</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for v in vendors %}
-                <tr style="cursor:pointer;" onclick="location.href='{{ url_for('vendor.vendor_detail', tr_cd=v.TR_CD) }}'">
-                    <td data-label="거래처코드"><code>{{ v.TR_CD }}</code></td>
-                    <td data-label="거래처명"><strong>{{ v.TR_NM or '-' }}</strong></td>
-                    <td data-label="메모" class="text-muted small">{{ v.note or '' }}</td>
-                    <td data-label="대표자">{{ v.CEO_NM or '-' }}</td>
-                    <td data-label="전화">{{ v.TEL or '-' }}</td>
-                    <td data-label="상태">
-                        {% if v.USE_YN == 'Y' %}
-                            <span class="badge bg-success">사용</span>
-                        {% else %}
-                            <span class="badge bg-secondary">미사용</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="6" class="text-center text-muted py-4">조회된 거래처가 없습니다.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-{# --- 페이지네이션 --- #}
-{% if pagination.total_pages > 1 %}
-<nav class="mt-3">
-    <ul class="pagination justify-content-center mb-0">
-        {% if pagination.show_first %}
-        <li class="page-item"><a class="page-link" href="?{{ pagination_query(1) }}">1</a></li>
-        <li class="page-item disabled"><span class="page-link">...</span></li>
-        {% endif %}
-
-        {% for p in pagination.page_range %}
-        <li class="page-item {{ 'active' if p == pagination.page }}">
-            <a class="page-link" href="?{{ pagination_query(p) }}">{{ p }}</a>
-        </li>
-        {% endfor %}
-
-        {% if pagination.show_last %}
-        <li class="page-item disabled"><span class="page-link">...</span></li>
-        <li class="page-item"><a class="page-link" href="?{{ pagination_query(pagination.total_pages) }}">{{ pagination.total_pages }}</a></li>
-        {% endif %}
-    </ul>
-</nav>
-{% endif %}
 
 {% endblock %}

@@ -113,6 +113,9 @@
             <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">🗑 현장 삭제요청</button>
         </form>
         {% endif %}
+        {% if session.user_group != '생산부' %}
+        <button class="btn btn-sm btn-outline-success fw-bold" data-bs-toggle="modal" data-bs-target="#mergeDesignModal">🔗 설계현장 연결</button>
+        {% endif %}
         <button class="btn btn-sm btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#editProjectModal">⚙️ 전체 정보 수정</button>
         <a href="{{ url_for('project.contract_list') }}" class="btn btn-sm btn-secondary">목록으로</a>
     </div>
@@ -218,6 +221,30 @@
                         </div>
                     </div>
                 </form>
+                {# --- G2B 매칭 + 계약 삭제 --- #}
+                {% if session.get('role') == 'admin' or session.get('user_group') == '영업부' %}
+                <div class="mt-2 px-2 pb-2 d-flex align-items-center justify-content-between flex-wrap" style="font-size:0.85rem;">
+                    <div class="d-flex align-items-center gap-2">
+                        {% if c.g2b_contract_no %}
+                        <span class="badge bg-success">G2B 연동</span>
+                        <span class="text-muted">{{ c.g2b_contract_no }}</span>
+                        <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" style="font-size:0.78rem;"
+                                onclick="g2bUnlink({{ c.id }}, this)">해제</button>
+                        {% else %}
+                        <button type="button" class="btn btn-outline-success btn-sm py-0 px-2" style="font-size:0.78rem;"
+                                onclick="g2bOpenMatch({{ c.id }})">G2B 매칭</button>
+                        {% endif %}
+                    </div>
+                    <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}"
+                          onsubmit="return confirm('계약 [{{ c.contract_name }}]을(를) 삭제하시겠습니까?\n하위 품목과 자재발주도 함께 삭제됩니다.');"
+                          style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="action" value="delete_contract">
+                        <input type="hidden" name="contract_id" value="{{ c.id }}">
+                        <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" style="font-size:0.78rem;">계약삭제</button>
+                    </form>
+                </div>
+                {% endif %}
             </div>
 
             <div class="card-body bg-light p-2">
@@ -225,7 +252,7 @@
                 <table class="table table-sm table-bordered align-middle mb-2 bg-white contract-item-table mobile-stack-table">
                     <thead class="table-light text-center">
                         <tr>
-                            <th>상세품목</th><th>모델명</th><th>수량</th><th>바코드</th><th>영업현황</th><th>구매현황</th><th>생산현황</th><th>저장</th><th>삭제</th>
+                            <th>상세품목</th><th>모델명</th><th>수량</th><th>바코드</th><th style="white-space:nowrap;">현황</th><th style="white-space:nowrap;"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -267,32 +294,26 @@
                                 </td>
                                 <td>
                                     <input type="hidden" name="status_sales" id="sales_status_{{ item.id }}" value="{{ item.status_sales or '계약확인' }}">
-                                    <div class="text-center">
-                                        <span class="badge bg-light text-primary border border-primary" id="sales_status_badge_{{ item.id }}">{{ item.status_sales or '계약확인' }}</span>
-                                    </div>
-                                </td>
-                                <td>
                                     <input type="hidden" name="status_admin" id="admin_status_{{ item.id }}" value="{{ item.status_admin or '자재확인중' }}">
-                                    <div class="text-center">
-                                        <span class="badge bg-light text-success border border-success" id="admin_status_badge_{{ item.id }}">{{ item.status_admin or '자재확인중' }}</span>
-                                    </div>
-                                </td>
-                                <td>
                                     <input type="hidden" name="status_prod" id="prod_status_{{ item.id }}" value="{{ item.status_prod or '자재대기중' }}">
-                                    <div class="text-center">
-                                        <span class="badge bg-light text-dark border border-dark" id="prod_status_badge_{{ item.id }}">{{ item.status_prod or '자재대기중' }}</span>
+                                    <div style="display:flex;gap:2px;justify-content:center;white-space:nowrap;flex-wrap:nowrap;">
+                                        <span class="badge bg-light text-primary border border-primary" style="font-size:.65rem;padding:2px 4px;white-space:nowrap;" id="sales_status_badge_{{ item.id }}">{{ item.status_sales or '계약확인' }}</span>
+                                        <span class="badge bg-light text-success border border-success" style="font-size:.65rem;padding:2px 4px;white-space:nowrap;" id="admin_status_badge_{{ item.id }}">{{ item.status_admin or '자재확인중' }}</span>
+                                        <span class="badge bg-light text-dark border border-dark" style="font-size:.65rem;padding:2px 4px;white-space:nowrap;" id="prod_status_badge_{{ item.id }}">{{ item.status_prod or '자재대기중' }}</span>
                                     </div>
                                 </td>
-                                <td class="text-center"><button class="btn btn-xs btn-outline-dark">저장</button></td>
+                                <td style="white-space:nowrap;">
+                                    <div style="display:inline-flex;gap:2px;flex-wrap:nowrap;">
+                                        <button class="btn btn-xs btn-outline-dark" style="font-size:.7rem;padding:1px 5px;">저장</button>
+                                    </div>
                             </form>
-                            <td class="text-center">
-                                <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" onsubmit="return confirm('해당 품목을 삭제할까요?');">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <input type="hidden" name="action" value="delete_contract_item">
-                                    <input type="hidden" name="item_id" value="{{ item.id }}">
-                                    <button class="btn btn-xs btn-outline-danger">삭제</button>
-                                </form>
-                            </td>
+                                    <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" onsubmit="return confirm('해당 품목을 삭제할까요?');" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <input type="hidden" name="action" value="delete_contract_item">
+                                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                                        <button class="btn btn-xs btn-outline-danger" style="font-size:.7rem;padding:1px 5px;">삭제</button>
+                                    </form>
+                                </td>
                         </tr>
                         {% endfor %}
 
@@ -311,8 +332,8 @@
                                 <td><input type="text" name="model_name" class="form-control form-control-sm" placeholder="모델명 입력 (자동완성)" data-catalog-autocomplete data-category-select="category"></td>
                                 <td><input type="number" name="quantity" class="form-control form-control-sm" value="1"></td>
                                 <td><input type="text" name="barcode_id" class="form-control form-control-sm" placeholder="조명기구 계열만 입력"></td>
-                                <td colspan="3" class="text-muted small align-middle text-center">해당 계약의 상세품목만 추가 가능</td>
-                                <td colspan="2" class="text-center"><button class="btn btn-xs btn-dark fw-bold">+ 품목추가</button></td>
+                                <td class="text-muted small align-middle text-center" style="white-space:nowrap;"></td>
+                                <td class="text-center" style="white-space:nowrap;"><button class="btn btn-xs btn-dark fw-bold" style="white-space:nowrap;">+ 품목추가</button></td>
                             </form>
                         </tr>
                     </tbody>
@@ -572,11 +593,16 @@
         {% endfor %}
 
         <div class="card mb-3 border-0 shadow-sm border-start border-4 border-success contract-card">
-            <div class="card-header bg-success-subtle fw-bold">+ 계약 추가</div>
+            <div class="card-header bg-success-subtle fw-bold d-flex justify-content-between align-items-center">
+                <span>+ 계약 추가</span>
+                <button type="button" class="btn btn-sm btn-outline-success" id="g2bImportBtnDetail">G2B 불러오기</button>
+            </div>
             <div class="card-body">
                 <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" class="row g-2 align-items-end">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="add_contract">
+                    <input type="hidden" name="g2b_contract_no" id="addContractG2bNo" value="">
+                    <input type="hidden" name="g2b_items_json" id="addContractG2bItems" value="">
                     <div class="col-md-4">
                         <label class="small fw-bold text-muted">계약명</label>
                         <input type="text" class="form-control form-control-sm" name="contract_name" placeholder="예: 2차 납품 계약" required>
@@ -1341,5 +1367,311 @@ document.addEventListener('DOMContentLoaded', function () {
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
 });
+</script>
+
+{# === G2B 매칭 모달 === #}
+<div class="modal fade" id="g2bMatchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title fw-bold">G2B 매칭 추천</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-2" id="g2bMatchBody">
+                <div class="text-center py-4 text-muted">로딩 중...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let _g2bContractId = null;
+
+function g2bOpenMatch(contractId) {
+    _g2bContractId = contractId;
+    const modal = new bootstrap.Modal(document.getElementById('g2bMatchModal'));
+    modal.show();
+    document.getElementById('g2bMatchBody').innerHTML = '<div class="text-center py-4 text-muted">로딩 중...</div>';
+
+    fetch('/api/g2b-match/' + contractId)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('g2bMatchBody').innerHTML = '<div class="alert alert-danger">' + data.error + '</div>';
+                return;
+            }
+            const candidates = data.candidates || [];
+            if (candidates.length === 0) {
+                document.getElementById('g2bMatchBody').innerHTML = '<div class="text-center py-4 text-muted">매칭 후보가 없습니다.</div>';
+                return;
+            }
+            let html = '<table class="table table-sm table-hover align-middle" style="font-size:0.82rem;">';
+            html += '<thead class="table-light"><tr><th style="width:60px;">점수</th><th>계약명</th><th>수요기관</th><th class="text-end" style="width:110px;">금액</th><th style="width:90px;">계약일</th><th style="width:60px;"></th></tr></thead><tbody>';
+            candidates.forEach(function(c) {
+                const maxScore = 80;
+                const pct = Math.round(c.score / maxScore * 100);
+                const barColor = pct >= 70 ? '#198754' : pct >= 40 ? '#ffc107' : '#dc3545';
+                html += '<tr>';
+                html += '<td><div style="background:#e9ecef;border-radius:4px;height:18px;width:100%;position:relative;">';
+                html += '<div style="background:' + barColor + ';height:100%;width:' + pct + '%;border-radius:4px;"></div>';
+                html += '<span style="position:absolute;top:0;left:50%;transform:translateX(-50%);font-size:0.72rem;font-weight:bold;line-height:18px;">' + c.score + '</span>';
+                html += '</div></td>';
+                html += '<td title="' + (c.req_nm || '') + '">' + ((c.req_nm || '').substring(0, 40)) + (c.req_nm && c.req_nm.length > 40 ? '...' : '') + '</td>';
+                html += '<td><small>' + (c.dminstt || '-') + '</small></td>';
+                html += '<td class="text-end fw-bold">' + Number(c.total_amt).toLocaleString() + '</td>';
+                html += '<td>' + (c.req_date || '-') + '</td>';
+                html += '<td><button class="btn btn-sm btn-primary py-0 px-2" style="font-size:0.75rem;" onclick="g2bLink(\'' + c.req_no + '\')">연동</button></td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            document.getElementById('g2bMatchBody').innerHTML = html;
+        })
+        .catch(err => {
+            document.getElementById('g2bMatchBody').innerHTML = '<div class="alert alert-danger">오류: ' + err.message + '</div>';
+        });
+}
+
+function g2bLink(reqNo) {
+    if (!_g2bContractId) return;
+    if (!confirm('이 G2B 계약(' + reqNo + ')을 연동하시겠습니까?')) return;
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    fetch('/api/g2b-match/' + _g2bContractId + '/link', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+        body: JSON.stringify({g2b_contract_no: reqNo})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+        bootstrap.Modal.getInstance(document.getElementById('g2bMatchModal')).hide();
+        location.reload();
+    })
+    .catch(err => alert('오류: ' + err.message));
+}
+
+function g2bUnlink(contractId, btn) {
+    if (!confirm('G2B 연동을 해제하시겠습니까?')) return;
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    fetch('/api/g2b-match/' + contractId + '/unlink', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+        location.reload();
+    })
+    .catch(err => alert('오류: ' + err.message));
+}
+
+// ── G2B 불러오기 (계약 추가 폼 자동 채움) ──
+(function() {
+    const btn = document.getElementById('g2bImportBtnDetail');
+    if (!btn) return;
+
+    // 모달 HTML 삽입
+    document.body.insertAdjacentHTML('beforeend', `
+    <div class="modal fade" id="g2bImportDetailModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold">G2B 조달내역 불러오기</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <div class="input-group input-group-sm mb-3">
+                        <input type="text" class="form-control" id="g2bDetailSearchInput" placeholder="계약명 또는 수요기관명 검색...">
+                        <button class="btn btn-outline-primary" type="button" id="g2bDetailSearchBtn">검색</button>
+                    </div>
+                    <div id="g2bDetailResults" style="max-height:400px; overflow-y:auto;">
+                        <div class="text-center text-muted py-4">로딩 중...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>`);
+
+    let _modal = null;
+    function getModal() {
+        if (!_modal) _modal = new bootstrap.Modal(document.getElementById('g2bImportDetailModal'));
+        return _modal;
+    }
+    const results = document.getElementById('g2bDetailResults');
+
+    btn.addEventListener('click', () => {
+        document.getElementById('g2bDetailSearchInput').value = '';
+        getModal().show();
+        doSearch('');
+    });
+
+    function doSearch(q) {
+        results.innerHTML = '<div class="text-center py-4 text-muted">검색 중...</div>';
+        const url = '/api/g2b-search' + (q ? '?q=' + encodeURIComponent(q) : '');
+        fetch(url).then(r => r.json()).then(data => {
+            if (!data.results || !data.results.length) {
+                results.innerHTML = '<div class="text-center py-4 text-muted">결과 없음</div>';
+                return;
+            }
+            let html = '<div class="list-group list-group-flush">';
+            data.results.forEach(g => {
+                html += `<a href="#" class="list-group-item list-group-item-action g2b-detail-item"
+                   data-g2b='${JSON.stringify(g).replace(/'/g, "&#39;")}'>
+                    <div class="fw-bold" style="font-size:.9rem;">${g.req_nm}</div>
+                    <small class="text-muted">${g.dminstt} &middot; ${g.req_date} &middot; ${g.item_cnt}품목${g.dlvr_date ? ' &middot; 납품기한: ' + g.dlvr_date : ''}</small>
+                </a>`;
+            });
+            html += '</div>';
+            results.innerHTML = html;
+            results.querySelectorAll('.g2b-detail-item').forEach(el => {
+                el.addEventListener('click', e => {
+                    e.preventDefault();
+                    const g = JSON.parse(el.dataset.g2b);
+                    fillAddContractForm(g);
+                    getModal().hide();
+                });
+            });
+        }).catch(err => {
+            results.innerHTML = '<div class="alert alert-danger">오류: ' + err.message + '</div>';
+        });
+    }
+
+    document.getElementById('g2bDetailSearchBtn').addEventListener('click', () => {
+        doSearch(document.getElementById('g2bDetailSearchInput').value.trim());
+    });
+    document.getElementById('g2bDetailSearchInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); doSearch(e.target.value.trim()); }
+    });
+
+    function fillAddContractForm(g) {
+        const form = document.querySelector('input[name="action"][value="add_contract"]').closest('form');
+        if (!form) return;
+        const nameInput = form.querySelector('input[name="contract_name"]');
+        if (nameInput) nameInput.value = g.req_nm || '';
+        const dateInput = form.querySelector('input[name="contract_date"]');
+        if (dateInput && g.req_date) dateInput.value = g.req_date;
+        const dueInput = form.querySelector('input[name="delivery_due_date"]');
+        if (dueInput && g.dlvr_date) dueInput.value = g.dlvr_date;
+        // G2B 연동 번호 + 품목 JSON
+        document.getElementById('addContractG2bNo').value = g.req_no || '';
+        document.getElementById('addContractG2bItems').value = g.items ? JSON.stringify(g.items) : '';
+    }
+})();
+</script>
+
+<!-- 설계현장 연결 모달 -->
+<div class="modal fade" id="mergeDesignModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">🔗 설계현장 연결 (병합)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">미계약 설계 프로젝트를 선택하면 해당 프로젝트의 자재, 담당자, 도면, 히스토리 등 모든 데이터가 현재 계약현장으로 이관됩니다.</p>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control form-control-sm" id="mergeDesignSearchInput" placeholder="현장명 / 관리번호 검색...">
+                    <button class="btn btn-sm btn-primary" type="button" id="mergeDesignSearchBtn">검색</button>
+                </div>
+                <div id="mergeDesignResults" style="max-height: 400px; overflow-y: auto;">
+                    <div class="text-center py-4 text-muted">검색어를 입력하거나 검색 버튼을 눌러주세요.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const projectId = {{ project.id }};
+    let _modal = null;
+    function getModal() {
+        if (!_modal) _modal = new bootstrap.Modal(document.getElementById('mergeDesignModal'));
+        return _modal;
+    }
+
+    const results = document.getElementById('mergeDesignResults');
+    const searchInput = document.getElementById('mergeDesignSearchInput');
+    const searchBtn = document.getElementById('mergeDesignSearchBtn');
+
+    if (!searchBtn) return;
+
+    function doSearch(q) {
+        results.innerHTML = '<div class="text-center py-4 text-muted">검색 중...</div>';
+        const url = '{{ url_for("project.api_design_projects_search") }}' + (q ? '?q=' + encodeURIComponent(q) : '');
+        fetch(url).then(r => r.json()).then(data => {
+            if (!data.results || !data.results.length) {
+                results.innerHTML = '<div class="text-center py-4 text-muted">결과 없음</div>';
+                return;
+            }
+            let html = '<div class="list-group list-group-flush">';
+            data.results.forEach(p => {
+                const info = [
+                    p.material_count ? '자재 ' + p.material_count + '건' : '',
+                    p.contact_count ? '담당자 ' + p.contact_count + '명' : '',
+                    p.drawing_count ? '도면 ' + p.drawing_count + '건' : '',
+                ].filter(Boolean).join(', ') || '데이터 없음';
+                html += `<a href="#" class="list-group-item list-group-item-action merge-design-item" data-design-id="${p.id}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="fw-bold" style="font-size:.9rem;">${p.temp_name}</span>
+                            <span class="text-muted ms-2" style="font-size:.82rem;">(${p.project_no})</span>
+                        </div>
+                        <span class="badge bg-secondary">${p.status}</span>
+                    </div>
+                    <small class="text-muted">${info} | 등록: ${p.created_at}</small>
+                </a>`;
+            });
+            html += '</div>';
+            results.innerHTML = html;
+
+            results.querySelectorAll('.merge-design-item').forEach(el => {
+                el.addEventListener('click', e => {
+                    e.preventDefault();
+                    const designId = el.dataset.designId;
+                    const designName = el.querySelector('.fw-bold').textContent;
+                    if (!confirm('설계현장 "' + designName + '"의 모든 데이터를 현재 계약현장으로 이관합니다.\n\n이 작업은 되돌릴 수 없습니다. 진행하시겠습니까?')) return;
+
+                    fetch('/api/project/' + projectId + '/merge-design/' + designId, {
+                        method: 'POST',
+                        headers: {'X-Requested-With': 'XMLHttpRequest'},
+                    }).then(r => r.json()).then(resp => {
+                        if (resp.ok) {
+                            const merged = resp.merged || {};
+                            const detail = Object.entries(merged).filter(([k,v]) => v > 0).map(([k,v]) => k + ' ' + v + '건').join(', ');
+                            alert('병합 완료: ' + (detail || '데이터 없음') + '\n\n페이지를 새로고침합니다.');
+                            location.reload();
+                        } else {
+                            alert('병합 실패: ' + (resp.error || '알 수 없는 오류'));
+                        }
+                    }).catch(err => {
+                        alert('병합 오류: ' + err.message);
+                    });
+                });
+            });
+        }).catch(err => {
+            results.innerHTML = '<div class="alert alert-danger">오류: ' + err.message + '</div>';
+        });
+    }
+
+    // 모달 열릴 때 자동 검색 (빈 검색어)
+    document.getElementById('mergeDesignModal').addEventListener('shown.bs.modal', () => {
+        searchInput.value = '';
+        doSearch('');
+        searchInput.focus();
+    });
+
+    searchBtn.addEventListener('click', () => doSearch(searchInput.value.trim()));
+    searchInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); doSearch(e.target.value.trim()); }
+    });
+})();
 </script>
 {% endblock %}

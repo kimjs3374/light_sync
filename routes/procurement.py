@@ -2,14 +2,14 @@ import datetime
 
 from collections import OrderedDict
 
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
 from sqlalchemy import func, extract, or_, distinct
 
 from modules.auth_decorators import login_required
 from modules.db_context import get_db
 from modules.pagination import make_pagination
 from modules.utils import safe_int
-from modules.models import G2bProcurement
+from modules.models import G2bProcurement, Contract, ContractItem, Project
 from modules.services.g2b_procurement_sync import sync_daily, sync_bulk
 
 procurement_bp = Blueprint('procurement', __name__)
@@ -125,6 +125,15 @@ def procurement_list():
         for item in detail_items:
             detail_map.setdefault(item.cntrct_dlvr_req_no, []).append(item)
 
+        # G2B 연동 맵: g2b_contract_no -> (contract_id, project_id)
+        linked_contracts = db.query(
+            Contract.g2b_contract_no, Contract.id, Contract.project_id
+        ).filter(
+            Contract.g2b_contract_no.isnot(None),
+            Contract.g2b_contract_no.in_(req_nos) if req_nos else False,
+        ).all() if req_nos else []
+        linked_map = {r[0]: {'contract_id': r[1], 'project_id': r[2]} for r in linked_contracts}
+
         # 계약 목록에 품목 상세 매핑
         contracts = []
         for row in contract_rows:
@@ -149,6 +158,7 @@ def procurement_list():
             else:
                 status = 'new'
 
+            linked = linked_map.get(row.cntrct_dlvr_req_no)
             contracts.append({
                 'req_no': row.cntrct_dlvr_req_no,
                 'req_date': row.req_date,
@@ -161,6 +171,7 @@ def procurement_list():
                 'chg_ord': chg_ord,
                 'status': status,
                 'line_items': detail_map.get(row.cntrct_dlvr_req_no, []),
+                'linked': linked,
             })
 
         # --- 통계 (전체 기준, 필터 무관) ---
@@ -374,3 +385,319 @@ def procurement_report():
         year_options=year_options,
         current_date=datetime.date.today().strftime('%Y-%m-%d'),
     )
+
+
+# ===================================================================
+# G2B <-> ERP Contract Matching
+# ===================================================================
+
+def _can_match():
+    """매칭 권한 확인: 영업부 또는 admin"""
+    return session.get('role') == 'admin' or session.get('user_group') == '영업부'
+
+
+def _score_date(contract_date, g2b_date):
+    """날짜 매칭 점수 (최대 40)"""
+    if not contract_date or not g2b_date:
+        return 0
+    delta = abs((contract_date - g2b_date).days)
+    if delta == 0:
+        return 40
+    elif delta <= 7:
+        return 20
+    elif delta <= 30:
+        return 10
+    return 0
+
+
+def _score_name(contract_name, g2b_name):
+    """이름 유사도 점수 (최대 30) - 순수 부분문자열 매칭"""
+    if not contract_name or not g2b_name:
+        return 0
+    cn = contract_name.strip().replace(' ', '')
+    gn = g2b_name.strip().replace(' ', '')
+    if not cn or not gn:
+        return 0
+    # 정확 일치
+    if cn == gn:
+        return 30
+    # 한쪽이 다른쪽에 포함
+    if cn in gn or gn in cn:
+        return 25
+    # 공통 부분문자열 (길이 3 이상)
+    max_common = 0
+    shorter, longer = (cn, gn) if len(cn) <= len(gn) else (gn, cn)
+    for length in range(min(len(shorter), 20), 2, -1):
+        found = False
+        for start in range(len(shorter) - length + 1):
+            sub = shorter[start:start + length]
+            if sub in longer:
+                max_common = length
+                found = True
+                break
+        if found:
+            break
+    if max_common >= 6:
+        return 20
+    elif max_common >= 4:
+        return 15
+    elif max_common >= 3:
+        return 10
+    return 0
+
+
+def _score_amount(contract_total, g2b_amt):
+    """금액 근사 점수 (최대 20)"""
+    if not contract_total or not g2b_amt or contract_total == 0 or g2b_amt == 0:
+        return 0
+    ratio = abs(contract_total - g2b_amt) / max(contract_total, g2b_amt)
+    if ratio <= 0.05:
+        return 20
+    elif ratio <= 0.15:
+        return 15
+    elif ratio <= 0.30:
+        return 10
+    return 0
+
+
+def _score_org(project_temp_name, g2b_dminstt):
+    """수요기관-현장명 부분일치 점수 (최대 10)"""
+    if not project_temp_name or not g2b_dminstt:
+        return 0
+    pn = project_temp_name.strip().replace(' ', '')
+    gn = g2b_dminstt.strip().replace(' ', '')
+    if not pn or not gn:
+        return 0
+    if pn in gn or gn in pn:
+        return 10
+    # 공통 부분문자열 (길이 2 이상)
+    shorter, longer = (pn, gn) if len(pn) <= len(gn) else (gn, pn)
+    for length in range(min(len(shorter), 10), 1, -1):
+        for start in range(len(shorter) - length + 1):
+            sub = shorter[start:start + length]
+            if sub in longer:
+                if length >= 4:
+                    return 8
+                elif length >= 3:
+                    return 5
+                elif length >= 2:
+                    return 3
+    return 0
+
+
+@procurement_bp.route('/api/g2b-search', methods=['GET'])
+@login_required
+def g2b_search():
+    """G2B 미연동 계약 검색 API (계약 등록 시 불러오기용)"""
+    q = request.args.get('q', '').strip()
+
+    with get_db() as db:
+        # 이미 연동된 계약번호 목록
+        linked_nos = [r[0] for r in db.query(Contract.g2b_contract_no).filter(
+            Contract.g2b_contract_no.isnot(None)
+        ).all()]
+
+        filters = [G2bProcurement.prdct_amt > 0]
+        if q:
+            like_q = f'%{q}%'
+            filters.append(
+                (G2bProcurement.cntrct_dlvr_req_nm.ilike(like_q)) |
+                (G2bProcurement.dminstt_nm.ilike(like_q))
+            )
+        else:
+            # 검색어 없으면 최근 30일 이내
+            d_min = datetime.date.today() - datetime.timedelta(days=30)
+            filters.append(G2bProcurement.cntrct_dlvr_req_date >= d_min)
+
+        g2b_q = db.query(
+            G2bProcurement.cntrct_dlvr_req_no,
+            func.min(G2bProcurement.cntrct_dlvr_req_date).label('req_date'),
+            func.min(G2bProcurement.cntrct_dlvr_req_nm).label('req_nm'),
+            func.min(G2bProcurement.dminstt_nm).label('dminstt'),
+            func.min(G2bProcurement.dlvr_tmlmt_date).label('dlvr_date'),
+            func.sum(G2bProcurement.prdct_amt).label('total_amt'),
+            func.count().label('item_cnt'),
+        ).filter(*filters)
+
+        if linked_nos:
+            g2b_q = g2b_q.filter(~G2bProcurement.cntrct_dlvr_req_no.in_(linked_nos))
+
+        g2b_q = g2b_q.group_by(
+            G2bProcurement.cntrct_dlvr_req_no
+        ).order_by(func.min(G2bProcurement.cntrct_dlvr_req_date).desc()).limit(30)
+
+        results = []
+        for g in g2b_q.all():
+            # 해당 계약의 품목 상세
+            items = db.query(G2bProcurement).filter(
+                G2bProcurement.cntrct_dlvr_req_no == g.cntrct_dlvr_req_no
+            ).order_by(G2bProcurement.prdct_sno).all()
+
+            item_list = []
+            for it in items:
+                item_list.append({
+                    'detail_name': it.dtil_prdct_clsfc_no_nm or '',
+                    'spec_name': it.prdct_idnt_no_nm or '',
+                    'qty': it.prdct_qty or 0,
+                    'amt': int(it.prdct_amt or 0),
+                })
+
+            results.append({
+                'req_no': g.cntrct_dlvr_req_no,
+                'req_nm': g.req_nm or '',
+                'req_date': g.req_date.strftime('%Y-%m-%d') if g.req_date else '',
+                'dminstt': g.dminstt or '',
+                'dlvr_date': g.dlvr_date.strftime('%Y-%m-%d') if g.dlvr_date else '',
+                'total_amt': int(g.total_amt or 0),
+                'item_cnt': g.item_cnt,
+                'items': item_list,
+            })
+
+    return jsonify({'results': results})
+
+
+@procurement_bp.route('/api/g2b-match/<int:contract_id>', methods=['GET'])
+@login_required
+def g2b_match_candidates(contract_id):
+    """G2B 매칭 후보 목록 API"""
+    if not _can_match():
+        return jsonify({'error': '권한이 없습니다.'}), 403
+
+    with get_db() as db:
+        contract = db.query(Contract).get(contract_id)
+        if not contract:
+            return jsonify({'error': '계약을 찾을 수 없습니다.'}), 404
+
+        project = db.query(Project).get(contract.project_id)
+
+        # 계약 품목 합계 금액 계산
+        contract_total = db.query(func.sum(ContractItem.quantity)).filter(
+            ContractItem.contract_id == contract_id
+        ).scalar() or 0
+        # ContractItem에 금액 컬럼이 없으므로 수량 기반 비교는 skip,
+        # 대신 contract에 연결된 항목 수량합을 사용
+
+        # G2B 후보: 계약 단위 그룹 (취소 건 제외)
+        # 이미 다른 Contract에 연동된 건 제외
+        linked_nos = [r[0] for r in db.query(Contract.g2b_contract_no).filter(
+            Contract.g2b_contract_no.isnot(None),
+            Contract.id != contract_id,
+        ).all()]
+
+        # 날짜 범위 필터: contract_date +/- 180일
+        date_filters = []
+        if contract.contract_date:
+            d_min = contract.contract_date - datetime.timedelta(days=180)
+            d_max = contract.contract_date + datetime.timedelta(days=180)
+            date_filters.append(G2bProcurement.cntrct_dlvr_req_date >= d_min)
+            date_filters.append(G2bProcurement.cntrct_dlvr_req_date <= d_max)
+
+        g2b_groups = db.query(
+            G2bProcurement.cntrct_dlvr_req_no,
+            func.min(G2bProcurement.cntrct_dlvr_req_date).label('req_date'),
+            func.min(G2bProcurement.cntrct_dlvr_req_nm).label('req_nm'),
+            func.min(G2bProcurement.dminstt_nm).label('dminstt'),
+            func.sum(G2bProcurement.prdct_amt).label('total_amt'),
+            func.sum(G2bProcurement.prdct_qty).label('total_qty'),
+            func.count().label('item_cnt'),
+        ).filter(
+            G2bProcurement.prdct_amt > 0,
+            *date_filters,
+        )
+
+        if linked_nos:
+            g2b_groups = g2b_groups.filter(
+                ~G2bProcurement.cntrct_dlvr_req_no.in_(linked_nos)
+            )
+
+        g2b_groups = g2b_groups.group_by(
+            G2bProcurement.cntrct_dlvr_req_no
+        ).all()
+
+        # 점수 계산
+        candidates = []
+        for g in g2b_groups:
+            s_date = _score_date(contract.contract_date, g.req_date)
+            s_name = _score_name(contract.contract_name, g.req_nm)
+            s_amt = _score_amount(g.total_amt, g.total_amt)  # G2B 금액 vs G2B 금액 (self) - 아래 수정
+            s_org = _score_org(project.temp_name if project else '', g.dminstt)
+
+            # 금액 비교: ContractItem에 단가가 없으므로, G2B 금액끼리 비교 대신 skip
+            # 실제로는 contract에 총액 정보가 없어 금액 점수는 G2B 총액 크기만 참고
+            # -> 여기서는 0으로 처리하되, 다른 점수로 보완
+            total_score = s_date + s_name + s_org
+            # 금액 점수는 추후 ContractItem에 금액 컬럼이 추가되면 활성화
+            # 현재는 최대 80점 만점 체계
+
+            if total_score < 5:
+                continue
+
+            candidates.append({
+                'req_no': g.cntrct_dlvr_req_no,
+                'req_nm': g.req_nm or '',
+                'req_date': g.req_date.strftime('%Y-%m-%d') if g.req_date else '',
+                'dminstt': g.dminstt or '',
+                'total_amt': int(g.total_amt or 0),
+                'item_cnt': g.item_cnt,
+                'score': total_score,
+                'score_detail': {
+                    'date': s_date,
+                    'name': s_name,
+                    'org': s_org,
+                },
+            })
+
+        # 정렬: 점수 내림차순
+        candidates.sort(key=lambda x: (-x['score'], x['req_date']))
+        candidates = candidates[:10]
+
+    return jsonify({'candidates': candidates})
+
+
+@procurement_bp.route('/api/g2b-match/<int:contract_id>/link', methods=['POST'])
+@login_required
+def g2b_match_link(contract_id):
+    """G2B 매칭 연동 저장"""
+    if not _can_match():
+        return jsonify({'error': '권한이 없습니다.'}), 403
+
+    data = request.get_json() or {}
+    g2b_no = (data.get('g2b_contract_no') or '').strip()
+    if not g2b_no:
+        return jsonify({'error': 'g2b_contract_no is required'}), 400
+
+    with get_db() as db:
+        contract = db.query(Contract).get(contract_id)
+        if not contract:
+            return jsonify({'error': '계약을 찾을 수 없습니다.'}), 404
+
+        # 중복 확인: 다른 Contract에 이미 연동된 G2B 번호인지
+        existing = db.query(Contract).filter(
+            Contract.g2b_contract_no == g2b_no,
+            Contract.id != contract_id,
+        ).first()
+        if existing:
+            return jsonify({'error': f'이미 다른 계약(ID:{existing.id})에 연동된 G2B 번호입니다.'}), 409
+
+        contract.g2b_contract_no = g2b_no
+        db.commit()
+
+    return jsonify({'ok': True, 'g2b_contract_no': g2b_no})
+
+
+@procurement_bp.route('/api/g2b-match/<int:contract_id>/unlink', methods=['POST'])
+@login_required
+def g2b_match_unlink(contract_id):
+    """G2B 매칭 연동 해제"""
+    if not _can_match():
+        return jsonify({'error': '권한이 없습니다.'}), 403
+
+    with get_db() as db:
+        contract = db.query(Contract).get(contract_id)
+        if not contract:
+            return jsonify({'error': '계약을 찾을 수 없습니다.'}), 404
+
+        contract.g2b_contract_no = None
+        db.commit()
+
+    return jsonify({'ok': True})

@@ -45,11 +45,14 @@
         <div class="table-responsive">
             <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.8rem; border-color:#dee2e6;">
                 <colgroup>
-                    <col style="width:120px">
-                    <col style="width:25%">
+                    <col style="width:100px">
                     <col style="width:22%">
-                    <col style="width:45px">
-                    <col style="width:80px">
+                    <col style="width:18%">
+                    <col style="width:40px">
+                    <col style="width:70px">
+                    <col style="width:55px">
+                    <col style="width:50px">
+                    <col style="width:50px">
                     <col style="width:12%">
                     <col style="width:45px">
                 </colgroup>
@@ -60,12 +63,18 @@
                         <th class="py-1 text-center">규격</th>
                         <th class="py-1 text-center">단위</th>
                         <th class="py-1 text-center">분류</th>
+                        <th class="py-1 text-center" title="실재고">실재고</th>
+                        <th class="py-1 text-center" title="예약수량">예약</th>
+                        <th class="py-1 text-center" title="가용재고 (실재고 - 예약)">가용</th>
                         <th class="py-1 text-center">제조사</th>
-                        <th class="py-1 text-center">상태</th>
+                        <th class="py-1 text-center">거래</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for item in items %}
+                    {% set stock = (item.stock_qty or 0)|round(0)|int %}
+                    {% set reserved = (item.reserved_qty or 0)|round(0)|int %}
+                    {% set available = stock - reserved %}
                     <tr style="cursor:pointer; border-bottom:1px solid #eee;" onclick="location.href='{{ url_for('item.item_detail', item_id=item.id) }}'">
                         <td class="py-0" style="border-right:1px solid #ccc;"><code style="font-size:0.75rem;">{{ item.icube_item_cd or '-' }}</code></td>
                         <td class="py-0 fw-bold" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_name }}">{{ item.item_name }}</td>
@@ -76,17 +85,21 @@
                             <span style="font-size:0.7rem; color:#0066cc;">{{ item.category }}</span>
                             {% else %}-{% endif %}
                         </td>
+                        <td class="py-0 text-end">{% if stock > 0 %}<strong>{{ stock }}</strong>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+                        <td class="py-0 text-end">{% if reserved > 0 %}{{ reserved }}{% else %}<span class="text-muted">0</span>{% endif %}</td>
+                        <td class="py-0 text-end">
+                            {% if available > 0 %}<span class="text-success">{{ available }}</span>
+                            {% elif available < 0 %}<span class="text-danger">{{ available }}</span>
+                            {% else %}<span class="text-muted">0</span>{% endif %}
+                        </td>
                         <td class="py-0" style="overflow:hidden;text-overflow:ellipsis; color:#008000;" title="{{ item.manufacturer or '' }}">{{ item.manufacturer or '-' }}</td>
                         <td class="py-0 text-center">
-                            {% if item.is_active %}
-                            <span class="badge bg-success" style="font-size:0.65rem;">사용</span>
-                            {% else %}
-                            <span class="badge bg-secondary" style="font-size:0.65rem;">미사용</span>
-                            {% endif %}
+                            {% set tc = trade_counts.get(item.id, 0) %}
+                            {% if tc > 0 %}{{ tc }}건{% else %}-{% endif %}
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="7" class="text-center text-muted py-4">조회된 품목이 없습니다.</td></tr>
+                    <tr><td colspan="10" class="text-center text-muted py-4">조회된 품목이 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

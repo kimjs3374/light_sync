@@ -9,8 +9,9 @@ from modules.models import (
     Project, MaterialOrder, Contract, ContractItem,
     DETAIL_ITEM_OPTIONS, normalize_detail_item,
     BomHeader, BomItem, PurchaseOrder, PurchaseOrderItem,
+    Item, Vendor,
 )
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, desc
 from modules.history_board import append_history_log, get_project_history_context
 from modules.priority_utils import (
     append_due_priority_reason,
@@ -26,6 +27,10 @@ from modules.services.material_actions import (
     handle_bulk_update_material_orders,
     handle_add_chat,
     handle_add_history_reply,
+    handle_cancel_reservation,
+    handle_reserve_stock,
+    handle_create_po_from_material,
+    handle_bulk_create_po,
 )
 
 material_bp = Blueprint('material', __name__)
@@ -57,18 +62,19 @@ def compute_admin_status_from_orders(orders):
     if all_pristine:
         return '자재확인중'
 
-    all_in_done = all(s == '입고완료' for s in statuses)
+    done_statuses = ('입고완료', '재고이용')
+    all_in_done = all(s in done_statuses for s in statuses)
     all_out_done = all((o.outsourcing_status or '') == '본사입고완료' for o in outsourced) if outsourced else True
     if all_in_done and all_out_done:
         return '입고완료'
 
-    all_order_done_only = all(s == '발주완료' for s in statuses)
+    all_order_done_only = all(s in ('발주완료', '재고이용') for s in statuses)
     if all_order_done_only:
         if (not outsourced) or any((o.outsourcing_status or '') != '본사입고완료' for o in outsourced):
             return '입고진행중'
         return '발주완료'
 
-    if all(s in ('발주완료', '입고완료') for s in statuses):
+    if all(s in ('발주완료', '입고완료', '재고이용') for s in statuses):
         return '입고진행중'
 
     return '발주진행중'
@@ -182,25 +188,64 @@ def sync_material_orders_for_contract_item(db, contract, item):
     qty = safe_int(item.quantity, 0)
 
     if bom and bom.bom_items:
-        # === BOM 기반 자재 생성 ===
+        # === BOM 기반 자재 생성 (재고 판단 포함) ===
         target_names = set()
         for bi in bom.bom_items:
             material_name = bi.item_name
             target_names.add(material_name)
+
+            needed = (bi.quantity or 1) * qty
 
             # 발주 상태 확인 (bom_item_id 기반)
             po_status = _get_po_status_for_bom_item(db, bi.id, contract.id)
 
             order = existing_map.get(material_name)
             if order:
+                # 이미 진행된 상태(발주완료/입고완료/재고이용)는 건드리지 않음
+                if order.order_status in ('발주완료', '입고완료', '재고이용'):
+                    order.item_category = item.category
+                    order.item_model_name = item.model_name
+                    order.quantity = needed
+                    order.bom_item_id = bi.id
+                    continue
+
                 order.item_category = item.category
                 order.item_model_name = item.model_name
-                order.quantity = (bi.quantity or 1) * qty
+                order.quantity = needed
                 order.bom_item_id = bi.id
-                # 발주 상태가 진행됐으면 유지, 아니면 PO 기반 업데이트
-                if order.order_status == '발주대기' and po_status:
+
+                # PO 상태가 있으면 우선
+                if po_status:
                     order.order_status = po_status
+                    continue
+
+                # 재고 판단: BomItem에 연결된 Item의 가용재고 비교
+                linked_item = db.query(Item).get(bi.item_id) if bi.item_id else None
+                if linked_item:
+                    available = max(0, (linked_item.stock_qty or 0) - (linked_item.reserved_qty or 0))
+                    if needed <= available:
+                        order.order_status = '재고이용'
+                        linked_item.reserved_qty = (linked_item.reserved_qty or 0) + needed
+                    else:
+                        if available > 0:
+                            linked_item.reserved_qty = (linked_item.reserved_qty or 0) + available
+                        order.order_status = '발주대기'
                 continue
+
+            # 신규 MO 생성
+            new_status = po_status or '발주대기'
+
+            # 재고 판단 (신규 MO)
+            if not po_status:
+                linked_item = db.query(Item).get(bi.item_id) if bi.item_id else None
+                if linked_item:
+                    available = max(0, (linked_item.stock_qty or 0) - (linked_item.reserved_qty or 0))
+                    if needed <= available:
+                        new_status = '재고이용'
+                        linked_item.reserved_qty = (linked_item.reserved_qty or 0) + needed
+                    else:
+                        if available > 0:
+                            linked_item.reserved_qty = (linked_item.reserved_qty or 0) + available
 
             db.add(MaterialOrder(
                 project_id=contract.project_id,
@@ -209,8 +254,8 @@ def sync_material_orders_for_contract_item(db, contract, item):
                 item_category=item.category,
                 item_model_name=item.model_name,
                 material_name=material_name,
-                quantity=(bi.quantity or 1) * qty,
-                order_status=po_status or '발주대기',
+                quantity=needed,
+                order_status=new_status,
                 bom_item_id=bi.id,
                 is_outsourcing=False,
             ))
@@ -295,6 +340,10 @@ ACTION_HANDLERS = {
     'bulk_update_material_orders': handle_bulk_update_material_orders,
     'add_chat': handle_add_chat,
     'add_history_reply': handle_add_history_reply,
+    'cancel_reservation': handle_cancel_reservation,
+    'reserve_stock': handle_reserve_stock,
+    'create_po_from_material': handle_create_po_from_material,
+    'bulk_create_po': handle_bulk_create_po,
 }
 
 @material_bp.route('/material_management', methods=['GET', 'POST'])
@@ -473,7 +522,8 @@ def material_detail(project_id):
         current_user = session.get('full_name') or '사용자'
 
         p = db.query(Project).options(
-            joinedload(Project.contracts).joinedload(Contract.items).joinedload(ContractItem.material_orders)
+            joinedload(Project.contracts).joinedload(Contract.items)
+            .joinedload(ContractItem.material_orders).joinedload(MaterialOrder.bom_item)
         ).get(project_id)
 
         if not p:

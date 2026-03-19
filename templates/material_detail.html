@@ -4,13 +4,17 @@
 <style>
     .mat-item-card { border: 1px solid #e2e8f0; border-radius: .6rem; background: #fff; }
     .mat-order-table th, .mat-order-table td { vertical-align: middle; }
-    .bulk-bar { position: sticky; top: 0; z-index: 100; }
+    .bulk-bar { /* 제자리 고정, 플로팅 없음 */ }
+    .nav-tabs .nav-link { font-size: 0.85rem; }
+    .stock-info { font-size: 0.75rem; color: #666; }
+    .stock-info .text-success { color: #198754 !important; }
+    .stock-info .text-danger { color: #dc3545 !important; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h2 class="text-primary fw-bold mb-1">📦 자재관리 상세</h2>
-        <div class="text-muted small">{{ project.project_no }} · {{ project.temp_name }}</div>
+        <h2 class="text-primary fw-bold mb-1">자재관리 상세</h2>
+        <div class="text-muted small">{{ project.project_no }} / {{ project.temp_name }}</div>
     </div>
     <div class="d-flex gap-2">
         <a href="{{ url_for('material.material_management') }}" class="btn btn-outline-secondary">목록으로</a>
@@ -19,8 +23,32 @@
             <input type="hidden" name="action" value="sync_material_orders">
             <button class="btn btn-primary fw-bold">동기화</button>
         </form>
+        <form method="POST" class="m-0" onsubmit="return confirm('발주대기 자재를 거래처별로 일괄 발주서 생성하시겠습니까?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="bulk_create_po">
+            <button class="btn btn-warning fw-bold">일괄발주</button>
+        </form>
     </div>
 </div>
+
+{# --- 탭 네비게이션 --- #}
+<ul class="nav nav-tabs mb-3" id="materialTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-order" data-bs-toggle="tab" data-bs-target="#pane-order" type="button" role="tab">
+            발주관리 <span class="badge bg-secondary ms-1" id="orderCountBadge">0</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-stock" data-bs-toggle="tab" data-bs-target="#pane-stock" type="button" role="tab">
+            재고이용 <span class="badge bg-info text-dark ms-1" id="stockCountBadge">0</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-all" data-bs-toggle="tab" data-bs-target="#pane-all" type="button" role="tab">
+            전체
+        </button>
+    </li>
+</ul>
 
 <div class="row g-3">
     <div class="col-lg-8">
@@ -29,7 +57,7 @@
             <div class="card-body">
                 <input type="hidden" name="action" value="bulk_update_material_orders">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div class="fw-bold">⚡ 선택 자재 일괄적용</div>
+                    <div class="fw-bold">선택 자재 일괄적용</div>
                     <span class="badge bg-dark" id="selectedCountBadge">선택 0건</span>
                 </div>
                 <div class="row g-2">
@@ -39,6 +67,7 @@
                             <option value="">변경안함</option>
                             <option value="발주대기">발주대기</option>
                             <option value="발주완료">발주완료</option>
+                            <option value="재고이용">재고이용</option>
                             <option value="입고완료">입고완료</option>
                         </select>
                     </div>
@@ -91,90 +120,267 @@
             </div>
         </form>
 
-        {% for c in project.contracts %}
-        <div class="card shadow-sm border-0 mb-3">
-            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                <span class="fw-bold">{{ c.contract_name }}</span>
-                <span class="badge bg-light text-dark">{{ c.items|length }}개 품목</span>
-            </div>
-            <div class="card-body p-2">
-                {% for item in c.items %}
-                <div class="mat-item-card p-2 mb-2">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div>
-                            <div class="fw-bold">{{ item.model_name or '-' }}</div>
-                            <div class="small text-muted">{{ item.category }} · 수량 {{ item.quantity or 0 }}</div>
-                        </div>
-                        <span class="badge bg-secondary">자재 {{ item.material_orders|length }}건</span>
+        <div class="tab-content" id="materialTabContent">
+            {# ========= 발주관리 탭 ========= #}
+            <div class="tab-pane fade show active" id="pane-order" role="tabpanel">
+                {% for c in project.contracts %}
+                <div class="card shadow-sm border-0 mb-3">
+                    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                        <span class="fw-bold">{{ c.contract_name }}</span>
+                        <span class="badge bg-light text-dark">{{ c.items|length }}개 품목</span>
                     </div>
+                    <div class="card-body p-2">
+                        {% for item in c.items %}
+                        {% set order_items = [] %}
+                        {% for o in item.material_orders if o.order_status != '재고이용' %}
+                            {% if order_items.append(o) %}{% endif %}
+                        {% endfor %}
+                        {% if order_items %}
+                        <div class="mat-item-card p-2 mb-2">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <div class="fw-bold">{{ item.model_name or '-' }}</div>
+                                    <div class="small text-muted">{{ item.category }} / 수량 {{ item.quantity or 0 }}</div>
+                                </div>
+                                <span class="badge bg-secondary">발주 {{ order_items|length }}건</span>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm mat-order-table mb-0" style="min-width: 1100px;">
+                                    <thead class="table-light text-center small">
+                                        <tr>
+                                            <th style="width: 40px;">
+                                                <input type="checkbox" class="form-check-input select-all-orders" data-group="order-item-{{ item.id }}" title="전체선택">
+                                            </th>
+                                            <th>자재명</th>
+                                            <th style="font-size:.75rem;">품번</th>
+                                            <th style="font-size:.75rem;">품명</th>
+                                            <th style="font-size:.75rem;">규격</th>
+                                            <th>필요수량</th>
+                                            <th style="font-size:.75rem;">가용재고</th>
+                                            <th>발주상태</th>
+                                            <th>외주상태</th>
+                                            <th>발주일</th>
+                                            <th>입고예정</th>
+                                            <th>입고확인</th>
+                                            <th>관리</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for o in order_items %}
+                                        {% set bi = o.bom_item %}
+                                        {% set linked_item = bi.item if bi and bi.item_id else None %}
+                                        {% set avail = ((linked_item.stock_qty or 0) - (linked_item.reserved_qty or 0))|round(0)|int if linked_item else '-' %}
+                                        <tr>
+                                            <td class="text-center">
+                                                <input type="checkbox" class="form-check-input order-check" data-group="order-item-{{ item.id }}" name="selected_order_ids" value="{{ o.id }}" form="bulkApplyForm">
+                                            </td>
+                                            <td class="fw-bold">{{ o.material_name }}</td>
+                                            <td class="small text-muted text-nowrap" style="max-width:80px;overflow:hidden;text-overflow:ellipsis;" title="{{ bi.item_code if bi and bi.item_code else '' }}">{{ bi.item_code if bi and bi.item_code else '-' }}</td>
+                                            <td class="small text-nowrap" style="max-width:100px;overflow:hidden;text-overflow:ellipsis;" title="{{ bi.item_name if bi else '' }}">{{ bi.item_name if bi else '-' }}</td>
+                                            <td class="small text-muted text-nowrap" style="max-width:80px;overflow:hidden;text-overflow:ellipsis;" title="{{ bi.item_spec if bi and bi.item_spec else '' }}">{{ bi.item_spec if bi and bi.item_spec else '-' }}</td>
+                                            <td class="text-end">{{ o.quantity }}</td>
+                                            <td class="text-end">
+                                                {% if avail != '-' %}
+                                                <span class="{{ 'text-success' if avail >= (o.quantity or 0) else 'text-danger' }}">{{ avail }}</span>
+                                                {% else %}-{% endif %}
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="badge {% if o.order_status == '입고완료' %}bg-success{% elif o.order_status == '발주완료' %}bg-primary{% else %}bg-secondary{% endif %}">{{ o.order_status }}</span>
+                                            </td>
+                                            <td class="text-center">
+                                                {% if o.is_outsourcing %}
+                                                    <span class="badge bg-warning text-dark">{{ o.outsourcing_status or '외주입고대기' }}</span>
+                                                {% else %}<span class="text-muted">-</span>{% endif %}
+                                            </td>
+                                            <td class="text-center">{{ o.order_date.strftime('%Y-%m-%d') if o.order_date else '-' }}</td>
+                                            <td class="text-center">{{ o.expected_in_date.strftime('%Y-%m-%d') if o.expected_in_date else '-' }}</td>
+                                            <td class="text-center">{{ '완료' if o.in_confirmed else '-' }}</td>
+                                            <td class="text-center text-nowrap">
+                                                <button class="btn btn-sm btn-outline-dark" type="button" data-bs-toggle="modal" data-bs-target="#matOrderModal{{ o.id }}">수정</button>
+                                                {% if o.order_status == '발주대기' and o.bom_item_id %}
+                                                <form method="POST" class="d-inline m-0" onsubmit="return confirm('이 자재의 발주서를 생성하시겠습니까?')">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <input type="hidden" name="action" value="create_po_from_material">
+                                                    <input type="hidden" name="material_order_id" value="{{ o.id }}">
+                                                    <button class="btn btn-sm btn-outline-primary">발주생성</button>
+                                                </form>
+                                                {% if avail != '-' and avail >= (o.quantity or 0) %}
+                                                <form method="POST" class="d-inline m-0" onsubmit="return confirm('재고로 전환하시겠습니까?')">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <input type="hidden" name="action" value="reserve_stock">
+                                                    <input type="hidden" name="material_order_id" value="{{ o.id }}">
+                                                    <button class="btn btn-sm btn-outline-info">재고전환</button>
+                                                </form>
+                                                {% endif %}
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
 
-                    <div class="table-responsive">
-                        <table class="table table-sm mat-order-table mb-0" style="min-width: 780px;">
-                            <thead class="table-light text-center small">
-                                <tr>
-                                    <th style="width: 40px;">
-                                        <input type="checkbox"
-                                               class="form-check-input select-all-orders"
-                                               data-group="item-{{ item.id }}"
-                                               title="품목 전체선택">
-                                    </th>
-                                    <th>자재명</th>
-                                    <th>수량</th>
-                                    <th>발주상태</th>
-                                    <th>외주상태</th>
-                                    <th>발주일</th>
-                                    <th>입고예정</th>
-                                    <th>입고확인</th>
-                                    <th>입고확인일</th>
-                                    <th>관리</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for o in item.material_orders %}
-                                <tr>
-                                    <td class="text-center">
-                                        <input type="checkbox"
-                                               class="form-check-input order-check"
-                                               data-group="item-{{ item.id }}"
-                                               name="selected_order_ids"
-                                               value="{{ o.id }}"
-                                               form="bulkApplyForm">
-                                    </td>
-                                    <td class="fw-bold">{{ o.material_name }}</td>
-                                    <td class="text-end">{{ o.quantity }}</td>
-                                    <td class="text-center">
-                                        <span class="badge {% if o.order_status == '입고완료' %}bg-success{% elif o.order_status == '발주완료' %}bg-primary{% else %}bg-secondary{% endif %}">{{ o.order_status }}</span>
-                                    </td>
-                                    <td class="text-center">
-                                        {% if o.is_outsourcing %}
-                                            <span class="badge bg-warning text-dark">{{ o.outsourcing_status or '외주입고대기' }}</span>
+            {# ========= 재고이용 탭 ========= #}
+            <div class="tab-pane fade" id="pane-stock" role="tabpanel">
+                {% for c in project.contracts %}
+                <div class="card shadow-sm border-0 mb-3">
+                    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                        <span class="fw-bold">{{ c.contract_name }}</span>
+                    </div>
+                    <div class="card-body p-2">
+                        {% for item in c.items %}
+                        {% set stock_items = [] %}
+                        {% for o in item.material_orders if o.order_status == '재고이용' %}
+                            {% if stock_items.append(o) %}{% endif %}
+                        {% endfor %}
+                        {% if stock_items %}
+                        <div class="mat-item-card p-2 mb-2">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <div class="fw-bold">{{ item.model_name or '-' }}</div>
+                                    <div class="small text-muted">{{ item.category }} / 수량 {{ item.quantity or 0 }}</div>
+                                </div>
+                                <span class="badge bg-info text-dark">재고이용 {{ stock_items|length }}건</span>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm mat-order-table mb-0" style="min-width: 800px;">
+                                    <thead class="table-light text-center small">
+                                        <tr>
+                                            <th>자재명</th>
+                                            <th>품번</th>
+                                            <th>품명</th>
+                                            <th>규격</th>
+                                            <th>필요수량</th>
+                                            <th>예약수량</th>
+                                            <th>실재고</th>
+                                            <th>관리</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for o in stock_items %}
+                                        {% set bi = o.bom_item %}
+                                        {% set linked_item = bi.item if bi and bi.item_id else None %}
+                                        <tr>
+                                            <td class="fw-bold">{{ o.material_name }}</td>
+                                            <td class="small text-muted">{{ bi.item_code if bi and bi.item_code else '-' }}</td>
+                                            <td class="small">{{ bi.item_name if bi else '-' }}</td>
+                                            <td class="small text-muted" style="max-width:100px;overflow:hidden;text-overflow:ellipsis;" title="{{ bi.item_spec if bi and bi.item_spec else '' }}">{{ bi.item_spec if bi and bi.item_spec else '-' }}</td>
+                                            <td class="text-end">{{ o.quantity }}</td>
+                                            <td class="text-end">{{ (linked_item.reserved_qty or 0)|round(0)|int if linked_item else '-' }}</td>
+                                            <td class="text-end">{{ (linked_item.stock_qty or 0)|round(0)|int if linked_item else '-' }}</td>
+                                            <td class="text-center text-nowrap">
+                                                <form method="POST" class="d-inline m-0" onsubmit="return confirm('이 자재의 재고 예약을 취소하시겠습니까?')">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <input type="hidden" name="action" value="cancel_reservation">
+                                                    <input type="hidden" name="material_order_id" value="{{ o.id }}">
+                                                    <button class="btn btn-sm btn-outline-danger">예약취소</button>
+                                                </form>
+                                                <button class="btn btn-sm btn-outline-dark" type="button" data-bs-toggle="modal" data-bs-target="#matOrderModal{{ o.id }}">수정</button>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            {# ========= 전체 탭 ========= #}
+            <div class="tab-pane fade" id="pane-all" role="tabpanel">
+                {% for c in project.contracts %}
+                <div class="card shadow-sm border-0 mb-3">
+                    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                        <span class="fw-bold">{{ c.contract_name }}</span>
+                        <span class="badge bg-light text-dark">{{ c.items|length }}개 품목</span>
+                    </div>
+                    <div class="card-body p-2">
+                        {% for item in c.items %}
+                        <div class="mat-item-card p-2 mb-2">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <div class="fw-bold">{{ item.model_name or '-' }}</div>
+                                    <div class="small text-muted">{{ item.category }} / 수량 {{ item.quantity or 0 }}</div>
+                                </div>
+                                <span class="badge bg-secondary">자재 {{ item.material_orders|length }}건</span>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table table-sm mat-order-table mb-0" style="min-width: 1100px;">
+                                    <thead class="table-light text-center small">
+                                        <tr>
+                                            <th style="width: 40px;">
+                                                <input type="checkbox" class="form-check-input select-all-orders" data-group="all-item-{{ item.id }}" title="전체선택">
+                                            </th>
+                                            <th>자재명</th>
+                                            <th style="font-size:.75rem;">품번</th>
+                                            <th style="font-size:.75rem;">품명</th>
+                                            <th style="font-size:.75rem;">규격</th>
+                                            <th>수량</th>
+                                            <th>발주상태</th>
+                                            <th>외주상태</th>
+                                            <th>발주일</th>
+                                            <th>입고예정</th>
+                                            <th>입고확인</th>
+                                            <th>입고확인일</th>
+                                            <th>관리</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for o in item.material_orders %}
+                                        <tr>
+                                            <td class="text-center">
+                                                <input type="checkbox" class="form-check-input order-check" data-group="all-item-{{ item.id }}" name="selected_order_ids" value="{{ o.id }}" form="bulkApplyForm">
+                                            </td>
+                                            <td class="fw-bold">{{ o.material_name }}</td>
+                                            <td class="small text-muted text-nowrap" style="max-width:80px;overflow:hidden;text-overflow:ellipsis;" title="{{ o.bom_item.item_code if o.bom_item and o.bom_item.item_code else '' }}">{{ o.bom_item.item_code if o.bom_item and o.bom_item.item_code else '-' }}</td>
+                                            <td class="small text-nowrap" style="max-width:100px;overflow:hidden;text-overflow:ellipsis;" title="{{ o.bom_item.item_name if o.bom_item else '' }}">{{ o.bom_item.item_name if o.bom_item else '-' }}</td>
+                                            <td class="small text-muted text-nowrap" style="max-width:80px;overflow:hidden;text-overflow:ellipsis;" title="{{ o.bom_item.item_spec if o.bom_item and o.bom_item.item_spec else '' }}">{{ o.bom_item.item_spec if o.bom_item and o.bom_item.item_spec else '-' }}</td>
+                                            <td class="text-end">{{ o.quantity }}</td>
+                                            <td class="text-center">
+                                                <span class="badge {% if o.order_status == '입고완료' %}bg-success{% elif o.order_status == '발주완료' %}bg-primary{% elif o.order_status == '재고이용' %}bg-info text-dark{% else %}bg-secondary{% endif %}">{{ o.order_status }}</span>
+                                            </td>
+                                            <td class="text-center">
+                                                {% if o.is_outsourcing %}
+                                                    <span class="badge bg-warning text-dark">{{ o.outsourcing_status or '외주입고대기' }}</span>
+                                                {% else %}<span class="text-muted">-</span>{% endif %}
+                                            </td>
+                                            <td class="text-center">{{ o.order_date.strftime('%Y-%m-%d') if o.order_date else '-' }}</td>
+                                            <td class="text-center">{{ o.expected_in_date.strftime('%Y-%m-%d') if o.expected_in_date else '-' }}</td>
+                                            <td class="text-center">{{ '완료' if o.in_confirmed else '-' }}</td>
+                                            <td class="text-center">{{ o.in_confirmed_at.strftime('%Y-%m-%d') if o.in_confirmed_at else '-' }}</td>
+                                            <td class="text-center">
+                                                <button class="btn btn-sm btn-outline-dark" type="button" data-bs-toggle="modal" data-bs-target="#matOrderModal{{ o.id }}">수정</button>
+                                            </td>
+                                        </tr>
                                         {% else %}
-                                            <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="text-center">{{ o.order_date.strftime('%Y-%m-%d') if o.order_date else '-' }}</td>
-                                    <td class="text-center">{{ o.expected_in_date.strftime('%Y-%m-%d') if o.expected_in_date else '-' }}</td>
-                                    <td class="text-center">{{ '완료' if o.in_confirmed else '-' }}</td>
-                                    <td class="text-center">{{ o.in_confirmed_at.strftime('%Y-%m-%d') if o.in_confirmed_at else '-' }}</td>
-                                    <td class="text-center">
-                                        <button class="btn btn-sm btn-outline-dark" type="button" data-bs-toggle="modal" data-bs-target="#matOrderModal{{ o.id }}">수정</button>
-                                    </td>
-                                </tr>
-                                {% else %}
-                                <tr><td colspan="10" class="text-center text-muted py-2">자재 정보가 없습니다.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                                        <tr><td colspan="13" class="text-center text-muted py-2">자재 정보가 없습니다.</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {% endfor %}
                     </div>
                 </div>
                 {% endfor %}
             </div>
         </div>
-        {% endfor %}
     </div>
 
     <div class="col-lg-4">
-        {% set history_board_title = '📜 자재 히스토리 보드' %}
+        {% set history_board_title = '자재 히스토리 보드' %}
         {% set history_post_action = 'add_chat' %}
         {% set history_post_url = url_for('material.material_detail', project_id=project.id) %}
         {% set history_board_id = 'material-history-board-detail' %}
@@ -198,12 +404,23 @@
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
+                        {% set bi = o.bom_item %}
+                        {% set linked_item = bi.item if bi and bi.item_id else None %}
+                        {% if linked_item %}
+                        <div class="alert alert-light py-2 mb-3 stock-info">
+                            <strong>재고 현황:</strong>
+                            실재고 <strong>{{ (linked_item.stock_qty or 0)|round(0)|int }}</strong>
+                            / 예약 <strong>{{ (linked_item.reserved_qty or 0)|round(0)|int }}</strong>
+                            / 가용 <strong class="{{ 'text-success' if ((linked_item.stock_qty or 0) - (linked_item.reserved_qty or 0)) >= (o.quantity or 0) else 'text-danger' }}">{{ ((linked_item.stock_qty or 0) - (linked_item.reserved_qty or 0))|round(0)|int }}</strong>
+                        </div>
+                        {% endif %}
                         <div class="row g-2">
                             <div class="col-md-4">
                                 <label class="small fw-bold">발주상태</label>
                                 <select name="order_status" class="form-select">
                                     <option value="발주대기" {% if o.order_status == '발주대기' %}selected{% endif %}>발주대기</option>
                                     <option value="발주완료" {% if o.order_status == '발주완료' %}selected{% endif %}>발주완료</option>
+                                    <option value="재고이용" {% if o.order_status == '재고이용' %}selected{% endif %}>재고이용</option>
                                     <option value="입고완료" {% if o.order_status == '입고완료' %}selected{% endif %}>입고완료</option>
                                 </select>
                             </div>
@@ -373,6 +590,25 @@
 
         selectAllBoxes.forEach(h => syncGroupHeader(h.dataset.group));
         refreshSelectedCount();
+
+        // 탭 뱃지 카운트 업데이트
+        var orderCount = 0;
+        var stockCount = 0;
+        {% for c in project.contracts %}
+            {% for item in c.items %}
+                {% for o in item.material_orders %}
+                    {% if o.order_status == '재고이용' %}
+                        stockCount++;
+                    {% else %}
+                        orderCount++;
+                    {% endif %}
+                {% endfor %}
+            {% endfor %}
+        {% endfor %}
+        var orderBadge = document.getElementById('orderCountBadge');
+        var stockBadge = document.getElementById('stockCountBadge');
+        if (orderBadge) orderBadge.textContent = orderCount;
+        if (stockBadge) stockBadge.textContent = stockCount;
     })();
 </script>
 {% endblock %}

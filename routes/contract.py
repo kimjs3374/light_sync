@@ -53,6 +53,8 @@ def contract_create():
                     if not c_date_raw or not d_due_raw:
                         raise ValueError(f"{i}번 계약의 계약일/납품기일을 입력해 주세요.")
 
+                    g2b_no = request.form.get(f'g2b_contract_no_{i}', '').strip() or None
+
                     new_c = Contract(
                         project_id=new_p.id, contract_name=c_name,
                         item_group=item_group,
@@ -63,7 +65,8 @@ def contract_create():
                             if request.form.get(f'desired_delivery_{i}') else None
                         ),
                         is_prof_inspection=request.form.get(f'is_prof_{i}') == '1',
-                        is_urgent_prod=request.form.get(f'is_urgent_{i}') == '1'
+                        is_urgent_prod=request.form.get(f'is_urgent_{i}') == '1',
+                        g2b_contract_no=g2b_no,
                     )
                     db.add(new_c); db.flush()
                     cats = request.form.getlist(f'item_category_{i}[]')

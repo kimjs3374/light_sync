@@ -3,15 +3,20 @@
 - 엔드포인트: getSpcifyPrdlstPrcureInfoList
 - 핵심 트릭: inqryPrdctDiv=3 + prdctIdntNoNm=매그나텍 → 품목코드 순환 불필요
 - 일일 동기화 + 초기 벌크 동기화 지원
+- 동기화 후 자동 계약 생성 (auto_create_contracts)
 """
 import os
 import logging
 import datetime
 import urllib.parse
+from collections import defaultdict
 
 import requests
 
-from modules.models import G2bProcurement
+from modules.models import (
+    G2bProcurement, Project, Contract, ContractItem,
+    DETAIL_ITEM_OPTIONS, normalize_detail_item,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -316,3 +321,113 @@ def sync_bulk(db, start_year=2020, end_year=None):
         'updated': total_updated,
         'errors': total_errors,
     }
+
+
+def auto_create_contracts(db, since_date=None):
+    """
+    G2B 동기화 후 호출: 최근 동기화된(since_date 이후) G2B 건 중
+    아직 ERP Contract에 연동되지 않은 건만 자동 생성.
+
+    - since_date 미지정 시: 오늘 기준 7일 이내 수집건만 대상
+    - cntrct_dlvr_req_no 기준 그룹핑
+    - 이미 Contract.g2b_contract_no로 연결된 건은 skip
+    - 취소건(prdct_amt=0 AND prdct_qty=0) 제외
+    - Project: status='G2B자동', is_contracted=True, project_no=YYYY-NNN
+    """
+    if since_date is None:
+        since_date = datetime.date.today() - datetime.timedelta(days=7)
+
+    # 1) 이미 연동된 g2b_contract_no 목록 수집
+    existing_g2b_nos = set()
+    for (no,) in db.query(Contract.g2b_contract_no).filter(
+        Contract.g2b_contract_no.isnot(None),
+        Contract.g2b_contract_no != '',
+    ).all():
+        existing_g2b_nos.add(no)
+
+    # 2) 최근 수집된 G2B 건만 대상 (created_at 기준)
+    since_dt = datetime.datetime.combine(since_date, datetime.time.min)
+    all_g2b = db.query(G2bProcurement).filter(
+        G2bProcurement.created_at >= since_dt,
+    ).order_by(
+        G2bProcurement.cntrct_dlvr_req_no,
+        G2bProcurement.prdct_sno,
+    ).all()
+
+    grouped = defaultdict(list)
+    for g in all_g2b:
+        grouped[g.cntrct_dlvr_req_no].append(g)
+
+    created_count = 0
+    skipped_count = 0
+
+    year = str(datetime.date.today().year)
+
+    for req_no, items in grouped.items():
+        # 이미 연동된 건이면 skip
+        if req_no in existing_g2b_nos:
+            skipped_count += 1
+            continue
+
+        # 유효 품목만 필터 (취소건 제외: 금액=0 AND 수량=0)
+        valid_items = [
+            it for it in items
+            if not ((it.prdct_amt or 0) == 0 and (it.prdct_qty or 0) == 0)
+        ]
+        if not valid_items:
+            skipped_count += 1
+            continue
+
+        # 대표 정보 (첫 번째 레코드 기준)
+        rep = valid_items[0]
+        contract_name = rep.cntrct_dlvr_req_nm or f'G2B-{req_no}'
+        contract_date = rep.cntrct_dlvr_req_date
+        delivery_due_date = rep.dlvr_tmlmt_date
+
+        # 3) Project 채번 (YYYY-NNN)
+        count = db.query(Project).filter(Project.project_no.like(f"{year}-%")).count()
+        project_no = f"{year}-{(count + 1):03d}"
+
+        new_project = Project(
+            project_no=project_no,
+            temp_name=contract_name,
+            status='G2B자동',
+            is_contracted=True,
+            contract_date=contract_date or datetime.date.today(),
+            site_address=rep.dlvr_plce_nm or '',
+            shipping_address=rep.dlvr_plce_nm or '',
+        )
+        db.add(new_project)
+        db.flush()  # project.id 확보
+
+        # 4) Contract 생성
+        new_contract = Contract(
+            project_id=new_project.id,
+            contract_name=contract_name,
+            contract_date=contract_date,
+            delivery_due_date=delivery_due_date,
+            g2b_contract_no=req_no,
+            item_group=DETAIL_ITEM_OPTIONS[0],
+        )
+        db.add(new_contract)
+        db.flush()  # contract.id 확보
+
+        # 5) ContractItem 생성 (품목별)
+        for it in valid_items:
+            category = normalize_detail_item(
+                it.dtil_prdct_clsfc_no_nm,
+                default=DETAIL_ITEM_OPTIONS[0],
+            )
+            db.add(ContractItem(
+                contract_id=new_contract.id,
+                category=category,
+                model_name=it.prdct_idnt_no_nm or it.prdct_clsfc_no_nm or '',
+                quantity=it.prdct_qty or 0,
+            ))
+
+        created_count += 1
+
+    logger.info(
+        f"[G2B조달] 자동계약생성: 신규 {created_count}건, 스킵 {skipped_count}건"
+    )
+    return {'created': created_count, 'skipped': skipped_count}

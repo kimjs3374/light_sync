@@ -201,10 +201,11 @@ import click
 @app.cli.command('sync-g2b')
 @click.option('--mode', default='daily', help='daily: 전일 동기화, bulk: 전체 동기화')
 @click.option('--start-year', default=2012, help='벌크 동기화 시작 연도')
-def sync_g2b_cli(mode, start_year):
-    """나라장터 조달내역 동기화 (crontab용)"""
+@click.option('--no-auto-contract', is_flag=True, help='자동 계약 생성 비활성화')
+def sync_g2b_cli(mode, start_year, no_auto_contract):
+    """나라장터 조달내역 동기화 + 자동 계약 생성 (crontab용)"""
     from modules.db_context import get_db
-    from modules.services.g2b_procurement_sync import sync_daily, sync_bulk
+    from modules.services.g2b_procurement_sync import sync_daily, sync_bulk, auto_create_contracts
 
     with get_db() as db:
         if mode == 'bulk':
@@ -213,8 +214,16 @@ def sync_g2b_cli(mode, start_year):
             result = sync_daily(db)
         db.commit()
 
+        # 자동 계약 생성
+        auto_result = {'created': 0, 'skipped': 0}
+        if not no_auto_contract:
+            auto_result = auto_create_contracts(db)
+            db.commit()
+
     click.echo(f"[G2B] {mode} 완료: 신규 {result['created']}건, 갱신 {result['updated']}건"
                + (f", 오류 {result['errors']}건" if result.get('errors') else ''))
+    if auto_result['created']:
+        click.echo(f"[G2B] 자동계약: {auto_result['created']}건 생성, {auto_result['skipped']}건 스킵")
 
 
 if __name__ == '__main__':
