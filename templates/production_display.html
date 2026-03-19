@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- 자동갱신: JS fetch (전광판 끊김 방지) -->
+    <title>Light-Sync 전사 현황판</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            background: #0f172a;
+            color: #f1f5f9;
+            font-family: -apple-system, 'Pretendard', 'Malgun Gothic', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Header ── */
+        .pd-header {
+            padding: .4rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #1e293b;
+            flex-shrink: 0;
+            background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%);
+        }
+        .pd-header-left {
+            display: flex;
+            align-items: center;
+            gap: .7rem;
+        }
+        .pd-logo {
+            font-size: 1.15rem;
+            font-weight: 900;
+            letter-spacing: -.02em;
+        }
+        .pd-logo-company {
+            color: #60a5fa;
+        }
+        .pd-logo-divider {
+            color: #334155;
+            font-weight: 400;
+            margin: 0 .15rem;
+        }
+        .pd-logo-sub {
+            color: #94a3b8;
+            font-weight: 600;
+            font-size: .82rem;
+        }
+        .pd-header-center {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            font-size: .78rem;
+            color: #cbd5e1;
+        }
+        .pd-weather {
+            display: flex;
+            align-items: center;
+            gap: .4rem;
+            font-size: .73rem;
+            color: #94a3b8;
+        }
+        .pd-weather-icon { font-size: .95rem; }
+        .pd-weather-temp { font-weight: 800; color: #e2e8f0; font-size: .85rem; }
+        .pd-weather-detail { color: #64748b; font-size: .65rem; }
+        .pd-weather-sep { color: #334155; margin: 0 .1rem; }
+        .pd-forecast {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            margin-left: .3rem;
+            padding-left: .5rem;
+            border-left: 1px solid #334155;
+        }
+        .pd-forecast-day {
+            display: flex;
+            align-items: center;
+            gap: .2rem;
+            font-size: .6rem;
+            color: #94a3b8;
+        }
+        .pd-forecast-day .fc-wd { font-weight: 700; color: #cbd5e1; }
+        .pd-forecast-day .fc-icon { font-size: .75rem; }
+        .pd-forecast-day .fc-temp { color: #64748b; }
+        .pd-header-right {
+            display: flex;
+            align-items: center;
+            gap: .7rem;
+            font-size: .78rem;
+            color: #94a3b8;
+        }
+        .pd-live-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .4; }
+        }
+
+        /* ── Board (6 columns) ── */
+        .pd-board {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: .5rem;
+            padding: .5rem;
+            min-height: 0;
+        }
+
+        /* ── Column ── */
+        .pd-column {
+            display: flex;
+            flex-direction: column;
+            background: #1e293b;
+            border-radius: 12px;
+            overflow: hidden;
+            min-height: 0;
+        }
+        .pd-column-head {
+            padding: .45rem .65rem;
+            font-size: .9rem;
+            font-weight: 800;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+            border-bottom: 3px solid;
+        }
+        .pd-column-count {
+            font-size: 1.15rem;
+            font-weight: 900;
+        }
+
+        .pd-tone-purple .pd-column-head { border-color: #a855f7; color: #c084fc; }
+        .pd-tone-amber .pd-column-head { border-color: #f59e0b; color: #fbbf24; }
+        .pd-tone-blue .pd-column-head { border-color: #3b82f6; color: #60a5fa; }
+        .pd-tone-green .pd-column-head { border-color: #22c55e; color: #4ade80; }
+        .pd-tone-cyan .pd-column-head { border-color: #06b6d4; color: #22d3ee; }
+        .pd-tone-slate .pd-column-head { border-color: #64748b; color: #94a3b8; }
+
+        .pd-tone-purple .pd-column-count { color: #c084fc; }
+        .pd-tone-amber .pd-column-count { color: #fbbf24; }
+        .pd-tone-blue .pd-column-count { color: #60a5fa; }
+        .pd-tone-green .pd-column-count { color: #4ade80; }
+        .pd-tone-cyan .pd-column-count { color: #22d3ee; }
+        .pd-tone-slate .pd-column-count { color: #94a3b8; }
+
+        .pd-column-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: .4rem;
+            display: flex;
+            flex-direction: column;
+            gap: .4rem;
+            min-height: 0;
+        }
+        .pd-column-body::-webkit-scrollbar { width: 3px; }
+        .pd-column-body::-webkit-scrollbar-track { background: transparent; }
+        .pd-column-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+
+        /* ── Card ── */
+        .pd-card {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: .45rem .55rem;
+            flex-shrink: 0;
+        }
+        .pd-card.pd-urgent {
+            border-color: #ef4444;
+            box-shadow: inset 0 0 0 1px rgba(239,68,68,.2);
+        }
+        .pd-card.pd-priority {
+            border-color: #f59e0b;
+            background: linear-gradient(180deg, #1a1a2e 0%, #0f172a 100%);
+        }
+
+        .pd-card-header {
+            display: flex;
+            align-items: center;
+            gap: .3rem;
+            flex-wrap: nowrap;
+            margin-bottom: .2rem;
+            overflow: hidden;
+        }
+        .pd-card-name {
+            font-size: .82rem;
+            font-weight: 800;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+        }
+        .pd-star { color: #fbbf24; font-size: .75rem; flex-shrink: 0; }
+
+        .pd-card-item {
+            font-size: .7rem;
+            color: #94a3b8;
+            margin-bottom: .25rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* D-Day badges */
+        .pd-dday {
+            font-size: .6rem;
+            font-weight: 800;
+            padding: .1rem .3rem;
+            border-radius: 4px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .pd-dday-red { background: #ef4444; color: #fff; }
+        .pd-dday-yellow { background: #f59e0b; color: #0f172a; }
+        .pd-dday-blue { background: #3b82f6; color: #fff; }
+
+        /* Material progress bar */
+        .pd-material-bar {
+            display: flex;
+            align-items: center;
+            gap: .35rem;
+            margin-bottom: .2rem;
+        }
+        .pd-bar-track {
+            flex: 1;
+            height: 4px;
+            background: #334155;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .pd-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width .3s;
+        }
+        .pd-fill-amber { background: #f59e0b; }
+        .pd-fill-green { background: #22c55e; }
+        .pd-fill-cyan { background: #06b6d4; }
+        .pd-bar-label {
+            font-size: .62rem;
+            color: #94a3b8;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        /* Missing materials */
+        .pd-missing {
+            font-size: .62rem;
+            color: #cbd5e1;
+            padding: .08rem 0;
+            display: flex;
+            align-items: center;
+            gap: .2rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .pd-badge-danger {
+            background: #dc2626;
+            color: #fff;
+            font-size: .55rem;
+            font-weight: 700;
+            padding: .06rem .2rem;
+            border-radius: 3px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .pd-badge-outsource {
+            background: #7c3aed;
+            color: #fff;
+            font-size: .55rem;
+            font-weight: 700;
+            padding: .06rem .2rem;
+            border-radius: 3px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .pd-badge-muted {
+            color: #64748b;
+            font-size: .6rem;
+            flex-shrink: 0;
+        }
+        .pd-badge-info {
+            background: #0ea5e9;
+            color: #fff;
+            font-size: .55rem;
+            font-weight: 700;
+            padding: .06rem .2rem;
+            border-radius: 3px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        /* Status labels */
+        .pd-material-ok {
+            font-size: .68rem;
+            color: #4ade80;
+            font-weight: 700;
+            margin-bottom: .15rem;
+        }
+        .pd-ready-rank {
+            font-size: .62rem;
+            color: #60a5fa;
+            font-weight: 800;
+        }
+        .pd-process-current {
+            font-size: .7rem;
+            color: #e2e8f0;
+            font-weight: 700;
+            margin-bottom: .2rem;
+        }
+        .pd-process-next {
+            font-size: .62rem;
+            color: #64748b;
+            margin-top: .15rem;
+        }
+        .pd-completed-date {
+            font-size: .65rem;
+            color: #64748b;
+        }
+        .pd-sales-status {
+            font-size: .62rem;
+            color: #c084fc;
+            font-weight: 700;
+        }
+        .pd-delivery-status {
+            font-size: .65rem;
+            color: #22d3ee;
+            font-weight: 700;
+        }
+
+        /* Empty column */
+        .pd-empty {
+            text-align: center;
+            padding: 1rem .4rem;
+            color: #475569;
+            font-size: .72rem;
+        }
+
+        /* ── Billboard (전광판) ── */
+        .pd-billboard {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            padding: .35rem .8rem;
+            min-height: 30px;
+            overflow: hidden;
+            border-top: 1px solid #334155;
+            transition: background .3s;
+        }
+        .pd-billboard.level-info { background: linear-gradient(90deg, #0f172a, #1e3a5f); }
+        .pd-billboard.level-warning { background: linear-gradient(90deg, #422006, #7c4a03); }
+        .pd-billboard.level-danger { background: linear-gradient(90deg, #3f0d12, #7f1d1d); animation: dangerPulse 2.5s ease-in-out infinite; }
+        @keyframes dangerPulse {
+            0%, 100% { box-shadow: none; }
+            50% { box-shadow: inset 0 0 12px rgba(220,53,69,.15); }
+        }
+        .pd-billboard-pill {
+            font-size: .65rem;
+            font-weight: 800;
+            padding: .15rem .4rem;
+            border-radius: 999px;
+            background: rgba(255,255,255,.12);
+            border: 1px solid rgba(255,255,255,.1);
+            white-space: nowrap;
+            flex-shrink: 0;
+            text-transform: uppercase;
+            letter-spacing: .03em;
+        }
+        .pd-billboard-track {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+        .pd-billboard-msg {
+            font-size: .75rem;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            opacity: 1;
+            transition: opacity .4s;
+        }
+        .pd-billboard-msg.fade-out { opacity: 0; }
+        .pd-billboard-counter {
+            font-size: .6rem;
+            color: rgba(255,255,255,.45);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        /* ── Material Ticker ── */
+        .pd-ticker {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            padding: .3rem .8rem;
+            background: #0f172a;
+            border-top: 1px solid #1e293b;
+            overflow: hidden;
+            min-height: 28px;
+        }
+        .pd-ticker-label {
+            font-weight: 800;
+            font-size: .7rem;
+            white-space: nowrap;
+            flex-shrink: 0;
+            color: #fbbf24;
+        }
+        .pd-ticker-track {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+        .pd-ticker-scroll {
+            display: inline-flex;
+            gap: 2.5rem;
+            white-space: nowrap;
+            padding-left: 100%;
+        }
+        .pd-ticker-scroll.is-rolling {
+            animation: tickerRoll var(--ticker-duration, 30s) linear infinite;
+        }
+        .pd-ticker-item {
+            font-size: .7rem;
+            color: #cbd5e1;
+        }
+
+        @keyframes tickerRoll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        /* ── Card clickable ── */
+        .pd-card { cursor: pointer; transition: border-color .15s, transform .15s; }
+        .pd-card:hover { border-color: #60a5fa; transform: translateY(-1px); }
+
+        /* ── Modal (dark theme) ── */
+        .pd-modal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.6);
+            z-index: 9000;
+            justify-content: center;
+            align-items: center;
+        }
+        .pd-modal-backdrop.show { display: flex; }
+        .pd-modal {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            width: 480px;
+            max-width: 92vw;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 24px 48px rgba(0,0,0,.4);
+        }
+        .pd-modal-head {
+            padding: .8rem 1rem;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pd-modal-title {
+            font-size: 1.05rem;
+            font-weight: 800;
+        }
+        .pd-modal-close {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: .2rem .4rem;
+            border-radius: 6px;
+        }
+        .pd-modal-close:hover { background: #334155; color: #f1f5f9; }
+        .pd-modal-body {
+            padding: .8rem 1rem;
+        }
+        .pd-modal-section {
+            margin-bottom: .7rem;
+        }
+        .pd-modal-label {
+            font-size: .65rem;
+            font-weight: 800;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            margin-bottom: .3rem;
+        }
+        .pd-modal-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: .3rem 0;
+            font-size: .78rem;
+            border-bottom: 1px solid #0f172a;
+        }
+        .pd-modal-row:last-child { border-bottom: none; }
+        .pd-modal-val { font-weight: 700; }
+        .pd-modal-bar-wrap {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            margin: .3rem 0;
+        }
+        .pd-modal-bar {
+            flex: 1;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .pd-modal-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+        }
+        .pd-modal-mat-item {
+            display: flex;
+            align-items: center;
+            gap: .4rem;
+            padding: .25rem 0;
+            font-size: .75rem;
+            border-bottom: 1px solid #0f172a;
+        }
+        .pd-modal-mat-item:last-child { border-bottom: none; }
+        .pd-modal-mat-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pd-modal-foot {
+            padding: .6rem 1rem;
+            border-top: 1px solid #334155;
+            display: flex;
+            justify-content: flex-end;
+            gap: .5rem;
+        }
+        .pd-modal-foot a, .pd-modal-foot button {
+            font-size: .75rem;
+            padding: .35rem .7rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 700;
+        }
+        .pd-btn-detail { background: #3b82f6; color: #fff; border: none; }
+        .pd-btn-detail:hover { background: #2563eb; color: #fff; }
+        .pd-btn-close-modal { background: #334155; color: #94a3b8; border: none; }
+        .pd-btn-close-modal:hover { background: #475569; color: #f1f5f9; }
+
+        /* ── Schedule column (calendar + upcoming) ── */
+        .pd-tone-indigo .pd-column-head { border-color: #6366f1; color: #818cf8; }
+        .pd-tone-indigo .pd-column-count { color: #818cf8; }
+
+        .pd-cal-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            margin-bottom: .5rem;
+        }
+        .pd-cal-weekday {
+            text-align: center;
+            font-size: .55rem;
+            font-weight: 700;
+            color: #64748b;
+            padding: .15rem 0;
+        }
+        .pd-cal-cell {
+            text-align: center;
+            padding: .2rem .1rem;
+            font-size: .65rem;
+            font-weight: 600;
+            border-radius: 4px;
+            position: relative;
+        }
+        .pd-cal-cell.muted { color: #334155; }
+        .pd-cal-cell.today {
+            background: rgba(59,130,246,.25);
+            color: #60a5fa;
+            font-weight: 800;
+        }
+        .pd-cal-cell.has-item::after {
+            content: '';
+            display: block;
+            width: 4px; height: 4px;
+            border-radius: 50%;
+            background: #3b82f6;
+            margin: 1px auto 0;
+        }
+        .pd-cal-cell.urgent::after { background: #ef4444; }
+        .pd-cal-cell.multi::after {
+            width: 8px; height: 4px;
+            border-radius: 2px;
+        }
+
+        .pd-schedule-label {
+            font-size: .6rem;
+            font-weight: 800;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            margin-bottom: .3rem;
+        }
+        .pd-upcoming-item {
+            display: flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .3rem .4rem;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            background: #0f172a;
+            margin-bottom: .35rem;
+        }
+        .pd-upcoming-day {
+            min-width: 28px; height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            background: #1e293b;
+            font-size: .7rem;
+            font-weight: 900;
+            flex-shrink: 0;
+        }
+        .pd-upcoming-info {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+        }
+        .pd-upcoming-name {
+            font-size: .7rem;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .pd-upcoming-sub {
+            font-size: .58rem;
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 1400px) {
+            .pd-board { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 1024px) {
+            .pd-board { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="pd-header">
+        <div class="pd-header-left">
+            <div class="pd-logo">
+                <span class="pd-logo-company">MAGNATECH</span>
+                <span class="pd-logo-divider">|</span>
+                <span class="pd-logo-sub">전사 현황판</span>
+            </div>
+        </div>
+        <div class="pd-header-center">
+            {% set weekdays = ['월','화','수','목','금','토','일'] %}
+            <span>{{ today.strftime('%Y.%m.%d') }} ({{ weekdays[today.weekday()] }})</span>
+            <span id="pdClock" style="font-weight:800;color:#f1f5f9">--:--:--</span>
+            <div class="pd-weather" id="pdWeather">
+                <span class="pd-weather-icon" id="wIcon">🌤️</span>
+                <span class="pd-weather-temp" id="wTemp">--°C</span>
+                <span id="wDesc">장성</span>
+                <div class="pd-forecast" id="wForecast"></div>
+            </div>
+        </div>
+        <div class="pd-header-right">
+            <div class="pd-live-dot" title="30초 자동갱신"></div>
+            <span style="font-size:.65rem;color:#475569">LIVE</span>
+            <a href="{{ url_for('dashboard.dashboard_view') }}" style="color:#64748b;font-size:.65rem;text-decoration:none;">대시보드</a>
+        </div>
+    </header>
+
+    <!-- 5-Column Kanban + 1 Schedule Column -->
+    <main class="pd-board">
+        {% for col in column_meta %}
+        {% if col.key == 'schedule' %}
+        {# ── 일정 컬럼: 미니 캘린더 + 다가오는 일정 ── #}
+        <section class="pd-column pd-tone-{{ col.tone }}" id="col-{{ col.key }}">
+            <div class="pd-column-head">
+                <span>{{ col.icon }} {{ col.label }}</span>
+                <span class="pd-column-count">{{ schedule.month_label }}</span>
+            </div>
+            <div class="pd-column-body" style="gap:.3rem">
+                <div class="pd-cal-grid">
+                    {% for wd in schedule.weekdays %}
+                    <div class="pd-cal-weekday">{{ wd }}</div>
+                    {% endfor %}
+                    {% for week in schedule.weeks %}
+                        {% for cell in week %}
+                        <div class="pd-cal-cell {% if not cell.in_month %}muted{% endif %} {% if cell.is_today %}today{% endif %} {% if cell.has_items %}has-item{% endif %} {% if cell.is_urgent %}urgent{% endif %} {% if cell.count > 1 %}multi{% endif %}">
+                            {{ cell.day }}
+                        </div>
+                        {% endfor %}
+                    {% endfor %}
+                </div>
+
+                <div class="pd-schedule-label">다가오는 납품</div>
+                {% for item in schedule.upcoming %}
+                <div class="pd-upcoming-item">
+                    <div class="pd-upcoming-day" style="color:{% if item.dday is not none and item.dday <= 3 %}#ef4444{% elif item.dday is not none and item.dday <= 7 %}#f59e0b{% else %}#60a5fa{% endif %}">
+                        {{ item.day }}
+                    </div>
+                    <div class="pd-upcoming-info">
+                        <div class="pd-upcoming-name">{{ item.project_name }}</div>
+                        <div class="pd-upcoming-sub">{{ item.contract_name }} · {{ item.date_str }}</div>
+                    </div>
+                    {% if item.dday is not none %}
+                    <span class="pd-dday {% if item.dday <= 3 %}pd-dday-red{% elif item.dday <= 7 %}pd-dday-yellow{% else %}pd-dday-blue{% endif %}">
+                        {% if item.dday < 0 %}D+{{ -item.dday }}{% elif item.dday == 0 %}D-Day{% else %}D-{{ item.dday }}{% endif %}
+                    </span>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="pd-empty">예정 일정 없음</div>
+                {% endfor %}
+            </div>
+        </section>
+        {% else %}
+        {# ── 일반 칸반 컬럼 ── #}
+        <section class="pd-column pd-tone-{{ col.tone }}" id="col-{{ col.key }}">
+            <div class="pd-column-head">
+                <span>{{ col.icon }} {{ col.label }}</span>
+                <span class="pd-column-count">{{ cards[col.key]|length }}</span>
+            </div>
+            <div class="pd-column-body">
+                {% for card in cards[col.key] %}
+                <div class="pd-card {% if card.is_urgent %}pd-urgent{% endif %} {% if card.is_priority %}pd-priority{% endif %}" data-card-id="{{ col.key }}_{{ card.contract_item_id }}" data-col-key="{{ col.key }}">
+                    <div class="pd-card-header">
+                        {% if card.is_priority %}<span class="pd-star">★</span>{% endif %}
+                        <span class="pd-card-name">{{ card.project_name }}</span>
+                        {% if card.dday is not none %}
+                        <span class="pd-dday {% if card.dday <= 3 %}pd-dday-red{% elif card.dday <= 7 %}pd-dday-yellow{% else %}pd-dday-blue{% endif %}">
+                            {% if card.dday < 0 %}D+{{ -card.dday }}{% elif card.dday == 0 %}D-Day{% else %}D-{{ card.dday }}{% endif %}
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div class="pd-card-item">{{ card.category }} {{ card.model_name }} x{{ card.quantity }}</div>
+
+                    {% if col.key == 'negotiation' %}
+                        <div class="pd-sales-status">{{ card.status_sales }}</div>
+
+                    {% elif col.key == 'material' %}
+                        <div class="pd-material-bar">
+                            <div class="pd-bar-track">
+                                <div class="pd-bar-fill pd-fill-amber" style="width:{{ card.material_percent }}%"></div>
+                            </div>
+                            <span class="pd-bar-label">{{ card.material_ready }}/{{ card.material_total }}</span>
+                        </div>
+                        {% for m in card.missing_materials[:2] %}
+                        <div class="pd-missing">
+                            {% if m.is_outsourcing %}<span class="pd-badge-outsource">외주</span>{% endif %}
+                            <span>{{ m.name }}</span>
+                            {% if m.status == '발주대기' %}
+                                <span class="pd-badge-danger">미발주</span>
+                            {% elif m.expected_date %}
+                                <span class="pd-badge-muted">{{ m.expected_date }}</span>
+                            {% else %}
+                                <span class="pd-badge-muted">미정</span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% if card.missing_materials|length > 2 %}
+                        <div class="pd-missing"><span class="pd-badge-muted">+{{ card.missing_materials|length - 2 }}건</span></div>
+                        {% endif %}
+
+                    {% elif col.key == 'production_ready' %}
+                        <div class="pd-material-ok">자재 ✅</div>
+                        <div class="pd-ready-rank">#{{ loop.index }} 투입</div>
+
+                    {% elif col.key == 'in_production' %}
+                        <div class="pd-process-current">{{ card.current_process or '공정 확인중' }}</div>
+                        <div class="pd-material-bar">
+                            <div class="pd-bar-track">
+                                <div class="pd-bar-fill pd-fill-green" style="width:{{ card.process_percent }}%"></div>
+                            </div>
+                            <span class="pd-bar-label">{{ card.process_percent }}%</span>
+                        </div>
+                        {% if card.next_process %}
+                        <div class="pd-process-next">다음: {{ card.next_process }}</div>
+                        {% endif %}
+
+                    {% elif col.key == 'delivery' %}
+                        {% if card.status_prod == '생산완료' %}
+                        <div class="pd-delivery-status">출고대기</div>
+                        {% else %}
+                        <div class="pd-delivery-status">납품진행</div>
+                        {% endif %}
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="pd-empty">없음</div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+        {% endfor %}
+    </main>
+
+    <!-- Card Detail Modal -->
+    <div class="pd-modal-backdrop" id="pdModal">
+        <div class="pd-modal">
+            <div class="pd-modal-head">
+                <div class="pd-modal-title" id="modalTitle">-</div>
+                <button class="pd-modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="pd-modal-body" id="modalBody"></div>
+            <div class="pd-modal-foot">
+                <a href="#" class="pd-btn-detail" id="modalDetailLink" target="_blank">상세 페이지</a>
+                <button class="pd-btn-close-modal" id="modalCloseBtn">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Billboard (전광판) -->
+    <div class="pd-billboard level-info" id="pdBillboard">
+        <span class="pd-billboard-pill" id="bbTitle">공지</span>
+        <div class="pd-billboard-track">
+            <div class="pd-billboard-msg" id="bbMessage">전광판을 불러오는 중...</div>
+        </div>
+        <span class="pd-billboard-counter" id="bbCounter"></span>
+    </div>
+
+    <!-- Material Ticker -->
+    <footer class="pd-ticker">
+        <span class="pd-ticker-label">📦 입고예정</span>
+        <div class="pd-ticker-track">
+            <div class="pd-ticker-scroll" id="tickerScroll">
+                {% for m in ticker %}
+                <span class="pd-ticker-item">
+                    {{ m.expected_date }} {{ m.material_name }} {{ m.quantity }}EA
+                    ({{ m.vendor_name }}→{{ m.project_name }})
+                    {% if m.is_outsourcing %}<span class="pd-badge-outsource">외주</span>{% endif %}
+                </span>
+                {% endfor %}
+                {% if not ticker %}
+                <span class="pd-ticker-item" style="color:#475569;">7일 내 입고 예정 없음</span>
+                {% endif %}
+                {# 무한 롤링 복제 #}
+                {% for m in ticker %}
+                <span class="pd-ticker-item">
+                    {{ m.expected_date }} {{ m.material_name }} {{ m.quantity }}EA
+                    ({{ m.vendor_name }}→{{ m.project_name }})
+                    {% if m.is_outsourcing %}<span class="pd-badge-outsource">외주</span>{% endif %}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+    </footer>
+
+    <script id="billboardData" type="application/json">{{ billboard|tojson }}</script>
+    <script id="columnMeta" type="application/json">{{ column_meta|tojson }}</script>
+    <script id="initialCards" type="application/json">{{ cards|tojson }}</script>
+    <script>
+    (() => {
+        const REFRESH_SEC = 30;
+        const columnMeta = JSON.parse(document.getElementById('columnMeta').textContent || '[]');
+
+        // ── 시계 ──
+        const clockEl = document.getElementById('pdClock');
+        function updateClock() {
+            const now = new Date();
+            clockEl.textContent = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+        updateClock();
+        setInterval(updateClock, 1000);
+
+        // ── 날씨 (서버 프록시 경유, 10분마다) ──
+        function loadWeather() {
+            fetch('/api/weather', { credentials: 'same-origin' })
+                .then(r => r.json())
+                .then(w => {
+                    document.getElementById('wIcon').textContent = w.icon || '🌤️';
+                    document.getElementById('wTemp').textContent = (w.temp || '--') + '°C';
+                    const parts = [w.desc || ''];
+                    if (w.feels && w.feels !== '--') parts.push('체감 ' + w.feels + '°');
+                    if (w.humidity && w.humidity !== '--') parts.push('습도 ' + w.humidity + '%');
+                    document.getElementById('wDesc').textContent = parts.filter(Boolean).join(' · ') || w.location || '';
+
+                    // 주간 예보
+                    const fc = w.forecast || [];
+                    const fcEl = document.getElementById('wForecast');
+                    if (fcEl && fc.length) {
+                        fcEl.innerHTML = fc.map((d, i) => {
+                            const label = i === 0 ? '오늘' : d.weekday || '';
+                            return `<div class="pd-forecast-day"><span class="fc-wd">${label}</span><span class="fc-icon">${d.icon}</span><span class="fc-temp">${d.min}/${d.max}°</span></div>`;
+                        }).join('');
+                    }
+                })
+                .catch(() => {});
+        }
+        loadWeather();
+        setInterval(loadWeather, 600000);
+
+        // ── 자재 티커 롤링 ──
+        function initTicker() {
+            const scrollEl = document.getElementById('tickerScroll');
+            if (scrollEl && scrollEl.children.length > 1) {
+                const totalWidth = scrollEl.scrollWidth / 2;
+                const speed = 55;
+                const duration = Math.max(12, Math.round(totalWidth / speed));
+                scrollEl.style.setProperty('--ticker-duration', duration + 's');
+                scrollEl.classList.add('is-rolling');
+            }
+        }
+        initTicker();
+
+        // ── 전광판 (한번만 초기화, 갱신 시 건드리지 않음) ──
+        let bbItems = [];
+        try { bbItems = JSON.parse(document.getElementById('billboardData').textContent || '[]'); } catch(e) {}
+
+        const bbEl = document.getElementById('pdBillboard');
+        const bbTitle = document.getElementById('bbTitle');
+        const bbMsg = document.getElementById('bbMessage');
+        const validLevels = ['info', 'warning', 'danger'];
+        let bbIndex = 0;
+        let bbTimer = null;
+
+        const bbCounter = document.getElementById('bbCounter');
+
+        function renderBb(idx) {
+            if (!bbItems.length) return;
+            const item = bbItems[idx] || bbItems[0];
+            const level = validLevels.includes(item.level) ? item.level : 'info';
+            bbEl.classList.remove('level-info', 'level-warning', 'level-danger');
+            bbEl.classList.add('level-' + level);
+            bbTitle.textContent = item.title || '공지';
+            bbMsg.textContent = item.message || '-';
+            bbMsg.classList.remove('fade-out');
+            if (bbItems.length > 1) {
+                bbCounter.textContent = `${idx + 1}/${bbItems.length}`;
+            }
+
+            if (bbTimer) clearTimeout(bbTimer);
+            const sec = Math.max(4, Number(item.display_seconds || 6));
+            if (bbItems.length > 1) {
+                bbTimer = setTimeout(() => {
+                    bbMsg.classList.add('fade-out');
+                    setTimeout(() => {
+                        bbIndex = (bbIndex + 1) % bbItems.length;
+                        renderBb(bbIndex);
+                    }, 400);
+                }, sec * 1000);
+            }
+        }
+        renderBb(0);
+
+        // ── 카드 데이터 저장소 (모달용) — 초기 데이터 로드 ──
+        const cardStore = {};
+        const initialCards = JSON.parse(document.getElementById('initialCards').textContent || '{}');
+        Object.keys(initialCards).forEach(colKey => {
+            (initialCards[colKey] || []).forEach(c => {
+                cardStore[colKey + '_' + c.contract_item_id] = c;
+            });
+        });
+
+        // ── 모달 ──
+        const modalBackdrop = document.getElementById('pdModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalBody = document.getElementById('modalBody');
+        const modalDetailLink = document.getElementById('modalDetailLink');
+
+        function closeModal() { modalBackdrop.classList.remove('show'); }
+        document.getElementById('modalClose').addEventListener('click', closeModal);
+        document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+        modalBackdrop.addEventListener('click', e => { if (e.target === modalBackdrop) closeModal(); });
+
+        function statusBadge(text, color) {
+            const colors = { red: '#ef4444', amber: '#f59e0b', green: '#22c55e', blue: '#3b82f6', purple: '#a855f7', cyan: '#06b6d4', slate: '#64748b' };
+            const bg = colors[color] || colors.slate;
+            return `<span style="background:${bg};color:#fff;font-size:.6rem;font-weight:700;padding:.1rem .3rem;border-radius:4px;white-space:nowrap">${text}</span>`;
+        }
+
+        function openModal(cardId, colKey) {
+            const card = cardStore[cardId];
+            if (!card) return;
+
+            modalTitle.textContent = `${card.project_name} (${card.project_no})`;
+            modalDetailLink.href = card.detail_url || '#';
+
+            let html = '';
+
+            // 기본 정보
+            html += `<div class="pd-modal-section">`;
+            html += `<div class="pd-modal-label">기본 정보</div>`;
+            html += `<div class="pd-modal-row"><span>품목</span><span class="pd-modal-val">${card.category} ${card.model_name}</span></div>`;
+            html += `<div class="pd-modal-row"><span>수량</span><span class="pd-modal-val">${card.quantity}EA</span></div>`;
+            html += `<div class="pd-modal-row"><span>납기</span><span class="pd-modal-val">${card.dday != null ? (card.dday < 0 ? 'D+' + (-card.dday) : card.dday === 0 ? 'D-Day' : 'D-' + card.dday) : '미정'}</span></div>`;
+            html += `<div class="pd-modal-row"><span>상태</span><span>${card.is_urgent ? statusBadge('긴급', 'red') + ' ' : ''}${card.is_priority ? statusBadge('최우선', 'amber') + ' ' : ''}${statusBadge(card.status_prod || '-', colKey === 'negotiation' ? 'purple' : colKey === 'material' ? 'amber' : colKey === 'in_production' ? 'green' : colKey === 'delivery' ? 'cyan' : 'slate')}</span></div>`;
+            html += `</div>`;
+
+            // 협의현황
+            if (colKey === 'negotiation') {
+                html += `<div class="pd-modal-section">`;
+                html += `<div class="pd-modal-label">영업 현황</div>`;
+                html += `<div class="pd-modal-row"><span>영업 상태</span><span class="pd-modal-val">${card.status_sales || '-'}</span></div>`;
+                html += `<div class="pd-modal-row"><span>관리 상태</span><span class="pd-modal-val">${card.status_admin || '-'}</span></div>`;
+                html += `<div class="pd-modal-row"><span>생산 상태</span><span class="pd-modal-val">${card.status_prod || '-'}</span></div>`;
+                html += `</div>`;
+            }
+
+            // 자재 현황 (모든 자재 보여줌)
+            if (card.material_total > 0) {
+                const pct = card.material_percent;
+                const barColor = pct >= 100 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
+                html += `<div class="pd-modal-section">`;
+                html += `<div class="pd-modal-label">자재 현황 (${card.material_ready}/${card.material_total})</div>`;
+                html += `<div class="pd-modal-bar-wrap"><div class="pd-modal-bar"><div class="pd-modal-bar-fill" style="width:${pct}%;background:${barColor}"></div></div><span style="font-size:.75rem;font-weight:800">${pct}%</span></div>`;
+                if (card.missing_materials && card.missing_materials.length) {
+                    card.missing_materials.forEach(m => {
+                        const os = m.is_outsourcing ? statusBadge('외주', 'purple') + ' ' : '';
+                        let st = '';
+                        if (m.status === '발주대기') st = statusBadge('미발주', 'red');
+                        else if (m.status === '발주완료') st = statusBadge('발주완료', 'blue');
+                        else st = statusBadge(m.status, 'slate');
+                        const dt = m.expected_date ? `<span style="color:#64748b;font-size:.68rem;margin-left:.3rem">${m.expected_date}</span>` : '';
+                        html += `<div class="pd-modal-mat-item">${os}<span class="pd-modal-mat-name">${m.name}</span>${st}${dt}</div>`;
+                    });
+                } else {
+                    html += `<div style="font-size:.75rem;color:#4ade80;font-weight:700">전체 입고 완료 ✅</div>`;
+                }
+                html += `</div>`;
+            }
+
+            // 공정 현황
+            if (colKey === 'in_production' || colKey === 'production_ready') {
+                html += `<div class="pd-modal-section">`;
+                html += `<div class="pd-modal-label">공정 진행률</div>`;
+                const ppct = card.process_percent;
+                const pColor = ppct >= 80 ? '#22c55e' : ppct >= 40 ? '#3b82f6' : '#64748b';
+                html += `<div class="pd-modal-bar-wrap"><div class="pd-modal-bar"><div class="pd-modal-bar-fill" style="width:${ppct}%;background:${pColor}"></div></div><span style="font-size:.75rem;font-weight:800">${ppct}%</span></div>`;
+                if (card.current_process) html += `<div class="pd-modal-row"><span>현재 공정</span><span class="pd-modal-val">${card.current_process}</span></div>`;
+                if (card.next_process) html += `<div class="pd-modal-row"><span>다음 공정</span><span class="pd-modal-val">${card.next_process}</span></div>`;
+                html += `</div>`;
+            }
+
+            // 납품/완료
+            if (colKey === 'delivery') {
+                html += `<div class="pd-modal-section">`;
+                html += `<div class="pd-modal-label">납품 현황</div>`;
+                html += `<div class="pd-modal-row"><span>생산</span><span class="pd-modal-val">${card.status_prod}</span></div>`;
+                html += `</div>`;
+            }
+            if (colKey === 'completed' && card.completed_at) {
+                html += `<div class="pd-modal-section">`;
+                html += `<div class="pd-modal-label">완료</div>`;
+                html += `<div class="pd-modal-row"><span>완료일</span><span class="pd-modal-val">${card.completed_at}</span></div>`;
+                html += `</div>`;
+            }
+
+            modalBody.innerHTML = html;
+            modalBackdrop.classList.add('show');
+        }
+
+        // ── 카드에 클릭 이벤트 위임 ──
+        document.querySelector('.pd-board').addEventListener('click', e => {
+            const cardEl = e.target.closest('.pd-card');
+            if (!cardEl) return;
+            const id = cardEl.dataset.cardId;
+            const col = cardEl.dataset.colKey;
+            if (id && col) openModal(id, col);
+        });
+
+        // ── 카드 HTML 생성 ──
+        function ddayHtml(card) {
+            if (card.dday == null) return '';
+            const cls = card.dday <= 3 ? 'pd-dday-red' : card.dday <= 7 ? 'pd-dday-yellow' : 'pd-dday-blue';
+            const txt = card.dday < 0 ? `D+${-card.dday}` : card.dday === 0 ? 'D-Day' : `D-${card.dday}`;
+            return `<span class="pd-dday ${cls}">${txt}</span>`;
+        }
+
+        function cardHtml(card, colKey, rank) {
+            const cid = `${colKey}_${card.contract_item_id}`;
+            cardStore[cid] = card;
+
+            const urgent = card.is_urgent ? ' pd-urgent' : '';
+            const priority = card.is_priority ? ' pd-priority' : '';
+            const star = card.is_priority ? '<span class="pd-star">★</span>' : '';
+
+            let body = '';
+            if (colKey === 'negotiation') {
+                body = `<div class="pd-sales-status">${card.status_sales || ''}</div>`;
+            } else if (colKey === 'material') {
+                body = `<div class="pd-material-bar"><div class="pd-bar-track"><div class="pd-bar-fill pd-fill-amber" style="width:${card.material_percent}%"></div></div><span class="pd-bar-label">${card.material_ready}/${card.material_total}</span></div>`;
+                (card.missing_materials || []).slice(0, 2).forEach(m => {
+                    const osBadge = m.is_outsourcing ? '<span class="pd-badge-outsource">외주</span>' : '';
+                    let sBadge = '';
+                    if (m.status === '발주대기') sBadge = '<span class="pd-badge-danger">미발주</span>';
+                    else if (m.expected_date) sBadge = `<span class="pd-badge-muted">${m.expected_date}</span>`;
+                    else sBadge = '<span class="pd-badge-muted">미정</span>';
+                    body += `<div class="pd-missing">${osBadge}<span>${m.name}</span>${sBadge}</div>`;
+                });
+                if ((card.missing_materials || []).length > 2) {
+                    body += `<div class="pd-missing"><span class="pd-badge-muted">+${card.missing_materials.length - 2}건</span></div>`;
+                }
+            } else if (colKey === 'production_ready') {
+                body = `<div class="pd-material-ok">자재 ✅</div><div class="pd-ready-rank">#${rank} 투입</div>`;
+            } else if (colKey === 'in_production') {
+                body = `<div class="pd-process-current">${card.current_process || '공정 확인중'}</div>`;
+                body += `<div class="pd-material-bar"><div class="pd-bar-track"><div class="pd-bar-fill pd-fill-green" style="width:${card.process_percent}%"></div></div><span class="pd-bar-label">${card.process_percent}%</span></div>`;
+                if (card.next_process) body += `<div class="pd-process-next">다음: ${card.next_process}</div>`;
+            } else if (colKey === 'delivery') {
+                body = `<div class="pd-delivery-status">${card.status_prod === '생산완료' ? '출고대기' : '납품진행'}</div>`;
+            } else if (colKey === 'completed') {
+                body = `<div class="pd-completed-date">${card.completed_at || '-'} 완료</div>`;
+            }
+
+            return `<div class="pd-card${urgent}${priority}" data-card-id="${cid}" data-col-key="${colKey}">
+                <div class="pd-card-header">${star}<span class="pd-card-name">${card.project_name}</span>${ddayHtml(card)}</div>
+                <div class="pd-card-item">${card.category} ${card.model_name} x${card.quantity}</div>
+                ${body}
+            </div>`;
+        }
+
+        // ── AJAX 보드 갱신 (전광판/티커 유지) ──
+        function refreshBoard() {
+            fetch(location.pathname + '?partial=1', { credentials: 'same-origin' })
+                .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+                .then(data => {
+                    const cards = data.cards || {};
+                    columnMeta.forEach(col => {
+                        const colEl = document.getElementById('col-' + col.key);
+                        if (!colEl) return;
+                        const list = cards[col.key] || [];
+
+                        // 카운트 업데이트
+                        const countEl = colEl.querySelector('.pd-column-count');
+                        if (countEl) countEl.textContent = list.length;
+
+                        // 카드 영역 갱신
+                        const bodyEl = colEl.querySelector('.pd-column-body');
+                        if (!bodyEl) return;
+                        if (!list.length) {
+                            bodyEl.innerHTML = '<div class="pd-empty">없음</div>';
+                        } else {
+                            bodyEl.innerHTML = list.map((c, i) => cardHtml(c, col.key, i + 1)).join('');
+                        }
+                    });
+
+                    // 자재 티커도 갱신
+                    const ticker = data.ticker || [];
+                    const tickerEl = document.getElementById('tickerScroll');
+                    if (tickerEl && ticker.length) {
+                        const items = ticker.map(m => {
+                            const os = m.is_outsourcing ? ' <span class="pd-badge-outsource">외주</span>' : '';
+                            return `<span class="pd-ticker-item">${m.expected_date} ${m.material_name} ${m.quantity}EA (${m.vendor_name}→${m.project_name})${os}</span>`;
+                        });
+                        tickerEl.innerHTML = items.join('') + items.join('');
+                        tickerEl.classList.remove('is-rolling');
+                        void tickerEl.offsetWidth;
+                        const tw = tickerEl.scrollWidth / 2;
+                        tickerEl.style.setProperty('--ticker-duration', Math.max(12, Math.round(tw / 55)) + 's');
+                        tickerEl.classList.add('is-rolling');
+                    }
+                })
+                .catch(() => {});
+        }
+
+        setInterval(refreshBoard, REFRESH_SEC * 1000);
+    })();
+    </script>
+</body>
+</html>
