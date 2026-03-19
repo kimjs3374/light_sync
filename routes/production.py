@@ -677,11 +677,53 @@ def production_detail(project_id):
 # 카드형 생산관리 (재설계)
 # ===================================================================
 
+def _build_process_card(p, item, project, contract, today, today_logs):
+    """공정 1개를 카드 dict로 변환"""
+    mat_ready = are_materials_ready(item)
+    can_go = can_start_process(item, p)
+    delivery_date = contract.delivery_due_date if contract else None
+    dday = (delivery_date - today).days if delivery_date else None
+    return {
+        'process_id': p.id,
+        'process_name': p.process_name,
+        'step_order': p.step_order,
+        'status': p.status or '대기',
+        'is_forced': bool(p.is_forced),
+        'progress_qty': p.progress_qty or 0,
+        'progress_pct': round(p.progress_percent or 0, 1),
+        'started_at': p.started_at.strftime('%m/%d %H:%M') if p.started_at else None,
+        'completed_at': p.completed_at.strftime('%m/%d %H:%M') if p.completed_at else None,
+        'item_id': item.id,
+        'model_name': item.model_name or '-',
+        'category': item.category or '-',
+        'quantity': int(item.quantity or 0),
+        'item_status': item.status_prod or '자재대기중',
+        'project_id': project.id,
+        'site_name': project.temp_name or '-',
+        'project_no': project.project_no or '-',
+        'delivery_date': delivery_date.strftime('%m/%d') if delivery_date else None,
+        'dday': dday,
+        'materials_ready': mat_ready,
+        'can_start': can_go,
+        'today_qty': int(today_logs.get(p.id) or 0),
+    }
+
+
+def _load_today_logs(db, today):
+    return dict(
+        db.query(
+            ProductionDailyLog.production_process_id,
+            func.sum(ProductionDailyLog.daily_qty),
+        ).filter(
+            ProductionDailyLog.work_date == today,
+        ).group_by(ProductionDailyLog.production_process_id).all()
+    )
+
+
 @production_bp.route('/production')
 @login_required
 def production_main():
-    """카드형 생산관리 메인 — 공정 단위 플랫 리스트"""
-    view = (request.args.get('view') or 'process').strip()
+    """생산관리 메인 — 현장 목록 (현장 선택 → 상세)"""
     site_id = safe_int(request.args.get('site'), 0) or None
 
     with get_db() as db:
@@ -691,108 +733,118 @@ def production_main():
 
         today = datetime.date.today()
 
-        # 전체 공정 로드
-        q = db.query(ProductionProcess).options(
-            joinedload(ProductionProcess.contract_item)
-            .joinedload(ContractItem.contract)
-            .joinedload(Contract.project),
-            joinedload(ProductionProcess.contract_item)
-            .joinedload(ContractItem.material_orders),
-        )
-        if site_id:
-            q = q.filter(ProductionProcess.project_id == site_id)
+        # 현장 선택 안 됨 → 현장 목록 표시
+        if not site_id:
+            projects = db.query(Project).filter(
+                Project.is_contracted.is_(True)
+            ).options(
+                joinedload(Project.contracts)
+                .joinedload(Contract.items)
+                .joinedload(ContractItem.production_processes),
+            ).order_by(Project.id.desc()).all()
 
-        all_processes = q.order_by(ProductionProcess.id).all()
+            site_list = []
+            for proj in projects:
+                total_proc = 0
+                working_proc = 0
+                done_proc = 0
+                items_count = 0
+                delivery_date = None
 
-        # 오늘 일일로그 합산 (process_id → today_qty)
-        today_logs = dict(
-            db.query(
-                ProductionDailyLog.production_process_id,
-                func.sum(ProductionDailyLog.daily_qty),
-            ).filter(
-                ProductionDailyLog.work_date == today,
-            ).group_by(ProductionDailyLog.production_process_id).all()
-        )
+                for c in proj.contracts:
+                    if c.delivery_due_date and (delivery_date is None or c.delivery_due_date < delivery_date):
+                        delivery_date = c.delivery_due_date
+                    for item in c.items:
+                        items_count += 1
+                        for p in (item.production_processes or []):
+                            total_proc += 1
+                            if p.status == '진행중':
+                                working_proc += 1
+                            elif p.status in ('완료', '스킵'):
+                                done_proc += 1
 
-        # 카드 데이터 빌드
-        cards = []
-        for p in all_processes:
-            item = p.contract_item
-            if not item:
-                continue
-            contract = item.contract
-            project = contract.project if contract else None
-            if not project:
-                continue
+                if total_proc == 0:
+                    continue  # 공정 없는 현장은 숨김
 
-            mat_ready = are_materials_ready(item)
-            can_go = can_start_process(item, p)
-            delivery_date = contract.delivery_due_date if contract else None
-            dday = (delivery_date - today).days if delivery_date else None
+                dday = (delivery_date - today).days if delivery_date else None
+                pct = round(done_proc / total_proc * 100, 1) if total_proc else 0
 
-            cards.append({
-                'process_id': p.id,
-                'process_name': p.process_name,
-                'step_order': p.step_order,
-                'status': p.status or '대기',
-                'is_forced': bool(p.is_forced),
-                'progress_qty': p.progress_qty or 0,
-                'progress_pct': round(p.progress_percent or 0, 1),
-                'started_at': p.started_at.strftime('%m/%d %H:%M') if p.started_at else None,
-                'completed_at': p.completed_at.strftime('%m/%d %H:%M') if p.completed_at else None,
-                'item_id': item.id,
-                'model_name': item.model_name or '-',
-                'category': item.category or '-',
-                'quantity': int(item.quantity or 0),
-                'item_status': item.status_prod or '자재대기중',
-                'project_id': project.id,
-                'site_name': project.temp_name or '-',
-                'project_no': project.project_no or '-',
-                'delivery_date': delivery_date.strftime('%m/%d') if delivery_date else None,
-                'dday': dday,
-                'materials_ready': mat_ready,
-                'can_start': can_go,
-                'today_qty': int(today_logs.get(p.id) or 0),
-            })
+                site_list.append({
+                    'project_id': proj.id,
+                    'site_name': proj.temp_name or '-',
+                    'project_no': proj.project_no or '-',
+                    'items_count': items_count,
+                    'total_proc': total_proc,
+                    'working_proc': working_proc,
+                    'done_proc': done_proc,
+                    'pct': pct,
+                    'delivery_date': delivery_date.strftime('%m/%d') if delivery_date else None,
+                    'dday': dday,
+                    'status': '완료' if pct >= 100 else ('진행중' if working_proc > 0 else '대기'),
+                })
 
-        # 상태별 그룹핑
-        working = [c for c in cards if c['status'] == '진행중']
-        ready = [c for c in cards if c['status'] == '대기' and c['materials_ready'] and c['can_start']]
-        waiting = [c for c in cards if c['status'] == '대기' and not (c['materials_ready'] and c['can_start'])]
-        done = [c for c in cards if c['status'] in ('완료', '스킵')]
+            # 납기순 정렬 (진행중 우선, 그 다음 대기, 완료는 뒤로)
+            status_order = {'진행중': 0, '대기': 1, '완료': 2}
+            site_list.sort(key=lambda s: (status_order.get(s['status'], 9), s['dday'] if s['dday'] is not None else 9999))
 
-        # 납기순 정렬
-        sort_key = lambda c: (c['dday'] if c['dday'] is not None else 9999, c['site_name'])
-        working.sort(key=sort_key)
-        ready.sort(key=sort_key)
+            return render_template(
+                'production.html',
+                mode='sites',
+                site_list=site_list,
+                site_id=None,
+                today=today.strftime('%Y-%m-%d'),
+            )
+
+        # 현장 선택됨 → 해당 현장의 품목별 공정 카드
+        project = db.query(Project).get(site_id)
+        if not project:
+            flash('현장을 찾을 수 없습니다.', 'warning')
+            return redirect(url_for('production.production_main'))
+
+        today_logs = _load_today_logs(db, today)
+
+        # 품목별 그룹핑
+        item_groups = []
+        all_cards = []
+        for c in db.query(Contract).filter(Contract.project_id == site_id).options(
+            joinedload(Contract.items).joinedload(ContractItem.production_processes),
+            joinedload(Contract.items).joinedload(ContractItem.material_orders),
+        ).all():
+            for item in c.items:
+                processes = sorted(item.production_processes or [], key=lambda x: (x.step_order, x.id))
+                if not processes:
+                    continue
+                cards = [_build_process_card(p, item, project, c, today, today_logs) for p in processes]
+                all_cards.extend(cards)
+
+                done_count = sum(1 for cd in cards if cd['status'] in ('완료', '스킵'))
+                item_groups.append({
+                    'item_id': item.id,
+                    'model_name': item.model_name or '-',
+                    'category': item.category or '-',
+                    'quantity': int(item.quantity or 0),
+                    'item_status': item.status_prod or '자재대기중',
+                    'total_proc': len(cards),
+                    'done_proc': done_count,
+                    'pct': round(done_count / len(cards) * 100, 1) if cards else 0,
+                    'cards': cards,
+                })
 
         stats = {
-            'total': len(cards),
-            'working': len(working),
-            'ready': len(ready),
-            'waiting': len(waiting),
-            'done': len(done),
+            'total': len(all_cards),
+            'working': sum(1 for c in all_cards if c['status'] == '진행중'),
+            'ready': sum(1 for c in all_cards if c['status'] == '대기' and c['materials_ready'] and c['can_start']),
+            'waiting': sum(1 for c in all_cards if c['status'] == '대기' and not (c['materials_ready'] and c['can_start'])),
+            'done': sum(1 for c in all_cards if c['status'] in ('완료', '스킵')),
         }
-
-        # 현장 목록 (필터용)
-        sites = db.query(Project.id, Project.temp_name).filter(
-            Project.is_contracted.is_(True)
-        ).order_by(Project.temp_name).all()
-
-        # 카테고리 목록
-        categories = sorted(set(c['category'] for c in cards if c['category'] != '-'))
 
     return render_template(
         'production.html',
-        working=working,
-        ready=ready,
-        waiting=waiting,
-        done=done,
+        mode='detail',
+        project=project,
+        item_groups=item_groups,
         stats=stats,
-        view=view,
         site_id=site_id,
-        sites=[{'id': s[0], 'name': s[1]} for s in sites],
-        categories=categories,
         today=today.strftime('%Y-%m-%d'),
     )
 

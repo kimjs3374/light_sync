@@ -365,12 +365,87 @@
 }
 </style>
 
-{# ── Header ── #}
+{# ══════════════════════════════════════════════════ #}
+{# MODE: 현장 목록                                    #}
+{# ══════════════════════════════════════════════════ #}
+{% if mode == 'sites' %}
+
 <div class="prod-header">
     <h1>🏭 생산관리</h1>
-    <button class="btn btn-sm btn-light fw-bold px-3"
-            style="white-space:nowrap;"
-            id="btnSync" onclick="doSync()">
+    <button class="btn btn-sm btn-light fw-bold px-3" style="white-space:nowrap;" id="btnSync" onclick="doSync()">
+        <span id="syncSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
+        공정 동기화
+    </button>
+</div>
+
+<style>
+.site-card {
+    background: #fff; border-radius: 12px; border: 1px solid #e2e8f0;
+    border-left: 5px solid #94a3b8; padding: 16px; cursor: pointer;
+    transition: all .15s; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.site-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1); transform: translateY(-1px); }
+.site-card.site-working { border-left-color: #f59e0b; }
+.site-card.site-done { border-left-color: #22c55e; opacity: .7; }
+.site-card .site-name { font-weight: 700; font-size: 1rem; color: #0f172a; }
+.site-card .site-meta { font-size: .82rem; color: #64748b; }
+.site-card .site-right { text-align: right; min-width: 120px; }
+.site-card .site-pct { font-size: 1.3rem; font-weight: 800; }
+.site-card .site-pct.done { color: #22c55e; }
+.site-card .site-pct.working { color: #f59e0b; }
+.site-card .site-pct.waiting { color: #94a3b8; }
+.site-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 767.98px) { .site-grid { grid-template-columns: 1fr; } }
+</style>
+
+<div class="site-grid">
+    {% for s in site_list %}
+    <a href="{{ url_for('production.production_main', site=s.project_id) }}" class="text-decoration-none">
+        <div class="site-card {% if s.status == '진행중' %}site-working{% elif s.status == '완료' %}site-done{% endif %}">
+            <div>
+                <div class="site-name">{{ s.site_name }}</div>
+                <div class="site-meta">
+                    {{ s.project_no }} · {{ s.items_count }}품목 · {{ s.total_proc }}공정
+                    {% if s.delivery_date %}
+                    · 납기 {{ s.delivery_date }}
+                    {% if s.dday is not none %}
+                        {% if s.dday < 0 %}<span class="dday-badge dday-overdue">D+{{ s.dday|abs }}</span>
+                        {% elif s.dday < 7 %}<span class="dday-badge dday-danger">D-{{ s.dday }}</span>
+                        {% elif s.dday < 14 %}<span class="dday-badge dday-warn">D-{{ s.dday }}</span>
+                        {% else %}<span class="dday-badge dday-safe">D-{{ s.dday }}</span>
+                        {% endif %}
+                    {% endif %}
+                    {% endif %}
+                </div>
+                <div class="site-meta mt-1">
+                    진행 {{ s.working_proc }} · 완료 {{ s.done_proc }}/{{ s.total_proc }}
+                </div>
+            </div>
+            <div class="site-right">
+                <div class="site-pct {% if s.pct >= 100 %}done{% elif s.working_proc > 0 %}working{% else %}waiting{% endif %}">{{ s.pct }}%</div>
+                <div class="site-meta">완료율</div>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+
+{% if not site_list %}
+<div class="text-center text-muted py-5">진행중인 현장이 없습니다.</div>
+{% endif %}
+
+{% else %}
+{# ══════════════════════════════════════════════════ #}
+{# MODE: 현장 상세 (품목별 공정 카드)                    #}
+{# ══════════════════════════════════════════════════ #}
+
+{# ── Header ── #}
+<div class="prod-header">
+    <div class="d-flex align-items-center gap-2">
+        <a href="{{ url_for('production.production_main') }}" class="btn btn-sm btn-outline-light" style="white-space:nowrap;">← 현장목록</a>
+        <h1 style="font-size:1.2rem;">🏭 {{ project.temp_name }}</h1>
+    </div>
+    <button class="btn btn-sm btn-light fw-bold px-3" style="white-space:nowrap;" id="btnSync" onclick="doSync()">
         <span id="syncSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
         공정 동기화
     </button>
@@ -400,22 +475,10 @@
     </div>
 </div>
 
-{# ── Filter bar ── #}
+{# ── Filter bar (현장 상세 모드: 모델/공정 검색만) ── #}
 <div class="filter-bar">
-    <select id="filterSite" class="form-select" onchange="applyFilters()">
-        <option value="">전체 현장</option>
-        {% for s in sites %}
-        <option value="{{ s.id }}" {% if site_id == s.id %}selected{% endif %}>{{ s.name }}</option>
-        {% endfor %}
-    </select>
-    <select id="filterCategory" class="form-select" onchange="applyFilters()">
-        <option value="">전체 제품군</option>
-        {% for cat in categories %}
-        <option value="{{ cat }}">{{ cat }}</option>
-        {% endfor %}
-    </select>
     <input type="search" id="filterSearch" class="form-control"
-           placeholder="현장명·모델·공정 검색…"
+           placeholder="모델·공정 검색…"
            oninput="applyFilters()">
 </div>
 
@@ -529,81 +592,28 @@
 </div>
 {% endmacro %}
 
-{# ── Section: 진행중 ── #}
-<div class="section-wrapper" data-section="working">
-    <div class="section-hdr" onclick="toggleSection(this)">
-        <span>🔴</span>
-        <h2>진행중</h2>
-        <span class="section-count">{{ working|length }}건</span>
+{# ── 품목별 공정 카드 ── #}
+{% for grp in item_groups %}
+<div class="section-wrapper" data-section="item-{{ grp.item_id }}">
+    <div class="section-hdr {% if grp.pct >= 100 %}collapsed{% endif %}" onclick="toggleSection(this)">
+        <span>{% if grp.pct >= 100 %}✅{% elif grp.item_status == '생산중' %}🔴{% elif grp.item_status == '자재대기중' %}⚠️{% else %}⚪{% endif %}</span>
+        <h2>{{ grp.model_name }} <small style="font-weight:400;color:#64748b;">× {{ grp.quantity }}ea</small></h2>
+        <span class="section-count">{{ grp.done_proc }}/{{ grp.total_proc }} ({{ grp.pct }}%)</span>
         <span class="chevron">▼</span>
     </div>
-    <div class="section-body">
-        {% if working %}
-        <div class="card-grid" id="grid-working">
-            {% for card in working %}{{ proc_card(card) }}{% endfor %}
+    <div class="section-body" {% if grp.pct >= 100 %}style="display:none;"{% endif %}>
+        <div class="card-grid">
+            {% for card in grp.cards %}{{ proc_card(card) }}{% endfor %}
         </div>
-        {% else %}
-        <div class="section-empty">진행중인 공정이 없습니다.</div>
-        {% endif %}
     </div>
 </div>
+{% endfor %}
 
-{# ── Section: 시작가능 ── #}
-<div class="section-wrapper" data-section="ready">
-    <div class="section-hdr" onclick="toggleSection(this)">
-        <span>🟢</span>
-        <h2>시작가능</h2>
-        <span class="section-count">{{ ready|length }}건</span>
-        <span class="chevron">▼</span>
-    </div>
-    <div class="section-body">
-        {% if ready %}
-        <div class="card-grid" id="grid-ready">
-            {% for card in ready %}{{ proc_card(card) }}{% endfor %}
-        </div>
-        {% else %}
-        <div class="section-empty">시작 가능한 공정이 없습니다.</div>
-        {% endif %}
-    </div>
-</div>
+{% if not item_groups %}
+<div class="text-center text-muted py-5">공정이 없습니다. 공정 동기화를 실행해 주세요.</div>
+{% endif %}
 
-{# ── Section: 대기 ── #}
-<div class="section-wrapper" data-section="waiting">
-    <div class="section-hdr" onclick="toggleSection(this)">
-        <span>⚪</span>
-        <h2>대기</h2>
-        <span class="section-count">{{ waiting|length }}건</span>
-        <span class="chevron">▼</span>
-    </div>
-    <div class="section-body">
-        {% if waiting %}
-        <div class="card-grid" id="grid-waiting">
-            {% for card in waiting %}{{ proc_card(card) }}{% endfor %}
-        </div>
-        {% else %}
-        <div class="section-empty">대기 중인 공정이 없습니다.</div>
-        {% endif %}
-    </div>
-</div>
-
-{# ── Section: 완료 (기본 접힘) ── #}
-<div class="section-wrapper" data-section="done">
-    <div class="section-hdr collapsed" onclick="toggleSection(this)">
-        <span>✅</span>
-        <h2>완료</h2>
-        <span class="section-count">{{ done|length }}건</span>
-        <span class="chevron">▼</span>
-    </div>
-    <div class="section-body" style="display:none;">
-        {% if done %}
-        <div class="card-grid" id="grid-done">
-            {% for card in done %}{{ proc_card(card) }}{% endfor %}
-        </div>
-        {% else %}
-        <div class="section-empty">완료된 공정이 없습니다.</div>
-        {% endif %}
-    </div>
-</div>
+{% endif %}{# end mode #}
 
 <script>
 (function() {
@@ -637,17 +647,12 @@
 
     /* ── Client-side filter (AND logic) ── */
     window.applyFilters = function() {
-        const siteEl   = document.getElementById('filterSite');
-        const siteId   = siteEl.value;
-        const siteTxt  = siteId ? siteEl.options[siteEl.selectedIndex].text : '';
-        const category = document.getElementById('filterCategory').value.toLowerCase();
-        const search   = document.getElementById('filterSearch').value.toLowerCase().trim();
+        const searchEl = document.getElementById('filterSearch');
+        const search = searchEl ? searchEl.value.toLowerCase().trim() : '';
 
         document.querySelectorAll('.proc-card').forEach(card => {
-            const matchSite = !siteId || (card.dataset.site || '').includes(siteTxt);
-            const matchCat  = !category || (card.dataset.category || '').toLowerCase().includes(category);
-            const matchSrch = !search   || (card.dataset.search || '').toLowerCase().includes(search);
-            card.style.display = matchSite && matchCat && matchSrch ? '' : 'none';
+            const matchSrch = !search || (card.dataset.search || '').toLowerCase().includes(search);
+            card.style.display = matchSrch ? '' : 'none';
         });
     };
 
