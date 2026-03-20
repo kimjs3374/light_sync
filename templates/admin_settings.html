@@ -115,6 +115,9 @@
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="group-menus-tab" data-bs-toggle="tab" data-bs-target="#groupMenusPane" type="button" role="tab">그룹 메뉴 권한</button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link text-danger" id="reset-tab" data-bs-toggle="tab" data-bs-target="#resetPane" type="button" role="tab">프로젝트 초기화</button>
+    </li>
 </ul>
 
 <!-- 탭 컨텐츠 -->
@@ -454,6 +457,65 @@
         </div>
     </div>
 </div>
+
+{# ── 프로젝트 초기화 탭 ── #}
+<div class="tab-pane fade p-3" id="resetPane" role="tabpanel">
+    <div class="alert alert-danger mb-3">
+        <strong>프로젝트 초기화</strong> — 모든 프로젝트 및 연관 데이터를 삭제합니다.<br>
+        품목(Items), 거래처(Vendors), BOM, 사용자, 조달내역(G2B) 등 마스터 데이터는 유지됩니다.
+    </div>
+    <div class="card border-danger">
+        <div class="card-body">
+            <h6 class="fw-bold text-danger mb-3">삭제 대상</h6>
+            <div class="row g-2 mb-3" style="font-size:.85rem;">
+                <div class="col-md-4">
+                    <ul class="mb-0">
+                        <li>프로젝트 (projects)</li>
+                        <li>계약 (contracts)</li>
+                        <li>계약품목 (contract_items)</li>
+                        <li>납품 (deliveries)</li>
+                        <li>영업 (sales_activities)</li>
+                    </ul>
+                </div>
+                <div class="col-md-4">
+                    <ul class="mb-0">
+                        <li>자재발주 (material_orders)</li>
+                        <li>생산공정 (production_processes)</li>
+                        <li>생산일지 (production_daily_logs)</li>
+                        <li>히스토리 (history_logs)</li>
+                        <li>연락처 (contacts)</li>
+                    </ul>
+                </div>
+                <div class="col-md-4">
+                    <ul class="mb-0">
+                        <li>하자/AS (warranties, warranty_cases)</li>
+                        <li>도면 (drawings)</li>
+                        <li>현장사진 (project_photos)</li>
+                        <li>우선순위 (priority_overrides)</li>
+                        <li>세금계산서 프로젝트 연결 해제</li>
+                    </ul>
+                </div>
+            </div>
+            <h6 class="fw-bold text-success mb-2">유지 대상</h6>
+            <p class="small text-muted mb-3">품목(Items), 거래처(Vendors), BOM, 사용자, 조달내역(G2B), 제품카탈로그, 입고이력(iCUBE), 세금계산서, 재고(Stock)</p>
+            <hr>
+            <form method="POST" action="{{ url_for('auth.reset_projects') }}" id="resetForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="mb-3">
+                    <label class="form-label fw-bold text-danger">확인 문구 입력</label>
+                    <input type="text" name="confirm_text" class="form-control form-control-sm" style="max-width:300px;"
+                           placeholder="프로젝트초기화" autocomplete="off">
+                    <div class="form-text">"프로젝트초기화" 를 정확히 입력해야 실행됩니다.</div>
+                </div>
+                <button type="submit" class="btn btn-danger fw-bold"
+                        onclick="return confirm('정말로 모든 프로젝트 데이터를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.');">
+                    프로젝트 전체 초기화
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+</div>{# /tab-content #}
 
 <script>
 /* 개인 추가 메뉴 모달 */

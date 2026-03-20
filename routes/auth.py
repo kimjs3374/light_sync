@@ -355,6 +355,85 @@ def update_user_extra_menus():
     return redirect(url_for('auth.admin_settings'))
 
 
+@auth_bp.route('/admin/reset_projects', methods=['POST'])
+@admin_required
+def reset_projects():
+    """프로젝트 전체 초기화 — 프로젝트 + 연관 데이터 삭제, 마스터 데이터 유지"""
+    confirm_text = (request.form.get('confirm_text') or '').strip()
+    if confirm_text != '프로젝트초기화':
+        flash('확인 문구가 일치하지 않습니다. "프로젝트초기화"를 정확히 입력해주세요.', 'danger')
+        return redirect(url_for('auth.admin_settings') + '#resetPane')
+
+    from modules.models import (
+        Project, Contract, ContractItem, Delivery, MaterialOrder,
+        ProductionProcess, ProductionDailyLog, HistoryLog,
+        Contact, Drawing, Warranty, WarrantyCase, SportsModule,
+        ProjectDeleteRequest, ProjectPhoto, TaxInvoice,
+        PurchaseOrder, PurchaseOrderItem, Receiving, ReceivingItem,
+        StockMovement, Notification,
+    )
+    from modules.models.entities import ProjectPriorityOverride
+
+    with get_db() as db:
+        # 하위 → 상위 순서로 삭제 (FK 의존관계)
+        counts = {}
+
+        # 생산
+        counts['production_daily_logs'] = db.query(ProductionDailyLog).delete()
+        counts['production_processes'] = db.query(ProductionProcess).delete()
+
+        # 입고 (발주서 연결)
+        counts['receiving_items'] = db.query(ReceivingItem).delete()
+        counts['receivings'] = db.query(Receiving).delete()
+
+        # 발주
+        counts['purchase_order_items'] = db.query(PurchaseOrderItem).delete()
+        counts['purchase_orders'] = db.query(PurchaseOrder).delete()
+
+        # 자재
+        counts['material_orders'] = db.query(MaterialOrder).delete()
+
+        # 재고 변동 이력
+        counts['stock_movements'] = db.query(StockMovement).delete()
+
+        # 하자
+        counts['warranty_cases'] = db.query(WarrantyCase).delete()
+        counts['warranties'] = db.query(Warranty).delete()
+
+        # 납품
+        counts['deliveries'] = db.query(Delivery).delete()
+
+        # 기타 프로젝트 연관
+        counts['history_logs'] = db.query(HistoryLog).delete()
+        counts['contacts'] = db.query(Contact).delete()
+        counts['drawings'] = db.query(Drawing).delete()
+        counts['sports_modules'] = db.query(SportsModule).delete()
+        counts['project_photos'] = db.query(ProjectPhoto).delete()
+        counts['delete_requests'] = db.query(ProjectDeleteRequest).delete()
+        counts['priority_overrides'] = db.query(ProjectPriorityOverride).delete()
+        counts['notifications'] = db.query(Notification).delete()
+
+        # 세금계산서: 프로젝트 연결만 해제 (데이터 유지)
+        db.query(TaxInvoice).update({TaxInvoice.project_id: None, TaxInvoice.contract_id: None})
+
+        # 계약품목 → 계약 → 프로젝트
+        counts['contract_items'] = db.query(ContractItem).delete()
+        counts['contracts'] = db.query(Contract).delete()
+        counts['projects'] = db.query(Project).delete()
+
+        # Item 재고 리셋
+        from modules.models import Item
+        db.query(Item).update({Item.stock_qty: 0, Item.reserved_qty: 0})
+
+        db.commit()
+
+        total = sum(counts.values())
+        detail = ', '.join(f'{k}: {v}' for k, v in counts.items() if v > 0)
+        flash(f'프로젝트 초기화 완료 — 총 {total}건 삭제. ({detail})', 'success')
+
+    return redirect(url_for('auth.admin_settings') + '#resetPane')
+
+
 @auth_bp.route('/logout')
 def logout():
     session.clear()
