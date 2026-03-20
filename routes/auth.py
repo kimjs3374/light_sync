@@ -411,6 +411,8 @@ def reset_projects():
 
         # 납품 (하위 FK 먼저)
         from modules.models import DeliverySplit, DeliveryPhoto
+        from sqlalchemy import text
+        counts['delivery_documents'] = db.execute(text('DELETE FROM delivery_documents')).rowcount
         counts['delivery_photos'] = db.query(DeliveryPhoto).delete()
         counts['delivery_splits'] = db.query(DeliverySplit).delete()
         counts['deliveries'] = db.query(Delivery).delete()
