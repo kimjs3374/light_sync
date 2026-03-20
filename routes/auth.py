@@ -4,6 +4,7 @@ from modules.auth_decorators import admin_required, login_required
 import bcrypt
 from modules.db_context import get_db
 from modules.models import User, GroupPermission, ProjectDeleteRequest, UserPriorityPermission
+from modules.models.db import SUPERADMIN_USERNAME
 from config import MENU_REGISTRY, COMMON_MENU_KEYS
 
 auth_bp = Blueprint('auth', __name__)
@@ -146,8 +147,7 @@ def admin_settings():
         position_choices = ['대표이사', '전무', '상무', '이사', '부장', '차장', '과장', '대리', '주임', '사원']
 
         # 최초 admin 계정 확인 (프로젝트 초기화 탭 표시 여부)
-        superadmin = db.query(User).filter(User.role == 'admin', User.user_group == '최고관리자').first()
-        is_superadmin = superadmin and session.get('user_id') == superadmin.id
+        is_superadmin = session.get('username') == SUPERADMIN_USERNAME
 
         return render_template('admin_settings.html',
             pending=pending, users=users, delete_requests=delete_requests,
@@ -398,10 +398,8 @@ def update_user_extra_menus():
 @admin_required
 def reset_projects():
     """프로젝트 전체 초기화 — 프로젝트 + 연관 데이터 삭제, 마스터 데이터 유지"""
-    # db.py에서 생성한 최고관리자 계정만 허용 (user_group='최고관리자' + role='admin')
-    with get_db() as _db:
-        superadmin = _db.query(User).filter(User.role == 'admin', User.user_group == '최고관리자').first()
-    if not superadmin or session.get('user_id') != superadmin.id:
+    # db.py SUPERADMIN_USERNAME 계정만 허용
+    if session.get('username') != SUPERADMIN_USERNAME:
         flash('최고관리자 계정만 프로젝트 초기화를 실행할 수 있습니다.', 'danger')
         return redirect(url_for('auth.admin_settings'))
 

@@ -7,6 +7,9 @@ from .constants import DETAIL_ITEM_OPTIONS
 from .entities import Contract, ContractItem, GroupPermission, Material, User
 from .helpers import _read_env_value, normalize_detail_item, quote_ident
 
+# 최고관리자 계정 username — 변경 시 여기만 수정
+SUPERADMIN_USERNAME = "admin"
+
 # -------------------------------------------------------------------
 # DB 연결 및 초기화
 # -------------------------------------------------------------------
@@ -477,13 +480,13 @@ def init_db():
             db.add(GroupPermission(group_name="생산부", allowed_menus=all_menus))
             db.commit()
 
-        admin_exists = db.query(User).filter_by(username="admin").first()
+        admin_exists = db.query(User).filter_by(username=SUPERADMIN_USERNAME).first()
         if not admin_exists:
             import bcrypt
             import os
             admin_pw = os.environ.get('ADMIN_DEFAULT_PASSWORD', 'admin1234')
             hashed_pw = bcrypt.hashpw(admin_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-            db.add(User(username="admin", password_hash=hashed_pw, full_name="최고관리자",
+            db.add(User(username=SUPERADMIN_USERNAME, password_hash=hashed_pw, full_name="최고관리자",
                         phone_number="010-0000-0000", user_group="최고관리자", role="admin", is_approved=True))
             db.commit()
     except Exception:
