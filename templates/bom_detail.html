@@ -110,7 +110,11 @@
                 {% if can_see_price %}
                 <div class="form-check form-switch mb-0">
                     <input class="form-check-input" type="checkbox" id="useLatestPrice" checked>
-                    <label class="form-check-label" style="font-size:.75rem;" for="useLatestPrice">최신입고단가</label>
+                    <label class="form-check-label" style="font-size:.75rem;" for="useLatestPrice">전체 입고단가</label>
+                </div>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="useSelectedPrice">
+                    <label class="form-check-label" style="font-size:.75rem;" for="useSelectedPrice">선택만 입고단가</label>
                 </div>
                 {% endif %}
                 <button type="button" class="btn btn-outline-primary btn-xs" id="addItemBtn">+ 추가</button>
@@ -120,7 +124,8 @@
             <div id="bomWrap" class="table-responsive">
                 <table id="bomTable" class="table table-sm table-hover mb-0 no-stack-table" style="table-layout:fixed;font-size:.78rem;min-width:{{ '1200px' if can_see_price else '750px' }};">
                     <colgroup>
-                        <col style="width:2.5%">{# # #}
+                        <col style="width:2%">{# 체크 #}
+                        <col style="width:2%">{# # #}
                         <col style="width:10%">{# 품번 #}
                         <col style="width:{{ '18%' if has_opts else '22%' }}">{# 부품명 #}
                         <col style="width:{{ '14%' if has_opts else '18%' }}">{# 규격 #}
@@ -137,6 +142,7 @@
                     </colgroup>
                     <thead class="table-light">
                         <tr>
+                            <th class="text-center"><input type="checkbox" id="checkAll" class="form-check-input" style="margin:0;" title="전체선택"></th>
                             <th>#</th>
                             <th>품번</th>
                             <th>부품명</th>
@@ -156,6 +162,7 @@
                     <tbody id="itemsBody">
                         {% for item in bom.bom_items %}
                         <tr data-option-filter="{{ item.option_filter or '' }}">
+                            <td class="text-center"><input type="checkbox" class="form-check-input row-check" style="margin:0;"></td>
                             <td class="text-muted">{{ loop.index }}</td>
                             <td title="{{ item.item_code or '' }}">{% if item.item_id %}<a href="{{ url_for('item.item_detail', item_id=item.item_id) }}" class="text-decoration-none" onclick="event.stopPropagation();" style="font-size:.72rem;font-family:var(--mg-mono);">{{ item.item_code or '-' }}</a>{% elif item.item_code %}<span style="font-size:.72rem;font-family:var(--mg-mono);color:var(--mg-subtle);">{{ item.item_code }}</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
                             <td>
@@ -163,14 +170,14 @@
                                 <input type="hidden" name="item_spec[]" value="{{ item.item_spec or '' }}">
                             </td>
                             <td class="text-muted" title="{{ item.item_spec or item.note or '' }}">{{ item.item_spec or item.note or '-' }}</td>
-                            <td><input type="number" name="quantity[]" class="form-control form-control-sm text-end border-0 bg-transparent px-0" value="{{ item.quantity }}" step="any" min="0" style="font-size:.78rem;"></td>
+                            <td><input type="number" name="quantity[]" class="form-control form-control-sm text-end border-0 bg-transparent px-0" value="{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}" step="any" min="0" style="font-size:.78rem;"></td>
                             {% if can_see_price %}
                             {% set lp = latest_prices.get(item.item_code) or latest_prices.get(item.item_name) %}
                             <td class="text-end text-muted" style="font-size:.72rem;">
                                 {% if item.prev_unit_price %}<del>{{ '{:,.0f}'.format(item.prev_unit_price) }}</del>{% else %}-{% endif %}
                             </td>
                             <td class="text-end price-bom">
-                                <input type="number" name="unit_price[]" class="form-control form-control-sm text-end border-0 bg-transparent px-0" value="{{ item.unit_price|int if item.unit_price else '' }}" placeholder="-" step="any" min="0" style="font-size:.78rem;width:100%;">
+                                <input type="text" name="unit_price[]" class="form-control form-control-sm text-end border-0 bg-transparent px-0 price-input" value="{{ '{:,.0f}'.format(item.unit_price|int) if item.unit_price else '' }}" placeholder="-" style="font-size:.78rem;width:100%;">
                             </td>
                             <td class="text-end col-latest-price price-latest">
                                 {% if lp %}
@@ -206,7 +213,7 @@
         </div>
     </div>
 
-    <div class="d-flex justify-content-between">
+    <div class="d-flex justify-content-between" style="margin-bottom:80px;">
         <form method="POST" action="{{ url_for('bom.bom_delete', bom_id=bom.id) }}" class="d-inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('이 BOM을 삭제하시겠습니까?');">삭제</button>
@@ -330,6 +337,27 @@
         });
     }
 
+    /* --- 단가 콤마 포맷팅 --- */
+    function formatPrice(el) {
+        var raw = el.value.replace(/[^0-9.-]/g, '');
+        if (!raw) { el.value = ''; return; }
+        var num = parseFloat(raw);
+        if (isNaN(num)) return;
+        el.value = Math.round(num).toLocaleString('ko-KR');
+    }
+    document.querySelectorAll('.price-input').forEach(function(el) {
+        el.addEventListener('blur', function() { formatPrice(this); });
+        el.addEventListener('focus', function() {
+            this.value = this.value.replace(/,/g, '');
+        });
+    });
+    // submit 시 콤마 제거
+    document.querySelector('form[action*="bom_edit"]').addEventListener('submit', function() {
+        this.querySelectorAll('.price-input').forEach(function(el) {
+            el.value = el.value.replace(/,/g, '');
+        });
+    });
+
     /* --- 부품 추가 --- */
     document.getElementById('addItemBtn').addEventListener('click', function() {
         var empty = document.getElementById('emptyRow'); if (empty) empty.remove();
@@ -337,12 +365,13 @@
         var tr = document.createElement('tr');
         var pc = canSeePrice
             ? '<td class="text-end text-muted" style="font-size:.72rem;">-</td>' +
-              '<td class="text-end price-bom"><input type="number" name="unit_price[]" class="form-control form-control-sm text-end border-0 bg-transparent px-0" placeholder="-" step="any" min="0" style="font-size:.78rem;width:100%;"></td>' +
+              '<td class="text-end price-bom"><input type="text" name="unit_price[]" class="form-control form-control-sm text-end border-0 bg-transparent px-0 price-input" placeholder="-" style="font-size:.78rem;width:100%;"></td>' +
               '<td class="text-end col-latest-price price-latest"><span class="text-muted">-</span></td>' +
               '<td class="text-end price-amount" data-bom="0" data-latest="0">-</td>' : '';
         var oc = hasOpts
             ? '<td><input type="text" name="option_filter[]" class="form-control form-control-sm border-0 bg-transparent px-0" placeholder="공통" style="font-size:.72rem;"></td>' : '<input type="hidden" name="option_filter[]" value="">';
         tr.innerHTML =
+            '<td class="text-center"><input type="checkbox" class="form-check-input row-check" style="margin:0;"></td>' +
             '<td class="text-muted">' + idx + '</td>' +
             '<td><span class="text-muted">-</span></td>' +
             '<td><input type="text" name="item_name[]" class="form-control form-control-sm border-0 bg-transparent px-0" placeholder="부품명" required style="font-size:.78rem;"><input type="hidden" name="item_spec[]" value=""></td>' +
@@ -353,35 +382,95 @@
             '<td class="text-center"><input type="hidden" name="unit[]" value="EA"><input type="hidden" name="item_note[]" value=""><button type="button" class="btn btn-outline-danger btn-xs remove-btn" style="padding:.1rem .3rem;font-size:.65rem;">X</button></td>';
         document.getElementById('itemsBody').appendChild(tr);
         tr.querySelector('.remove-btn').addEventListener('click', function() { tr.remove(); });
+        var pi = tr.querySelector('.price-input');
+        if (pi) {
+            pi.addEventListener('blur', function() { formatPrice(this); });
+            pi.addEventListener('focus', function() { this.value = this.value.replace(/,/g, ''); });
+        }
     });
 
     document.querySelectorAll('.remove-btn').forEach(function(b) {
         b.addEventListener('click', function() { this.closest('tr').remove(); });
     });
 
-    /* --- 최신입고단가 토글 --- */
-    var toggle = document.getElementById('useLatestPrice');
-    if (toggle) {
-        var SK = 'bom_detail_useLatestPrice';
-        function applyToggle(use) {
-            var tbl = document.querySelector('.table-responsive');
-            if (!tbl) return;
-            tbl.classList.toggle('col-latest-hidden', !use);
-            var total = 0;
-            document.querySelectorAll('.price-amount').forEach(function(el) {
-                var v = parseFloat(use ? el.dataset.latest : el.dataset.bom) || 0;
-                el.textContent = v ? v.toLocaleString('ko-KR', {maximumFractionDigits:0}) : '-';
-                total += v;
-            });
-            var te = document.getElementById('totalAmount');
-            if (te) te.textContent = total.toLocaleString('ko-KR', {maximumFractionDigits:0});
-        }
-        var saved = localStorage.getItem(SK);
-        if (saved !== null) { var r = saved === 'true'; toggle.checked = r; applyToggle(r); }
-        toggle.addEventListener('change', function() {
-            localStorage.setItem(SK, this.checked ? 'true' : 'false'); applyToggle(this.checked);
+    /* --- 전체선택 체크박스 --- */
+    var checkAll = document.getElementById('checkAll');
+    if (checkAll) {
+        checkAll.addEventListener('change', function() {
+            document.querySelectorAll('.row-check').forEach(function(cb) { cb.checked = checkAll.checked; });
+            recalcPrices();
         });
     }
+
+    /* --- 입고단가 토글 (전체 / 선택만) 상호배타 --- */
+    var tgAll = document.getElementById('useLatestPrice');
+    var tgSel = document.getElementById('useSelectedPrice');
+    var KEY_ALL = 'bom_useLatestAll';
+    var KEY_SEL = 'bom_useLatestSel';
+
+    function saveToggle() {
+        if (tgAll) localStorage.setItem(KEY_ALL, tgAll.checked ? '1' : '0');
+        if (tgSel) localStorage.setItem(KEY_SEL, tgSel.checked ? '1' : '0');
+    }
+
+    function recalcPrices() {
+        var wrap = document.getElementById('bomWrap');
+        if (!wrap) return;
+        var allOn = tgAll && tgAll.checked;
+        var selOn = tgSel && tgSel.checked;
+
+        wrap.classList.toggle('col-latest-hidden', !allOn && !selOn);
+
+        var total = 0;
+        document.querySelectorAll('#itemsBody tr').forEach(function(row) {
+            var el = row.querySelector('.price-amount');
+            if (!el) return;
+            var bom = parseFloat(el.dataset.bom) || 0;
+            var lat = parseFloat(el.dataset.latest) || 0;
+            var use = allOn || (selOn && row.querySelector('.row-check:checked'));
+            var v = use ? lat : bom;
+            el.textContent = v ? v.toLocaleString('ko-KR', {maximumFractionDigits:0}) : '-';
+            total += v;
+        });
+        var te = document.getElementById('totalAmount');
+        if (te) te.textContent = total.toLocaleString('ko-KR', {maximumFractionDigits:0});
+    }
+
+    // 전체 입고단가 토글
+    if (tgAll) tgAll.addEventListener('change', function() {
+        if (this.checked && tgSel) tgSel.checked = false;
+        saveToggle(); recalcPrices();
+    });
+
+    // 선택만 입고단가 토글
+    if (tgSel) tgSel.addEventListener('change', function() {
+        if (this.checked && tgAll) tgAll.checked = false;
+        saveToggle(); recalcPrices();
+    });
+
+    // 개별 체크박스 → 선택모드일 때 재계산
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('row-check')) recalcPrices();
+    });
+
+    // localStorage에서 복원 (페이지 로드 시)
+    (function restoreToggles() {
+        var sAll = localStorage.getItem(KEY_ALL);
+        var sSel = localStorage.getItem(KEY_SEL);
+        // 선택모드가 저장되어있으면 우선
+        if (sSel === '1') {
+            if (tgSel) tgSel.checked = true;
+            if (tgAll) tgAll.checked = false;
+        } else if (sAll === '1' || sAll === null) {
+            // 기본값: 전체 ON
+            if (tgAll) tgAll.checked = true;
+            if (tgSel) tgSel.checked = false;
+        } else {
+            if (tgAll) tgAll.checked = false;
+            if (tgSel) tgSel.checked = false;
+        }
+        recalcPrices();
+    })();
 })();
 </script>
 

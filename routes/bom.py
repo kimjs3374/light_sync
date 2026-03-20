@@ -330,7 +330,7 @@ def bom_edit(bom_id):
             unit = (item_units[i] if i < len(item_units) else '').strip()
             item_note = (item_notes[i] if i < len(item_notes) else '').strip()
 
-            up_str = (unit_prices[i] if i < len(unit_prices) else '').strip()
+            up_str = (unit_prices[i] if i < len(unit_prices) else '').strip().replace(',', '')
             up = float(up_str) if up_str else None
             amount = (up * qty) if up else None
 

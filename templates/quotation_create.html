@@ -4,33 +4,58 @@
     .qt-section { border: none; border-radius: 12px; overflow: hidden; }
     .qt-section .card-header {
         background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-        border-bottom: 2px solid #e2e8f0;
-        padding: 14px 20px;
+        border-bottom: 2px solid #e2e8f0; padding: 14px 20px;
     }
     .qt-section .section-num {
         display: inline-flex; align-items: center; justify-content: center;
         width: 26px; height: 26px; border-radius: 50%;
-        background: #0f172a; color: #fff; font-size: .78rem; font-weight: 700;
-        margin-right: 8px;
+        background: #0f172a; color: #fff; font-size: .78rem; font-weight: 700; margin-right: 8px;
     }
     .qt-label { font-size: .82rem; color: #64748b; margin-bottom: 4px; font-weight: 600; }
     .qt-label .required { color: #ef4444; }
-    #itemsTable th { font-size: .78rem; color: #64748b; font-weight: 600; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
-    #itemsTable td { vertical-align: middle; padding: 6px 8px; }
-    #itemsTable input { font-size: .85rem; }
-    #itemsTable .form-control:focus { box-shadow: 0 0 0 2px rgba(59,130,246,.15); }
-    .summary-row td { background: #f8fafc; border: none; }
-    .summary-total td { background: #0f172a !important; color: #fff !important; font-size: 1rem; }
     .btn-add-item { border: 2px dashed #cbd5e1; color: #64748b; font-weight: 600; border-radius: 8px; transition: all .2s; }
     .btn-add-item:hover { border-color: #3b82f6; color: #3b82f6; background: #eff6ff; }
-    .remove-row-btn { opacity: .4; transition: opacity .15s; }
-    .remove-row-btn:hover { opacity: 1; }
-    .sc-row td { background: #fffbeb; }
-    .tpl-badge { display: inline-block; padding: 4px 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: .78rem; color: #1e40af; cursor: pointer; transition: all .15s; white-space: nowrap; }
-    .tpl-badge:hover { background: #dbeafe; border-color: #93c5fd; }
+    .tpl-badge { display: inline-block; padding: 4px 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: .78rem; color: #1e40af; cursor: pointer; white-space: nowrap; }
+    .tpl-badge:hover { background: #dbeafe; }
+
+    /* 품목 자동완성 */
+    .item-ac-dropdown { position: absolute; z-index: 9999; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); max-height: 260px; overflow-y: auto; display: none; }
+    .item-ac-dropdown.show { display: block; }
+    .item-ac-dropdown .ac-item { padding: 8px 12px; cursor: pointer; font-size: .85rem; border-bottom: 1px solid #f1f5f9; }
+    .item-ac-dropdown .ac-item:hover { background: #eff6ff; }
+    .item-ac-dropdown .ac-price { color: #059669; font-weight: 600; font-size: .78rem; }
+    .item-ac-dropdown .ac-sub { color: #94a3b8; font-size: .78rem; }
+
+    /* ─── 품목 카드 (모바일 + 데스크톱 공용) ─── */
+    .qi-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; position: relative; }
+    .qi-card:hover { border-color: #93c5fd; }
+    .qi-card .qi-no { position: absolute; top: 10px; left: 14px; font-size: .72rem; color: #94a3b8; font-weight: 700; }
+    .qi-card .qi-rm { position: absolute; top: 6px; right: 8px; font-size: 1.2rem; color: #ef4444; opacity: .4; cursor: pointer; line-height: 1; background: none; border: none; padding: 4px; }
+    .qi-card .qi-rm:hover { opacity: 1; }
+    .qi-row { display: grid; gap: 8px; }
+    .qi-row-main { grid-template-columns: 1fr; }
+    .qi-row-nums { grid-template-columns: 1fr 1fr 1fr 1fr; }
+    .qi-row-note { grid-template-columns: 1fr; }
+    .qi-field label { font-size: .72rem; color: #94a3b8; font-weight: 600; margin-bottom: 2px; display: block; }
+    .qi-field input, .qi-field textarea { font-size: .9rem; }
+    .qi-amount { font-size: 1rem; font-weight: 700; color: #0f172a; text-align: right; padding: 6px 0; }
+
+    /* 합계 바 */
+    .total-bar { background: #0f172a; color: #fff; border-radius: 10px; padding: 14px 20px; }
+    .total-bar .total-row { display: flex; justify-content: space-between; font-size: .9rem; }
+    .total-bar .total-row.grand { font-size: 1.15rem; font-weight: 700; border-top: 1px solid rgba(255,255,255,.15); padding-top: 8px; margin-top: 6px; }
+
+    /* 데스크톱: 숫자 필드 한 줄 */
+    @media (min-width: 768px) {
+        .qi-row-nums { grid-template-columns: 70px 90px 130px 130px; }
+        .qi-row-main { grid-template-columns: 1fr 200px; }
+        .qi-row-note { grid-template-columns: 1fr auto; align-items: end; }
+    }
+    /* 모바일: 숫자 2x2 */
     @media (max-width: 767.98px) {
-        .qt-section .card-body { padding: 12px; }
-        #itemsTable { font-size: .82rem; }
+        .qi-row-nums { grid-template-columns: 1fr 1fr; }
+        .qt-section .card-body { padding: 10px; }
+        .qi-card { padding: 10px 12px; }
     }
 </style>
 
@@ -50,33 +75,30 @@
 
     {# ─── 1) 기본정보 ─── #}
     <div class="card qt-section shadow-sm mb-4">
-        <div class="card-header">
-            <span class="section-num">1</span>
-            <strong>기본정보</strong>
-        </div>
+        <div class="card-header"><span class="section-num">1</span><strong>기본정보</strong></div>
         <div class="card-body p-3 p-md-4">
             <div class="row g-3">
-                <div class="col-md-3">
+                <div class="col-6 col-md-3">
                     <div class="qt-label">견적일 <span class="required">*</span></div>
                     <input type="date" name="quote_date" class="form-control" required>
                 </div>
-                <div class="col-md-3">
+                <div class="col-6 col-md-3">
                     <div class="qt-label">납기일</div>
                     <input type="text" name="delivery_date" class="form-control" value="협의">
                 </div>
-                <div class="col-md-3">
+                <div class="col-6 col-md-3">
                     <div class="qt-label">대금지불</div>
                     <input type="text" name="payment_method" class="form-control" value="현금">
                 </div>
-                <div class="col-md-3">
+                <div class="col-6 col-md-3">
                     <div class="qt-label">견적유효</div>
                     <input type="text" name="validity_period" class="form-control" value="견적일로부터 1개월">
                 </div>
-                <div class="col-md-8">
+                <div class="col-12 col-md-8">
                     <div class="qt-label">건명</div>
                     <input type="text" name="project_name" class="form-control" placeholder="건명을 입력하세요">
                 </div>
-                <div class="col-md-4">
+                <div class="col-12 col-md-4">
                     <div class="qt-label">계좌번호</div>
                     <input type="text" name="bank_account" class="form-control" placeholder="선택 입력">
                 </div>
@@ -86,33 +108,30 @@
 
     {# ─── 2) 수급자 정보 ─── #}
     <div class="card qt-section shadow-sm mb-4">
-        <div class="card-header">
-            <span class="section-num">2</span>
-            <strong>수급자 정보</strong>
-        </div>
+        <div class="card-header"><span class="section-num">2</span><strong>수급자 정보</strong></div>
         <div class="card-body p-3 p-md-4">
             <div class="row g-3">
-                <div class="col-md-4">
+                <div class="col-6 col-md-4">
                     <div class="qt-label">수급자명</div>
                     <input type="text" name="customer_name" class="form-control" placeholder="수급자명">
                 </div>
-                <div class="col-md-4">
+                <div class="col-6 col-md-4">
                     <div class="qt-label">담당자</div>
                     <input type="text" name="customer_contact" class="form-control" placeholder="담당자명">
                 </div>
-                <div class="col-md-4">
+                <div class="col-6 col-md-4">
                     <div class="qt-label">Tel</div>
                     <input type="text" name="customer_tel" class="form-control" placeholder="전화번호">
                 </div>
-                <div class="col-md-6">
+                <div class="col-12 col-md-6">
                     <div class="qt-label">주소</div>
                     <input type="text" name="customer_address" class="form-control" placeholder="주소">
                 </div>
-                <div class="col-md-3">
+                <div class="col-6 col-md-3">
                     <div class="qt-label">Fax</div>
                     <input type="text" name="customer_fax" class="form-control" placeholder="팩스">
                 </div>
-                <div class="col-md-3">
+                <div class="col-6 col-md-3">
                     <div class="qt-label">E-mail</div>
                     <input type="text" name="customer_email" class="form-control" placeholder="이메일">
                 </div>
@@ -123,21 +142,17 @@
     {# ─── 3) 품목 ─── #}
     <div class="card qt-section shadow-sm mb-4">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <div>
-                <span class="section-num">3</span>
-                <strong>품목</strong>
-            </div>
+            <div><span class="section-num">3</span><strong>품목</strong></div>
             <div class="d-flex gap-2 flex-wrap">
                 <button type="button" class="btn btn-outline-success btn-sm" id="loadTplBtn">세부견적 불러오기</button>
-                <button type="button" class="btn btn-outline-info btn-sm" id="saveTplBtn">현재 품목 템플릿 저장</button>
+                <button type="button" class="btn btn-outline-info btn-sm" id="saveTplBtn">템플릿 저장</button>
                 <button type="button" class="btn btn-add-item btn-sm px-3" id="addItemBtn">+ 품목 추가</button>
             </div>
         </div>
 
-        {# 세부견적 템플릿 목록 #}
         {% if templates %}
         <div class="px-3 py-2" style="background:#fffbeb;border-bottom:1px solid #fde68a;">
-            <small class="text-muted fw-bold d-block mb-1">세부견적 템플릿 (클릭하면 품목 추가)</small>
+            <small class="text-muted fw-bold d-block mb-1">세부견적 템플릿</small>
             <div class="d-flex flex-wrap gap-1">
                 {% for t in templates %}
                 <span class="tpl-badge" data-tpl-id="{{ t.id }}">{{ t.template_name }} ({{ t.items|length }}건)</span>
@@ -146,117 +161,51 @@
         </div>
         {% endif %}
 
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-sm mb-0" id="itemsTable" style="table-layout:fixed;">
-                    <colgroup>
-                        <col style="width:38px"><col><col style="width:130px"><col style="width:60px">
-                        <col style="width:70px"><col style="width:105px"><col style="width:105px">
-                        <col style="width:100px"><col style="width:38px">
-                    </colgroup>
-                    <thead>
-                        <tr>
-                            <th class="ps-3">No</th>
-                            <th>품명 <span class="text-danger">*</span></th>
-                            <th>규격</th>
-                            <th>단위</th>
-                            <th class="text-end">수량</th>
-                            <th class="text-end">단가</th>
-                            <th class="text-end">금액</th>
-                            <th>비고</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="itemsBody"></tbody>
-                    <tfoot>
-                        <tr class="summary-row">
-                            <td colspan="6" class="text-end pe-3" style="font-size:.85rem;color:#64748b;">공급가액</td>
-                            <td class="text-end fw-bold" id="supplyTotal" style="font-size:.95rem;">0</td>
-                            <td colspan="2"></td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
+        <div class="card-body p-2 p-md-3" id="itemsContainer">
+            {# 품목 카드들이 여기에 동적 추가 #}
         </div>
     </div>
 
-    {# ─── 4) 부과금 (부가세/이윤 등) ─── #}
+    {# ─── 4) 부과금 ─── #}
     <div class="card qt-section shadow-sm mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <div>
-                <span class="section-num">4</span>
-                <strong>부과금</strong>
-                <small class="text-muted ms-2">공급가액의 %로 자동 계산</small>
-            </div>
+            <div><span class="section-num">4</span><strong>부과금</strong><small class="text-muted ms-2">공급가액의 %</small></div>
             <button type="button" class="btn btn-add-item btn-sm px-3" id="addScBtn">+ 부과금 추가</button>
         </div>
-        <div class="card-body p-0">
-            <table class="table table-sm mb-0" id="scTable">
-                <colgroup>
-                    <col style="width:38px"><col><col style="width:100px"><col style="width:120px"><col style="width:38px">
-                </colgroup>
-                <thead>
-                    <tr style="background:#f8fafc;">
-                        <th class="ps-3">No</th>
-                        <th>항목명</th>
-                        <th class="text-end">비율 (%)</th>
-                        <th class="text-end">금액</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody id="scBody"></tbody>
-                <tfoot>
-                    <tr class="summary-total">
-                        <td colspan="3" class="text-end pe-3 fw-bold">합계 (공급가액 + 부과금)</td>
-                        <td class="text-end fw-bold" id="grandTotal">0</td>
-                        <td></td>
-                    </tr>
-                </tfoot>
-            </table>
+        <div class="card-body p-2 p-md-3" id="scContainer">
+            {# 부과금 행이 여기에 동적 추가 #}
         </div>
+    </div>
+
+    {# ─── 합계 바 ─── #}
+    <div class="total-bar mb-4" id="totalBar">
+        <div class="total-row"><span>공급가액</span><span id="supplyTotal">0원</span></div>
+        <div id="scTotalRows"></div>
+        <div class="total-row grand"><span>합계</span><span id="grandTotal">0원</span></div>
     </div>
 
     {# ─── 5) 비고 ─── #}
     <div class="card qt-section shadow-sm mb-4">
-        <div class="card-header">
-            <span class="section-num">5</span>
-            <strong>비고</strong>
-        </div>
+        <div class="card-header"><span class="section-num">5</span><strong>비고</strong></div>
         <div class="card-body p-3 p-md-4">
             <textarea name="note" class="form-control" rows="3" placeholder="비고 사항 (PDF에 표시됩니다)"></textarea>
             <div class="form-check mt-2">
                 <input class="form-check-input" type="checkbox" name="tax_included" id="taxIncluded">
-                <label class="form-check-label small text-muted" for="taxIncluded">부가세 포함 (체크 시 PDF에 '부가세 별도' 문구 제외)</label>
+                <label class="form-check-label small text-muted" for="taxIncluded">부가세 포함</label>
             </div>
         </div>
     </div>
 
-    {# ─── 저장 버튼 ─── #}
     <div class="d-flex justify-content-end gap-2 mb-5">
         <a href="{{ url_for('quotation.quotation_list') }}" class="btn btn-outline-secondary px-4">취소</a>
         <button type="submit" class="btn btn-primary px-5 fw-bold shadow-sm" style="border-radius:8px;">견적서 저장</button>
     </div>
 </form>
 
-{# ─── 품목 검색 모달 ─── #}
-<div class="modal fade" id="itemSearchModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
-            <div class="modal-header" style="background:#f8fafc;">
-                <h6 class="modal-title fw-bold">품목 검색</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="text" id="itemSearchInput" class="form-control mb-3" placeholder="품목명 또는 코드 검색" autocomplete="off">
-                <div id="itemSearchResults" style="max-height:300px; overflow-y:auto;">
-                    <div class="text-center text-muted py-3">검색어를 입력하세요.</div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{# 자동완성 드롭다운 #}
+<div class="item-ac-dropdown" id="itemAcDropdown"></div>
 
-{# ─── 세부견적 불러오기 모달 ─── #}
+{# 세부견적 불러오기 모달 #}
 <div class="modal fade" id="tplLoadModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content" style="border-radius:12px;overflow:hidden;">
@@ -272,7 +221,7 @@
     </div>
 </div>
 
-{# ─── 템플릿 저장 모달 ─── #}
+{# 템플릿 저장 모달 #}
 <div class="modal fade" id="tplSaveModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content" style="border-radius:12px;overflow:hidden;">
@@ -287,7 +236,7 @@
                 </div>
                 <div class="mb-2">
                     <label class="form-label small text-muted">메모</label>
-                    <input type="text" id="tplSaveNote" class="form-control form-control-sm" placeholder="선택 입력">
+                    <input type="text" id="tplSaveNote" class="form-control form-control-sm">
                 </div>
                 <div class="text-muted small" id="tplSavePreview"></div>
             </div>
@@ -303,184 +252,217 @@
 (function() {
     var rowIndex = 0;
     var scIndex = 0;
-    var currentSearchRow = null;
     var csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    var dd = document.getElementById('itemAcDropdown');
+    var activeInput = null;
+    var acTimer = null;
+    var container = document.getElementById('itemsContainer');
+
     var dateInput = document.querySelector('input[name="quote_date"]');
     if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().split('T')[0];
 
-    // ── 품목 행 추가 ──
-    function addItemRow(data) {
+    // ── 품목 카드 추가 ──
+    function addItemCard(data) {
         data = data || {};
         rowIndex++;
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-            '<td class="text-muted ps-3">' + rowIndex + '</td>' +
-            '<td>' +
-                '<input type="hidden" name="item_id[]" value="' + (data.id || '') + '">' +
-                '<div class="input-group input-group-sm">' +
-                    '<input type="text" name="item_name[]" class="form-control" value="' + (data.item_name || '') + '" placeholder="품명 입력" required>' +
-                    '<button type="button" class="btn btn-outline-secondary search-item-btn" title="품목검색">Q</button>' +
+        var card = document.createElement('div');
+        card.className = 'qi-card';
+        card.innerHTML =
+            '<span class="qi-no">#' + rowIndex + '</span>' +
+            '<button type="button" class="qi-rm">&times;</button>' +
+            '<input type="hidden" name="item_id[]" value="' + (data.id || '') + '">' +
+            '<div class="qi-row qi-row-main mb-2" style="padding-top:14px;">' +
+                '<div class="qi-field">' +
+                    '<label>품명</label>' +
+                    '<input type="text" name="item_name[]" class="form-control form-control-sm item-ac-input" value="' + (data.item_name || '') + '" placeholder="품명 입력 (자동완성)" autocomplete="off" required>' +
                 '</div>' +
-            '</td>' +
-            '<td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="' + (data.item_spec || '') + '"></td>' +
-            '<td><input type="text" name="unit[]" class="form-control form-control-sm text-center" value="' + (data.unit || '개') + '"></td>' +
-            '<td><input type="number" name="quantity[]" class="form-control form-control-sm text-end calc-field" value="' + (data.quantity || '') + '" min="0" step="any"></td>' +
-            '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end calc-field" value="' + (data.unit_price || '') + '" min="0" step="any"></td>' +
-            '<td class="text-end fw-bold row-amount" style="color:#0f172a;">0</td>' +
-            '<td><input type="text" name="item_note[]" class="form-control form-control-sm" value="' + (data.note || '') + '"></td>' +
-            '<td class="text-center"><button type="button" class="btn btn-sm text-danger remove-row-btn" style="font-size:1.1rem;line-height:1;">&times;</button></td>';
-        document.getElementById('itemsBody').appendChild(tr);
+                '<div class="qi-field">' +
+                    '<label>규격</label>' +
+                    '<input type="text" name="item_spec[]" class="form-control form-control-sm" value="' + (data.item_spec || '') + '" placeholder="규격">' +
+                '</div>' +
+            '</div>' +
+            '<div class="qi-row qi-row-nums mb-2">' +
+                '<div class="qi-field">' +
+                    '<label>단위</label>' +
+                    '<input type="text" name="unit[]" class="form-control form-control-sm text-center" value="' + (data.unit || 'EA') + '">' +
+                '</div>' +
+                '<div class="qi-field">' +
+                    '<label>수량</label>' +
+                    '<input type="number" name="quantity[]" class="form-control form-control-sm text-end calc-field" value="' + (data.quantity || '') + '" min="0" step="any" inputmode="decimal">' +
+                '</div>' +
+                '<div class="qi-field">' +
+                    '<label>단가</label>' +
+                    '<input type="number" name="unit_price[]" class="form-control form-control-sm text-end calc-field" value="' + (data.unit_price || '') + '" min="0" step="any" inputmode="decimal">' +
+                '</div>' +
+                '<div class="qi-field">' +
+                    '<label>금액</label>' +
+                    '<div class="qi-amount row-amount">0</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="qi-row qi-row-note">' +
+                '<div class="qi-field">' +
+                    '<label>비고</label>' +
+                    '<input type="text" name="item_note[]" class="form-control form-control-sm" value="' + (data.note || '') + '" placeholder="비고">' +
+                '</div>' +
+            '</div>';
+        container.appendChild(card);
         recalcAll();
     }
-    window._addItemRow = addItemRow;
+    window._addItemRow = addItemCard;
 
-    document.getElementById('addItemBtn').addEventListener('click', function() { addItemRow(); });
-    addItemRow();
+    document.getElementById('addItemBtn').addEventListener('click', function() { addItemCard(); });
+    addItemCard();
 
-    // ── 부과금 행 추가 ──
-    function addScRow(data) {
-        data = data || {};
-        scIndex++;
-        var tr = document.createElement('tr');
-        tr.className = 'sc-row';
-        tr.innerHTML =
-            '<td class="text-muted ps-3">' + scIndex + '</td>' +
-            '<td><input type="text" name="sc_name[]" class="form-control form-control-sm" value="' + (data.name || '') + '" placeholder="예: 부가세, 이윤"></td>' +
-            '<td><input type="number" name="sc_rate[]" class="form-control form-control-sm text-end sc-calc" value="' + (data.rate || '') + '" min="0" step="any" placeholder="%"></td>' +
-            '<td class="text-end fw-bold sc-amount" style="color:#92400e;">0</td>' +
-            '<td class="text-center"><button type="button" class="btn btn-sm text-danger sc-rm-btn" style="font-size:1.1rem;line-height:1;">&times;</button></td>';
-        document.getElementById('scBody').appendChild(tr);
-        recalcAll();
-    }
-
-    document.getElementById('addScBtn').addEventListener('click', function() { addScRow(); });
-
-    // ── 이벤트 위임 ──
-    document.getElementById('itemsBody').addEventListener('click', function(e) {
-        if (e.target.classList.contains('remove-row-btn')) { e.target.closest('tr').remove(); renumberRows(); recalcAll(); }
-        if (e.target.classList.contains('search-item-btn')) {
-            currentSearchRow = e.target.closest('tr');
-            new bootstrap.Modal(document.getElementById('itemSearchModal')).show();
-            document.getElementById('itemSearchInput').value = '';
-            document.getElementById('itemSearchInput').focus();
+    // ── 삭제 + 계산 이벤트 ──
+    container.addEventListener('click', function(e) {
+        if (e.target.classList.contains('qi-rm')) {
+            e.target.closest('.qi-card').remove();
+            renumberCards();
+            recalcAll();
         }
     });
-    document.getElementById('itemsBody').addEventListener('input', function(e) {
+    container.addEventListener('input', function(e) {
         if (e.target.classList.contains('calc-field')) recalcAll();
     });
 
-    document.getElementById('scBody').addEventListener('click', function(e) {
-        if (e.target.classList.contains('sc-rm-btn')) { e.target.closest('tr').remove(); recalcAll(); }
-    });
-    document.getElementById('scBody').addEventListener('input', function(e) {
-        if (e.target.classList.contains('sc-calc')) recalcAll();
-    });
-
-    function recalcAll() {
-        var supplyTotal = 0;
-        document.querySelectorAll('#itemsBody tr').forEach(function(tr) {
-            var qty = parseFloat(tr.querySelector('input[name="quantity[]"]').value) || 0;
-            var price = parseFloat(tr.querySelector('input[name="unit_price[]"]').value) || 0;
-            var amount = qty * price;
-            tr.querySelector('.row-amount').textContent = amount.toLocaleString();
-            supplyTotal += amount;
-        });
-        document.getElementById('supplyTotal').textContent = supplyTotal.toLocaleString();
-
-        // 부과금 계산
-        var scTotal = 0;
-        document.querySelectorAll('#scBody tr').forEach(function(tr) {
-            var rate = parseFloat(tr.querySelector('input[name="sc_rate[]"]').value) || 0;
-            var amt = Math.round(supplyTotal * rate / 100);
-            tr.querySelector('.sc-amount').textContent = amt.toLocaleString();
-            scTotal += amt;
-        });
-
-        document.getElementById('grandTotal').textContent = (supplyTotal + scTotal).toLocaleString();
-    }
-
-    function renumberRows() {
-        document.querySelectorAll('#itemsBody tr').forEach(function(tr, i) {
-            tr.querySelector('td:first-child').textContent = i + 1;
-        });
-        rowIndex = document.querySelectorAll('#itemsBody tr').length;
-    }
-
-    // ── 품목 검색 ──
-    var itemSearchTimeout = null;
-    document.getElementById('itemSearchInput').addEventListener('input', function() {
-        clearTimeout(itemSearchTimeout);
-        var q = this.value.trim();
-        if (q.length < 1) { document.getElementById('itemSearchResults').innerHTML = '<div class="text-center text-muted py-3">검색어를 입력하세요.</div>'; return; }
-        itemSearchTimeout = setTimeout(function() {
+    // ── 품목 인라인 자동완성 ──
+    container.addEventListener('input', function(e) {
+        if (!e.target.classList.contains('item-ac-input')) return;
+        clearTimeout(acTimer);
+        activeInput = e.target;
+        var q = e.target.value.trim();
+        if (q.length < 1) { dd.classList.remove('show'); return; }
+        acTimer = setTimeout(function() {
             fetch('/api/items/search?q=' + encodeURIComponent(q))
                 .then(function(r) { return r.json(); })
                 .then(function(items) {
-                    if (!items.length) {
-                        document.getElementById('itemSearchResults').innerHTML = '<div class="text-center text-muted py-3">검색 결과 없음</div>';
-                    } else {
-                        document.getElementById('itemSearchResults').innerHTML = '<div class="list-group">' + items.map(function(item) {
-                            return '<a href="#" class="list-group-item list-group-item-action item-select-btn py-2" ' +
-                                'data-id="' + item.id + '" data-name="' + item.item_name + '" data-spec="' + (item.item_spec || '') + '" data-unit="' + (item.unit || '') + '">' +
-                                '<strong>' + item.item_name + '</strong>' +
-                                (item.item_spec ? ' <small class="text-muted">(' + item.item_spec + ')</small>' : '') +
-                                (item.item_cd ? ' <code class="ms-1">' + item.item_cd + '</code>' : '') + '</a>';
-                        }).join('') + '</div>';
-                    }
+                    if (!items.length) { dd.classList.remove('show'); return; }
+                    dd.innerHTML = items.map(function(it) {
+                        var priceStr = it.last_unit_price ? ' <span class="ac-price">' + Number(it.last_unit_price).toLocaleString() + '원</span>' : '';
+                        return '<div class="ac-item" data-id="' + it.id + '" data-name="' + it.item_name + '"'
+                            + ' data-spec="' + (it.item_spec || '') + '" data-unit="' + (it.unit || 'EA') + '"'
+                            + ' data-price="' + (it.last_unit_price || 0) + '">'
+                            + '<strong>' + it.item_name + '</strong>'
+                            + (it.item_spec ? ' <span class="ac-sub">(' + it.item_spec + ')</span>' : '')
+                            + priceStr + '</div>';
+                    }).join('');
+                    var rect = activeInput.getBoundingClientRect();
+                    dd.style.top = (rect.bottom + window.scrollY + 2) + 'px';
+                    dd.style.left = rect.left + 'px';
+                    dd.style.width = Math.max(rect.width, 320) + 'px';
+                    dd.classList.add('show');
                 });
-        }, 300);
+        }, 200);
     });
 
-    document.getElementById('itemSearchResults').addEventListener('click', function(e) {
-        var btn = e.target.closest('.item-select-btn');
-        if (!btn) return;
+    dd.addEventListener('mousedown', function(e) {
         e.preventDefault();
-        if (currentSearchRow) {
-            currentSearchRow.querySelector('input[name="item_id[]"]').value = btn.dataset.id;
-            currentSearchRow.querySelector('input[name="item_name[]"]').value = btn.dataset.name;
-            currentSearchRow.querySelector('input[name="item_spec[]"]').value = btn.dataset.spec;
-            currentSearchRow.querySelector('input[name="unit[]"]').value = btn.dataset.unit || '개';
-        }
-        bootstrap.Modal.getInstance(document.getElementById('itemSearchModal')).hide();
+        var item = e.target.closest('.ac-item');
+        if (!item || !activeInput) return;
+        var card = activeInput.closest('.qi-card');
+        card.querySelector('input[name="item_id[]"]').value = item.dataset.id;
+        card.querySelector('input[name="item_name[]"]').value = item.dataset.name;
+        card.querySelector('input[name="item_spec[]"]').value = item.dataset.spec;
+        card.querySelector('input[name="unit[]"]').value = item.dataset.unit || 'EA';
+        var price = parseFloat(item.dataset.price) || 0;
+        if (price > 0) card.querySelector('input[name="unit_price[]"]').value = price;
+        dd.classList.remove('show');
+        recalcAll();
+        card.querySelector('input[name="quantity[]"]').focus();
     });
 
-    // ── 세부견적 템플릿 불러오기 ──
+    document.addEventListener('click', function(e) {
+        if (!e.target.classList.contains('item-ac-input') && !dd.contains(e.target)) dd.classList.remove('show');
+    });
+
+    // ── 부과금 ──
+    function addScRow(data) {
+        data = data || {};
+        scIndex++;
+        var row = document.createElement('div');
+        row.className = 'qi-card';
+        row.style.background = '#fffbeb';
+        row.style.borderColor = '#fde68a';
+        row.innerHTML =
+            '<button type="button" class="qi-rm sc-rm-btn">&times;</button>' +
+            '<div class="row g-2 align-items-end">' +
+                '<div class="col-5"><label class="form-label small text-muted mb-0">항목명</label><input type="text" name="sc_name[]" class="form-control form-control-sm" value="' + (data.name || '') + '" placeholder="부가세, 이윤 등"></div>' +
+                '<div class="col-3"><label class="form-label small text-muted mb-0">비율 (%)</label><input type="number" name="sc_rate[]" class="form-control form-control-sm text-end sc-calc" value="' + (data.rate || '') + '" min="0" step="any" inputmode="decimal"></div>' +
+                '<div class="col-4 text-end"><label class="form-label small text-muted mb-0">금액</label><div class="fw-bold sc-amount" style="font-size:1rem;color:#92400e;padding:6px 0;">0원</div></div>' +
+            '</div>';
+        document.getElementById('scContainer').appendChild(row);
+        recalcAll();
+    }
+    document.getElementById('addScBtn').addEventListener('click', function() { addScRow(); });
+
+    document.getElementById('scContainer').addEventListener('click', function(e) {
+        if (e.target.classList.contains('sc-rm-btn')) { e.target.closest('.qi-card').remove(); recalcAll(); }
+    });
+    document.getElementById('scContainer').addEventListener('input', function(e) {
+        if (e.target.classList.contains('sc-calc')) recalcAll();
+    });
+
+    // ── 계산 ──
+    function recalcAll() {
+        var supply = 0;
+        container.querySelectorAll('.qi-card').forEach(function(card) {
+            var qty = parseFloat(card.querySelector('input[name="quantity[]"]').value) || 0;
+            var price = parseFloat(card.querySelector('input[name="unit_price[]"]').value) || 0;
+            var amount = qty * price;
+            card.querySelector('.row-amount').textContent = amount.toLocaleString() + '원';
+            supply += amount;
+        });
+        document.getElementById('supplyTotal').textContent = supply.toLocaleString() + '원';
+
+        var scTotal = 0;
+        var scHtml = '';
+        document.querySelectorAll('#scContainer .qi-card').forEach(function(row) {
+            var name = row.querySelector('input[name="sc_name[]"]').value.trim();
+            var rate = parseFloat(row.querySelector('input[name="sc_rate[]"]').value) || 0;
+            var amt = Math.round(supply * rate / 100);
+            row.querySelector('.sc-amount').textContent = amt.toLocaleString() + '원';
+            scTotal += amt;
+            if (name) scHtml += '<div class="total-row" style="opacity:.7;"><span>' + name + ' (' + rate + '%)</span><span>' + amt.toLocaleString() + '원</span></div>';
+        });
+        document.getElementById('scTotalRows').innerHTML = scHtml;
+        document.getElementById('grandTotal').textContent = (supply + scTotal).toLocaleString() + '원';
+    }
+
+    function renumberCards() {
+        container.querySelectorAll('.qi-card').forEach(function(card, i) {
+            card.querySelector('.qi-no').textContent = '#' + (i + 1);
+        });
+        rowIndex = container.querySelectorAll('.qi-card').length;
+    }
+
+    // ── 세부견적 템플릿 ──
     document.getElementById('loadTplBtn').addEventListener('click', function() {
         new bootstrap.Modal(document.getElementById('tplLoadModal')).show();
         loadTemplateList();
     });
-
-    // 템플릿 뱃지 클릭 (빠른 불러오기)
-    document.querySelectorAll('.tpl-badge').forEach(function(badge) {
-        badge.addEventListener('click', function() {
-            var tplId = this.dataset.tplId;
-            loadTemplateItems(tplId);
-        });
+    document.querySelectorAll('.tpl-badge').forEach(function(b) {
+        b.addEventListener('click', function() { loadTemplateItems(this.dataset.tplId); });
     });
 
     function loadTemplateList(q) {
-        var url = '/api/quote-templates' + (q ? '?q=' + encodeURIComponent(q) : '');
-        fetch(url).then(function(r) { return r.json(); }).then(function(tpls) {
-            if (!tpls.length) {
-                document.getElementById('tplSearchResults').innerHTML = '<div class="text-center text-muted py-3">저장된 템플릿이 없습니다.</div>';
-                return;
-            }
-            document.getElementById('tplSearchResults').innerHTML = '<div class="list-group">' + tpls.map(function(t) {
-                return '<a href="#" class="list-group-item list-group-item-action tpl-load-btn py-2" data-id="' + t.id + '">' +
-                    '<strong>' + t.name + '</strong> <span class="badge bg-primary ms-1">' + t.item_count + '건</span>' +
-                    ' <small class="text-muted">(' + t.total.toLocaleString() + '원)</small>' +
-                    (t.note ? '<br><small class="text-muted">' + t.note + '</small>' : '') + '</a>';
-            }).join('') + '</div>';
-        });
+        fetch('/api/quote-templates' + (q ? '?q=' + encodeURIComponent(q) : ''))
+            .then(function(r) { return r.json(); })
+            .then(function(tpls) {
+                var el = document.getElementById('tplSearchResults');
+                if (!tpls.length) { el.innerHTML = '<div class="text-center text-muted py-3">저장된 템플릿이 없습니다.</div>'; return; }
+                el.innerHTML = '<div class="list-group">' + tpls.map(function(t) {
+                    return '<a href="#" class="list-group-item list-group-item-action tpl-load-btn py-2" data-id="' + t.id + '">'
+                        + '<strong>' + t.name + '</strong> <span class="badge bg-primary ms-1">' + t.item_count + '건</span>'
+                        + ' <small class="text-muted">(' + t.total.toLocaleString() + '원)</small></a>';
+                }).join('') + '</div>';
+            });
     }
-
-    var tplSearchTimer = null;
+    var tplTimer = null;
     document.getElementById('tplSearchInput').addEventListener('input', function() {
-        clearTimeout(tplSearchTimer);
+        clearTimeout(tplTimer);
         var q = this.value.trim();
-        tplSearchTimer = setTimeout(function() { loadTemplateList(q); }, 300);
+        tplTimer = setTimeout(function() { loadTemplateList(q); }, 300);
     });
-
     document.getElementById('tplSearchResults').addEventListener('click', function(e) {
         var btn = e.target.closest('.tpl-load-btn');
         if (!btn) return;
@@ -488,63 +470,45 @@
         loadTemplateItems(btn.dataset.id);
         bootstrap.Modal.getInstance(document.getElementById('tplLoadModal')).hide();
     });
-
     function loadTemplateItems(tplId) {
-        fetch('/api/quote-templates/' + tplId)
-            .then(function(r) { return r.json(); })
-            .then(function(tpl) {
-                if (tpl.error) { alert(tpl.error); return; }
-                tpl.items.forEach(function(item) {
-                    addItemRow(item);
-                });
-                recalcAll();
-            });
+        fetch('/api/quote-templates/' + tplId).then(function(r) { return r.json(); }).then(function(tpl) {
+            if (tpl.error) { alert(tpl.error); return; }
+            tpl.items.forEach(function(item) { addItemCard(item); });
+            recalcAll();
+        });
     }
 
     // ── 템플릿 저장 ──
     document.getElementById('saveTplBtn').addEventListener('click', function() {
-        var rows = document.querySelectorAll('#itemsBody tr');
-        if (!rows.length) { alert('저장할 품목이 없습니다.'); return; }
-        document.getElementById('tplSavePreview').textContent = rows.length + '개 품목이 저장됩니다.';
+        var cards = container.querySelectorAll('.qi-card');
+        if (!cards.length) { alert('저장할 품목이 없습니다.'); return; }
+        document.getElementById('tplSavePreview').textContent = cards.length + '개 품목이 저장됩니다.';
         new bootstrap.Modal(document.getElementById('tplSaveModal')).show();
         document.getElementById('tplSaveName').focus();
     });
-
     document.getElementById('tplSaveConfirmBtn').addEventListener('click', function() {
         var name = document.getElementById('tplSaveName').value.trim();
         if (!name) { alert('템플릿 이름을 입력하세요.'); return; }
-
         var items = [];
-        document.querySelectorAll('#itemsBody tr').forEach(function(tr) {
-            var itemName = tr.querySelector('input[name="item_name[]"]').value.trim();
-            if (!itemName) return;
+        container.querySelectorAll('.qi-card').forEach(function(card) {
+            var n = card.querySelector('input[name="item_name[]"]').value.trim();
+            if (!n) return;
             items.push({
-                item_name: itemName,
-                item_spec: tr.querySelector('input[name="item_spec[]"]').value.trim(),
-                unit: tr.querySelector('input[name="unit[]"]').value.trim() || '개',
-                quantity: parseFloat(tr.querySelector('input[name="quantity[]"]').value) || 0,
-                unit_price: parseFloat(tr.querySelector('input[name="unit_price[]"]').value) || 0,
-                note: tr.querySelector('input[name="item_note[]"]').value.trim(),
+                item_name: n,
+                item_spec: card.querySelector('input[name="item_spec[]"]').value.trim(),
+                unit: card.querySelector('input[name="unit[]"]').value.trim() || 'EA',
+                quantity: parseFloat(card.querySelector('input[name="quantity[]"]').value) || 0,
+                unit_price: parseFloat(card.querySelector('input[name="unit_price[]"]').value) || 0,
+                note: card.querySelector('input[name="item_note[]"]').value.trim(),
             });
         });
-
         fetch('/api/quote-templates', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-            body: JSON.stringify({
-                name: name,
-                note: document.getElementById('tplSaveNote').value.trim(),
-                items: items,
-            }),
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (d.ok) {
-                alert('템플릿 "' + d.name + '" 저장 완료!');
-                bootstrap.Modal.getInstance(document.getElementById('tplSaveModal')).hide();
-            } else {
-                alert(d.error || '저장 실패');
-            }
+            body: JSON.stringify({ name: name, note: document.getElementById('tplSaveNote').value.trim(), items: items }),
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            if (d.ok) { alert('템플릿 "' + d.name + '" 저장!'); bootstrap.Modal.getInstance(document.getElementById('tplSaveModal')).hide(); }
+            else alert(d.error || '저장 실패');
         });
     });
 })();

@@ -733,6 +733,7 @@ def api_item_search():
             'item_name': i.item_name,
             'item_spec': i.item_spec or '',
             'unit': i.unit or '',
+            'last_unit_price': i.last_unit_price or 0,
         } for i in items])
 
 
