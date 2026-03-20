@@ -359,6 +359,10 @@ def update_user_extra_menus():
 @admin_required
 def reset_projects():
     """프로젝트 전체 초기화 — 프로젝트 + 연관 데이터 삭제, 마스터 데이터 유지"""
+    if session.get('username') != 'admin':
+        flash('최고관리자(admin) 계정만 프로젝트 초기화를 실행할 수 있습니다.', 'danger')
+        return redirect(url_for('auth.admin_settings'))
+
     confirm_text = (request.form.get('confirm_text') or '').strip()
     if confirm_text != '프로젝트초기화':
         flash('확인 문구가 일치하지 않습니다. "프로젝트초기화"를 정확히 입력해주세요.', 'danger')
