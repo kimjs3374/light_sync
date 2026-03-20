@@ -24,6 +24,24 @@
 | delivery-summary | 납품집계 (G2B 조달내역 피벗+차트+엑셀) | 95% | 2026-03-19 | 4 |
 | inventory-management | 재고관리 (대시보드+실사+회전율+BOM재고+변동이력) | 95% | 2026-03-19 | 4 |
 | sidebar-collapse | 접이식 사이드바 + 즐겨찾기 (250px↔60px, 플라이아웃, FOUC방지) | 95% | 2026-03-19 | 4 |
+| super-bom | 슈퍼BOM (옵션별 BOM 필터링, 8FR 100% 구현) | 95% | 2026-03-20 | 3 |
+
+## super-bom
+
+- **Duration**: 2026-03-19 ~ 2026-03-20 (1 session)
+- **Iterations**: 0 (first-pass 95%, FR 100%)
+- **Key Result**: 단일 슈퍼BOM으로 N개 옵션조합 커버. option_filter/option_schema JSON 컬럼, 엑셀/웹 임포트 옵션조건 자동 파싱, BOM 상세 드롭다운 필터 UI + JS 필터링, 소요자재 계산 옵션 반영, 엑셀 다운로드 옵션조건 포함
+- **Modified**: entities.py, db.py, routes/bom.py, scripts/import_bom_from_excel.py, templates/bom_detail.html
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [super-bom.plan.md](super-bom/super-bom.plan.md) |
+| Analysis | [super-bom.analysis.md](super-bom/super-bom.analysis.md) |
+| Report | [super-bom.report.md](super-bom/super-bom.report.md) |
+
+---
 
 ## sidebar-collapse
 

@@ -20,7 +20,7 @@
     </div>
 </div>
 
-<form method="POST" action="{{ url_for('bom.bom_edit', bom_id=bom.id) }}">
+<form id="editForm" method="POST" action="{{ url_for('bom.bom_edit', bom_id=bom.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     {# --- 제품 정보 --- #}
@@ -193,12 +193,11 @@
                             <td>
                                 <input type="text" name="option_filter[]" class="form-control form-control-sm border-0 bg-transparent px-0" value="{{ item._option_display or '' }}" placeholder="공통" style="font-size:.72rem;" title="예: 렌즈=20도,반사판=420">
                             </td>
-                            {% else %}
-                            <input type="hidden" name="option_filter[]" value="">
                             {% endif %}
                             <td class="text-center">
                                 <input type="hidden" name="unit[]" value="{{ item.unit or '' }}">
                                 <input type="hidden" name="item_note[]" value="{{ item.note or '' }}">
+                                {% if not has_opts %}<input type="hidden" name="option_filter[]" value="">{% endif %}
                                 <button type="button" class="btn btn-outline-danger btn-xs remove-btn" style="padding:.1rem .3rem;font-size:.65rem;">X</button>
                             </td>
                         </tr>
@@ -213,14 +212,15 @@
         </div>
     </div>
 
-    <div class="d-flex justify-content-between" style="margin-bottom:80px;">
-        <form method="POST" action="{{ url_for('bom.bom_delete', bom_id=bom.id) }}" class="d-inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('이 BOM을 삭제하시겠습니까?');">삭제</button>
-        </form>
-        <button type="submit" class="btn btn-primary btn-sm px-4">저장</button>
-    </div>
 </form>
+
+<div class="d-flex justify-content-between" style="margin-bottom:80px;">
+    <form method="POST" action="{{ url_for('bom.bom_delete', bom_id=bom.id) }}" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('이 BOM을 삭제하시겠습니까?');">삭제</button>
+    </form>
+    <button type="submit" form="editForm" class="btn btn-primary btn-sm px-4">저장</button>
+</div>
 
 <style>
 /* ============================================
@@ -352,7 +352,7 @@
         });
     });
     // submit 시 콤마 제거
-    document.querySelector('form[action*="bom_edit"]').addEventListener('submit', function() {
+    document.getElementById('editForm').addEventListener('submit', function() {
         this.querySelectorAll('.price-input').forEach(function(el) {
             el.value = el.value.replace(/,/g, '');
         });
@@ -369,7 +369,8 @@
               '<td class="text-end col-latest-price price-latest"><span class="text-muted">-</span></td>' +
               '<td class="text-end price-amount" data-bom="0" data-latest="0">-</td>' : '';
         var oc = hasOpts
-            ? '<td><input type="text" name="option_filter[]" class="form-control form-control-sm border-0 bg-transparent px-0" placeholder="공통" style="font-size:.72rem;"></td>' : '<input type="hidden" name="option_filter[]" value="">';
+            ? '<td><input type="text" name="option_filter[]" class="form-control form-control-sm border-0 bg-transparent px-0" placeholder="공통" style="font-size:.72rem;"></td>' : '';
+        var ofHidden = hasOpts ? '' : '<input type="hidden" name="option_filter[]" value="">';
         tr.innerHTML =
             '<td class="text-center"><input type="checkbox" class="form-check-input row-check" style="margin:0;"></td>' +
             '<td class="text-muted">' + idx + '</td>' +
@@ -379,7 +380,7 @@
             '<td><input type="number" name="quantity[]" class="form-control form-control-sm text-end border-0 bg-transparent px-0" value="1" step="any" min="0" style="font-size:.78rem;"></td>' +
             pc +
             '<td>-</td>' + oc +
-            '<td class="text-center"><input type="hidden" name="unit[]" value="EA"><input type="hidden" name="item_note[]" value=""><button type="button" class="btn btn-outline-danger btn-xs remove-btn" style="padding:.1rem .3rem;font-size:.65rem;">X</button></td>';
+            '<td class="text-center">' + ofHidden + '<input type="hidden" name="unit[]" value="EA"><input type="hidden" name="item_note[]" value=""><button type="button" class="btn btn-outline-danger btn-xs remove-btn" style="padding:.1rem .3rem;font-size:.65rem;">X</button></td>';
         document.getElementById('itemsBody').appendChild(tr);
         tr.querySelector('.remove-btn').addEventListener('click', function() { tr.remove(); });
         var pi = tr.querySelector('.price-input');
