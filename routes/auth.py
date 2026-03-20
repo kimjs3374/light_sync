@@ -146,7 +146,7 @@ def admin_settings():
         position_choices = ['대표이사', '전무', '상무', '이사', '부장', '차장', '과장', '대리', '주임', '사원']
 
         # 최초 admin 계정 확인 (프로젝트 초기화 탭 표시 여부)
-        superadmin = db.query(User).filter(User.role == 'admin').order_by(User.id.asc()).first()
+        superadmin = db.query(User).filter(User.role == 'admin', User.user_group == '최고관리자').first()
         is_superadmin = superadmin and session.get('user_id') == superadmin.id
 
         return render_template('admin_settings.html',
@@ -157,7 +157,25 @@ def admin_settings():
             group_menu_data=group_menu_data,
             configurable_menus=configurable_menus,
             position_choices=position_choices,
-            is_superadmin=is_superadmin)
+            is_superadmin=is_superadmin,
+            current_admin_id=session.get('user_id'))
+
+
+@auth_bp.route('/toggle_admin/<int:user_id>', methods=['POST'])
+@admin_required
+def toggle_admin(user_id):
+    if user_id == session.get('user_id'):
+        flash('자기 자신의 권한은 변경할 수 없습니다.', 'warning')
+        return redirect(url_for('auth.admin_settings'))
+    with get_db() as db:
+        user = db.query(User).get(user_id)
+        if not user:
+            flash('사용자를 찾을 수 없습니다.', 'danger')
+            return redirect(url_for('auth.admin_settings'))
+        user.role = 'user' if user.role == 'admin' else 'admin'
+        db.commit()
+        flash(f'{user.full_name}님의 권한을 {user.role}로 변경했습니다.', 'success')
+    return redirect(url_for('auth.admin_settings'))
 
 
 @auth_bp.route('/update_position/<int:user_id>', methods=['POST'])
@@ -380,9 +398,9 @@ def update_user_extra_menus():
 @admin_required
 def reset_projects():
     """프로젝트 전체 초기화 — 프로젝트 + 연관 데이터 삭제, 마스터 데이터 유지"""
-    # 최초 생성된 admin 계정만 허용 (db.py에서 만든 최고관리자)
+    # db.py에서 생성한 최고관리자 계정만 허용 (user_group='최고관리자' + role='admin')
     with get_db() as _db:
-        superadmin = _db.query(User).filter(User.role == 'admin').order_by(User.id.asc()).first()
+        superadmin = _db.query(User).filter(User.role == 'admin', User.user_group == '최고관리자').first()
     if not superadmin or session.get('user_id') != superadmin.id:
         flash('최고관리자 계정만 프로젝트 초기화를 실행할 수 있습니다.', 'danger')
         return redirect(url_for('auth.admin_settings'))
