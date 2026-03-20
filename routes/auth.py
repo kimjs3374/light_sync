@@ -452,6 +452,7 @@ def reset_projects():
         # 납품 (하위 FK 먼저)
         from modules.models import DeliverySplit, DeliveryPhoto
         from sqlalchemy import text
+        counts['delivery_contract_files'] = db.execute(text('DELETE FROM delivery_contract_files')).rowcount
         counts['delivery_documents'] = db.execute(text('DELETE FROM delivery_documents')).rowcount
         counts['delivery_photos'] = db.query(DeliveryPhoto).delete()
         counts['delivery_splits'] = db.query(DeliverySplit).delete()
@@ -461,6 +462,7 @@ def reset_projects():
         counts['history_logs'] = db.query(HistoryLog).delete()
         counts['contacts'] = db.query(Contact).delete()
         from modules.models import DrawingVersion, ContractBarcode, Material
+        counts['drawing_share_links'] = db.execute(text('DELETE FROM drawing_share_links')).rowcount
         counts['drawing_versions'] = db.query(DrawingVersion).delete()
         counts['drawings'] = db.query(Drawing).delete()
         counts['contract_barcodes'] = db.query(ContractBarcode).delete()
