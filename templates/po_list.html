@@ -14,9 +14,19 @@
     .badge-status { font-size: .72rem; padding: 3px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
     .filter-bar { background: #f8fafc; border-radius: 10px; padding: 10px 14px; }
     .history-section .card-header { background: linear-gradient(135deg, #f8fafc, #f1f5f9); border-bottom: 2px solid #e2e8f0; }
+    /* 거래처 그룹핑 */
+    #groupToggle .btn { font-size:.75rem; padding:3px 8px; white-space:nowrap; }
+    #groupToggle .btn.active { background:var(--mg-primary); border-color:var(--mg-primary); color:#fff; }
+    #groupToggle .btn:not(.active) { color:var(--mg-muted); }
+    .po-col-contract { color:var(--mg-muted); font-size:.78rem; }
+    .po-table tbody tr[data-group-header]:hover td { background:linear-gradient(135deg,#e8f0fe,#dbeafe) !important; }
+    .po-table tbody tr[data-group-header] { cursor:pointer; }
     @media (max-width: 767.98px) {
         .stat-num { font-size: 1.4rem; }
         .stat-cards-row .col { min-width: 0; }
+        .po-col-contract { display:none; }
+        #groupToggle { width:100%; }
+        #groupToggle .btn { flex:1; }
     }
 </style>
 
@@ -73,6 +83,13 @@
             <button type="submit" class="btn btn-primary btn-sm">검색</button>
             <a href="{{ url_for('purchase_order.po_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
         </div>
+        <div class="col-auto ms-auto">
+            <div class="btn-group btn-group-sm" id="groupToggle" role="group">
+                <button type="button" class="btn btn-outline-secondary active" data-mode="vendor">거래처별</button>
+                <button type="button" class="btn btn-outline-secondary" data-mode="contract">계약별</button>
+                <button type="button" class="btn btn-outline-secondary" data-mode="date">날짜순</button>
+            </div>
+        </div>
     </form>
 </div>
 
@@ -84,10 +101,10 @@
                 <thead>
                     <tr style="background:#f8fafc;">
                         <th class="ps-3" style="width:110px">발주번호</th>
-                        <th style="width:95px">발주일</th>
+                        <th style="width:90px">발주일</th>
+                        <th style="width:140px" class="po-col-contract">계약</th>
                         <th>거래처</th>
                         <th style="width:75px">상태</th>
-                        <th style="width:110px" class="text-end">공급가액</th>
                         <th style="width:100px" class="text-end">합계</th>
                         <th style="width:55px">발송</th>
                         <th style="width:50px"></th>
@@ -95,9 +112,16 @@
                 </thead>
                 <tbody>
                     {% for po in orders %}
-                    <tr onclick="location.href='{{ url_for('purchase_order.po_detail', po_id=po.id) }}'">
+                    <tr onclick="location.href='{{ url_for('purchase_order.po_detail', po_id=po.id) }}'"
+                        data-vendor-name="{{ po.vendor.name if po.vendor else '-' }}"
+                        data-contract-name="{{ po.contract.contract_name if po.contract else '-' }}"
+                        data-amount="{{ (po.total_amount or 0) + (po.tax_amount or 0) }}"
+                        data-date="{{ po.po_date.strftime('%Y-%m-%d') if po.po_date else '' }}">
                         <td class="ps-3"><a href="{{ url_for('purchase_order.po_detail', po_id=po.id) }}" class="po-no-link">{{ po.po_no }}</a></td>
                         <td>{{ po.po_date.strftime('%Y-%m-%d') if po.po_date else '-' }}</td>
+                        <td class="po-col-contract text-truncate" style="max-width:140px;">
+                            <small>{{ po.contract.contract_name if po.contract else '-' }}</small>
+                        </td>
                         <td><strong>{{ po.vendor.name if po.vendor else '-' }}</strong></td>
                         <td>
                             {% if po.status == '작성중' %}
@@ -108,13 +132,10 @@
                                 <span class="badge-status" style="background:#dbeafe;color:#1e40af;">{{ po.status }}</span>
                             {% elif po.status == '입고완료' %}
                                 <span class="badge-status" style="background:#e0e7ff;color:#3730a3;">{{ po.status }}</span>
-                            {% elif po.status == '취소' %}
-                                <span class="badge-status" style="background:#f1f5f9;color:#64748b;">{{ po.status }}</span>
                             {% else %}
                                 <span class="badge-status" style="background:#f1f5f9;color:#64748b;">{{ po.status }}</span>
                             {% endif %}
                         </td>
-                        <td class="text-end">{{ fmt_money(po.total_amount) }}</td>
                         <td class="text-end fw-bold" style="color:#0f172a;">{{ fmt_money((po.total_amount or 0) + (po.tax_amount or 0)) }}</td>
                         <td>
                             {% if po.email_sent_at %}
@@ -130,7 +151,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="8" class="text-center text-muted py-4">발주서가 없습니다.</td></tr>
+                    <tr class="po-empty-row"><td colspan="8" class="text-center text-muted py-4">발주서가 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -287,6 +308,121 @@ function showHistoryDetail(id) {
         })
         .catch(function() { alert('데이터 조회 실패'); });
 }
+</script>
+
+<script>
+/* ═══ 거래처 그룹핑 / 날짜순 토글 ═══ */
+(function(){
+    var COL_COUNT = 8;
+    var STORAGE_KEY = 'po_list_group_mode';
+    var tbody = document.querySelector('.po-table tbody');
+    if (!tbody) return;
+
+    var originalRows = Array.from(tbody.querySelectorAll('tr:not(.po-empty-row)'));
+    if (originalRows.length === 0) return;
+
+    var rowMeta = originalRows.map(function(tr) {
+        return {
+            tr: tr,
+            vendorName: tr.getAttribute('data-vendor-name') || '-',
+            contractName: tr.getAttribute('data-contract-name') || '-',
+            dateText: tr.getAttribute('data-date') || '',
+            total: parseFloat(tr.getAttribute('data-amount') || 0)
+        };
+    });
+
+    function removeGroupHeaders() {
+        tbody.querySelectorAll('[data-group-header]').forEach(function(h) { h.remove(); });
+    }
+
+    function escHtml(s) {
+        return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function buildGroupHeader(label, icon, count, total) {
+        var tr = document.createElement('tr');
+        tr.setAttribute('data-group-header', '');
+        tr.dataset.collapsed = 'false';
+        tr.style.cssText = 'cursor:pointer;user-select:none;';
+        var fmt = total > 0 ? total.toLocaleString() + '원' : '-';
+        tr.innerHTML = '<td colspan="' + COL_COUNT + '" style="'
+            + 'background:linear-gradient(135deg,#f1f5f9,#e8f0fe);'
+            + 'border-top:2px solid var(--mg-primary);'
+            + 'border-bottom:1px solid #bfdbfe;padding:6px 12px;">'
+            + '<div class="d-flex align-items-center justify-content-between">'
+            + '<div class="d-flex align-items-center gap-2">'
+            + '<span style="display:inline-block;transition:transform .2s;font-size:.7rem;" class="po-chev">▼</span>'
+            + '<span style="font-size:.75rem;">' + icon + '</span>'
+            + '<strong style="font-size:.82rem;color:var(--mg-primary);">' + escHtml(label) + '</strong>'
+            + '<span class="badge rounded-pill" style="background:#dbeafe;color:#1e40af;font-size:.68rem;padding:2px 7px;white-space:nowrap;">'
+            + count + '건</span></div>'
+            + '<span class="fw-bold" style="font-size:.82rem;color:#0f172a;">' + fmt + '</span>'
+            + '</div></td>';
+        return tr;
+    }
+
+    function renderGroupedBy(key, icon) {
+        removeGroupHeaders();
+        var groups = [];
+        var seen = {};
+        rowMeta.forEach(function(m) {
+            var name = m[key] || '-';
+            if (!seen[name]) {
+                seen[name] = { name: name, rows: [], total: 0 };
+                groups.push(seen[name]);
+            }
+            seen[name].rows.push(m);
+            seen[name].total += m.total;
+        });
+
+        tbody.innerHTML = '';
+        groups.forEach(function(g) {
+            var header = buildGroupHeader(g.name, icon, g.rows.length, g.total);
+            tbody.appendChild(header);
+            g.rows.forEach(function(m) {
+                tbody.appendChild(m.tr);
+                m.tr.style.display = '';
+            });
+            header.addEventListener('click', function() {
+                var collapsed = header.dataset.collapsed === 'true';
+                var chev = header.querySelector('.po-chev');
+                g.rows.forEach(function(m) { m.tr.style.display = collapsed ? '' : 'none'; });
+                header.dataset.collapsed = collapsed ? 'false' : 'true';
+                if (chev) chev.style.transform = collapsed ? '' : 'rotate(-90deg)';
+            });
+        });
+    }
+
+    function renderFlat() {
+        removeGroupHeaders();
+        originalRows.forEach(function(tr) { tbody.appendChild(tr); tr.style.display = ''; });
+    }
+
+    function applyMode(mode) {
+        if (mode === 'vendor') renderGroupedBy('vendorName', '🏢');
+        else if (mode === 'contract') renderGroupedBy('contractName', '📋');
+        else renderFlat();
+    }
+
+    // 토글 버튼
+    var btns = document.querySelectorAll('#groupToggle button');
+    btns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            btns.forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            var mode = btn.getAttribute('data-mode');
+            localStorage.setItem(STORAGE_KEY, mode);
+            applyMode(mode);
+        });
+    });
+
+    // 초기 모드
+    var saved = localStorage.getItem(STORAGE_KEY) || 'vendor';
+    btns.forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-mode') === saved);
+    });
+    applyMode(saved);
+})();
 </script>
 
 {% endblock %}

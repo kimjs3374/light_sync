@@ -68,16 +68,6 @@ def _ensure_postgres_schema():
 def init_db():
     _ensure_postgres_schema()
 
-    # 견적서 테이블 스키마 변경: 기존 불완전 테이블 DROP 후 재생성 (v2026-03-19)
-    if _is_postgres_engine():
-        with engine.begin() as conn:
-            schema_ident = quote_ident(DB_SCHEMA)
-            for tbl in ['quotation_items', 'quote_template_items', 'quotations', 'quote_templates']:
-                try:
-                    conn.execute(text(f"DROP TABLE IF EXISTS {schema_ident}.{tbl} CASCADE"))
-                except Exception:
-                    pass
-
     try:
         Base.metadata.create_all(bind=engine)
     except (OperationalError, ProgrammingError) as e:

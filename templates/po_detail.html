@@ -165,13 +165,15 @@
         <div class="table-responsive">
             <table class="table table-sm mb-0 items-table" style="table-layout:fixed;">
                 <colgroup>
-                    <col style="width:36px"><col><col style="width:70px"><col style="width:40px">
-                    <col style="width:95px"><col style="width:105px"><col style="width:14%"><col style="width:14%">
+                    <col style="width:36px"><col><col style="width:65px"><col style="width:65px"><col style="width:70px"><col style="width:40px">
+                    <col style="width:85px"><col style="width:95px"><col style="width:12%"><col style="width:12%">
                 </colgroup>
                 <thead>
                     <tr style="background:#f8fafc;">
                         <th class="ps-3">No</th>
                         <th>품명/규격</th>
+                        <th class="text-end">실재고</th>
+                        <th class="text-end">가용</th>
                         <th class="text-end">수량</th>
                         <th>단위</th>
                         <th class="text-end">단가</th>
@@ -188,6 +190,11 @@
                             <strong>{{ item.item_name }}</strong>
                             {% if item.item_spec %}<br><small class="text-muted">{{ item.item_spec }}</small>{% endif %}
                         </td>
+                        {% set linked = item.bom_item.item if item.bom_item and item.bom_item.item_id else None %}
+                        {% set stock = (linked.stock_qty or 0)|round(0)|int if linked else '-' %}
+                        {% set avail = ((linked.stock_qty or 0) - (linked.reserved_qty or 0))|round(0)|int if linked else '-' %}
+                        <td class="text-end">{{ stock }}</td>
+                        <td class="text-end {{ 'text-danger fw-bold' if avail != '-' and avail <= 0 else 'text-success fw-bold' if avail != '-' else '' }}">{{ avail }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.quantity or 0) }}</td>
                         <td>{{ item.unit or '' }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
@@ -201,7 +208,7 @@
                         <td class="text-muted small" style="overflow:hidden;text-overflow:ellipsis;">{{ item.note or '' }}</td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="8" class="text-center text-muted py-4">품목이 없습니다.</td></tr>
+                    <tr><td colspan="10" class="text-center text-muted py-4">품목이 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

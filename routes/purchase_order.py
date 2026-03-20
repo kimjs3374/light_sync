@@ -14,6 +14,7 @@ from flask import (
     flash, jsonify, abort, session, make_response,
 )
 from sqlalchemy import desc, func
+from sqlalchemy.orm import joinedload
 from modules.auth_decorators import login_required
 from modules.pagination import make_pagination
 from modules.utils import safe_int
@@ -156,7 +157,11 @@ def po_list():
     per_page = 20
 
     with get_db() as db:
-        query = db.query(PurchaseOrder).join(Vendor)
+        query = db.query(PurchaseOrder).join(Vendor).options(
+            joinedload(PurchaseOrder.vendor),
+            joinedload(PurchaseOrder.project),
+            joinedload(PurchaseOrder.contract),
+        )
 
         if q:
             like_q = f"%{q}%"
@@ -315,7 +320,12 @@ def po_create():
 def po_detail(po_id):
     with get_db() as db:
         po = db.query(PurchaseOrder).options(
-            joinedload(PurchaseOrder.items).joinedload(PurchaseOrderItem.bom_item).joinedload(BomItem.bom_header),
+            joinedload(PurchaseOrder.items)
+                .joinedload(PurchaseOrderItem.bom_item)
+                .joinedload(BomItem.bom_header),
+            joinedload(PurchaseOrder.items)
+                .joinedload(PurchaseOrderItem.bom_item)
+                .joinedload(BomItem.item),
             joinedload(PurchaseOrder.vendor),
         ).get(po_id)
         if not po:
@@ -727,14 +737,45 @@ def api_item_search():
                 (Item.item_spec.ilike(like_q))
             )
         items = query.order_by(Item.item_name).limit(20).all()
-        return jsonify([{
-            'id': i.id,
-            'item_cd': i.icube_item_cd or '',
-            'item_name': i.item_name,
-            'item_spec': i.item_spec or '',
-            'unit': i.unit or '',
-            'last_unit_price': i.last_unit_price or 0,
-        } for i in items])
+
+        # 입고단가 fallback 조회 (우선순위: last_unit_price → 입고이력 → 발주이력)
+        from modules.models import ReceivingItem, ReceivingHistory
+        result = []
+        for i in items:
+            price = i.last_unit_price or 0
+            if not price:
+                # 1) 입고(신규): item_name 매칭
+                rcv = db.query(ReceivingItem.unit_price).filter(
+                    ReceivingItem.item_name == i.item_name,
+                    ReceivingItem.unit_price > 0,
+                ).order_by(ReceivingItem.id.desc()).first()
+                if rcv:
+                    price = rcv[0]
+            if not price and i.icube_item_cd:
+                # 2) 입고이력(iCUBE): items_json에서 품번 매칭
+                import json as _json
+                histories = db.query(ReceivingHistory.items_json).filter(
+                    ReceivingHistory.items_json.ilike(f'%{i.icube_item_cd}%'),
+                ).order_by(ReceivingHistory.id.desc()).limit(5).all()
+                for (json_str,) in histories:
+                    try:
+                        for hi in _json.loads(json_str or '[]'):
+                            if hi.get('item_cd') == i.icube_item_cd and hi.get('unit_price', 0) > 0:
+                                price = hi['unit_price']
+                                break
+                    except Exception:
+                        pass
+                    if price:
+                        break
+            result.append({
+                'id': i.id,
+                'item_cd': i.icube_item_cd or '',
+                'item_name': i.item_name,
+                'item_spec': i.item_spec or '',
+                'unit': i.unit or '',
+                'last_unit_price': price,
+            })
+        return jsonify(result)
 
 
 # ===================================================================

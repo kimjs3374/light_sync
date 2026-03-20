@@ -26,36 +26,51 @@
     .item-ac-dropdown .ac-price { color: #059669; font-weight: 600; font-size: .78rem; }
     .item-ac-dropdown .ac-sub { color: #94a3b8; font-size: .78rem; }
 
-    /* ─── 품목 카드 (모바일 + 데스크톱 공용) ─── */
-    .qi-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; position: relative; }
+    /* 단가 추천 드롭다운 */
+    .price-dd { position: absolute; z-index: 9998; background: #fff; border: 1px solid #fde68a; border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.1); display: none; min-width: 180px; }
+    .price-dd.show { display: block; }
+    .price-dd .pd-title { padding: 6px 10px; font-size: .7rem; color: #92400e; font-weight: 700; background: #fffbeb; border-bottom: 1px solid #fde68a; }
+    .price-dd .pd-item { padding: 6px 10px; cursor: pointer; font-size: .82rem; border-bottom: 1px solid #f5f5f4; display: flex; justify-content: space-between; gap: 12px; }
+    .price-dd .pd-item:hover { background: #fffbeb; }
+    .price-dd .pd-price { font-weight: 700; color: #0f172a; }
+    .price-dd .pd-meta { font-size: .7rem; color: #94a3b8; }
+
+    /* ─── 품목 카드 ─── */
+    .qi-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; position: relative; }
     .qi-card:hover { border-color: #93c5fd; }
-    .qi-card .qi-no { position: absolute; top: 10px; left: 14px; font-size: .72rem; color: #94a3b8; font-weight: 700; }
-    .qi-card .qi-rm { position: absolute; top: 6px; right: 8px; font-size: 1.2rem; color: #ef4444; opacity: .4; cursor: pointer; line-height: 1; background: none; border: none; padding: 4px; }
+    .qi-card .qi-no { font-size: .72rem; color: #94a3b8; font-weight: 700; white-space: nowrap; }
+    .qi-card .qi-rm { font-size: 1.2rem; color: #ef4444; opacity: .4; cursor: pointer; line-height: 1; background: none; border: none; padding: 2px 4px; white-space: nowrap; }
     .qi-card .qi-rm:hover { opacity: 1; }
-    .qi-row { display: grid; gap: 8px; }
-    .qi-row-main { grid-template-columns: 1fr; }
-    .qi-row-nums { grid-template-columns: 1fr 1fr 1fr 1fr; }
-    .qi-row-note { grid-template-columns: 1fr; }
-    .qi-field label { font-size: .72rem; color: #94a3b8; font-weight: 600; margin-bottom: 2px; display: block; }
-    .qi-field input, .qi-field textarea { font-size: .9rem; }
-    .qi-amount { font-size: 1rem; font-weight: 700; color: #0f172a; text-align: right; padding: 6px 0; }
+    .qi-field label { font-size: .68rem; color: #94a3b8; font-weight: 600; margin-bottom: 1px; display: block; white-space: nowrap; }
+    .qi-field input { font-size: .85rem; }
+    /* PC: 품명|규격|단위|수량|단가|비고 한 줄 */
+    .qi-inline { display: flex; align-items: end; gap: 6px; }
+    .qi-f-name { flex: 3; min-width: 0; }
+    .qi-f-spec { flex: 2; min-width: 0; }
+    .qi-f-unit { flex: 0 0 55px; }
+    .qi-f-qty  { flex: 0 0 70px; }
+    .qi-f-price { flex: 0 0 110px; }
+    .qi-f-note { flex: 1.5; min-width: 0; }
+    .qi-f-no   { flex: 0 0 24px; text-align: center; padding-bottom: 6px; }
+    .qi-f-rm   { flex: 0 0 24px; text-align: center; padding-bottom: 4px; }
+
 
     /* 합계 바 */
     .total-bar { background: #0f172a; color: #fff; border-radius: 10px; padding: 14px 20px; }
     .total-bar .total-row { display: flex; justify-content: space-between; font-size: .9rem; }
     .total-bar .total-row.grand { font-size: 1.15rem; font-weight: 700; border-top: 1px solid rgba(255,255,255,.15); padding-top: 8px; margin-top: 6px; }
 
-    /* 데스크톱: 숫자 필드 한 줄 */
-    @media (min-width: 768px) {
-        .qi-row-nums { grid-template-columns: 70px 90px 130px 130px; }
-        .qi-row-main { grid-template-columns: 1fr 200px; }
-        .qi-row-note { grid-template-columns: 1fr auto; align-items: end; }
-    }
-    /* 모바일: 숫자 2x2 */
+    /* 모바일: 줄바꿈 허용 */
     @media (max-width: 767.98px) {
-        .qi-row-nums { grid-template-columns: 1fr 1fr; }
+        .qi-inline { flex-wrap: wrap; }
+        .qi-f-name { flex: 1 1 100%; }
+        .qi-f-spec { flex: 1 1 45%; }
+        .qi-f-unit { flex: 0 0 50px; }
+        .qi-f-qty  { flex: 1 1 45%; }
+        .qi-f-price { flex: 1 1 45%; }
+        .qi-f-note { flex: 1 1 100%; }
         .qt-section .card-body { padding: 10px; }
-        .qi-card { padding: 10px 12px; }
+        .qi-card { padding: 8px; }
     }
 </style>
 
@@ -146,6 +161,7 @@
             <div class="d-flex gap-2 flex-wrap">
                 <button type="button" class="btn btn-outline-success btn-sm" id="loadTplBtn">세부견적 불러오기</button>
                 <button type="button" class="btn btn-outline-info btn-sm" id="saveTplBtn">템플릿 저장</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#quickItemModal">견적품목 등록</button>
                 <button type="button" class="btn btn-add-item btn-sm px-3" id="addItemBtn">+ 품목 추가</button>
             </div>
         </div>
@@ -204,6 +220,8 @@
 
 {# 자동완성 드롭다운 #}
 <div class="item-ac-dropdown" id="itemAcDropdown"></div>
+{# 단가 추천 드롭다운 #}
+<div class="price-dd" id="priceDd"></div>
 
 {# 세부견적 불러오기 모달 #}
 <div class="modal fade" id="tplLoadModal" tabindex="-1">
@@ -248,13 +266,40 @@
     </div>
 </div>
 
+{# 견적 전용 품목 빠른 등록 모달 #}
+<div class="modal fade" id="quickItemModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <div class="modal-header" style="background:#f8fafc;">
+                <h6 class="modal-title fw-bold">견적 전용 품목 등록</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-3">DB에 없는 견적 전용 항목(운반비, 도금비, 시험비 등)을 등록하면 자동완성에서 검색됩니다.</p>
+                <div class="row g-2">
+                    <div class="col-12"><label class="form-label small text-muted mb-0">품명 <span class="text-danger">*</span></label><input type="text" id="qiName" class="form-control form-control-sm" placeholder="예: 운반비, 도금비, 현장시험비"></div>
+                    <div class="col-6"><label class="form-label small text-muted mb-0">규격</label><input type="text" id="qiSpec" class="form-control form-control-sm" placeholder="선택"></div>
+                    <div class="col-3"><label class="form-label small text-muted mb-0">단위</label><input type="text" id="qiUnit" class="form-control form-control-sm text-center" value="EA"></div>
+                    <div class="col-3"><label class="form-label small text-muted mb-0">기본단가</label><input type="number" id="qiPrice" class="form-control form-control-sm text-end" min="0" step="any" placeholder="0"></div>
+                </div>
+            </div>
+            <div class="modal-footer" style="background:#f8fafc;">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary btn-sm" id="qiSaveBtn">등록</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 (function() {
     var rowIndex = 0;
     var scIndex = 0;
     var csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     var dd = document.getElementById('itemAcDropdown');
+    var pdd = document.getElementById('priceDd');
     var activeInput = null;
+    var activePriceInput = null;
     var acTimer = null;
     var container = document.getElementById('itemsContainer');
 
@@ -268,42 +313,34 @@
         var card = document.createElement('div');
         card.className = 'qi-card';
         card.innerHTML =
-            '<span class="qi-no">#' + rowIndex + '</span>' +
-            '<button type="button" class="qi-rm">&times;</button>' +
             '<input type="hidden" name="item_id[]" value="' + (data.id || '') + '">' +
-            '<div class="qi-row qi-row-main mb-2" style="padding-top:14px;">' +
-                '<div class="qi-field">' +
+            '<div class="qi-inline">' +
+                '<div class="qi-f-no qi-no">' + rowIndex + '</div>' +
+                '<div class="qi-field qi-f-name">' +
                     '<label>품명</label>' +
-                    '<input type="text" name="item_name[]" class="form-control form-control-sm item-ac-input" value="' + (data.item_name || '') + '" placeholder="품명 입력 (자동완성)" autocomplete="off" required>' +
+                    '<input type="text" name="item_name[]" class="form-control form-control-sm item-ac-input" value="' + (data.item_name || '') + '" placeholder="품명 (자동완성)" autocomplete="off" required>' +
                 '</div>' +
-                '<div class="qi-field">' +
+                '<div class="qi-field qi-f-spec">' +
                     '<label>규격</label>' +
-                    '<input type="text" name="item_spec[]" class="form-control form-control-sm" value="' + (data.item_spec || '') + '" placeholder="규격">' +
+                    '<input type="text" name="item_spec[]" class="form-control form-control-sm" value="' + (data.item_spec || '') + '">' +
                 '</div>' +
-            '</div>' +
-            '<div class="qi-row qi-row-nums mb-2">' +
-                '<div class="qi-field">' +
+                '<div class="qi-field qi-f-unit">' +
                     '<label>단위</label>' +
                     '<input type="text" name="unit[]" class="form-control form-control-sm text-center" value="' + (data.unit || 'EA') + '">' +
                 '</div>' +
-                '<div class="qi-field">' +
+                '<div class="qi-field qi-f-qty">' +
                     '<label>수량</label>' +
                     '<input type="number" name="quantity[]" class="form-control form-control-sm text-end calc-field" value="' + (data.quantity || '') + '" min="0" step="any" inputmode="decimal">' +
                 '</div>' +
-                '<div class="qi-field">' +
+                '<div class="qi-field qi-f-price">' +
                     '<label>단가</label>' +
                     '<input type="number" name="unit_price[]" class="form-control form-control-sm text-end calc-field" value="' + (data.unit_price || '') + '" min="0" step="any" inputmode="decimal">' +
                 '</div>' +
-                '<div class="qi-field">' +
-                    '<label>금액</label>' +
-                    '<div class="qi-amount row-amount">0</div>' +
-                '</div>' +
-            '</div>' +
-            '<div class="qi-row qi-row-note">' +
-                '<div class="qi-field">' +
+                '<div class="qi-field qi-f-note">' +
                     '<label>비고</label>' +
-                    '<input type="text" name="item_note[]" class="form-control form-control-sm" value="' + (data.note || '') + '" placeholder="비고">' +
+                    '<input type="text" name="item_note[]" class="form-control form-control-sm" value="' + (data.note || '') + '">' +
                 '</div>' +
+                '<div class="qi-f-rm"><button type="button" class="qi-rm">&times;</button></div>' +
             '</div>';
         container.appendChild(card);
         recalcAll();
@@ -373,6 +410,42 @@
 
     document.addEventListener('click', function(e) {
         if (!e.target.classList.contains('item-ac-input') && !dd.contains(e.target)) dd.classList.remove('show');
+        if (!e.target.classList.contains('calc-field') && !pdd.contains(e.target)) pdd.classList.remove('show');
+    });
+
+    // ── 단가 추천 드롭다운 ──
+    container.addEventListener('focus', function(e) {
+        if (!e.target.matches('input[name="unit_price[]"]')) return;
+        activePriceInput = e.target;
+        var card = e.target.closest('.qi-card');
+        var itemName = card.querySelector('input[name="item_name[]"]').value.trim();
+        if (!itemName) { pdd.classList.remove('show'); return; }
+        fetch('/api/quote-price-history?item_name=' + encodeURIComponent(itemName))
+            .then(function(r) { return r.json(); })
+            .then(function(prices) {
+                if (!prices.length) { pdd.classList.remove('show'); return; }
+                pdd.innerHTML = '<div class="pd-title">과거 견적 단가</div>' +
+                    prices.map(function(p) {
+                        return '<div class="pd-item" data-price="' + p.price + '">' +
+                            '<span class="pd-price">' + Number(p.price).toLocaleString() + '</span>' +
+                            '<span class="pd-meta">' + (p.spec ? p.spec + ' | ' : '') + p.count + '회' + (p.last_date ? ' | ' + p.last_date : '') + '</span>' +
+                            '</div>';
+                    }).join('');
+                var rect = e.target.getBoundingClientRect();
+                pdd.style.top = (rect.bottom + window.scrollY + 2) + 'px';
+                pdd.style.left = rect.left + 'px';
+                pdd.style.width = Math.max(rect.width, 220) + 'px';
+                pdd.classList.add('show');
+            });
+    }, true);
+
+    pdd.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        var item = e.target.closest('.pd-item');
+        if (!item || !activePriceInput) return;
+        activePriceInput.value = item.dataset.price;
+        pdd.classList.remove('show');
+        recalcAll();
     });
 
     // ── 부과금 ──
@@ -409,10 +482,9 @@
             var qty = parseFloat(card.querySelector('input[name="quantity[]"]').value) || 0;
             var price = parseFloat(card.querySelector('input[name="unit_price[]"]').value) || 0;
             var amount = qty * price;
-            card.querySelector('.row-amount').textContent = amount.toLocaleString() + '원';
             supply += amount;
         });
-        document.getElementById('supplyTotal').textContent = supply.toLocaleString() + '원';
+        document.getElementById('supplyTotal').textContent = supply.toLocaleString();
 
         var scTotal = 0;
         var scHtml = '';
@@ -420,17 +492,17 @@
             var name = row.querySelector('input[name="sc_name[]"]').value.trim();
             var rate = parseFloat(row.querySelector('input[name="sc_rate[]"]').value) || 0;
             var amt = Math.round(supply * rate / 100);
-            row.querySelector('.sc-amount').textContent = amt.toLocaleString() + '원';
+            row.querySelector('.sc-amount').textContent = amt.toLocaleString();
             scTotal += amt;
             if (name) scHtml += '<div class="total-row" style="opacity:.7;"><span>' + name + ' (' + rate + '%)</span><span>' + amt.toLocaleString() + '원</span></div>';
         });
         document.getElementById('scTotalRows').innerHTML = scHtml;
-        document.getElementById('grandTotal').textContent = (supply + scTotal).toLocaleString() + '원';
+        document.getElementById('grandTotal').textContent = (supply + scTotal).toLocaleString();
     }
 
     function renumberCards() {
         container.querySelectorAll('.qi-card').forEach(function(card, i) {
-            card.querySelector('.qi-no').textContent = '#' + (i + 1);
+            card.querySelector('.qi-no').textContent = (i + 1);
         });
         rowIndex = container.querySelectorAll('.qi-card').length;
     }
@@ -453,7 +525,10 @@
                 el.innerHTML = '<div class="list-group">' + tpls.map(function(t) {
                     return '<a href="#" class="list-group-item list-group-item-action tpl-load-btn py-2" data-id="' + t.id + '">'
                         + '<strong>' + t.name + '</strong> <span class="badge bg-primary ms-1">' + t.item_count + '건</span>'
-                        + ' <small class="text-muted">(' + t.total.toLocaleString() + '원)</small></a>';
+                        + ' <small class="text-muted">(' + t.total.toLocaleString() + '원)</small>'
+                        + (t.creator ? ' <small class="text-muted">| ' + t.creator + '</small>' : '')
+                        + (t.updated_at ? ' <small class="text-muted">| ' + t.updated_at + '</small>' : '')
+                        + '</a>';
                 }).join('') + '</div>';
             });
     }
@@ -502,13 +577,60 @@
                 note: card.querySelector('input[name="item_note[]"]').value.trim(),
             });
         });
-        fetch('/api/quote-templates', {
+
+        function doSave(overwrite) {
+            fetch('/api/quote-templates', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                body: JSON.stringify({ name: name, note: document.getElementById('tplSaveNote').value.trim(), items: items, overwrite: overwrite }),
+            }).then(function(r) { return r.json(); }).then(function(d) {
+                if (d.ok) {
+                    alert('템플릿 "' + d.name + '" ' + (d.message || '저장') + ' 완료!');
+                    bootstrap.Modal.getInstance(document.getElementById('tplSaveModal')).hide();
+                } else alert(d.error || '저장 실패');
+            });
+        }
+
+        // 동일 이름 존재 여부 확인 후 덮어쓰기 물어보기
+        fetch('/api/quote-templates?q=' + encodeURIComponent(name))
+            .then(function(r) { return r.json(); })
+            .then(function(tpls) {
+                var dup = tpls.find(function(t) { return t.name === name; });
+                if (dup) {
+                    if (confirm('"' + name + '" 템플릿이 이미 있습니다 (' + dup.creator + ' 작성, ' + dup.updated_at + ').\n덮어쓰기 하시겠습니까?')) {
+                        doSave(true);
+                    }
+                } else {
+                    doSave(false);
+                }
+            });
+    });
+    // ── 견적 전용 품목 빠른 등록 ──
+    document.getElementById('qiSaveBtn').addEventListener('click', function() {
+        var name = document.getElementById('qiName').value.trim();
+        if (!name) { alert('품명을 입력하세요.'); return; }
+        fetch('/api/items/create-quote-item', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-            body: JSON.stringify({ name: name, note: document.getElementById('tplSaveNote').value.trim(), items: items }),
-        }).then(function(r) { return r.json(); }).then(function(d) {
-            if (d.ok) { alert('템플릿 "' + d.name + '" 저장!'); bootstrap.Modal.getInstance(document.getElementById('tplSaveModal')).hide(); }
-            else alert(d.error || '저장 실패');
+            body: JSON.stringify({
+                item_name: name,
+                item_spec: document.getElementById('qiSpec').value.trim(),
+                unit: document.getElementById('qiUnit').value.trim() || 'EA',
+                last_unit_price: parseFloat(document.getElementById('qiPrice').value) || 0,
+            }),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.ok) {
+                alert('"' + name + '" 등록 완료! 자동완성에서 검색됩니다.');
+                bootstrap.Modal.getInstance(document.getElementById('quickItemModal')).hide();
+                // 바로 품목 행에 추가
+                addItemCard({id: d.id, item_name: name, item_spec: d.spec, unit: d.unit, unit_price: d.price});
+                recalcAll();
+                document.getElementById('qiName').value = '';
+                document.getElementById('qiSpec').value = '';
+                document.getElementById('qiPrice').value = '';
+            } else { alert(d.error || '등록 실패'); }
         });
     });
 })();

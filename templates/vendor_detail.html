@@ -150,52 +150,49 @@
     {# ─── 발주이력 ─── #}
     <div class="tab-pane fade show active" id="tab-po">
         {% if purchase_orders %}
-        {% for po in purchase_orders %}
-        <div class="card trade-card shadow-sm mb-2">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <div>
-                    <strong style="color:#3b82f6;font-family:monospace;font-size:.85rem;">{{ po.CLS_NB }}</strong>
-                    <span class="text-muted ms-2" style="font-size:.82rem;">{{ po.CLS_DT }}</span>
-                </div>
-                <strong style="font-size:.9rem;">{{ fmt_money(po.total) }}원</strong>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-sm mb-0 trade-table" style="table-layout:fixed;">
-                        <colgroup>
-                            <col style="width:36px"><col><col style="width:70px"><col style="width:40px">
-                            <col style="width:90px"><col style="width:100px"><col style="width:18%">
-                        </colgroup>
-                        <thead>
-                            <tr><th class="ps-2">No</th><th>품명/규격</th><th class="text-end">수량</th><th>단위</th><th class="text-end">단가</th><th class="text-end">합계</th><th>비고</th></tr>
-                        </thead>
-                        <tbody>
+        <table class="table table-sm table-hover mb-0 trade-table">
+            <thead>
+                <tr>
+                    <th style="width:110px">발주번호</th>
+                    <th style="width:90px">발주일</th>
+                    <th>품목</th>
+                    <th class="text-end" style="width:100px">합계</th>
+                    <th style="width:30px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for po in purchase_orders %}
+                <tr style="cursor:pointer;" onclick="this.nextElementSibling.classList.toggle('d-none')">
+                    <td><span style="font-family:var(--mg-mono);font-size:.78rem;color:#2563eb;">{{ po.CLS_NB }}</span></td>
+                    <td style="font-size:.78rem;color:#64748b;">{{ po.CLS_DT }}</td>
+                    <td style="overflow:hidden;text-overflow:ellipsis;max-width:300px;">
+                        {% if po.detail_rows %}{{ po.detail_rows[0].ITEM_NM or po.detail_rows[0].ITEM_CD }}{% if po.detail_rows|length > 1 %} <span style="color:#94a3b8;">외 {{ po.detail_rows|length - 1 }}건</span>{% endif %}{% endif %}
+                    </td>
+                    <td class="text-end fw-bold" style="font-family:var(--mg-mono);font-size:.82rem;">{{ fmt_money(po.total) }}</td>
+                    <td style="color:#94a3b8;font-size:.7rem;">▼</td>
+                </tr>
+                <tr class="d-none">
+                    <td colspan="5" style="background:#f8fafc;padding:4px 12px !important;">
+                        <table class="table table-sm mb-0" style="font-size:.78rem;">
+                            <thead><tr style="color:#94a3b8;font-size:.68rem;"><th>품명</th><th>규격</th><th class="text-end">수량</th><th class="text-end">단가</th><th class="text-end">금액</th></tr></thead>
+                            <tbody>
                             {% for item in po.detail_rows %}
                             <tr>
-                                <td class="text-muted ps-2">{{ item.CLS_SQ }}</td>
-                                <td>
-                                    <strong>{{ item.ITEM_NM or item.ITEM_CD }}</strong>
-                                    {% if item.ITEM_DC %}<br><small class="text-muted">{{ item.ITEM_DC }}</small>{% endif %}
-                                    {% if not item.ITEM_NM %}<br><small class="text-muted">{{ item.ITEM_CD }}</small>{% endif %}
-                                </td>
+                                <td>{{ item.ITEM_NM or item.ITEM_CD }}</td>
+                                <td style="color:#64748b;">{{ item.ITEM_DC or '' }}</td>
                                 <td class="text-end">{{ "{:,.0f}".format(item.CLS_QT or 0) }}</td>
-                                <td>{{ item.UNIT_DC or '' }}</td>
                                 <td class="text-end">{{ "{:,.0f}".format(item.CLS_UM or 0) }}</td>
-                                <td class="text-end fw-bold" style="color:#0f172a;">{{ "{:,.0f}".format(item.CLSH_AM or 0) }}</td>
-                                <td class="text-muted small" style="overflow:hidden;text-overflow:ellipsis;">{{ item.ITEM_REMARK or '' }}</td>
+                                <td class="text-end fw-bold">{{ "{:,.0f}".format(item.CLSH_AM or 0) }}</td>
                             </tr>
                             {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            {% if po.REMARK_DC %}
-            <div class="card-footer bg-white py-1 px-3">
-                <small class="text-muted">비고: {{ po.REMARK_DC }}</small>
-            </div>
-            {% endif %}
-        </div>
-        {% endfor %}
+                            </tbody>
+                        </table>
+                        {% if po.REMARK_DC %}<div style="font-size:.75rem;color:#64748b;margin-top:2px;">비고: {{ po.REMARK_DC }}</div>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
         {% else %}
         <div class="text-center text-muted py-4">발주 이력이 없습니다.</div>
         {% endif %}
@@ -204,48 +201,48 @@
     {# ─── 입고이력 ─── #}
     <div class="tab-pane fade" id="tab-rcv">
         {% if receivings %}
-        {% for rcv in receivings %}
-        <div class="card trade-card shadow-sm mb-2">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <div>
-                    <strong style="color:#22c55e;font-family:monospace;font-size:.85rem;">{{ rcv.RCV_NB }}</strong>
-                    <span class="text-muted ms-2" style="font-size:.82rem;">{{ rcv.RCV_DT }}</span>
-                    {% if rcv.WH_CD %}<span class="badge bg-light text-dark ms-1" style="font-size:.68rem;">{{ rcv.WH_CD }}</span>{% endif %}
-                </div>
-                <strong style="font-size:.9rem;">{{ fmt_money(rcv.total) }}원</strong>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-sm mb-0 trade-table" style="table-layout:fixed;">
-                        <colgroup>
-                            <col style="width:36px"><col><col style="width:70px"><col style="width:40px">
-                            <col style="width:90px"><col style="width:100px"><col style="width:18%">
-                        </colgroup>
-                        <thead>
-                            <tr><th class="ps-2">No</th><th>품명/규격</th><th class="text-end">수량</th><th>단위</th><th class="text-end">단가</th><th class="text-end">합계</th><th>비고</th></tr>
-                        </thead>
-                        <tbody>
+        <table class="table table-sm table-hover mb-0 trade-table">
+            <thead>
+                <tr>
+                    <th style="width:110px">입고번호</th>
+                    <th style="width:90px">입고일</th>
+                    <th>품목</th>
+                    <th class="text-end" style="width:100px">합계</th>
+                    <th style="width:30px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rcv in receivings %}
+                <tr style="cursor:pointer;" onclick="this.nextElementSibling.classList.toggle('d-none')">
+                    <td><span style="font-family:var(--mg-mono);font-size:.78rem;color:#16a34a;">{{ rcv.RCV_NB }}</span></td>
+                    <td style="font-size:.78rem;color:#64748b;">{{ rcv.RCV_DT }}</td>
+                    <td style="overflow:hidden;text-overflow:ellipsis;max-width:300px;">
+                        {% if rcv.detail_rows %}{{ rcv.detail_rows[0].ITEM_NM or rcv.detail_rows[0].ITEM_CD }}{% if rcv.detail_rows|length > 1 %} <span style="color:#94a3b8;">외 {{ rcv.detail_rows|length - 1 }}건</span>{% endif %}{% endif %}
+                    </td>
+                    <td class="text-end fw-bold" style="font-family:var(--mg-mono);font-size:.82rem;">{{ fmt_money(rcv.total) }}</td>
+                    <td style="color:#94a3b8;font-size:.7rem;">▼</td>
+                </tr>
+                <tr class="d-none">
+                    <td colspan="5" style="background:#f8fafc;padding:4px 12px !important;">
+                        <table class="table table-sm mb-0" style="font-size:.78rem;">
+                            <thead><tr style="color:#94a3b8;font-size:.68rem;"><th>품명</th><th>규격</th><th class="text-end">수량</th><th class="text-end">단가</th><th class="text-end">금액</th></tr></thead>
+                            <tbody>
                             {% for item in rcv.detail_rows %}
                             <tr>
-                                <td class="text-muted ps-2">{{ item.RCV_SQ }}</td>
-                                <td>
-                                    <strong>{{ item.ITEM_NM or item.ITEM_CD }}</strong>
-                                    {% if item.ITEM_DC %}<br><small class="text-muted">{{ item.ITEM_DC }}</small>{% endif %}
-                                    {% if not item.ITEM_NM %}<br><small class="text-muted">{{ item.ITEM_CD }}</small>{% endif %}
-                                </td>
+                                <td>{{ item.ITEM_NM or item.ITEM_CD }}</td>
+                                <td style="color:#64748b;">{{ item.ITEM_DC or '' }}</td>
                                 <td class="text-end">{{ "{:,.0f}".format(item.RCV_QT or 0) }}</td>
-                                <td>{{ item.UNIT_DC or '' }}</td>
                                 <td class="text-end">{{ "{:,.0f}".format(item.RCV_UM or 0) }}</td>
-                                <td class="text-end fw-bold" style="color:#0f172a;">{{ "{:,.0f}".format(item.RCVH_AM or 0) }}</td>
-                                <td class="text-muted small" style="overflow:hidden;text-overflow:ellipsis;">{{ item.REMARK_DC or '' }}</td>
+                                <td class="text-end fw-bold">{{ "{:,.0f}".format(item.RCVH_AM or 0) }}</td>
                             </tr>
                             {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
         {% else %}
         <div class="text-center text-muted py-4">입고 이력이 없습니다.</div>
         {% endif %}

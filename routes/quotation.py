@@ -32,8 +32,8 @@ quotation_bp = Blueprint('quotation', __name__)
 # ===================================================================
 # 헬퍼
 # ===================================================================
-def _generate_quote_no(db):
-    """견적번호 자동 채번: MT-YYMMDD-순번 (당일 기준)"""
+def _generate_quote_no(db, retry=0):
+    """견적번호 자동 채번: MT-YYMMDD-순번 (당일 기준, 충돌 시 재시도)"""
     today = datetime.date.today()
     prefix = f"MT-{today.strftime('%y%m%d')}-"
 
@@ -41,13 +41,14 @@ def _generate_quote_no(db):
         Quotation.quote_no.like(f'{prefix}%')
     ).order_by(desc(Quotation.quote_no)).first()
 
+    next_num = 1
     if last:
         try:
-            last_num = int(last.quote_no.replace(prefix, ''))
-            return f'{prefix}{last_num + 1:02d}'
+            next_num = int(last.quote_no.replace(prefix, '')) + 1
         except ValueError:
             pass
-    return f'{prefix}01'
+    next_num += retry
+    return f'{prefix}{next_num:02d}'
 
 
 def _fmt_money(val):
@@ -108,6 +109,30 @@ def _parse_surcharges_from_form(form, supply_total):
     return surcharges, sc_total
 
 
+# 변동성 높은 비용 항목 키워드 (자동 등록 제외)
+_EXCLUDE_KEYWORDS = [
+    '인건비', '노무비', '운반비', '운송비', '배송비',
+    '도금비', '도장비', '도색비',
+    '시험비', '검사비', '검수비', '인증비',
+    '세팅비', '설치비', '철거비', '시공비',
+    '출장비', '교통비', '숙박비', '식대',
+    '기타비용', '잡비', '부대비용',
+    '할인', '에누리', '조정',
+]
+
+
+def _is_cost_item(name):
+    """변동성 높은 비용 항목인지 판단"""
+    name_lower = name.lower().strip()
+    for kw in _EXCLUDE_KEYWORDS:
+        if kw in name_lower:
+            return True
+    # '비' 로 끝나는 항목 (XX비 패턴)
+    if len(name_lower) >= 2 and name_lower.endswith('비'):
+        return True
+    return False
+
+
 def _save_items(db, quotation_id, items_data):
     """품목 DB 저장"""
     for item_data in items_data:
@@ -122,6 +147,41 @@ def _save_items(db, quotation_id, items_data):
             unit_price=item_data['unit_price'],
             amount=item_data['amount'],
             note=item_data['note'],
+        ))
+
+
+def _auto_register_quote_items(db, items_data):
+    """DB에 없는 실제 품목을 자동으로 견적전용 Item에 등록 (입고단가는 건드리지 않음)"""
+    for item_data in items_data:
+        name = item_data['item_name'].strip()
+        if not name:
+            continue
+
+        # 이미 DB에서 선택한 품목 → 스킵 (입고단가 건드리지 않음)
+        if item_data['item_id']:
+            continue
+
+        # 변동성 높은 비용 항목은 제외
+        if _is_cost_item(name):
+            continue
+
+        # 이미 등록된 품목 확인
+        existing = db.query(Item).filter(Item.item_name == name).first()
+        if existing:
+            # 견적전용 품목만 단가 갱신 (기존 품목은 절대 안 건드림)
+            price = item_data['unit_price']
+            if existing.category == '견적전용' and price and price > 0:
+                existing.last_unit_price = price
+            continue
+
+        # 신규 등록
+        db.add(Item(
+            item_name=name,
+            item_spec=item_data['item_spec'] or None,
+            unit=item_data['unit'] or 'EA',
+            category='견적전용',
+            last_unit_price=item_data['unit_price'] or 0,
+            is_active=True,
         ))
 
 
@@ -206,32 +266,47 @@ def quotation_create():
             # 부과금 파싱
             surcharges, sc_total = _parse_surcharges_from_form(request.form, supply_total)
 
-            quotation = Quotation(
-                quote_no=_generate_quote_no(db),
-                quote_date=quote_date,
-                validity_period=(request.form.get('validity_period') or '견적일로부터 1개월').strip(),
-                delivery_date=(request.form.get('delivery_date') or '협의').strip(),
-                payment_method=(request.form.get('payment_method') or '현금').strip(),
-                bank_account=(request.form.get('bank_account') or '').strip() or None,
-                project_name=(request.form.get('project_name') or '').strip() or None,
-                customer_name=(request.form.get('customer_name') or '').strip() or None,
-                customer_contact=(request.form.get('customer_contact') or '').strip() or None,
-                customer_address=(request.form.get('customer_address') or '').strip() or None,
-                customer_tel=(request.form.get('customer_tel') or '').strip() or None,
-                customer_fax=(request.form.get('customer_fax') or '').strip() or None,
-                customer_email=(request.form.get('customer_email') or '').strip() or None,
-                note=(request.form.get('note') or '').strip() or None,
-                tax_included='tax_included' in request.form,
-                total_amount=supply_total,
-                surcharges_json=json.dumps(surcharges, ensure_ascii=False) if surcharges else None,
-                grand_total=supply_total + sc_total,
-                status='작성중',
-                created_by=session.get('user_id'),
-            )
-            db.add(quotation)
-            db.flush()
+            # 견적번호 채번 (충돌 시 최대 5회 재시도)
+            from sqlalchemy.exc import IntegrityError
+            quotation = None
+            for retry in range(5):
+                try:
+                    quotation = Quotation(
+                        quote_no=_generate_quote_no(db, retry=retry),
+                        quote_date=quote_date,
+                        validity_period=(request.form.get('validity_period') or '견적일로부터 1개월').strip(),
+                        delivery_date=(request.form.get('delivery_date') or '협의').strip(),
+                        payment_method=(request.form.get('payment_method') or '현금').strip(),
+                        bank_account=(request.form.get('bank_account') or '').strip() or None,
+                        project_name=(request.form.get('project_name') or '').strip() or None,
+                        customer_name=(request.form.get('customer_name') or '').strip() or None,
+                        customer_contact=(request.form.get('customer_contact') or '').strip() or None,
+                        customer_address=(request.form.get('customer_address') or '').strip() or None,
+                        customer_tel=(request.form.get('customer_tel') or '').strip() or None,
+                        customer_fax=(request.form.get('customer_fax') or '').strip() or None,
+                        customer_email=(request.form.get('customer_email') or '').strip() or None,
+                        note=(request.form.get('note') or '').strip() or None,
+                        tax_included='tax_included' in request.form,
+                        total_amount=supply_total,
+                        surcharges_json=json.dumps(surcharges, ensure_ascii=False) if surcharges else None,
+                        grand_total=supply_total + sc_total,
+                        status='작성중',
+                        created_by=session.get('user_id'),
+                    )
+                    db.add(quotation)
+                    db.flush()
+                    break
+                except IntegrityError:
+                    db.rollback()
+                    quotation = None
+                    continue
+
+            if not quotation:
+                flash('견적번호 생성에 실패했습니다. 다시 시도해주세요.', 'danger')
+                return redirect(url_for('quotation.quotation_create'))
 
             _save_items(db, quotation.id, items_data)
+            _auto_register_quote_items(db, items_data)
             db.commit()
 
             flash(f'견적서 {quotation.quote_no}가 생성되었습니다.', 'success')
@@ -299,6 +374,7 @@ def quotation_edit(quote_id):
         surcharges, sc_total = _parse_surcharges_from_form(request.form, supply_total)
 
         _save_items(db, quotation.id, items_data)
+        _auto_register_quote_items(db, items_data)
         quotation.total_amount = supply_total
         quotation.surcharges_json = json.dumps(surcharges, ensure_ascii=False) if surcharges else None
         quotation.grand_total = supply_total + sc_total
@@ -373,43 +449,64 @@ def quotation_pdf(quote_id):
 @quotation_bp.route('/api/quote-templates', methods=['GET'])
 @login_required
 def api_template_list():
-    """템플릿 목록 (검색)"""
+    """템플릿 목록 (검색, 작성자 포함)"""
     q = (request.args.get('q') or '').strip()
     with get_db() as db:
+        from modules.models import User
         query = db.query(QuoteTemplate)
         if q:
             query = query.filter(QuoteTemplate.template_name.ilike(f'%{q}%'))
         templates = query.order_by(desc(QuoteTemplate.id)).limit(30).all()
-        return jsonify([{
-            'id': t.id,
-            'name': t.template_name,
-            'note': t.note or '',
-            'item_count': len(t.items),
-            'total': sum(i.amount for i in t.items),
-        } for t in templates])
+        result = []
+        for t in templates:
+            creator = db.query(User.full_name).filter(User.id == t.created_by).scalar() if t.created_by else None
+            result.append({
+                'id': t.id,
+                'name': t.template_name,
+                'note': t.note or '',
+                'item_count': len(t.items),
+                'total': sum(i.amount for i in t.items),
+                'creator': creator or '',
+                'updated_at': t.updated_at.strftime('%Y-%m-%d') if t.updated_at else '',
+            })
+        return jsonify(result)
 
 
 @quotation_bp.route('/api/quote-templates/<int:tpl_id>', methods=['GET'])
 @login_required
 def api_template_detail(tpl_id):
-    """템플릿 상세 (품목 포함)"""
+    """템플릿 상세 (품목 포함, 최신 입고단가 반영)"""
     with get_db() as db:
         tpl = db.query(QuoteTemplate).get(tpl_id)
         if not tpl:
             return jsonify({'error': '템플릿을 찾을 수 없습니다.'}), 404
+
+        result_items = []
+        for i in tpl.items:
+            unit_price = i.unit_price
+            # 품명+규격으로 Item DB 조회 → 최신 입고단가 있으면 사용
+            item_match = db.query(Item).filter(
+                Item.item_name == i.item_name,
+                Item.is_active == True,
+            ).first()
+            if item_match and item_match.last_unit_price and item_match.last_unit_price > 0:
+                unit_price = item_match.last_unit_price
+
+            result_items.append({
+                'item_name': i.item_name,
+                'item_spec': i.item_spec or '',
+                'unit': i.unit or 'EA',
+                'quantity': i.quantity,
+                'unit_price': unit_price,
+                'amount': i.quantity * unit_price,
+                'note': i.note or '',
+            })
+
         return jsonify({
             'id': tpl.id,
             'name': tpl.template_name,
             'note': tpl.note or '',
-            'items': [{
-                'item_name': i.item_name,
-                'item_spec': i.item_spec or '',
-                'unit': i.unit or '개',
-                'quantity': i.quantity,
-                'unit_price': i.unit_price,
-                'amount': i.amount,
-                'note': i.note or '',
-            } for i in tpl.items],
+            'items': result_items,
         })
 
 
@@ -428,30 +525,61 @@ def api_template_create():
 
     try:
         with get_db() as db:
-            tpl = QuoteTemplate(
-                template_name=name,
-                note=(data.get('note') or '').strip() or None,
-                created_by=session.get('user_id'),
-            )
-            db.add(tpl)
+            # 동일 이름 체크
+            overwrite = data.get('overwrite', False)
+            tpl = db.query(QuoteTemplate).filter(QuoteTemplate.template_name == name).first()
+            is_update = False
+            if tpl:
+                if not overwrite:
+                    return jsonify({'error': f'"{name}" 템플릿이 이미 존재합니다.'}), 400
+                db.query(QuoteTemplateItem).filter_by(template_id=tpl.id).delete()
+                tpl.note = (data.get('note') or '').strip() or tpl.note
+                tpl.created_by = session.get('user_id')
+                tpl.updated_at = datetime.datetime.now()
+                is_update = True
+            else:
+                tpl = QuoteTemplate(
+                    template_name=name,
+                    note=(data.get('note') or '').strip() or None,
+                    created_by=session.get('user_id'),
+                )
+                db.add(tpl)
             db.flush()
 
+            # 템플릿 품목 저장 + 견적전용 품목 자동 등록
+            tpl_items_data = []
             for idx, item in enumerate(items):
+                item_name = (item.get('item_name') or '').strip()
+                if not item_name:
+                    continue
                 qty = float(item.get('quantity') or 0)
                 price = float(item.get('unit_price') or 0)
+                spec = (item.get('item_spec') or '').strip()
+                unit = (item.get('unit') or 'EA').strip()
+                note = (item.get('note') or '').strip()
+
                 db.add(QuoteTemplateItem(
                     template_id=tpl.id,
                     seq=idx + 1,
-                    item_name=(item.get('item_name') or '').strip(),
-                    item_spec=(item.get('item_spec') or '').strip(),
-                    unit=(item.get('unit') or '개').strip(),
+                    item_name=item_name,
+                    item_spec=spec,
+                    unit=unit,
                     quantity=qty,
                     unit_price=price,
                     amount=qty * price,
-                    note=(item.get('note') or '').strip(),
+                    note=note,
                 ))
+                tpl_items_data.append({
+                    'item_id': None, 'item_name': item_name,
+                    'item_spec': spec, 'unit': unit,
+                    'quantity': qty, 'unit_price': price,
+                    'amount': qty * price, 'note': note, 'seq': idx + 1,
+                })
+
+            _auto_register_quote_items(db, tpl_items_data)
             db.commit()
-            return jsonify({'ok': True, 'id': tpl.id, 'name': tpl.template_name})
+            msg = '갱신' if is_update else '저장'
+            return jsonify({'ok': True, 'id': tpl.id, 'name': tpl.template_name, 'message': msg})
     except Exception as e:
         logger.error("템플릿 저장 오류: %s", e)
         return jsonify({'error': f'저장 실패: {str(e)[:100]}'}), 500
@@ -468,3 +596,85 @@ def api_template_delete(tpl_id):
         db.delete(tpl)
         db.commit()
         return jsonify({'ok': True})
+
+
+# ===================================================================
+# 9. 견적 전용 품목 빠른 등록
+# ===================================================================
+@quotation_bp.route('/api/items/create-quote-item', methods=['POST'])
+@login_required
+def api_create_quote_item():
+    """견적 전용 품목을 Item DB에 category='견적전용'으로 등록"""
+    data = request.get_json(silent=True) or {}
+    name = (data.get('item_name') or '').strip()
+    if not name:
+        return jsonify({'error': '품명을 입력하세요.'}), 400
+
+    spec = (data.get('item_spec') or '').strip()
+    unit = (data.get('unit') or 'EA').strip()
+    price = float(data.get('last_unit_price') or 0)
+
+    try:
+        with get_db() as db:
+            # 동일 품명 중복 체크
+            existing = db.query(Item).filter(Item.item_name == name).first()
+            if existing:
+                return jsonify({
+                    'ok': True, 'id': existing.id,
+                    'spec': existing.item_spec or '', 'unit': existing.unit or 'EA',
+                    'price': existing.last_unit_price or price,
+                    'message': '이미 등록된 품목입니다.',
+                })
+
+            item = Item(
+                item_name=name,
+                item_spec=spec or None,
+                unit=unit,
+                category='견적전용',
+                last_unit_price=price,
+                is_active=True,
+            )
+            db.add(item)
+            db.commit()
+            return jsonify({
+                'ok': True, 'id': item.id,
+                'spec': spec, 'unit': unit, 'price': price,
+            })
+    except Exception as e:
+        logger.error("견적 품목 등록 오류: %s", e)
+        return jsonify({'error': f'등록 실패: {str(e)[:100]}'}), 500
+
+
+# ===================================================================
+# 10. 품목별 과거 견적 단가 추천
+# ===================================================================
+@quotation_bp.route('/api/quote-price-history')
+@login_required
+def api_quote_price_history():
+    """품명 기준 과거 견적 단가 목록 (중복 제거, 최신순)"""
+    item_name = (request.args.get('item_name') or '').strip()
+    if not item_name:
+        return jsonify([])
+
+    with get_db() as db:
+        # QuotationItem에서 동일 품명의 단가 이력 조회
+        rows = db.query(
+            QuotationItem.unit_price,
+            QuotationItem.item_spec,
+            func.max(Quotation.quote_date).label('last_date'),
+            func.count(QuotationItem.id).label('cnt'),
+        ).join(Quotation, Quotation.id == QuotationItem.quotation_id).filter(
+            QuotationItem.item_name == item_name,
+            QuotationItem.unit_price > 0,
+        ).group_by(
+            QuotationItem.unit_price, QuotationItem.item_spec,
+        ).order_by(
+            func.max(Quotation.quote_date).desc(),
+        ).limit(10).all()
+
+        return jsonify([{
+            'price': r.unit_price,
+            'spec': r.item_spec or '',
+            'last_date': str(r.last_date) if r.last_date else '',
+            'count': r.cnt,
+        } for r in rows])

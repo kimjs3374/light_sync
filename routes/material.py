@@ -31,6 +31,7 @@ from modules.services.material_actions import (
     handle_reserve_stock,
     handle_create_po_from_material,
     handle_bulk_create_po,
+    handle_selected_create_po,
 )
 
 material_bp = Blueprint('material', __name__)
@@ -344,6 +345,7 @@ ACTION_HANDLERS = {
     'reserve_stock': handle_reserve_stock,
     'create_po_from_material': handle_create_po_from_material,
     'bulk_create_po': handle_bulk_create_po,
+    'selected_create_po': handle_selected_create_po,
 }
 
 @material_bp.route('/material_management', methods=['GET', 'POST'])

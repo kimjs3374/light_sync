@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "light-sync": {
+      "command": "D:/light_sync/venv/Scripts/python.exe",
+      "args": ["-m", "light_sync_mcp"],
+      "cwd": "D:/light_sync",
+      "env": {
+        "DATABASE_URL": "postgresql://username:password@localhost/light_sync"
+      }
+    }
+  }
+}

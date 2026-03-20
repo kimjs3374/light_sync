@@ -28,6 +28,9 @@
             <input type="hidden" name="action" value="bulk_create_po">
             <button class="btn btn-warning fw-bold">일괄발주</button>
         </form>
+        <button type="button" class="btn btn-success fw-bold" id="btnSelectedPO" disabled onclick="submitSelectedPO()">
+            선택발주 (<span id="poSelectedCount">0</span>건)
+        </button>
     </div>
 </div>
 
@@ -553,10 +556,15 @@
             return checks.filter(ch => ch.dataset.group === group);
         }
 
+        const btnSelectedPO = document.getElementById('btnSelectedPO');
+        const poSelectedCount = document.getElementById('poSelectedCount');
+
         function refreshSelectedCount() {
             const selected = checks.filter(ch => ch.checked).length;
             if (countBadge) countBadge.textContent = `선택 ${selected}건`;
             if (bulkBtn) bulkBtn.disabled = selected === 0;
+            if (btnSelectedPO) btnSelectedPO.disabled = selected === 0;
+            if (poSelectedCount) poSelectedCount.textContent = selected;
         }
 
         function syncGroupHeader(group) {
@@ -597,6 +605,28 @@
 
         selectAllBoxes.forEach(h => syncGroupHeader(h.dataset.group));
         refreshSelectedCount();
+
+        // 선택발주 submit
+        window.submitSelectedPO = function() {
+            var selected = checks.filter(ch => ch.checked);
+            if (!selected.length) return;
+            if (!confirm('선택한 ' + selected.length + '건으로 거래처별 발주서를 생성하시겠습니까?')) return;
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.style.display = 'none';
+            var csrf = document.querySelector('[name=csrf_token]');
+            if (csrf) { var c = csrf.cloneNode(); form.appendChild(c); }
+            var act = document.createElement('input');
+            act.type = 'hidden'; act.name = 'action'; act.value = 'selected_create_po';
+            form.appendChild(act);
+            selected.forEach(function(ch) {
+                var inp = document.createElement('input');
+                inp.type = 'hidden'; inp.name = 'selected_order_ids'; inp.value = ch.value;
+                form.appendChild(inp);
+            });
+            document.body.appendChild(form);
+            form.submit();
+        };
 
         // 탭 뱃지 카운트 업데이트
         var orderCount = 0;

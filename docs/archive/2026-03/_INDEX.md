@@ -25,6 +25,44 @@
 | inventory-management | 재고관리 (대시보드+실사+회전율+BOM재고+변동이력) | 95% | 2026-03-19 | 4 |
 | sidebar-collapse | 접이식 사이드바 + 즐겨찾기 (250px↔60px, 플라이아웃, FOUC방지) | 95% | 2026-03-19 | 4 |
 | super-bom | 슈퍼BOM (옵션별 BOM 필터링, 8FR 100% 구현) | 95% | 2026-03-20 | 3 |
+| po-ux-improve | 발주 UX 개선 (선택발주+계약그룹핑+재고표시) | 90% | 2026-03-20 | 4 |
+| mcp-server | Light-Sync ERP MCP 서버 (FastMCP 28Tool+4Resource, Claude Web+LM Studio) | 92% | 2026-03-20 | 4 |
+
+## mcp-server
+
+- **Duration**: 2026-03-20 (1 session)
+- **Iterations**: 0 (first-pass 92%)
+- **Key Result**: FastMCP 기반 ERP MCP 서버. 28개 Tool(재고/BOM/현장/생산/재무/조달) + 4개 Resource. Streamable HTTP(5010, Claude Web) + SSE(5011, LM Studio) 이중 서버. mcp.mgnt.kr 외부 도메인 연결 완료.
+- **New Package**: `light_sync_mcp/` (server.py, db.py, tools_registry.py, server_http.py 등 15파일, 2,777줄)
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [mcp-server.plan.md](mcp-server/mcp-server.plan.md) |
+| Design | [mcp-server.design.md](mcp-server/mcp-server.design.md) |
+| Analysis | [mcp-server.analysis.md](mcp-server/mcp-server.analysis.md) |
+| Report | [mcp-server.report.md](mcp-server/mcp-server.report.md) |
+
+---
+
+## po-ux-improve
+
+- **Duration**: 2026-03-20 (1 session)
+- **Iterations**: 0 (first-pass 90%)
+- **Key Result**: 자재관리 선택발주(체크→거래처별PO), BOM 선택발주 UX 강화, 발주목록 계약컬럼+3모드 그룹핑(거래처/계약/날짜), 발주상세 실재고/가용재고
+- **Modified**: bom_requirement.html, po_list.html, po_detail.html, material_detail.html, purchase_order.py, material_actions.py, material.py
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [po-ux-improve.plan.md](po-ux-improve/po-ux-improve.plan.md) |
+| Design | [po-ux-improve.design.md](po-ux-improve/po-ux-improve.design.md) |
+| Analysis | [po-ux-improve.analysis.md](po-ux-improve/po-ux-improve.analysis.md) |
+| Report | [po-ux-improve.report.md](po-ux-improve/po-ux-improve.report.md) |
+
+---
 
 ## super-bom
 

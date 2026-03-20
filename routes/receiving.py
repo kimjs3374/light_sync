@@ -141,13 +141,23 @@ def receiving_list():
     per_page = 20
 
     with get_db() as db:
-        query = db.query(Receiving).join(Vendor)
+        query = db.query(Receiving).join(Vendor).outerjoin(
+            ReceivingItem, ReceivingItem.receiving_id == Receiving.id
+        )
 
         if q:
-            like_q = f"%{q}%"
-            query = query.filter(
-                (Vendor.name.ilike(like_q)) | (Receiving.rcv_no.ilike(like_q))
-            )
+            # 공백으로 분리해서 AND 조건: "태영스텐 10t" → *태영스텐* AND *10t*
+            # 거래처명+입고번호+품명+규격 합쳐서 검색
+            tokens = [t.strip() for t in q.split() if t.strip()]
+            for token in tokens:
+                like_t = f"%{token}%"
+                query = query.filter(
+                    (Vendor.name.ilike(like_t)) |
+                    (Receiving.rcv_no.ilike(like_t)) |
+                    (ReceivingItem.item_name.ilike(like_t)) |
+                    (ReceivingItem.item_spec.ilike(like_t))
+                )
+            query = query.distinct()
         if status and status in RCV_STATUS_CHOICES:
             query = query.filter(Receiving.status == status)
 
@@ -158,7 +168,8 @@ def receiving_list():
         receivings_raw = query.order_by(desc(Receiving.rcv_date), desc(Receiving.id)) \
                               .offset(offset).limit(per_page).all()
 
-        # 자체 입고를 플랫 구조로 변환 (기존 이력과 동일 포맷)
+        # 자체 입고를 플랫 구조로 변환 (검색어 있으면 매칭 품목만 필터)
+        tokens = [t.strip().lower() for t in q.split() if t.strip()] if q else []
         receivings = []
         for rcv in receivings_raw:
             detail_rows = []
@@ -168,7 +179,7 @@ def receiving_list():
                 if not spec and note:
                     spec = note
                     note = ''
-                detail_rows.append({
+                row = {
                     'item_name': ri.item_name or '',
                     'spec': spec,
                     'qty': ri.received_qty or 0,
@@ -176,7 +187,23 @@ def receiving_list():
                     'unit_price': ri.unit_price or 0,
                     'amount': ri.amount or 0,
                     'remark': note,
-                })
+                }
+                # 검색어가 있으면 품목 레벨에서 매칭 필터
+                # 거래처명은 입고건 검색에만 사용, 품목 필터는 품명+규격으로만
+                if tokens:
+                    item_text = f"{ri.item_name or ''} {spec}".lower()
+                    vendor_text = (rcv.vendor.name or '').lower()
+                    # 각 토큰이 거래처명 또는 품목텍스트에 있는지 체크
+                    # 단, 품목텍스트에 하나도 안 걸리는 토큰이 전부 거래처에만 있으면 → 거래처 필터일 뿐이므로 통과
+                    item_tokens = [t for t in tokens if t not in vendor_text]
+                    # item_tokens: 거래처명에 없는 토큰들 → 이것들은 반드시 품명+규격에 있어야 함
+                    row['_matched'] = all(t in item_text for t in item_tokens)
+                detail_rows.append(row)
+            # 검색 시 매칭 품목만 표시
+            if tokens:
+                detail_rows = [r for r in detail_rows if r.get('_matched')]
+                if not detail_rows:
+                    continue
             receivings.append({
                 'id': rcv.id,
                 'rcv_no': rcv.rcv_no,
@@ -199,12 +226,14 @@ def receiving_list():
         # iCUBE 기존 입고이력
         hist_query = db.query(ReceivingHistory)
         if q:
-            like_q = f"%{q}%"
-            hist_query = hist_query.filter(
-                (ReceivingHistory.vendor_name.ilike(like_q)) |
-                (ReceivingHistory.icube_rcv_nb.ilike(like_q)) |
-                (ReceivingHistory.items_json.ilike(like_q))
-            )
+            tokens = [t.strip() for t in q.split() if t.strip()]
+            for token in tokens:
+                like_t = f"%{token}%"
+                hist_query = hist_query.filter(
+                    (ReceivingHistory.vendor_name.ilike(like_t)) |
+                    (ReceivingHistory.icube_rcv_nb.ilike(like_t)) |
+                    (ReceivingHistory.items_json.ilike(like_t))
+                )
         history_count = hist_query.count() if not status else 0
         hist_page = safe_int(request.args.get('hp'), 1)
         hist_per_page = 30
@@ -228,6 +257,17 @@ def receiving_list():
                 if not spec and remark:
                     item['spec'] = remark
                     item['remark'] = ''
+            # 검색어 있으면 매칭 품목만 필터
+            if tokens:
+                vendor_lower = (rh.vendor_name or '').lower()
+                item_tokens = [t.lower() for t in tokens if t.lower() not in vendor_lower]
+                if item_tokens:
+                    items = [item for item in items if all(
+                        t in f"{item.get('item_name','')} {item.get('spec','')}".lower()
+                        for t in item_tokens
+                    )]
+                    if not items:
+                        continue
             history_items.append({
                 'id': rh.id,
                 'icube_rcv_nb': rh.icube_rcv_nb,

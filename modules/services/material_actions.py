@@ -525,3 +525,99 @@ def handle_bulk_create_po(db, project, form, current_user, **ctx):
         return {'flash': (f'일괄발주서 {len(created_pos)}건 생성 완료: {", ".join(created_pos)}', 'success')}
 
     return {'flash': ('발주 가능한 자재가 없습니다. (거래처 미지정 등)', 'warning')}
+
+
+def handle_selected_create_po(db, project, form, current_user, **ctx):
+    """체크한 자재만 거래처별 발주서 생성 (선택발주)"""
+    refresh_fn = ctx['refresh_fn']
+
+    selected_ids = form.getlist('selected_order_ids')
+    if not selected_ids:
+        return {'flash': ('발주할 자재를 선택해주세요.', 'warning')}
+
+    order_ids = [safe_int(x) for x in selected_ids if safe_int(x)]
+    if not order_ids:
+        return {'flash': ('유효한 자재가 없습니다.', 'warning')}
+
+    # 선택된 MO 조회 (bom_item 있는 것만)
+    selected_orders = db.query(MaterialOrder).filter(
+        MaterialOrder.id.in_(order_ids),
+        MaterialOrder.project_id == project.id,
+        MaterialOrder.bom_item_id.isnot(None),
+    ).all()
+
+    if not selected_orders:
+        return {'flash': ('BOM 연결된 자재만 발주 가능합니다.', 'warning')}
+
+    # 거래처별 그룹핑
+    groups = {}
+    for mo in selected_orders:
+        bi = db.query(BomItem).get(mo.bom_item_id)
+        supplier = (bi.supplier or '미지정').strip() if bi else '미지정'
+        if supplier not in groups:
+            groups[supplier] = []
+        groups[supplier].append((mo, bi))
+
+    created_pos = []
+    for supplier_name, items in groups.items():
+        if supplier_name == '미지정':
+            continue
+
+        vendor = db.query(Vendor).filter(
+            Vendor.name.ilike(f'%{supplier_name}%'),
+            Vendor.is_active == True,
+        ).first()
+        if not vendor:
+            vendor = Vendor(name=supplier_name, is_active=True)
+            db.add(vendor)
+            db.flush()
+
+        po_no = _generate_po_no(db)
+        po = PurchaseOrder(
+            po_no=po_no,
+            po_date=datetime.date.today(),
+            vendor_id=vendor.id,
+            project_id=project.id,
+            contract_id=items[0][0].contract_id,
+            status='작성중',
+            note=f"자재관리 선택발주 ({project.temp_name or ''}, {len(items)}건)",
+        )
+        db.add(po)
+        db.flush()
+
+        for mo, bi in items:
+            po_item = PurchaseOrderItem(
+                po_id=po.id,
+                item_name=bi.item_name if bi else mo.material_name,
+                item_spec=bi.item_spec if bi else '',
+                quantity=mo.quantity or 0,
+                unit_price=bi.unit_price or 0 if bi else 0,
+                amount=(mo.quantity or 0) * (bi.unit_price or 0) if bi else 0,
+                unit=bi.unit if bi else 'EA',
+                bom_item_id=bi.id if bi else None,
+            )
+            db.add(po_item)
+            db.flush()
+
+            mo.po_id = po.id
+            mo.po_item_id = po_item.id
+            mo.order_status = '발주완료'
+            mo.order_date = datetime.date.today()
+
+        po.total_amount = sum(i.amount or 0 for i in po.items)
+        po.tax_amount = round(po.total_amount * 0.1)
+        created_pos.append(po_no)
+
+    if created_pos:
+        append_history_log(
+            db,
+            project_id=project.id,
+            user_name='시스템',
+            content=f"{current_user}님이 선택발주서 {len(created_pos)}건을 생성했습니다. ({', '.join(created_pos)})",
+            scope='material',
+            kind='system'
+        )
+        refresh_fn(db, project.id)
+        return {'flash': (f'선택발주서 {len(created_pos)}건 생성 완료: {", ".join(created_pos)}', 'success')}
+
+    return {'flash': ('발주 가능한 자재가 없습니다. (거래처 미지정 등)', 'warning')}

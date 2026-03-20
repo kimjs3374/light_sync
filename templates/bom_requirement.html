@@ -50,20 +50,21 @@
 {# --- 소요자재 테이블 --- #}
 <div class="card border-0 shadow-sm">
     <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
-        <div>
+        <div class="d-flex align-items-center gap-2">
             <strong>소요자재 목록</strong>
-            <small class="text-muted ms-2">(계약 품목 x BOM = 소요 자재)</small>
+            <small class="text-muted">(계약 품목 x BOM = 소요 자재)</small>
+            <span id="selectionBadge" class="badge rounded-pill" style="display:none; background:var(--mg-primary,#2563eb); font-size:0.75rem;">0건 선택</span>
         </div>
-        <button type="button" class="btn btn-primary btn-sm" id="btnCreatePO" style="display:none;" data-bs-toggle="modal" data-bs-target="#poPreviewModal">
+        <button type="button" class="btn btn-primary btn-sm" id="btnCreatePO" disabled data-bs-toggle="modal" data-bs-target="#poPreviewModal">
             선택 자재 발주서 생성 (<span id="selectedCount">0</span>건)
         </button>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm mb-0">
+            <table class="table table-sm mb-0 req-table">
                 <thead class="table-light">
                     <tr>
-                        <th style="width:36px"><input type="checkbox" id="checkAll" title="전체 선택"></th>
+                        <th style="width:36px"><input type="checkbox" id="checkAll" class="form-check-input" title="전체 선택"></th>
                         <th>계약품목</th>
                         <th>소요부품</th>
                         <th>규격</th>
@@ -79,10 +80,10 @@
                 </thead>
                 <tbody>
                     {% for r in requirement %}
-                    <tr>
+                    <tr class="{{ 'has-checkbox' if not r.get('no_bom') and r.shortage > 0 else '' }}">
                         <td>
                             {% if not r.get('no_bom') and r.shortage > 0 %}
-                            <input type="checkbox" class="item-check"
+                            <input type="checkbox" class="form-check-input item-check"
                                 data-bom-item-id="{{ r.bom_item.id }}"
                                 data-contract-item-id="{{ r.contract_item.id }}"
                                 data-item-name="{{ r.bom_item.item_name }}"
@@ -161,32 +162,109 @@
     </div>
 </div>
 
+<style>
+/* 선택 행 하이라이트 */
+.req-table tbody tr.row-selected td {
+    background: #eff6ff;
+    box-shadow: inset 3px 0 0 var(--mg-primary, #2563eb);
+}
+/* 체크박스 있는 행: 클릭 커서 */
+.req-table tbody tr.has-checkbox {
+    cursor: pointer;
+}
+/* 버튼 disabled 상태 */
+#btnCreatePO:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: auto; /* tooltip 표시를 위해 유지 */
+}
+</style>
+
 <script>
 (function() {
-    var checkAll = document.getElementById('checkAll');
-    var checks = document.querySelectorAll('.item-check');
-    var btnCreatePO = document.getElementById('btnCreatePO');
+    var checkAll   = document.getElementById('checkAll');
+    var checks     = document.querySelectorAll('.item-check');
+    var btnCreatePO    = document.getElementById('btnCreatePO');
     var selectedCountEl = document.getElementById('selectedCount');
+    var selectionBadge  = document.getElementById('selectionBadge');
 
-    function updateUI() {
-        var count = 0;
-        checks.forEach(function(cb) { if (cb.checked) count++; });
-        selectedCountEl.textContent = count;
-        btnCreatePO.style.display = count > 0 ? '' : 'none';
+    /* XSS 방지 */
+    function escHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
+    /* 선택 상태 전체 동기화 */
+    function syncUI() {
+        var count = 0;
+        checks.forEach(function(cb) { if (cb.checked) count++; });
+
+        /* 건수 텍스트 */
+        selectedCountEl.textContent = count;
+
+        /* 배지 */
+        if (count > 0) {
+            selectionBadge.textContent = count + '건 선택';
+            selectionBadge.style.display = '';
+        } else {
+            selectionBadge.style.display = 'none';
+        }
+
+        /* 버튼 */
+        btnCreatePO.disabled = count === 0;
+
+        /* 행 하이라이트 */
+        checks.forEach(function(cb) {
+            var row = cb.closest('tr');
+            if (row) {
+                row.classList.toggle('row-selected', cb.checked);
+            }
+        });
+
+        /* 전체선택 indeterminate */
+        if (checkAll) {
+            if (count === 0) {
+                checkAll.indeterminate = false;
+                checkAll.checked = false;
+            } else if (count === checks.length) {
+                checkAll.indeterminate = false;
+                checkAll.checked = true;
+            } else {
+                checkAll.indeterminate = true;
+            }
+        }
+    }
+
+    /* 전체선택 */
     if (checkAll) {
         checkAll.addEventListener('change', function() {
             checks.forEach(function(cb) { cb.checked = checkAll.checked; });
-            updateUI();
+            syncUI();
         });
     }
 
+    /* 개별 체크박스 */
     checks.forEach(function(cb) {
-        cb.addEventListener('change', updateUI);
+        cb.addEventListener('change', syncUI);
     });
 
-    // 모달 열릴 때 프리뷰 생성
+    /* 행 클릭으로 토글 (input, a 태그는 제외) */
+    document.querySelectorAll('.req-table tbody tr.has-checkbox').forEach(function(row) {
+        row.addEventListener('click', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'A') return;
+            var cb = row.querySelector('.item-check');
+            if (cb) {
+                cb.checked = !cb.checked;
+                syncUI();
+            }
+        });
+    });
+
+    /* 모달 열릴 때 거래처별 카드형 프리뷰 생성 */
     var modal = document.getElementById('poPreviewModal');
     if (modal) {
         modal.addEventListener('show.bs.modal', function() {
@@ -194,50 +272,84 @@
             checks.forEach(function(cb) {
                 if (!cb.checked) return;
                 selected.push({
-                    bom_item_id: parseInt(cb.dataset.bomItemId) || 0,
+                    bom_item_id:      parseInt(cb.dataset.bomItemId) || 0,
                     contract_item_id: parseInt(cb.dataset.contractItemId) || 0,
-                    item_name: cb.dataset.itemName || '',
-                    item_spec: cb.dataset.itemSpec || '',
-                    quantity: parseInt(cb.dataset.quantity) || 0,
-                    unit: cb.dataset.unit || 'EA',
-                    unit_price: parseFloat(cb.dataset.unitPrice) || 0,
-                    supplier: cb.dataset.supplier || '미지정'
+                    item_name:  cb.dataset.itemName  || '',
+                    item_spec:  cb.dataset.itemSpec  || '',
+                    quantity:   parseInt(cb.dataset.quantity)      || 0,
+                    unit:       cb.dataset.unit       || 'EA',
+                    unit_price: parseFloat(cb.dataset.unitPrice)   || 0,
+                    supplier:   cb.dataset.supplier   || '미지정'
                 });
             });
 
-            // 거래처별 그룹핑
+            /* 거래처별 그룹핑 */
             var groups = {};
+            var groupOrder = [];
             selected.forEach(function(item) {
                 var key = item.supplier || '미지정';
-                if (!groups[key]) groups[key] = [];
+                if (!groups[key]) { groups[key] = []; groupOrder.push(key); }
                 groups[key].push(item);
             });
 
-            // 프리뷰 HTML 생성
-            var html = '<p class="mb-3">거래처별 발주서 <strong>' + Object.keys(groups).length + '건</strong>이 생성됩니다:</p>';
-            var groupKeys = Object.keys(groups);
-            for (var i = 0; i < groupKeys.length; i++) {
-                var supplier = groupKeys[i];
+            var supplierCount = groupOrder.length;
+            var grandTotal = 0;
+
+            var html = '<p class="mb-3">거래처별 발주서 <strong>' + supplierCount + '건</strong>이 생성됩니다:</p>';
+
+            groupOrder.forEach(function(supplier) {
                 var items = groups[supplier];
                 var subtotal = 0;
-                html += '<div class="card border-0 bg-light mb-2"><div class="card-body py-2">';
-                html += '<strong>' + supplier + '</strong>';
-                html += '<table class="table table-sm mb-1 mt-1"><thead><tr><th>품명</th><th>규격</th><th class="text-end">수량</th><th>단위</th><th class="text-end">단가</th><th class="text-end">금액</th></tr></thead><tbody>';
-                for (var j = 0; j < items.length; j++) {
-                    var it = items[j];
+
+                html += '<div class="card border shadow-sm mb-3">';
+                html += '<div class="card-header py-2 fw-bold">' + escHtml(supplier) + '</div>';
+                html += '<div class="card-body p-0">';
+                html += '<table class="table table-sm mb-0">';
+                html += '<thead class="table-light"><tr>'
+                      + '<th>품명</th><th>규격</th>'
+                      + '<th class="text-end">수량</th><th>단위</th>'
+                      + '<th class="text-end">단가</th><th class="text-end">금액</th>'
+                      + '</tr></thead><tbody>';
+
+                items.forEach(function(it) {
                     var amt = it.quantity * it.unit_price;
                     subtotal += amt;
-                    html += '<tr><td>' + it.item_name + '</td><td><small>' + it.item_spec + '</small></td><td class="text-end">' + it.quantity.toLocaleString() + '</td><td>' + it.unit + '</td><td class="text-end">' + it.unit_price.toLocaleString() + '</td><td class="text-end fw-bold">' + amt.toLocaleString() + '</td></tr>';
-                }
+                    html += '<tr>'
+                          + '<td>' + escHtml(it.item_name) + '</td>'
+                          + '<td><small class="text-muted">' + escHtml(it.item_spec) + '</small></td>'
+                          + '<td class="text-end">' + it.quantity.toLocaleString() + '</td>'
+                          + '<td>' + escHtml(it.unit) + '</td>'
+                          + '<td class="text-end">' + it.unit_price.toLocaleString() + '</td>'
+                          + '<td class="text-end fw-bold">' + amt.toLocaleString() + '</td>'
+                          + '</tr>';
+                });
+
+                /* 소계 행 */
+                html += '<tr style="background:#eff6ff;">'
+                      + '<td colspan="5" class="text-end fw-bold text-primary">소계</td>'
+                      + '<td class="text-end fw-bold text-primary">' + subtotal.toLocaleString() + '원</td>'
+                      + '</tr>';
                 html += '</tbody></table>';
-                html += '<div class="text-end"><small class="text-muted">소계: ' + subtotal.toLocaleString() + '원</small></div>';
                 html += '</div></div>';
+
+                grandTotal += subtotal;
+            });
+
+            /* 다거래처 시 총합계 (다크배경) */
+            if (supplierCount > 1) {
+                html += '<div class="rounded px-3 py-2 d-flex justify-content-between align-items-center" style="background:#1e293b;color:#f8fafc;">'
+                      + '<span class="fw-bold">총합계 (' + supplierCount + '개 거래처)</span>'
+                      + '<span class="fw-bold fs-6">' + grandTotal.toLocaleString() + '원</span>'
+                      + '</div>';
             }
 
             document.getElementById('poPreviewBody').innerHTML = html;
             document.getElementById('selectedItemsInput').value = JSON.stringify(selected);
         });
     }
+
+    /* 초기 상태 동기화 */
+    syncUI();
 })();
 </script>
 

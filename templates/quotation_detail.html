@@ -69,6 +69,7 @@
 .qt-tbl tbody td {
     padding: 11px 6px; vertical-align: middle;
     border: none; border-bottom: 1px solid #ddd;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* 마지막 행 하단 굵은 선 */
 .qt-tbl tbody tr:last-child td { border-bottom: 2px solid #222; }
@@ -88,7 +89,7 @@
 
 /* 셀 정렬 */
 .td-no     { text-align: center; color: #555; }
-.td-name   { text-align: left; padding-left: 14px !important; }
+.td-name   { text-align: left; padding-left: 14px !important; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
 .td-spec   { text-align: center; color: #555; font-size: 9.5pt; white-space: nowrap; }
 .td-unit   { text-align: center; }
 .td-qty    { text-align: center; }
