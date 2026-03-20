@@ -421,9 +421,7 @@ def reset_projects():
         counts['contracts'] = db.query(Contract).delete()
         counts['projects'] = db.query(Project).delete()
 
-        # Item 재고 리셋
-        from modules.models import Item
-        db.query(Item).update({Item.stock_qty: 0, Item.reserved_qty: 0})
+        # Item 재고는 유지 (프로젝트와 무관한 실재고)
 
         db.commit()
 
