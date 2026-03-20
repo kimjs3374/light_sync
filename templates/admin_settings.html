@@ -116,7 +116,7 @@
         <button class="nav-link" id="group-menus-tab" data-bs-toggle="tab" data-bs-target="#groupMenusPane" type="button" role="tab">그룹 메뉴 권한</button>
     </li>
     <li class="nav-item" role="presentation">
-        {% if session.get('username') == 'admin' %}
+        {% if is_superadmin %}
         <button class="nav-link text-danger" id="reset-tab" data-bs-toggle="tab" data-bs-target="#resetPane" type="button" role="tab">프로젝트 초기화</button>
         {% endif %}
     </li>
@@ -153,6 +153,7 @@
                     <tr>
                         <th class="ps-3">이름</th>
                         <th>아이디</th>
+                        <th>직급</th>
                         <th>부서</th>
                         <th>권한</th>
                         <th>상태</th>
@@ -168,6 +169,15 @@
                     <tr data-name="{{ u.full_name }}" data-group="{{ u.user_group }}">
                         <td class="ps-3 fw-semibold">{{ u.full_name }}</td>
                         <td class="text-muted small">{{ u.username }}</td>
+                        <td>
+                            <select class="form-select form-select-sm" style="width:90px;font-size:.78rem;padding:2px 6px;"
+                                    onchange="updatePosition({{ u.id }}, this.value)">
+                                <option value="">미지정</option>
+                                {% for p in position_choices %}
+                                <option value="{{ p }}" {{ 'selected' if u.position == p }}>{{ p }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
                         <td><span class="badge bg-light text-dark border">{{ u.user_group }}</span></td>
                         <td>{{ u.role }}</td>
                         <td>
@@ -461,7 +471,7 @@
 </div>
 
 {# ── 프로젝트 초기화 탭 ── #}
-{% if session.get('username') == 'admin' %}
+{% if is_superadmin %}
 <div class="tab-pane fade p-3" id="resetPane" role="tabpanel">
     <div class="alert alert-danger mb-3">
         <strong>프로젝트 초기화</strong> — 모든 프로젝트 및 연관 데이터를 삭제합니다.<br>
@@ -615,5 +625,16 @@ function deselectAllMenus() {
         });
     });
 })();
+
+function updatePosition(userId, position) {
+    var form = new FormData();
+    form.append('position', position);
+    fetch('/update_position/' + userId, { method: 'POST', body: form })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d.ok) alert(d.error || '실패');
+        })
+        .catch(function() { alert('직급 변경 실패'); });
+}
 </script>
 {% endblock %}

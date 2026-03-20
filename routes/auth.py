@@ -1,5 +1,5 @@
 import datetime
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app, jsonify
 from modules.auth_decorators import admin_required, login_required
 import bcrypt
 from modules.db_context import get_db
@@ -143,13 +143,34 @@ def admin_settings():
             if k not in COMMON_MENU_KEYS and not v.get("admin_only")
         ]
 
+        position_choices = ['대표이사', '전무', '상무', '이사', '부장', '차장', '과장', '대리', '주임', '사원']
+
+        # 최초 admin 계정 확인 (프로젝트 초기화 탭 표시 여부)
+        superadmin = db.query(User).filter(User.role == 'admin').order_by(User.id.asc()).first()
+        is_superadmin = superadmin and session.get('user_id') == superadmin.id
+
         return render_template('admin_settings.html',
             pending=pending, users=users, delete_requests=delete_requests,
             total_count=total_count, active_count=active_count,
             inactive_count=inactive_count, pending_count=pending_count,
             groups=groups,
             group_menu_data=group_menu_data,
-            configurable_menus=configurable_menus)
+            configurable_menus=configurable_menus,
+            position_choices=position_choices,
+            is_superadmin=is_superadmin)
+
+
+@auth_bp.route('/update_position/<int:user_id>', methods=['POST'])
+@admin_required
+def update_position(user_id):
+    position = (request.form.get('position') or '').strip()
+    with get_db() as db:
+        user = db.query(User).get(user_id)
+        if not user:
+            return jsonify({'ok': False, 'error': '사용자 없음'}), 404
+        user.position = position or None
+        db.commit()
+    return jsonify({'ok': True})
 
 
 @auth_bp.route('/toggle_delete_approver/<int:user_id>', methods=['POST'])
@@ -359,8 +380,11 @@ def update_user_extra_menus():
 @admin_required
 def reset_projects():
     """프로젝트 전체 초기화 — 프로젝트 + 연관 데이터 삭제, 마스터 데이터 유지"""
-    if session.get('username') != 'admin':
-        flash('최고관리자(admin) 계정만 프로젝트 초기화를 실행할 수 있습니다.', 'danger')
+    # 최초 생성된 admin 계정만 허용 (db.py에서 만든 최고관리자)
+    with get_db() as _db:
+        superadmin = _db.query(User).filter(User.role == 'admin').order_by(User.id.asc()).first()
+    if not superadmin or session.get('user_id') != superadmin.id:
+        flash('최고관리자 계정만 프로젝트 초기화를 실행할 수 있습니다.', 'danger')
         return redirect(url_for('auth.admin_settings'))
 
     confirm_text = (request.form.get('confirm_text') or '').strip()
