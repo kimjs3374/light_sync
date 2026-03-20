@@ -423,6 +423,14 @@ def reset_projects():
 
         # Item 재고는 유지 (프로젝트와 무관한 실재고)
 
+        # Storage 파일 삭제 (사진/도면)
+        from modules.storage_adapter import delete_prefix, is_storage_enabled
+        storage_deleted = 0
+        if is_storage_enabled():
+            storage_deleted += delete_prefix('storage/photos/')
+            storage_deleted += delete_prefix('storage/drawings/')
+        counts['storage_files'] = storage_deleted
+
         db.commit()
 
         total = sum(counts.values())
