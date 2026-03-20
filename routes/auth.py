@@ -390,7 +390,10 @@ def reset_projects():
         counts['receiving_items'] = db.query(ReceivingItem).delete()
         counts['receivings'] = db.query(Receiving).delete()
 
-        # 발주
+        # 발주 (email_history FK 먼저)
+        from modules.models import EmailHistory, PurchaseOrderHistory
+        counts['email_history'] = db.query(EmailHistory).delete()
+        counts['po_history'] = db.query(PurchaseOrderHistory).delete()
         counts['purchase_order_items'] = db.query(PurchaseOrderItem).delete()
         counts['purchase_orders'] = db.query(PurchaseOrder).delete()
 
@@ -400,17 +403,26 @@ def reset_projects():
         # 재고 변동 이력
         counts['stock_movements'] = db.query(StockMovement).delete()
 
-        # 하자
+        # 하자 (하위 FK 먼저)
+        from modules.models import WarrantyCaseLog
+        counts['warranty_case_logs'] = db.query(WarrantyCaseLog).delete()
         counts['warranty_cases'] = db.query(WarrantyCase).delete()
         counts['warranties'] = db.query(Warranty).delete()
 
-        # 납품
+        # 납품 (하위 FK 먼저)
+        from modules.models import DeliverySplit, DeliveryPhoto
+        counts['delivery_photos'] = db.query(DeliveryPhoto).delete()
+        counts['delivery_splits'] = db.query(DeliverySplit).delete()
         counts['deliveries'] = db.query(Delivery).delete()
 
         # 기타 프로젝트 연관
         counts['history_logs'] = db.query(HistoryLog).delete()
         counts['contacts'] = db.query(Contact).delete()
+        from modules.models import DrawingVersion, ContractBarcode, Material
+        counts['drawing_versions'] = db.query(DrawingVersion).delete()
         counts['drawings'] = db.query(Drawing).delete()
+        counts['contract_barcodes'] = db.query(ContractBarcode).delete()
+        counts['materials'] = db.query(Material).delete()
         counts['sports_modules'] = db.query(SportsModule).delete()
         counts['project_photos'] = db.query(ProjectPhoto).delete()
         counts['delete_requests'] = db.query(ProjectDeleteRequest).delete()
