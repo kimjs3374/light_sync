@@ -283,8 +283,11 @@ def handle_update_inspection(db, project, form, current_user, **ctx):
     delivery.inspection_status = new_status
     delivery.inspection_date = parse_date(form.get("inspection_date"))
     delivery.inspection_note = (form.get("inspection_note") or "").strip() or None
+    delivery.inspector = (form.get("inspector") or "").strip() or None
 
     content = f"[검수] {old_status} → {new_status}"
+    if delivery.inspector:
+        content += f" | 검수자: {delivery.inspector}"
     if delivery.inspection_note:
         content += f" | 비고: {delivery.inspection_note}"
     append_history_log(

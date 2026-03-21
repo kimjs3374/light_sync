@@ -1,0 +1,209 @@
+/* 액션 바 */
+.qt-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+.badge-status { font-size: .75rem; padding: 4px 10px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
+
+/* ══════════════════════════════════════════════════════
+   A4 용지 (210mm x 297mm) — 여백 포함
+   ══════════════════════════════════════════════════════ */
+.qt-paper {
+    background: #fff;
+    width: 210mm; min-height: 297mm;
+    margin: 0 auto;
+    padding: 10mm 15mm 10mm 15mm;
+    box-sizing: border-box;
+    border: 1px solid #bbb;
+    box-shadow: 0 2px 16px rgba(0,0,0,.1);
+    font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+    color: #222; font-size: 11pt; line-height: 1.4;
+    position: relative;
+}
+
+/* 로고 우상단 */
+.qt-logo { position: absolute; top: 8mm; right: 15mm; }
+.qt-logo img { height: 42px; }
+
+/* 제목 */
+.qt-title { font-size: 24pt; font-weight: 800; letter-spacing: .4em; color: #000; margin-bottom: 14px; }
+
+/* 견적일 */
+.qt-date { font-size: 10pt; margin-bottom: 10px; color: #222; }
+
+/* 메타 2컬럼 — PDF: 좌(사업자번호,견적NO) 우(납기일,대금지불,견적유효,계좌) */
+.qt-meta { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 10pt; }
+.qt-meta-left { }
+.qt-meta-right { text-align: left; }
+.qt-meta .m-row { line-height: 2; }
+.qt-meta .m-label { font-weight: 600; margin-right: 8px; }
+.qt-meta .m-label-u { font-weight: 600; text-decoration: underline; margin-right: 12px; }
+
+/* 구분선 */
+.qt-hr { border: none; border-top: 1.5px solid #000; margin: 8px 0 10px; }
+
+/* 공급자/수급자 — PDF: 라벨 굵게, 값 일반 */
+.qt-parties { display: flex; gap: 0; margin-bottom: 8px; font-size: 10pt; }
+.qt-party { flex: 1; }
+.qt-party .p-row { display: flex; line-height: 2.0; }
+.qt-party .p-lbl { min-width: 62px; font-weight: 600; color: #333; }
+.qt-party .p-val { color: #111; }
+
+/* ─── 테이블 — PDF 정밀 복제 ─── */
+.qt-unit { text-align: right; font-size: 9pt; color: #666; margin: 6px 0 2px; }
+
+.qt-tbl {
+    width: 100%; border-collapse: collapse;
+    table-layout: fixed; font-size: 10pt;
+}
+
+/* 헤더: 배경 없음, 상하 굵은 선 */
+.qt-tbl thead th {
+    background: #fff; color: #222; font-weight: 700;
+    padding: 8px 4px; text-align: center; font-size: 10pt;
+    border-top: 2px solid #222; border-bottom: 2px solid #222;
+    border-left: none; border-right: none;
+}
+
+/* 바디: 세로선 없음, 하단 얇은 선만 */
+.qt-tbl tbody td {
+    padding: 11px 6px; vertical-align: middle;
+    border: none; border-bottom: 1px solid #ddd;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* 마지막 행 하단 굵은 선 */
+.qt-tbl tbody tr:last-child td { border-bottom: 2px solid #222; }
+
+/* 배경색 없음 (PDF와 동일) */
+.qt-tbl tbody tr { background: #fff; }
+
+/* 열 비율 — 규격 넓힘, 전체 여유 */
+.qt-tbl .c-no     { width: 6%; }
+.qt-tbl .c-name   { width: 22%; }
+.qt-tbl .c-spec   { width: 14%; }
+.qt-tbl .c-unit   { width: 5%; }
+.qt-tbl .c-qty    { width: 6%; }
+.qt-tbl .c-price  { width: 15%; }
+.qt-tbl .c-amount { width: 17%; }
+.qt-tbl .c-note   { width: 15%; }
+
+/* 셀 정렬 */
+.td-no     { text-align: center; color: #555; }
+.td-name   { text-align: left; padding-left: 14px !important; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
+.td-spec   { text-align: center; color: #555; font-size: 9.5pt; white-space: nowrap; }
+.td-unit   { text-align: center; }
+.td-qty    { text-align: center; }
+.td-price  { text-align: right; padding-right: 12px !important; }
+.td-amount { text-align: right; padding-right: 12px !important; }
+.td-note   { text-align: left; color: #555; padding-left: 8px !important; font-size: 9.5pt; }
+
+/* ─── 합계 행 — PDF: 테이블 아래 간격 후, 좌측 빨간 "합 계" + 우측 금액 ─── */
+.qt-total {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 16px; padding: 8px 0;
+    border-top: 2px solid #222; border-bottom: 2px solid #222;
+}
+.qt-total-label {
+    font-size: 11pt; font-weight: 700; color: #111;
+    letter-spacing: .3em;
+}
+.qt-total-val {
+    font-size: 12pt; font-weight: 700; color: #111;
+    padding-right: 4px;
+}
+
+/* 부과금 */
+.qt-sc-area { margin-top: 8px; }
+.qt-sc-row { display: flex; justify-content: flex-end; gap: 20px; line-height: 2.2; font-size: 10pt; color: #92400e; }
+.qt-sc-label { min-width: 120px; text-align: right; }
+.qt-sc-val   { min-width: 130px; text-align: right; font-weight: 600; }
+.qt-grand { display: flex; justify-content: flex-end; gap: 20px; font-size: 13pt; font-weight: 800; border-top: 2px solid #222; padding-top: 6px; margin-top: 4px; }
+.qt-grand-label { min-width: 120px; text-align: right; letter-spacing: .2em; }
+.qt-grand-val   { min-width: 130px; text-align: right; }
+
+/* ─── 비고 + 서명 (PDF 하단) ─── */
+.qt-bottom {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-top: 20px; font-size: 10pt;
+}
+.qt-notes { flex: 1; }
+.qt-notes-title { font-weight: 700; margin-bottom: 4px; }
+.qt-notes-line { color: #333; line-height: 2; }
+.qt-stamp-area { text-align: right; min-width: 160px; padding-top: 0; }
+.qt-stamp-text { font-size: 9pt; color: #555; margin-bottom: 4px; }
+.qt-stamp-img { margin-bottom: 4px; }
+.qt-stamp-img img { width: 76px; height: 76px; }
+.qt-stamp-company { font-weight: 700; font-size: 11pt; margin-bottom: 6px; }
+.qt-stamp-ceo { color: #444; font-size: 10pt; }
+
+/* ══════════════════════════════════════════════════════
+   인쇄: A4 한 장, 페이지 넘김 방지
+   ══════════════════════════════════════════════════════ */
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 8mm 10mm;
+    }
+    html, body {
+        margin: 0; padding: 0;
+        background: #fff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        font-size: 9pt;
+    }
+    /* ERP UI 전부 숨김 */
+    .page-hero, .qt-actions, .sidebar, .navbar,
+    .sidebar-overlay, footer,
+    nav, .toast-container, .alert, .flash-auto-hide,
+    .history-fab { display: none !important; }
+
+    .main-content { margin: 0 !important; padding: 0 !important; }
+
+    /* 용지 */
+    .qt-paper {
+        width: 100%; min-height: auto; height: auto;
+        margin: 0; padding: 0;
+        border: none; box-shadow: none;
+        font-size: 9pt;
+        page-break-inside: avoid;
+        page-break-after: avoid;
+    }
+
+    .qt-title { font-size: 20pt; margin-bottom: 10px; }
+    .qt-date { font-size: 9pt; margin-bottom: 6px; }
+    .qt-meta { font-size: 9pt; margin-bottom: 6px; }
+    .qt-meta .m-row { line-height: 1.7; }
+    .qt-hr { margin: 6px 0 8px; }
+    .qt-parties { font-size: 9pt; margin-bottom: 8px; }
+    .qt-party .p-row { line-height: 1.7; }
+    .qt-tbl { font-size: 8.5pt; }
+    .qt-tbl thead th { font-size: 8.5pt; padding: 5px 4px; }
+    .qt-tbl tbody td { padding: 6px 4px; }
+    .qt-total { padding: 5px 0; margin-top: 10px; }
+    .qt-total-label { font-size: 10pt; }
+    .qt-total-val { font-size: 11pt; }
+    .qt-bottom { margin-top: 14px; font-size: 9pt; }
+    .qt-stamp-img img { width: 60px; height: 60px; }
+    .qt-logo img { height: 34px; }
+    .qt-logo { top: 0; right: 0; }
+}
+
+/* ─── 모바일 ─── */
+@media screen and (max-width: 767.98px) {
+    .qt-paper {
+        width: auto; min-height: auto;
+        padding: 16px 12px; font-size: 10pt;
+    }
+    .qt-title { font-size: 18pt; letter-spacing: .2em; }
+    .qt-logo img { height: 28px; }
+    .qt-logo { top: 14px; right: 12px; }
+    .qt-meta { flex-direction: column; gap: 0; }
+    .qt-parties { flex-direction: column; gap: 10px; }
+    .qt-bottom { flex-direction: column; gap: 14px; }
+    .qt-tbl { font-size: 8.5pt; }
+    .qt-tbl thead th { font-size: 8.5pt; padding: 6px 2px; }
+    .qt-tbl tbody td { padding: 7px 3px; }
+    .qt-total-label, .qt-total-val { font-size: 12pt; }
+    .qt-stamp-area { text-align: left; }
+}
+
+/* 수정 모달 */
+.tpl-badge-sm { display: inline-block; padding: 3px 8px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 5px; font-size: .72rem; color: #1e40af; cursor: pointer; white-space: nowrap; }
+.tpl-badge-sm:hover { background: #dbeafe; }

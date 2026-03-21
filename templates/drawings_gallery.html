@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/drawings_gallery.css') }}">
+{% endblock %}
+
+{% block content %}
+
+<!-- 페이지 헤더 -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <div class="section-kicker">도면 관리</div>
+        <h3 class="m-0" style="font-size:1.15rem;">도면 갤러리</h3>
+    </div>
+</div>
+
+<!-- 모바일 현장 선택 -->
+<div class="mobile-site-select-wrap">
+    <select class="form-select form-select-sm" id="mobileSiteSelect"
+            onchange="selectSite(this.value, this.options[this.selectedIndex].text)">
+        <option value="">-- 현장을 선택하세요 --</option>
+        {% for p in projects %}
+        <option value="{{ p.id }}" {% if selected and selected.id == p.id %}selected{% endif %}>
+            {{ p.site_name }} ({{ p.project_no or '-' }})
+        </option>
+        {% endfor %}
+    </select>
+</div>
+
+<!-- 메인 레이아웃 -->
+<div class="drawing-layout">
+
+    <!-- 좌: 현장 목록 -->
+    <div class="site-panel">
+        <div class="site-panel-header">
+            <h6>현장 목록</h6>
+            <div class="site-search">
+                <span class="site-search-icon">🔍</span>
+                <input type="text" class="form-control form-control-sm" id="siteSearchInput"
+                       placeholder="현장명 검색..." oninput="filterSites(this.value)">
+            </div>
+        </div>
+        <div class="site-list" id="siteList">
+            {% for p in projects %}
+            <div class="site-item {% if selected and selected.id == p.id %}active{% endif %}"
+                 data-site-id="{{ p.id }}"
+                 data-site-name="{{ p.site_name | e }}"
+                 onclick="selectSite('{{ p.id }}', '{{ p.site_name | e }}')">
+                <div class="d-flex align-items-center justify-content-between gap-1">
+                    <div style="min-width:0;">
+                        <div class="site-item-name">{{ p.site_name }}</div>
+                        <div class="site-item-meta">{{ p.project_no or '-' }}</div>
+                    </div>
+                    <span class="site-item-count">{{ p.drawing_count | default(0) }}</span>
+                </div>
+            </div>
+            {% else %}
+            <div class="text-center py-4 text-muted" style="font-size:.82rem;">등록된 현장이 없습니다.</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 우: 갤러리 패널 -->
+    <div class="gallery-panel" id="galleryPanel">
+
+        {% if selected %}
+        <!-- 현장 헤더 -->
+        <div class="site-header-card" id="siteHeaderCard">
+            <div style="padding:.25rem .75rem;">
+                <div class="site-title">{{ selected.temp_name }}</div>
+                <div class="site-contract-no">{{ selected.project_no or '' }}</div>
+            </div>
+        </div>
+        {% else %}
+        <!-- 현장 미선택 -->
+        <div class="no-site-selected" id="noSiteMsg">
+            <span class="hint-icon">📐</span>
+            <p class="fw-bold" style="color:var(--mg-ink);font-size:.92rem;">좌측에서 현장을 선택하세요</p>
+            <p style="font-size:.78rem;margin-top:.3rem;">현장을 선택하면 도면을 업로드하고 미리볼 수 있습니다.</p>
+        </div>
+        {% endif %}
+
+        <!-- 업로드 카드 -->
+        {% if can_write %}
+        <div class="upload-card {% if not selected %}d-none{% endif %}" id="uploadCard">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <span class="fw-bold" style="font-size:.85rem;">PDF 업로드</span>
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <!-- 도면 유형 선택 -->
+                    <div class="d-flex flex-wrap gap-1" id="drawingTypeBtns">
+                        {% for opt in drawing_type_options %}
+                        <button type="button" class="btn btn-sm drawing-type-btn {% if loop.first %}active{% endif %}"
+                                data-type="{{ opt }}" onclick="selectDrawingType(this)">{{ opt }}</button>
+                        {% endfor %}
+                    </div>
+                    <!-- 파일 선택 -->
+                    <label class="btn btn-sm btn-primary mb-0" style="cursor:pointer;">
+                        📁 파일 선택
+                        <input type="file" id="fileInput" accept=".pdf,.dwg,application/pdf"
+                               class="d-none" onchange="handleFileSelect(this.files)">
+                    </label>
+                </div>
+            </div>
+            <!-- 도면명 + 기존 도면 선택 -->
+            <div class="row g-2 mb-2">
+                <div class="col-md-6">
+                    <input type="text" class="form-control form-control-sm" id="uploadTitle"
+                           placeholder="도면명 (신규 등록 시 입력)">
+                </div>
+                <div class="col-md-6">
+                    <select class="form-select form-select-sm" id="uploadDrawingSelect"
+                            onchange="onDrawingSelectChange(this)">
+                        <option value="">신규 도면으로 등록</option>
+                    </select>
+                </div>
+            </div>
+            <!-- 드래그앤드롭 존 -->
+            <div class="upload-zone" id="dropZone"
+                 ondragover="handleDragOver(event)"
+                 ondragleave="handleDragLeave(event)"
+                 ondrop="handleDrop(event)"
+                 onclick="document.getElementById('fileInput').click()">
+                <span class="upload-zone-icon">☁️</span>
+                <p class="upload-zone-text">
+                    <strong>클릭하거나 파일을 드래그</strong>하여 업로드<br>
+                    <span style="font-size:.75rem;">PDF, DWG 파일 지원</span>
+                </p>
+            </div>
+            <div class="upload-progress-list" id="uploadProgressList"></div>
+        </div>
+        {% endif %}
+
+        <!-- 필터 + 갤러리 -->
+        <div class="{% if not selected %}d-none{% endif %}" id="gallerySection">
+            <div class="drawing-filter-bar mb-2" id="filterBar">
+                <button class="drawing-filter-btn active" data-type="전체" onclick="setFilter(this,'전체')">
+                    전체 <span class="drawing-count-badge" id="cnt-전체">0</span>
+                </button>
+                {% for opt in drawing_type_options %}
+                <button class="drawing-filter-btn" data-type="{{ opt }}" onclick="setFilter(this,'{{ opt }}')">
+                    {{ opt }} <span class="drawing-count-badge" id="cnt-{{ opt }}">0</span>
+                </button>
+                {% endfor %}
+                {% if can_write %}
+                <button class="btn btn-sm btn-outline-secondary ms-auto" id="selectModeBtn"
+                        onclick="toggleSelectMode()" style="font-size:.75rem;white-space:nowrap;">☑ 선택</button>
+                {% endif %}
+            </div>
+
+            <!-- 선택 모드 툴바 -->
+            {% if can_write %}
+            <div class="select-toolbar" id="selectToolbar">
+                <span class="select-count-label"><strong id="selectedCount">0</strong>개 선택됨</span>
+                <button class="btn btn-sm btn-outline-light" onclick="selectAll()" style="font-size:.75rem;white-space:nowrap;">전체선택</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="clearSelection()" style="font-size:.75rem;white-space:nowrap;">선택취소</button>
+                <button class="btn btn-sm btn-danger ms-1" id="bulkDeleteBtn"
+                        onclick="deleteSelected()" style="font-size:.75rem;white-space:nowrap;" disabled>선택삭제</button>
+                <button class="btn btn-sm btn-outline-light ms-auto" onclick="toggleSelectMode()" style="font-size:.75rem;white-space:nowrap;">✕ 닫기</button>
+            </div>
+            {% endif %}
+
+            <div class="drawing-grid" id="drawingGrid"></div>
+        </div>
+
+    </div>
+</div>
+
+<!-- PDF 라이트박스 -->
+<div id="pdf-lightbox">
+    <div class="pdf-lb-toolbar">
+        <div class="pdf-lb-title-wrap">
+            <button class="pdf-lb-close" onclick="closeLightbox()" title="닫기">✕</button>
+            <span class="drawing-type-badge" id="lb-type-badge"></span>
+            <span class="pdf-lb-title" id="lb-title"></span>
+        </div>
+        <div class="pdf-lb-actions">
+            <div class="lb-version-tabs" id="lb-version-tabs"></div>
+            <a class="btn btn-sm btn-outline-light" id="lb-download-btn" href="#"
+               style="white-space:nowrap;font-size:.78rem;">⬇ 다운로드</a>
+            {% if can_write %}
+            <button class="btn btn-sm btn-outline-danger" id="lb-delete-btn"
+                    onclick="deleteCurrentVersion()" style="white-space:nowrap;font-size:.78rem;">삭제</button>
+            {% endif %}
+        </div>
+    </div>
+    <iframe id="pdf-lb-frame" src="about:blank" title="PDF 미리보기"></iframe>
+    <div class="pdf-lb-caption">
+        <div class="pdf-lb-nav">
+            <button class="pdf-lb-nav-btn" id="lb-prev-btn" onclick="lbNav(-1)">‹ 이전</button>
+            <button class="pdf-lb-nav-btn" id="lb-next-btn" onclick="lbNav(1)">다음 ›</button>
+        </div>
+        <span id="lb-caption-text"></span>
+        <span style="width:80px;"></span>
+    </div>
+</div>
+
+<!-- Jinja2 → JS 데이터 브릿지 -->
+<script id="page-data" type="application/json">
+{{ {'siteId': (selected.id|string if selected else ''), 'drawingTypeOptions': drawing_type_options} | tojson }}
+</script>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/drawings_gallery.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/photo_gallery.css') }}">
+{% endblock %}
+
+{% block content %}
+
+<!-- 페이지 헤더 -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <div class="section-kicker">현장 사진 관리</div>
+        <h3 class="m-0" style="font-size:1.15rem;">사진 갤러리</h3>
+    </div>
+</div>
+
+<!-- 모바일: 현장 선택 드롭다운 -->
+<div class="mobile-site-select-wrap">
+    <select class="form-select form-select-sm" id="mobileSiteSelect"
+            onchange="selectSite(this.value, this.options[this.selectedIndex].text)">
+        <option value="">-- 현장을 선택하세요 --</option>
+        {% for site in sites %}
+        <option value="{{ site.id }}"
+                {% if selected and selected.id == site.id %}selected{% endif %}>
+            {{ site.site_name }} ({{ site.contract_no or '-' }})
+        </option>
+        {% endfor %}
+    </select>
+</div>
+
+<!-- 메인 레이아웃 -->
+<div class="photo-layout">
+
+    <!-- 좌: 현장 목록 -->
+    <div class="site-panel">
+        <div class="site-panel-header">
+            <h6>현장 목록</h6>
+            <div class="site-search">
+                <span class="site-search-icon">🔍</span>
+                <input type="text" class="form-control form-control-sm" id="siteSearchInput"
+                       placeholder="현장명 검색..." oninput="filterSites(this.value)">
+            </div>
+        </div>
+        <div class="site-list" id="siteList">
+            {% for site in sites %}
+            <div class="site-item {% if selected and selected.id == site.id %}active{% endif %}"
+                 data-site-id="{{ site.id }}"
+                 data-site-name="{{ site.site_name | e }}"
+                 onclick="selectSite('{{ site.id }}', '{{ site.site_name | e }}')">
+                <div class="d-flex align-items-center justify-content-between gap-1">
+                    <div style="min-width:0;">
+                        <div class="site-item-name">{{ site.site_name }}</div>
+                        <div class="site-item-meta">{{ site.project_no or '-' }}</div>
+                    </div>
+                    <span class="site-item-count">{{ site.photo_count | default(0) }}</span>
+                </div>
+            </div>
+            {% else %}
+            <div class="text-center py-4 text-muted" style="font-size:.82rem;">등록된 현장이 없습니다.</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 우: 갤러리 패널 -->
+    <div class="gallery-panel" id="galleryPanel">
+
+        {% if selected %}
+        <!-- 현장 헤더 -->
+        <div class="site-header-card" id="siteHeaderCard">
+            <div class="site-title-row site-title-row-active" id="siteTitleRow" onclick="clearContractFilter()">
+                <div class="site-title">{{ selected.site_name }}</div>
+                <div class="site-contract-no">{{ selected.project_no or '' }}</div>
+            </div>
+            <div class="site-header-badges" id="siteHeaderBadges"></div>
+        </div>
+        {% else %}
+        <!-- 현장 미선택 안내 -->
+        <div class="no-site-selected" id="noSiteMsg">
+            <span class="hint-icon">📷</span>
+            <p class="fw-bold" style="color:var(--mg-ink);font-size:.92rem;">좌측에서 현장을 선택하세요</p>
+            <p style="font-size:.78rem;margin-top:.3rem;">현장을 선택하면 사진을 업로드하고 관리할 수 있습니다.</p>
+        </div>
+        {% endif %}
+
+        <!-- 업로드 카드 -->
+        <div class="upload-card {% if not selected %}d-none{% endif %}" id="uploadCard">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <span class="fw-bold" style="font-size:.85rem;">사진 업로드</span>
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <!-- photo_type 선택 -->
+                    <div class="d-flex flex-wrap gap-1" id="photoTypeBtns">
+                        {% for t in ['설계','명함','생산','상차','하차','설치'] %}
+                        <button type="button" class="btn btn-sm photo-type-btn {% if loop.first %}active{% endif %}"
+                                data-type="{{ t }}" onclick="selectPhotoType(this)">{{ t }}</button>
+                        {% endfor %}
+                    </div>
+                    <!-- 카메라 -->
+                    <label class="btn btn-sm btn-outline-primary mb-0" style="cursor:pointer;">
+                        📷 카메라
+                        <input type="file" id="cameraInput" accept="image/*" capture="environment"
+                               class="d-none" onchange="handleFileSelect(this.files)">
+                    </label>
+                    <!-- 파일 선택 -->
+                    <label class="btn btn-sm btn-primary mb-0" style="cursor:pointer;">
+                        📁 파일 선택
+                        <input type="file" id="fileInput" accept="image/*" multiple
+                               class="d-none" onchange="handleFileSelect(this.files)">
+                    </label>
+                </div>
+            </div>
+            <!-- 드래그앤드롭 존 -->
+            <div class="upload-zone" id="dropZone"
+                 ondragover="handleDragOver(event)"
+                 ondragleave="handleDragLeave(event)"
+                 ondrop="handleDrop(event)"
+                 onclick="document.getElementById('fileInput').click()">
+                <span class="upload-zone-icon">☁️</span>
+                <p class="upload-zone-text">
+                    <strong>클릭하거나 이미지를 드래그</strong>하여 업로드<br>
+                    <span style="font-size:.75rem;">JPG, PNG, HEIC, WEBP — 최대 20MB</span>
+                </p>
+            </div>
+            <div class="upload-progress-list" id="uploadProgressList"></div>
+        </div>
+
+        <!-- 필터 + 갤러리 -->
+        <div class="{% if not selected %}d-none{% endif %}" id="gallerySection">
+            <!-- 사진 구분 필터 -->
+            <div class="photo-filter-bar mb-2" id="filterBar">
+                {% for t in ['전체','설계','명함','생산','상차','하차','설치'] %}
+                <button class="photo-filter-btn {% if loop.first %}active{% endif %}"
+                        data-type="{{ t }}" onclick="setFilter(this, '{{ t }}')">
+                    {{ t }} <span class="photo-count-badge" id="cnt-{{ t }}">0</span>
+                </button>
+                {% endfor %}
+            </div>
+            <!-- 다운로드 툴바 -->
+            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap" id="downloadToolbar">
+                <button class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAll()">전체선택</button>
+                <button class="btn btn-sm btn-primary" onclick="downloadSelected()" id="downloadBtn" disabled>
+                    다운로드 <span id="downloadCount"></span>
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="deleteSelected()" id="deleteSelectedBtn" disabled>
+                    선택삭제 <span id="deleteCount"></span>
+                </button>
+                <span class="small text-muted" id="selectedInfo" style="display:none;"></span>
+            </div>
+            <div class="photo-grid" id="photoGrid"></div>
+        </div>
+
+    </div>
+</div>
+
+<!-- 라이트박스 -->
+<div id="lightbox-overlay" onclick="closeLightbox(event)">
+    <button id="lightbox-close" onclick="closeLightbox(null,true)">✕</button>
+    <button id="lightbox-nav-prev" onclick="lightboxNav(-1)">‹</button>
+    <img id="lightbox-img" src="" alt="사진">
+    <button id="lightbox-nav-next" onclick="lightboxNav(1)">›</button>
+    <div id="lightbox-caption"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* PAGE_DATA — Jinja2 변수를 JS로 전달 */
+const State = {
+    siteId: '{{ selected.id if selected else "" }}',
+    photos: [],
+    filtered: [],
+    currentFilter: '전체',
+    contractFilter: null,
+    contracts: [],
+    selected: new Set(),
+    lbIdx: 0,
+};
+</script>
+<script src="{{ url_for('static', filename='js/photo_gallery.js') }}"></script>
+{% endblock %}

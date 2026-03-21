@@ -1,51 +1,10 @@
 {% extends 'base.html' %}
 
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin_settings.css') }}">
+{% endblock %}
+
 {% block content %}
-<style>
-    .stat-card {
-        border: none;
-        border-radius: 12px;
-        transition: transform 0.15s;
-    }
-    .stat-card:hover {
-        transform: translateY(-2px);
-    }
-    .stat-number {
-        font-size: 2rem;
-        font-weight: 700;
-        line-height: 1.1;
-    }
-    .stat-label {
-        font-size: 0.82rem;
-        color: #64748b;
-        margin-top: 4px;
-    }
-    .nav-tabs .nav-link {
-        color: #475569;
-        font-weight: 500;
-        border: none;
-        padding: 0.6rem 1.2rem;
-    }
-    .nav-tabs .nav-link.active {
-        color: #0f172a;
-        font-weight: 700;
-        border-bottom: 3px solid #0f172a;
-        background: transparent;
-    }
-    .nav-tabs .nav-link:hover:not(.active) {
-        color: #0f172a;
-        border-color: transparent;
-    }
-    .filter-bar {
-        background: #f1f5f9;
-        border-radius: 8px;
-        padding: 12px 16px;
-    }
-    @media (max-width: 767.98px) {
-        .stat-number { font-size: 1.5rem; }
-        .stat-cards-row .col { min-width: 0; }
-    }
-</style>
 
 <div class="page-hero mg-fade">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
@@ -116,6 +75,12 @@
         <button class="nav-link" id="group-menus-tab" data-bs-toggle="tab" data-bs-target="#groupMenusPane" type="button" role="tab">그룹 메뉴 권한</button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" id="chatbot-perms-tab" data-bs-toggle="tab" data-bs-target="#chatbotPermsPane" type="button" role="tab">챗봇 권한</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="ops-tab" data-bs-toggle="tab" data-bs-target="#opsPane" type="button" role="tab">운영설정</button>
+    </li>
+    <li class="nav-item" role="presentation">
         {% if is_superadmin %}
         <button class="nav-link text-danger" id="reset-tab" data-bs-toggle="tab" data-bs-target="#resetPane" type="button" role="tab">프로젝트 초기화</button>
         {% endif %}
@@ -151,24 +116,24 @@
             <table class="table table-sm table-hover mb-0 align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3">이름</th>
-                        <th>아이디</th>
-                        <th>직급</th>
-                        <th>부서</th>
-                        <th>권한</th>
-                        <th>상태</th>
-                        <th>우선순위권</th>
-                        <th>삭제승인권</th>
-                        <th>추가메뉴</th>
-                        <th>퇴사/복구</th>
-                        <th class="text-center">비밀번호</th>
+                        <th class="ps-3" style="white-space:nowrap;">이름</th>
+                        <th style="white-space:nowrap;">아이디</th>
+                        <th style="white-space:nowrap;">직급</th>
+                        <th style="white-space:nowrap;">부서</th>
+                        <th style="white-space:nowrap;">권한</th>
+                        <th style="white-space:nowrap;">상태</th>
+                        <th style="white-space:nowrap;">우선순위권</th>
+                        <th style="white-space:nowrap;">삭제승인권</th>
+                        <th style="white-space:nowrap;">추가메뉴</th>
+                        <th style="white-space:nowrap;">퇴사/복구</th>
+                        <th class="text-center" style="white-space:nowrap;">비밀번호</th>
                     </tr>
                 </thead>
                 <tbody id="userTableBody">
                     {% for u in users %}
                     <tr data-name="{{ u.full_name }}" data-group="{{ u.user_group }}">
-                        <td class="ps-3 fw-semibold">{{ u.full_name }}</td>
-                        <td class="text-muted small">{{ u.username }}</td>
+                        <td class="ps-3 fw-semibold" style="white-space:nowrap;">{{ u.full_name }}</td>
+                        <td class="text-muted small" style="white-space:nowrap;">{{ u.username }}</td>
                         <td>
                             <select class="form-select form-select-sm" style="width:90px;font-size:.78rem;padding:2px 6px;"
                                     onchange="updatePosition({{ u.id }}, this.value)">
@@ -178,15 +143,30 @@
                                 {% endfor %}
                             </select>
                         </td>
-                        <td><span class="badge bg-light text-dark border">{{ u.user_group }}</span></td>
-                        <td>{{ u.role }}</td>
                         <td>
-                            {% if u.role == 'admin' %}
-                                <span class="badge bg-primary">관리자</span>
-                            {% elif u.is_active %}
-                                <span class="badge bg-success">활성</span>
+                            <span class="badge-status" style="background:#f1f5f9;color:#475569;white-space:nowrap;">{{ u.user_group }}</span>
+                        </td>
+                        <td style="white-space:nowrap;">
+                            {% if u.id == current_admin_id %}
+                                <span class="badge-status" style="background:#2563eb;color:#fff;white-space:nowrap;">admin</span>
                             {% else %}
-                                <span class="badge bg-secondary">퇴사/비활성</span>
+                                <form method="POST" action="{{ url_for('auth.toggle_admin', user_id=u.id) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    {% if u.role == 'admin' %}
+                                        <button class="btn btn-xs" style="background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;white-space:nowrap;">admin</button>
+                                    {% else %}
+                                        <button class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;">user</button>
+                                    {% endif %}
+                                </form>
+                            {% endif %}
+                        </td>
+                        <td style="white-space:nowrap;">
+                            {% if u.role == 'admin' %}
+                                <span class="badge-status" style="background:#dbeafe;color:#1e40af;white-space:nowrap;">관리자</span>
+                            {% elif u.is_active %}
+                                <span class="badge-status" style="background:#dcfce7;color:#166534;white-space:nowrap;">활성</span>
+                            {% else %}
+                                <span class="badge-status" style="background:#f1f5f9;color:#64748b;white-space:nowrap;">퇴사/비활성</span>
                                 {% if u.deactivated_at %}
                                     <div class="small text-muted mt-1">{{ (u.deactivated_at|string)[:19] }}</div>
                                 {% endif %}
@@ -195,60 +175,66 @@
                                 {% endif %}
                             {% endif %}
                         </td>
-                        <td>
+                        <td style="white-space:nowrap;">
                             {% if u.role == 'admin' %}
-                                <span class="badge bg-primary">기본허용(admin)</span>
+                                <small class="text-muted">기본허용</small>
                             {% else %}
                                 <form method="POST" action="{{ url_for('auth.toggle_priority_manager', user_id=u.id) }}" class="d-inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <input type="hidden" name="can_manage_priority" value="{{ '0' if u.can_manage_priority else '1' }}">
-                                    <button class="btn btn-sm {{ 'btn-danger' if u.can_manage_priority else 'btn-outline-secondary' }}">
-                                        {{ '허용됨' if u.can_manage_priority else '미허용' }}
-                                    </button>
+                                    {% if u.can_manage_priority %}
+                                        <button class="btn btn-xs" style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;white-space:nowrap;">허용됨</button>
+                                    {% else %}
+                                        <button class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;">미허용</button>
+                                    {% endif %}
                                 </form>
                             {% endif %}
                         </td>
-                        <td>
+                        <td style="white-space:nowrap;">
                             {% if u.role == 'admin' %}
-                                <span class="badge bg-primary">기본허용(admin)</span>
+                                <small class="text-muted">기본허용</small>
                             {% else %}
                                 <form method="POST" action="{{ url_for('auth.toggle_delete_approver', user_id=u.id) }}" class="d-inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <input type="hidden" name="can_approve_delete" value="{{ '0' if u.can_approve_delete else '1' }}">
-                                    <button class="btn btn-sm {{ 'btn-success' if u.can_approve_delete else 'btn-outline-secondary' }}">
-                                        {{ '허용됨' if u.can_approve_delete else '미허용' }}
-                                    </button>
+                                    {% if u.can_approve_delete %}
+                                        <button class="btn btn-xs" style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;white-space:nowrap;">허용됨</button>
+                                    {% else %}
+                                        <button class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;">미허용</button>
+                                    {% endif %}
                                 </form>
                             {% endif %}
                         </td>
-                        <td>
+                        <td style="white-space:nowrap;">
                             {% if u.role == 'admin' %}
-                                <span class="badge bg-primary">전체</span>
+                                <small class="text-muted">기본허용</small>
                             {% else %}
-                                <button class="btn btn-xs btn-outline-info" onclick="openExtraMenuModal({{ u.id }}, '{{ u.full_name }}', '{{ u.extra_menus or '' }}')">
+                                <button class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;" onclick="openExtraMenuModal({{ u.id }}, '{{ u.full_name }}', '{{ u.extra_menus or '' }}')">
                                     {% if u.extra_menus %}{{ u.extra_menus.split(',')|length }}개{% else %}설정{% endif %}
                                 </button>
                             {% endif %}
                         </td>
-                        <td>
+                        <td style="white-space:nowrap;">
                             {% if u.role == 'admin' %}
-                                <span class="text-muted small">-</span>
+                                <small class="text-muted">-</small>
                             {% else %}
                                 <form method="POST" action="{{ url_for('auth.toggle_user_active', user_id=u.id) }}" class="d-inline" data-current-active="{{ '1' if u.is_active else '0' }}" onsubmit="return submitToggleUserActive(this);">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <input type="hidden" name="is_active" value="{{ '0' if u.is_active else '1' }}">
                                     <input type="hidden" name="deactivated_reason" value="">
-                                    <button class="btn btn-sm {{ 'btn-outline-danger' if u.is_active else 'btn-outline-success' }}">
-                                        {{ '퇴사처리' if u.is_active else '복구' }}
-                                    </button>
+                                    {% if u.is_active %}
+                                        <button class="btn btn-xs" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;white-space:nowrap;">퇴사처리</button>
+                                    {% else %}
+                                        <button class="btn btn-xs" style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;white-space:nowrap;">복구</button>
+                                    {% endif %}
                                 </form>
                             {% endif %}
                         </td>
-                        <td class="text-center">
+                        <td class="text-center" style="white-space:nowrap;">
                             {% if u.role != 'admin' %}
-                                <button class="btn btn-sm btn-outline-dark" onclick="openResetPwModal({{ u.id }}, '{{ u.full_name }}')">초기화</button>
+                                <button class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;" onclick="openResetPwModal({{ u.id }}, '{{ u.full_name }}')">초기화</button>
                             {% else %}
-                                <span class="text-muted small">-</span>
+                                <small class="text-muted">-</small>
                             {% endif %}
                         </td>
                     </tr>
@@ -362,46 +348,20 @@
 
     <!-- 그룹 메뉴 권한 탭 -->
     <div class="tab-pane fade p-3" id="groupMenusPane" role="tabpanel">
-        <h5 class="mb-3">부서별 메뉴 접근 권한 설정</h5>
-        <p class="text-muted small mb-3">부서(그룹)별로 사이드바에 표시할 메뉴를 선택합니다. 변경 후 해당 부서 사용자는 재로그인 시 반영됩니다.</p>
+        <h5 class="mb-2">메뉴 권한 관리</h5>
+        <p class="text-muted small mb-3">부서별 메뉴 접근 권한 및 개인 추가 권한을 관리합니다.</p>
+        <a href="{{ url_for('auth.menu_perms') }}" class="btn btn-primary">
+            메뉴 권한 관리 페이지 열기 →
+        </a>
+    </div>
 
-        <select id="groupSelector" class="form-select mb-3" style="max-width:300px;">
-            <option value="">그룹 선택...</option>
-            {% for gd in group_menu_data %}
-            <option value="{{ gd.group_name }}"
-                    data-menus="{{ gd.current_menus | join(',') }}">
-                {{ gd.group_name }}
-            </option>
-            {% endfor %}
-        </select>
-
-        <form id="groupMenuForm" method="POST"
-              action="{{ url_for('auth.update_group_menus') }}" style="display:none;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="group_name" id="selectedGroupName">
-
-            <div class="row">
-                {% for menu in configurable_menus %}
-                <div class="col-md-4 col-6 mb-2">
-                    <div class="form-check">
-                        <input class="form-check-input menu-checkbox"
-                               type="checkbox" name="menus"
-                               value="{{ menu.key }}" id="menu_{{ menu.key }}">
-                        <label class="form-check-label" for="menu_{{ menu.key }}">
-                            <small class="text-muted">[{{ menu.group }}]</small>
-                            {{ menu.label }}
-                        </label>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-
-            <div class="mt-3">
-                <button type="submit" class="btn btn-primary btn-sm">저장</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="selectAllMenus()">전체 선택</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="deselectAllMenus()">전체 해제</button>
-            </div>
-        </form>
+    {# ── 챗봇 권한 탭 ── #}
+    <div class="tab-pane fade p-3" id="chatbotPermsPane" role="tabpanel">
+        <h5 class="mb-2">챗봇 권한 관리</h5>
+        <p class="text-muted small mb-3">사용자별 챗봇 조회 권한 및 고사양 매그니(Channel) 사용 권한을 관리합니다.</p>
+        <a href="{{ url_for('chatbot.admin_page') }}" class="btn btn-primary">
+            챗봇 권한 관리 페이지 열기 →
+        </a>
     </div>
 
 </div>
@@ -470,6 +430,26 @@
     </div>
 </div>
 
+{# ── 운영설정 탭 ── #}
+<div class="tab-pane fade p-3" id="opsPane" role="tabpanel">
+    <h6 class="fw-bold mb-3">운영 설정</h6>
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <label class="small fw-bold mb-1">생산 소요일 (기본값)</label>
+                    <p class="text-muted" style="font-size:.75rem;">입고예정 납기위험도 계산에 사용됩니다.<br>납기위험 = 납품기일 - 입고예정일 - 생산소요일</p>
+                    <div class="input-group input-group-sm" style="max-width:200px;">
+                        <input type="number" class="form-control" id="prodLeadDays" value="{{ production_lead_days }}" min="1" max="90">
+                        <span class="input-group-text">일</span>
+                        <button class="btn btn-primary" onclick="saveOps('production_lead_days', document.getElementById('prodLeadDays').value)">저장</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 {# ── 프로젝트 초기화 탭 ── #}
 {% if is_superadmin %}
 <div class="tab-pane fade p-3" id="resetPane" role="tabpanel">
@@ -531,110 +511,13 @@
 {% endif %}{# admin only reset pane #}
 </div>{# /tab-content #}
 
+{% endblock %}
+
+{% block scripts %}
 <script>
-/* 개인 추가 메뉴 모달 */
-function openExtraMenuModal(userId, userName, currentMenus) {
-    document.getElementById('extraMenuUserId').value = userId;
-    document.getElementById('extraMenuUserName').textContent = userName;
-    var menus = currentMenus ? currentMenus.split(',') : [];
-    document.querySelectorAll('.extra-menu-cb').forEach(function(cb) {
-        cb.checked = menus.indexOf(cb.value) !== -1;
-    });
-    var modal = new bootstrap.Modal(document.getElementById('extraMenuModal'));
-    modal.show();
-}
-
-/* 비밀번호 초기화 모달 */
-function openResetPwModal(userId, userName) {
-    document.getElementById('resetPwUserName').textContent = userName;
-    document.getElementById('resetPwForm').action = '{{ url_for("auth.reset_password", user_id=0) }}'.replace('/0', '/' + userId);
-    var modal = new bootstrap.Modal(document.getElementById('resetPwModal'));
-    modal.show();
-}
-
-/* 사용자 검색 필터 */
+window.ADMIN_RESET_PW_URL = '{{ url_for("auth.reset_password", user_id=0) }}';
 document.getElementById('userSearchInput').addEventListener('input', filterUsers);
 document.getElementById('groupFilter').addEventListener('change', filterUsers);
-
-function filterUsers() {
-    var keyword = document.getElementById('userSearchInput').value.trim().toLowerCase();
-    var group = document.getElementById('groupFilter').value;
-    var rows = document.querySelectorAll('#userTableBody tr');
-    rows.forEach(function(row) {
-        var name = (row.getAttribute('data-name') || '').toLowerCase();
-        var rowGroup = row.getAttribute('data-group') || '';
-        var matchName = !keyword || name.indexOf(keyword) !== -1;
-        var matchGroup = !group || rowGroup === group;
-        row.style.display = (matchName && matchGroup) ? '' : 'none';
-    });
-}
-
-/* 삭제요청 반려 사유 */
-function submitRejectReason(form) {
-    var reason = prompt('반려 사유를 입력하세요. (선택)');
-    if (reason !== null) {
-        form.querySelector('input[name="reject_reason"]').value = reason.trim();
-    }
-    return confirm('삭제요청을 반려할까요?');
-}
-
-/* 퇴사/복구 토글 */
-function submitToggleUserActive(form) {
-    var isCurrentlyActive = form.getAttribute('data-current-active') === '1';
-    if (isCurrentlyActive) {
-        var reason = prompt('퇴사/비활성 사유를 입력하세요. (선택)');
-        if (reason === null) return false;
-        form.querySelector('input[name="deactivated_reason"]').value = (reason || '').trim();
-        return confirm('해당 계정을 비활성화(로그인 차단)할까요?');
-    }
-    return confirm('해당 계정을 재활성화할까요?');
-}
-
-/* 그룹 메뉴 권한 */
-document.getElementById('groupSelector').addEventListener('change', function() {
-    var form = document.getElementById('groupMenuForm');
-    var groupName = this.value;
-    if (!groupName) { form.style.display = 'none'; return; }
-
-    document.getElementById('selectedGroupName').value = groupName;
-    form.style.display = 'block';
-
-    var currentMenus = (this.selectedOptions[0].dataset.menus || '').split(',');
-    document.querySelectorAll('.menu-checkbox').forEach(function(cb) {
-        cb.checked = currentMenus.indexOf(cb.value) !== -1;
-    });
-});
-
-function selectAllMenus() {
-    document.querySelectorAll('.menu-checkbox').forEach(function(cb) { cb.checked = true; });
-}
-function deselectAllMenus() {
-    document.querySelectorAll('.menu-checkbox').forEach(function(cb) { cb.checked = false; });
-}
-
-/* URL 해시로 탭 복원 */
-(function() {
-    var hash = window.location.hash;
-    if (hash) {
-        var tab = document.querySelector('#adminTab button[data-bs-target="' + hash + '"]');
-        if (tab) new bootstrap.Tab(tab).show();
-    }
-    document.querySelectorAll('#adminTab button[data-bs-toggle="tab"]').forEach(function(btn) {
-        btn.addEventListener('shown.bs.tab', function(e) {
-            history.replaceState(null, null, e.target.getAttribute('data-bs-target'));
-        });
-    });
-})();
-
-function updatePosition(userId, position) {
-    var form = new FormData();
-    form.append('position', position);
-    fetch('/update_position/' + userId, { method: 'POST', body: form })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (!d.ok) alert(d.error || '실패');
-        })
-        .catch(function() { alert('직급 변경 실패'); });
-}
 </script>
+<script src="{{ url_for('static', filename='js/admin_settings.js') }}"></script>
 {% endblock %}

@@ -1,91 +1,30 @@
 {% extends 'base.html' %}
 {% block content %}
-<style>
-    .qt-section { border: none; border-radius: 12px; overflow: hidden; }
-    .qt-section .card-header {
-        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-        border-bottom: 2px solid #e2e8f0; padding: 14px 20px;
-    }
-    .qt-section .section-num {
-        display: inline-flex; align-items: center; justify-content: center;
-        width: 26px; height: 26px; border-radius: 50%;
-        background: #0f172a; color: #fff; font-size: .78rem; font-weight: 700; margin-right: 8px;
-    }
-    .qt-label { font-size: .82rem; color: #64748b; margin-bottom: 4px; font-weight: 600; }
-    .qt-label .required { color: #ef4444; }
-    .btn-add-item { border: 2px dashed #cbd5e1; color: #64748b; font-weight: 600; border-radius: 8px; transition: all .2s; }
-    .btn-add-item:hover { border-color: #3b82f6; color: #3b82f6; background: #eff6ff; }
-    .tpl-badge { display: inline-block; padding: 4px 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: .78rem; color: #1e40af; cursor: pointer; white-space: nowrap; }
-    .tpl-badge:hover { background: #dbeafe; }
-
-    /* 품목 자동완성 */
-    .item-ac-dropdown { position: absolute; z-index: 9999; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); max-height: 260px; overflow-y: auto; display: none; }
-    .item-ac-dropdown.show { display: block; }
-    .item-ac-dropdown .ac-item { padding: 8px 12px; cursor: pointer; font-size: .85rem; border-bottom: 1px solid #f1f5f9; }
-    .item-ac-dropdown .ac-item:hover { background: #eff6ff; }
-    .item-ac-dropdown .ac-price { color: #059669; font-weight: 600; font-size: .78rem; }
-    .item-ac-dropdown .ac-sub { color: #94a3b8; font-size: .78rem; }
-
-    /* 단가 추천 드롭다운 */
-    .price-dd { position: absolute; z-index: 9998; background: #fff; border: 1px solid #fde68a; border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.1); display: none; min-width: 180px; }
-    .price-dd.show { display: block; }
-    .price-dd .pd-title { padding: 6px 10px; font-size: .7rem; color: #92400e; font-weight: 700; background: #fffbeb; border-bottom: 1px solid #fde68a; }
-    .price-dd .pd-item { padding: 6px 10px; cursor: pointer; font-size: .82rem; border-bottom: 1px solid #f5f5f4; display: flex; justify-content: space-between; gap: 12px; }
-    .price-dd .pd-item:hover { background: #fffbeb; }
-    .price-dd .pd-price { font-weight: 700; color: #0f172a; }
-    .price-dd .pd-meta { font-size: .7rem; color: #94a3b8; }
-
-    /* ─── 품목 카드 ─── */
-    .qi-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; position: relative; }
-    .qi-card:hover { border-color: #93c5fd; }
-    .qi-card .qi-no { font-size: .72rem; color: #94a3b8; font-weight: 700; white-space: nowrap; }
-    .qi-card .qi-rm { font-size: 1.2rem; color: #ef4444; opacity: .4; cursor: pointer; line-height: 1; background: none; border: none; padding: 2px 4px; white-space: nowrap; }
-    .qi-card .qi-rm:hover { opacity: 1; }
-    .qi-field label { font-size: .68rem; color: #94a3b8; font-weight: 600; margin-bottom: 1px; display: block; white-space: nowrap; }
-    .qi-field input { font-size: .85rem; }
-    /* PC: 품명|규격|단위|수량|단가|비고 한 줄 */
-    .qi-inline { display: flex; align-items: end; gap: 6px; }
-    .qi-f-name { flex: 3; min-width: 0; }
-    .qi-f-spec { flex: 2; min-width: 0; }
-    .qi-f-unit { flex: 0 0 55px; }
-    .qi-f-qty  { flex: 0 0 70px; }
-    .qi-f-price { flex: 0 0 110px; }
-    .qi-f-note { flex: 1.5; min-width: 0; }
-    .qi-f-no   { flex: 0 0 24px; text-align: center; padding-bottom: 6px; }
-    .qi-f-rm   { flex: 0 0 24px; text-align: center; padding-bottom: 4px; }
-
-
-    /* 합계 바 */
-    .total-bar { background: #0f172a; color: #fff; border-radius: 10px; padding: 14px 20px; }
-    .total-bar .total-row { display: flex; justify-content: space-between; font-size: .9rem; }
-    .total-bar .total-row.grand { font-size: 1.15rem; font-weight: 700; border-top: 1px solid rgba(255,255,255,.15); padding-top: 8px; margin-top: 6px; }
-
-    /* 모바일: 줄바꿈 허용 */
-    @media (max-width: 767.98px) {
-        .qi-inline { flex-wrap: wrap; }
-        .qi-f-name { flex: 1 1 100%; }
-        .qi-f-spec { flex: 1 1 45%; }
-        .qi-f-unit { flex: 0 0 50px; }
-        .qi-f-qty  { flex: 1 1 45%; }
-        .qi-f-price { flex: 1 1 45%; }
-        .qi-f-note { flex: 1 1 100%; }
-        .qt-section .card-body { padding: 10px; }
-        .qi-card { padding: 8px; }
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/quotation_create.css') }}">
 
 <div class="page-hero mg-fade">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
         <div>
+            {% if edit_mode %}
+            <div class="hero-eyebrow">Edit Quotation</div>
+            <h2>견적서 수정 — {{ q.quote_no }}</h2>
+            <div class="hero-sub">{{ q.customer_name or '' }}</div>
+            {% else %}
             <div class="hero-eyebrow">New Quotation</div>
             <h2>견적서 작성</h2>
             <div class="hero-sub">수급자 정보와 품목을 입력하세요</div>
+            {% endif %}
         </div>
-        <a href="{{ url_for('quotation.quotation_list') }}" class="btn btn-outline-light btn-sm">목록으로</a>
+        <div class="d-flex gap-2">
+            {% if edit_mode %}
+            <a href="{{ url_for('quotation.quotation_detail', quote_id=q.id) }}" class="btn btn-outline-light btn-sm">상세로</a>
+            {% endif %}
+            <a href="{{ url_for('quotation.quotation_list') }}" class="btn btn-outline-light btn-sm">목록으로</a>
+        </div>
     </div>
 </div>
 
-<form method="POST" action="{{ url_for('quotation.quotation_create') }}" id="qtCreateForm">
+<form method="POST" action="{{ url_for('quotation.quotation_edit', quote_id=q.id) if edit_mode else url_for('quotation.quotation_create') }}" id="qtCreateForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
     {# ─── 1) 기본정보 ─── #}
@@ -95,27 +34,27 @@
             <div class="row g-3">
                 <div class="col-6 col-md-3">
                     <div class="qt-label">견적일 <span class="required">*</span></div>
-                    <input type="date" name="quote_date" class="form-control" required>
+                    <input type="date" name="quote_date" class="form-control" value="{{ q.quote_date.strftime('%Y-%m-%d') if edit_mode and q.quote_date else '' }}" required>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="qt-label">납기일</div>
-                    <input type="text" name="delivery_date" class="form-control" value="협의">
+                    <input type="text" name="delivery_date" class="form-control" value="{{ q.delivery_date if edit_mode else '협의' }}">
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="qt-label">대금지불</div>
-                    <input type="text" name="payment_method" class="form-control" value="현금">
+                    <input type="text" name="payment_method" class="form-control" value="{{ q.payment_method if edit_mode else '현금' }}">
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="qt-label">견적유효</div>
-                    <input type="text" name="validity_period" class="form-control" value="견적일로부터 1개월">
+                    <input type="text" name="validity_period" class="form-control" value="{{ q.validity_period if edit_mode else '견적일로부터 1개월' }}">
                 </div>
                 <div class="col-12 col-md-8">
                     <div class="qt-label">건명</div>
-                    <input type="text" name="project_name" class="form-control" placeholder="건명을 입력하세요">
+                    <input type="text" name="project_name" class="form-control" value="{{ q.project_name or '' if edit_mode else '' }}" placeholder="건명을 입력하세요">
                 </div>
                 <div class="col-12 col-md-4">
                     <div class="qt-label">계좌번호</div>
-                    <input type="text" name="bank_account" class="form-control" placeholder="선택 입력">
+                    <input type="text" name="bank_account" class="form-control" value="{{ q.bank_account or '' if edit_mode else '' }}" placeholder="선택 입력">
                 </div>
             </div>
         </div>
@@ -128,27 +67,27 @@
             <div class="row g-3">
                 <div class="col-6 col-md-4">
                     <div class="qt-label">수급자명</div>
-                    <input type="text" name="customer_name" class="form-control" placeholder="수급자명">
+                    <input type="text" name="customer_name" class="form-control" value="{{ q.customer_name or '' if edit_mode else '' }}" placeholder="수급자명">
                 </div>
                 <div class="col-6 col-md-4">
                     <div class="qt-label">담당자</div>
-                    <input type="text" name="customer_contact" class="form-control" placeholder="담당자명">
+                    <input type="text" name="customer_contact" class="form-control" value="{{ q.customer_contact or '' if edit_mode else '' }}" placeholder="담당자명">
                 </div>
                 <div class="col-6 col-md-4">
                     <div class="qt-label">Tel</div>
-                    <input type="text" name="customer_tel" class="form-control" placeholder="전화번호">
+                    <input type="text" name="customer_tel" class="form-control" value="{{ q.customer_tel or '' if edit_mode else '' }}" placeholder="전화번호">
                 </div>
                 <div class="col-12 col-md-6">
                     <div class="qt-label">주소</div>
-                    <input type="text" name="customer_address" class="form-control" placeholder="주소">
+                    <input type="text" name="customer_address" class="form-control" value="{{ q.customer_address or '' if edit_mode else '' }}" placeholder="주소">
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="qt-label">Fax</div>
-                    <input type="text" name="customer_fax" class="form-control" placeholder="팩스">
+                    <input type="text" name="customer_fax" class="form-control" value="{{ q.customer_fax or '' if edit_mode else '' }}" placeholder="팩스">
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="qt-label">E-mail</div>
-                    <input type="text" name="customer_email" class="form-control" placeholder="이메일">
+                    <input type="text" name="customer_email" class="form-control" value="{{ q.customer_email or '' if edit_mode else '' }}" placeholder="이메일">
                 </div>
             </div>
         </div>
@@ -162,6 +101,7 @@
                 <button type="button" class="btn btn-outline-success btn-sm" id="loadTplBtn">세부견적 불러오기</button>
                 <button type="button" class="btn btn-outline-info btn-sm" id="saveTplBtn">템플릿 저장</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#quickItemModal">견적품목 등록</button>
+                <button type="button" class="btn btn-outline-danger btn-sm" id="clearItemsBtn">초기화</button>
                 <button type="button" class="btn btn-add-item btn-sm px-3" id="addItemBtn">+ 품목 추가</button>
             </div>
         </div>
@@ -186,35 +126,65 @@
     <div class="card qt-section shadow-sm mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <div><span class="section-num">4</span><strong>부과금</strong><small class="text-muted ms-2">공급가액의 %</small></div>
-            <button type="button" class="btn btn-add-item btn-sm px-3" id="addScBtn">+ 부과금 추가</button>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="addVatBtn">부가세 10%</button>
+                <button type="button" class="btn btn-add-item btn-sm px-3" id="addScBtn">+ 부과금 추가</button>
+            </div>
         </div>
         <div class="card-body p-2 p-md-3" id="scContainer">
             {# 부과금 행이 여기에 동적 추가 #}
         </div>
     </div>
 
+    {# ─── 4.5) 단위 절상/절삭 ─── #}
+    <div class="card qt-section shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div><span class="section-num" style="background:#64748b;">R</span><strong>단위 조정</strong><small class="text-muted ms-2">합계 금액 절상/절삭</small></div>
+            <div class="d-flex gap-1 flex-wrap">
+                <button type="button" class="btn btn-outline-secondary btn-sm round-btn" data-unit="1000" data-dir="ceil">천원 절상</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm round-btn" data-unit="1000" data-dir="floor">천원 절삭</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm round-btn" data-unit="10000" data-dir="ceil">만원 절상</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm round-btn" data-unit="10000" data-dir="floor">만원 절삭</button>
+                <button type="button" class="btn btn-outline-warning btn-sm" id="roundResetBtn">원복</button>
+            </div>
+        </div>
+        <div class="card-body p-2 p-md-3">
+            <div class="d-flex justify-content-between align-items-center" style="font-size:.9rem;">
+                <span class="text-muted">조정 전: <span id="beforeRound">-</span></span>
+                <span class="fw-bold">조정 후: <strong id="afterRound">-</strong></span>
+                <input type="hidden" name="round_adjust" id="roundAdjustInput" value="0">
+            </div>
+        </div>
+    </div>
+
     {# ─── 합계 바 ─── #}
     <div class="total-bar mb-4" id="totalBar">
-        <div class="total-row"><span>공급가액</span><span id="supplyTotal">0원</span></div>
+        <div class="total-row"><span>공급가액</span><span id="supplyTotal">0</span></div>
         <div id="scTotalRows"></div>
-        <div class="total-row grand"><span>합계</span><span id="grandTotal">0원</span></div>
+        <div class="total-row" id="roundRow" style="display:none;color:#f59e0b;"><span>단위 조정</span><span id="roundDisplay">0</span></div>
+        <div class="total-row grand"><span>합계</span><span id="grandTotal">0</span></div>
     </div>
 
     {# ─── 5) 비고 ─── #}
     <div class="card qt-section shadow-sm mb-4">
         <div class="card-header"><span class="section-num">5</span><strong>비고</strong></div>
         <div class="card-body p-3 p-md-4">
-            <textarea name="note" class="form-control" rows="3" placeholder="비고 사항 (PDF에 표시됩니다)"></textarea>
+            <textarea name="note" class="form-control" rows="3" placeholder="비고 사항 (PDF에 표시됩니다)">{{ q.note or '' if edit_mode else '' }}</textarea>
             <div class="form-check mt-2">
-                <input class="form-check-input" type="checkbox" name="tax_included" id="taxIncluded">
+                <input class="form-check-input" type="checkbox" name="tax_included" id="taxIncluded" {{ 'checked' if edit_mode and q.tax_included }}>
                 <label class="form-check-label small text-muted" for="taxIncluded">부가세 포함</label>
             </div>
         </div>
     </div>
 
     <div class="d-flex justify-content-end gap-2 mb-5">
+        {% if edit_mode %}
+        <a href="{{ url_for('quotation.quotation_detail', quote_id=q.id) }}" class="btn btn-outline-secondary px-4">취소</a>
+        <button type="submit" class="btn btn-primary px-5 fw-bold shadow-sm" style="border-radius:8px;">견적서 수정</button>
+        {% else %}
         <a href="{{ url_for('quotation.quotation_list') }}" class="btn btn-outline-secondary px-4">취소</a>
         <button type="submit" class="btn btn-primary px-5 fw-bold shadow-sm" style="border-radius:8px;">견적서 저장</button>
+        {% endif %}
     </div>
 </form>
 
@@ -291,349 +261,24 @@
     </div>
 </div>
 
+{# ── PAGE_DATA: Jinja2 → JS 데이터 전달 ── #}
 <script>
-(function() {
-    var rowIndex = 0;
-    var scIndex = 0;
-    var csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    var dd = document.getElementById('itemAcDropdown');
-    var pdd = document.getElementById('priceDd');
-    var activeInput = null;
-    var activePriceInput = null;
-    var acTimer = null;
-    var container = document.getElementById('itemsContainer');
-
-    var dateInput = document.querySelector('input[name="quote_date"]');
-    if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().split('T')[0];
-
-    // ── 품목 카드 추가 ──
-    function addItemCard(data) {
-        data = data || {};
-        rowIndex++;
-        var card = document.createElement('div');
-        card.className = 'qi-card';
-        card.innerHTML =
-            '<input type="hidden" name="item_id[]" value="' + (data.id || '') + '">' +
-            '<div class="qi-inline">' +
-                '<div class="qi-f-no qi-no">' + rowIndex + '</div>' +
-                '<div class="qi-field qi-f-name">' +
-                    '<label>품명</label>' +
-                    '<input type="text" name="item_name[]" class="form-control form-control-sm item-ac-input" value="' + (data.item_name || '') + '" placeholder="품명 (자동완성)" autocomplete="off" required>' +
-                '</div>' +
-                '<div class="qi-field qi-f-spec">' +
-                    '<label>규격</label>' +
-                    '<input type="text" name="item_spec[]" class="form-control form-control-sm" value="' + (data.item_spec || '') + '">' +
-                '</div>' +
-                '<div class="qi-field qi-f-unit">' +
-                    '<label>단위</label>' +
-                    '<input type="text" name="unit[]" class="form-control form-control-sm text-center" value="' + (data.unit || 'EA') + '">' +
-                '</div>' +
-                '<div class="qi-field qi-f-qty">' +
-                    '<label>수량</label>' +
-                    '<input type="number" name="quantity[]" class="form-control form-control-sm text-end calc-field" value="' + (data.quantity || '') + '" min="0" step="any" inputmode="decimal">' +
-                '</div>' +
-                '<div class="qi-field qi-f-price">' +
-                    '<label>단가</label>' +
-                    '<input type="number" name="unit_price[]" class="form-control form-control-sm text-end calc-field" value="' + (data.unit_price || '') + '" min="0" step="any" inputmode="decimal">' +
-                '</div>' +
-                '<div class="qi-field qi-f-note">' +
-                    '<label>비고</label>' +
-                    '<input type="text" name="item_note[]" class="form-control form-control-sm" value="' + (data.note || '') + '">' +
-                '</div>' +
-                '<div class="qi-f-rm"><button type="button" class="qi-rm">&times;</button></div>' +
-            '</div>';
-        container.appendChild(card);
-        recalcAll();
-    }
-    window._addItemRow = addItemCard;
-
-    document.getElementById('addItemBtn').addEventListener('click', function() { addItemCard(); });
-    addItemCard();
-
-    // ── 삭제 + 계산 이벤트 ──
-    container.addEventListener('click', function(e) {
-        if (e.target.classList.contains('qi-rm')) {
-            e.target.closest('.qi-card').remove();
-            renumberCards();
-            recalcAll();
-        }
-    });
-    container.addEventListener('input', function(e) {
-        if (e.target.classList.contains('calc-field')) recalcAll();
-    });
-
-    // ── 품목 인라인 자동완성 ──
-    container.addEventListener('input', function(e) {
-        if (!e.target.classList.contains('item-ac-input')) return;
-        clearTimeout(acTimer);
-        activeInput = e.target;
-        var q = e.target.value.trim();
-        if (q.length < 1) { dd.classList.remove('show'); return; }
-        acTimer = setTimeout(function() {
-            fetch('/api/items/search?q=' + encodeURIComponent(q))
-                .then(function(r) { return r.json(); })
-                .then(function(items) {
-                    if (!items.length) { dd.classList.remove('show'); return; }
-                    dd.innerHTML = items.map(function(it) {
-                        var priceStr = it.last_unit_price ? ' <span class="ac-price">' + Number(it.last_unit_price).toLocaleString() + '원</span>' : '';
-                        return '<div class="ac-item" data-id="' + it.id + '" data-name="' + it.item_name + '"'
-                            + ' data-spec="' + (it.item_spec || '') + '" data-unit="' + (it.unit || 'EA') + '"'
-                            + ' data-price="' + (it.last_unit_price || 0) + '">'
-                            + '<strong>' + it.item_name + '</strong>'
-                            + (it.item_spec ? ' <span class="ac-sub">(' + it.item_spec + ')</span>' : '')
-                            + priceStr + '</div>';
-                    }).join('');
-                    var rect = activeInput.getBoundingClientRect();
-                    dd.style.top = (rect.bottom + window.scrollY + 2) + 'px';
-                    dd.style.left = rect.left + 'px';
-                    dd.style.width = Math.max(rect.width, 320) + 'px';
-                    dd.classList.add('show');
-                });
-        }, 200);
-    });
-
-    dd.addEventListener('mousedown', function(e) {
-        e.preventDefault();
-        var item = e.target.closest('.ac-item');
-        if (!item || !activeInput) return;
-        var card = activeInput.closest('.qi-card');
-        card.querySelector('input[name="item_id[]"]').value = item.dataset.id;
-        card.querySelector('input[name="item_name[]"]').value = item.dataset.name;
-        card.querySelector('input[name="item_spec[]"]').value = item.dataset.spec;
-        card.querySelector('input[name="unit[]"]').value = item.dataset.unit || 'EA';
-        var price = parseFloat(item.dataset.price) || 0;
-        if (price > 0) card.querySelector('input[name="unit_price[]"]').value = price;
-        dd.classList.remove('show');
-        recalcAll();
-        card.querySelector('input[name="quantity[]"]').focus();
-    });
-
-    document.addEventListener('click', function(e) {
-        if (!e.target.classList.contains('item-ac-input') && !dd.contains(e.target)) dd.classList.remove('show');
-        if (!e.target.classList.contains('calc-field') && !pdd.contains(e.target)) pdd.classList.remove('show');
-    });
-
-    // ── 단가 추천 드롭다운 ──
-    container.addEventListener('focus', function(e) {
-        if (!e.target.matches('input[name="unit_price[]"]')) return;
-        activePriceInput = e.target;
-        var card = e.target.closest('.qi-card');
-        var itemName = card.querySelector('input[name="item_name[]"]').value.trim();
-        if (!itemName) { pdd.classList.remove('show'); return; }
-        fetch('/api/quote-price-history?item_name=' + encodeURIComponent(itemName))
-            .then(function(r) { return r.json(); })
-            .then(function(prices) {
-                if (!prices.length) { pdd.classList.remove('show'); return; }
-                pdd.innerHTML = '<div class="pd-title">과거 견적 단가</div>' +
-                    prices.map(function(p) {
-                        return '<div class="pd-item" data-price="' + p.price + '">' +
-                            '<span class="pd-price">' + Number(p.price).toLocaleString() + '</span>' +
-                            '<span class="pd-meta">' + (p.spec ? p.spec + ' | ' : '') + p.count + '회' + (p.last_date ? ' | ' + p.last_date : '') + '</span>' +
-                            '</div>';
-                    }).join('');
-                var rect = e.target.getBoundingClientRect();
-                pdd.style.top = (rect.bottom + window.scrollY + 2) + 'px';
-                pdd.style.left = rect.left + 'px';
-                pdd.style.width = Math.max(rect.width, 220) + 'px';
-                pdd.classList.add('show');
-            });
-    }, true);
-
-    pdd.addEventListener('mousedown', function(e) {
-        e.preventDefault();
-        var item = e.target.closest('.pd-item');
-        if (!item || !activePriceInput) return;
-        activePriceInput.value = item.dataset.price;
-        pdd.classList.remove('show');
-        recalcAll();
-    });
-
-    // ── 부과금 ──
-    function addScRow(data) {
-        data = data || {};
-        scIndex++;
-        var row = document.createElement('div');
-        row.className = 'qi-card';
-        row.style.background = '#fffbeb';
-        row.style.borderColor = '#fde68a';
-        row.innerHTML =
-            '<button type="button" class="qi-rm sc-rm-btn">&times;</button>' +
-            '<div class="row g-2 align-items-end">' +
-                '<div class="col-5"><label class="form-label small text-muted mb-0">항목명</label><input type="text" name="sc_name[]" class="form-control form-control-sm" value="' + (data.name || '') + '" placeholder="부가세, 이윤 등"></div>' +
-                '<div class="col-3"><label class="form-label small text-muted mb-0">비율 (%)</label><input type="number" name="sc_rate[]" class="form-control form-control-sm text-end sc-calc" value="' + (data.rate || '') + '" min="0" step="any" inputmode="decimal"></div>' +
-                '<div class="col-4 text-end"><label class="form-label small text-muted mb-0">금액</label><div class="fw-bold sc-amount" style="font-size:1rem;color:#92400e;padding:6px 0;">0원</div></div>' +
-            '</div>';
-        document.getElementById('scContainer').appendChild(row);
-        recalcAll();
-    }
-    document.getElementById('addScBtn').addEventListener('click', function() { addScRow(); });
-
-    document.getElementById('scContainer').addEventListener('click', function(e) {
-        if (e.target.classList.contains('sc-rm-btn')) { e.target.closest('.qi-card').remove(); recalcAll(); }
-    });
-    document.getElementById('scContainer').addEventListener('input', function(e) {
-        if (e.target.classList.contains('sc-calc')) recalcAll();
-    });
-
-    // ── 계산 ──
-    function recalcAll() {
-        var supply = 0;
-        container.querySelectorAll('.qi-card').forEach(function(card) {
-            var qty = parseFloat(card.querySelector('input[name="quantity[]"]').value) || 0;
-            var price = parseFloat(card.querySelector('input[name="unit_price[]"]').value) || 0;
-            var amount = qty * price;
-            supply += amount;
-        });
-        document.getElementById('supplyTotal').textContent = supply.toLocaleString();
-
-        var scTotal = 0;
-        var scHtml = '';
-        document.querySelectorAll('#scContainer .qi-card').forEach(function(row) {
-            var name = row.querySelector('input[name="sc_name[]"]').value.trim();
-            var rate = parseFloat(row.querySelector('input[name="sc_rate[]"]').value) || 0;
-            var amt = Math.round(supply * rate / 100);
-            row.querySelector('.sc-amount').textContent = amt.toLocaleString();
-            scTotal += amt;
-            if (name) scHtml += '<div class="total-row" style="opacity:.7;"><span>' + name + ' (' + rate + '%)</span><span>' + amt.toLocaleString() + '원</span></div>';
-        });
-        document.getElementById('scTotalRows').innerHTML = scHtml;
-        document.getElementById('grandTotal').textContent = (supply + scTotal).toLocaleString();
-    }
-
-    function renumberCards() {
-        container.querySelectorAll('.qi-card').forEach(function(card, i) {
-            card.querySelector('.qi-no').textContent = (i + 1);
-        });
-        rowIndex = container.querySelectorAll('.qi-card').length;
-    }
-
-    // ── 세부견적 템플릿 ──
-    document.getElementById('loadTplBtn').addEventListener('click', function() {
-        new bootstrap.Modal(document.getElementById('tplLoadModal')).show();
-        loadTemplateList();
-    });
-    document.querySelectorAll('.tpl-badge').forEach(function(b) {
-        b.addEventListener('click', function() { loadTemplateItems(this.dataset.tplId); });
-    });
-
-    function loadTemplateList(q) {
-        fetch('/api/quote-templates' + (q ? '?q=' + encodeURIComponent(q) : ''))
-            .then(function(r) { return r.json(); })
-            .then(function(tpls) {
-                var el = document.getElementById('tplSearchResults');
-                if (!tpls.length) { el.innerHTML = '<div class="text-center text-muted py-3">저장된 템플릿이 없습니다.</div>'; return; }
-                el.innerHTML = '<div class="list-group">' + tpls.map(function(t) {
-                    return '<a href="#" class="list-group-item list-group-item-action tpl-load-btn py-2" data-id="' + t.id + '">'
-                        + '<strong>' + t.name + '</strong> <span class="badge bg-primary ms-1">' + t.item_count + '건</span>'
-                        + ' <small class="text-muted">(' + t.total.toLocaleString() + '원)</small>'
-                        + (t.creator ? ' <small class="text-muted">| ' + t.creator + '</small>' : '')
-                        + (t.updated_at ? ' <small class="text-muted">| ' + t.updated_at + '</small>' : '')
-                        + '</a>';
-                }).join('') + '</div>';
-            });
-    }
-    var tplTimer = null;
-    document.getElementById('tplSearchInput').addEventListener('input', function() {
-        clearTimeout(tplTimer);
-        var q = this.value.trim();
-        tplTimer = setTimeout(function() { loadTemplateList(q); }, 300);
-    });
-    document.getElementById('tplSearchResults').addEventListener('click', function(e) {
-        var btn = e.target.closest('.tpl-load-btn');
-        if (!btn) return;
-        e.preventDefault();
-        loadTemplateItems(btn.dataset.id);
-        bootstrap.Modal.getInstance(document.getElementById('tplLoadModal')).hide();
-    });
-    function loadTemplateItems(tplId) {
-        fetch('/api/quote-templates/' + tplId).then(function(r) { return r.json(); }).then(function(tpl) {
-            if (tpl.error) { alert(tpl.error); return; }
-            tpl.items.forEach(function(item) { addItemCard(item); });
-            recalcAll();
-        });
-    }
-
-    // ── 템플릿 저장 ──
-    document.getElementById('saveTplBtn').addEventListener('click', function() {
-        var cards = container.querySelectorAll('.qi-card');
-        if (!cards.length) { alert('저장할 품목이 없습니다.'); return; }
-        document.getElementById('tplSavePreview').textContent = cards.length + '개 품목이 저장됩니다.';
-        new bootstrap.Modal(document.getElementById('tplSaveModal')).show();
-        document.getElementById('tplSaveName').focus();
-    });
-    document.getElementById('tplSaveConfirmBtn').addEventListener('click', function() {
-        var name = document.getElementById('tplSaveName').value.trim();
-        if (!name) { alert('템플릿 이름을 입력하세요.'); return; }
-        var items = [];
-        container.querySelectorAll('.qi-card').forEach(function(card) {
-            var n = card.querySelector('input[name="item_name[]"]').value.trim();
-            if (!n) return;
-            items.push({
-                item_name: n,
-                item_spec: card.querySelector('input[name="item_spec[]"]').value.trim(),
-                unit: card.querySelector('input[name="unit[]"]').value.trim() || 'EA',
-                quantity: parseFloat(card.querySelector('input[name="quantity[]"]').value) || 0,
-                unit_price: parseFloat(card.querySelector('input[name="unit_price[]"]').value) || 0,
-                note: card.querySelector('input[name="item_note[]"]').value.trim(),
-            });
-        });
-
-        function doSave(overwrite) {
-            fetch('/api/quote-templates', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-                body: JSON.stringify({ name: name, note: document.getElementById('tplSaveNote').value.trim(), items: items, overwrite: overwrite }),
-            }).then(function(r) { return r.json(); }).then(function(d) {
-                if (d.ok) {
-                    alert('템플릿 "' + d.name + '" ' + (d.message || '저장') + ' 완료!');
-                    bootstrap.Modal.getInstance(document.getElementById('tplSaveModal')).hide();
-                } else alert(d.error || '저장 실패');
-            });
-        }
-
-        // 동일 이름 존재 여부 확인 후 덮어쓰기 물어보기
-        fetch('/api/quote-templates?q=' + encodeURIComponent(name))
-            .then(function(r) { return r.json(); })
-            .then(function(tpls) {
-                var dup = tpls.find(function(t) { return t.name === name; });
-                if (dup) {
-                    if (confirm('"' + name + '" 템플릿이 이미 있습니다 (' + dup.creator + ' 작성, ' + dup.updated_at + ').\n덮어쓰기 하시겠습니까?')) {
-                        doSave(true);
-                    }
-                } else {
-                    doSave(false);
-                }
-            });
-    });
-    // ── 견적 전용 품목 빠른 등록 ──
-    document.getElementById('qiSaveBtn').addEventListener('click', function() {
-        var name = document.getElementById('qiName').value.trim();
-        if (!name) { alert('품명을 입력하세요.'); return; }
-        fetch('/api/items/create-quote-item', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-            body: JSON.stringify({
-                item_name: name,
-                item_spec: document.getElementById('qiSpec').value.trim(),
-                unit: document.getElementById('qiUnit').value.trim() || 'EA',
-                last_unit_price: parseFloat(document.getElementById('qiPrice').value) || 0,
-            }),
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (d.ok) {
-                alert('"' + name + '" 등록 완료! 자동완성에서 검색됩니다.');
-                bootstrap.Modal.getInstance(document.getElementById('quickItemModal')).hide();
-                // 바로 품목 행에 추가
-                addItemCard({id: d.id, item_name: name, item_spec: d.spec, unit: d.unit, unit_price: d.price});
-                recalcAll();
-                document.getElementById('qiName').value = '';
-                document.getElementById('qiSpec').value = '';
-                document.getElementById('qiPrice').value = '';
-            } else { alert(d.error || '등록 실패'); }
-        });
-    });
-})();
+window.PAGE_DATA = {
+    editMode: {{ 'true' if edit_mode else 'false' }},
+    {% if edit_mode %}
+    items: [
+        {% for item in q.items %}
+        {id:'{{ item.item_id or "" }}', item_name:'{{ item.item_name|e }}', item_spec:'{{ (item.item_spec or "")|e }}', unit:'{{ item.unit or "EA" }}', quantity:{{ item.quantity }}, unit_price:{{ item.unit_price }}, note:'{{ (item.note or "")|e }}'}{{ ',' if not loop.last }}
+        {% endfor %}
+    ],
+    surcharges: [
+        {% for sc in q.surcharges %}
+        {name:'{{ sc.name|e }}', rate:{{ sc.rate }}}{{ ',' if not loop.last }}
+        {% endfor %}
+    ],
+    {% endif %}
+};
 </script>
+<script src="{{ url_for('static', filename='js/quotation_create.js') }}"></script>
 
 {% endblock %}

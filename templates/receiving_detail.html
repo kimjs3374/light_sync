@@ -22,13 +22,6 @@
     <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
         <strong>기본정보</strong>
         <div class="d-flex gap-2 align-items-center">
-            {% if rcv.status == '검수대기' %}
-            <span class="badge bg-warning text-dark fs-6">검수대기</span>
-            {% elif rcv.status == '검수완료' %}
-            <span class="badge bg-success fs-6">검수완료</span>
-            {% elif rcv.status == '반품' %}
-            <span class="badge bg-danger fs-6">반품</span>
-            {% endif %}
         </div>
     </div>
     <div class="card-body">
@@ -163,27 +156,10 @@
 <div class="card border-0 shadow-sm mb-3">
     <div class="card-body">
         <div class="d-flex flex-wrap gap-2">
-            {# 상태 변경 #}
-            {% for s in status_choices %}
-            {% if s != rcv.status %}
-            <form method="POST" action="{{ url_for('receiving.receiving_change_status', rcv_id=rcv.id) }}" class="d-inline">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="status" value="{{ s }}">
-                <button type="submit" class="btn btn-sm {{ 'btn-success' if s == '검수완료' else ('btn-danger' if s == '반품' else 'btn-outline-secondary') }}"
-                    onclick="return confirm('{{ s }}(으)로 변경하시겠습니까?');">
-                    {{ s }}
-                </button>
-            </form>
-            {% endif %}
-            {% endfor %}
-
-            {# 삭제 #}
-            {% if rcv.status != '검수완료' %}
             <form method="POST" action="{{ url_for('receiving.receiving_delete', rcv_id=rcv.id) }}" class="d-inline ms-auto">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('이 입고를 삭제하시겠습니까?');">삭제</button>
             </form>
-            {% endif %}
         </div>
     </div>
 </div>

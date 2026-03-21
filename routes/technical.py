@@ -54,3 +54,10 @@ def lux_calculator():
         projects = db.query(Project).all()
         recent = db.query(SportsModule).options(joinedload(SportsModule.project)).order_by(SportsModule.id.desc()).all()
         return render_template('lux_calculator.html', projects=projects, recent=recent, edit_data=edit_data)
+
+
+@tech_bp.route('/illuminance_verification')
+@login_required
+def illuminance_verification():
+    project_name = request.args.get('project_name', '창원 가음정공원 풋살장')
+    return render_template('illuminance_verification.html', project_name=project_name)

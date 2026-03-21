@@ -1,114 +1,599 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="page-hero mg-fade">
-    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
-        <div>
-            <div class="hero-eyebrow">Project Drawings</div>
-            <h2>도면관리 - {{ project.temp_name }}</h2>
-            <div class="hero-sub">{{ project.project_no }}</div>
-        </div>
-        <a href="{{ url_for('drawing.drawings_index') }}" class="btn btn-outline-light btn-sm">프로젝트 목록</a>
+<style>
+/* ═══ Drawing Viewer — Local Styles ═══ */
+
+.drawing-layout {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 1rem;
+}
+
+/* ── 도면 목록 패널 ── */
+.drawing-list-panel {
+    background: #fff;
+    border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius);
+    box-shadow: var(--mg-shadow);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 160px);
+}
+.list-panel-header {
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--mg-border);
+    flex-shrink: 0;
+}
+.list-panel-header h6 {
+    font-size: .78rem;
+    font-weight: 700;
+    color: var(--mg-muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin: 0 0 .5rem;
+}
+.list-panel-header .form-control { font-size: .82rem; }
+
+/* ── 타입 필터 탭 ── */
+.type-filter-bar { display: flex; gap: .3rem; flex-wrap: wrap; margin-top: .45rem; }
+.type-btn {
+    padding: .2rem .55rem;
+    border-radius: 999px;
+    font-size: .73rem;
+    font-weight: 600;
+    border: 1px solid var(--mg-border);
+    background: #fff;
+    color: var(--mg-muted);
+    cursor: pointer;
+    transition: all .12s;
+    white-space: nowrap;
+}
+.type-btn:hover { border-color: var(--mg-primary); color: var(--mg-primary); }
+.type-btn.active { background: var(--mg-primary); border-color: var(--mg-primary); color: #fff; }
+
+/* ── 도면 리스트 ── */
+.drawing-list { overflow-y: auto; flex: 1; padding: .4rem; }
+.drawing-item {
+    padding: .55rem .75rem;
+    border-radius: .45rem;
+    cursor: pointer;
+    transition: background .12s;
+    border: 1px solid transparent;
+    margin-bottom: 2px;
+}
+.drawing-item:hover { background: #f1f5f9; }
+.drawing-item.active { background: #eff6ff; border-color: #bfdbfe; }
+.drawing-item-title {
+    font-size: .83rem;
+    font-weight: 600;
+    color: var(--mg-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.drawing-item.active .drawing-item-title { color: var(--mg-primary); }
+.drawing-item-meta {
+    font-size: .72rem;
+    color: var(--mg-muted);
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    margin-top: 2px;
+}
+.drawing-item-date {
+    font-size: .68rem;
+    color: var(--mg-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-family: var(--mg-mono, monospace);
+}
+
+/* ── 도면 유형 뱃지 ── */
+.drawing-type-badge {
+    display: inline-block;
+    font-size: .65rem;
+    font-weight: 700;
+    padding: .15rem .45rem;
+    border-radius: .3rem;
+    white-space: nowrap;
+}
+.badge-type-제작도면 { background: #ede9fe; color: #5b21b6; }
+.badge-type-발주도면 { background: #dbeafe; color: #1e40af; }
+.badge-type-기타 { background: #f1f5f9; color: #475569; }
+
+/* ── PDF 뷰어 패널 ── */
+.pdf-viewer-panel {
+    background: #fff;
+    border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius);
+    box-shadow: var(--mg-shadow);
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 160px);
+    overflow: hidden;
+}
+
+/* ── 빈 상태 ── */
+.empty-viewer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    color: var(--mg-muted);
+    text-align: center;
+    padding: 2rem;
+    min-height: 400px;
+}
+.empty-viewer .empty-icon { font-size: 3rem; opacity: .3; margin-bottom: .75rem; display: block; }
+.empty-viewer p { font-size: .85rem; margin: 0; }
+
+/* ── 뷰어 툴바 ── */
+.viewer-toolbar {
+    padding: .65rem 1rem;
+    border-bottom: 1px solid var(--mg-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    background: #fff;
+}
+.viewer-title-wrap { min-width: 0; display: flex; align-items: center; gap: .5rem; }
+.viewer-title-text {
+    font-size: .9rem;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 240px;
+    color: var(--mg-ink);
+}
+.viewer-actions { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; flex-shrink: 0; }
+
+/* ── 버전 탭 ── */
+.version-tabs { display: flex; gap: .2rem; }
+.version-tab {
+    padding: .22rem .55rem;
+    border-radius: .35rem;
+    font-size: .72rem;
+    font-weight: 700;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #475569;
+    cursor: pointer;
+    transition: all .12s;
+    white-space: nowrap;
+}
+.version-tab:hover:not(:disabled) { border-color: var(--mg-primary); color: var(--mg-primary); }
+.version-tab.active { background: #0f172a; color: #fff; border-color: #0f172a; }
+.version-tab:disabled { opacity: .45; cursor: not-allowed; }
+.version-tab.is-latest::after { content: '★'; font-size: .58rem; margin-left: .15rem; vertical-align: super; }
+
+/* ── PDF iframe ── */
+#pdfFrame {
+    flex: 1;
+    border: none;
+    width: 100%;
+    background: #e2e8f0;
+    min-height: 500px;
+}
+#viewerContent { display: none; flex-direction: column; flex: 1; }
+
+/* ── 업로드 드롭존 ── */
+.upload-zone {
+    border: 2px dashed #cbd5e1;
+    border-radius: .65rem;
+    padding: 1.5rem 1rem;
+    text-align: center;
+    transition: border-color .15s, background .15s;
+    cursor: pointer;
+    background: #f8fafc;
+}
+.upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--mg-primary);
+    background: #eff6ff;
+}
+.upload-zone.drag-over { box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+.upload-zone-icon { font-size: 2rem; margin-bottom: .4rem; display: block; opacity: .4; }
+.upload-zone-text { font-size: .82rem; color: var(--mg-muted); margin: 0; }
+.upload-zone-text strong { color: var(--mg-primary); }
+
+/* ── 스켈레톤 ── */
+.skeleton {
+    background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.4s infinite;
+    border-radius: .35rem;
+}
+@keyframes skeleton-shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* ── 모바일 ── */
+@media (max-width: 768px) {
+    .drawing-layout { grid-template-columns: 1fr; }
+    .drawing-list-panel { position: static; max-height: 260px; }
+    .pdf-viewer-panel { min-height: 60vh; }
+    #pdfFrame { min-height: 60vh; }
+    .viewer-title-text { max-width: 140px; }
+}
+</style>
+
+<!-- 페이지 헤더 -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <div class="section-kicker">도면 관리</div>
+        <h3 class="m-0" style="font-size:1.15rem;">{{ project.temp_name }}</h3>
+        <div style="font-size:.75rem;color:var(--mg-muted);font-family:var(--mg-mono,monospace);">{{ project.project_no or '' }}</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('drawing.drawings_index') }}" class="btn btn-sm btn-outline-secondary">← 목록</a>
+        {% if can_write %}
+        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+            + PDF 업로드
+        </button>
+        {% endif %}
     </div>
 </div>
 
+<!-- 메인 레이아웃 -->
+<div class="drawing-layout">
+
+    <!-- 좌: 도면 목록 패널 -->
+    <div class="drawing-list-panel">
+        <div class="list-panel-header">
+            <h6>도면 목록 <span id="listCount" style="font-weight:400;font-size:.75rem;text-transform:none;letter-spacing:0;">({{ drawings | length }}건)</span></h6>
+            <input type="text" class="form-control form-control-sm" id="drawingSearch"
+                   placeholder="도면명 검색..." oninput="filterDrawings(this.value)" autocomplete="off">
+            <div class="type-filter-bar" id="typeFilterBar">
+                <button class="type-btn active" data-type="전체" onclick="setTypeFilter(this,'전체')">전체</button>
+                {% for opt in drawing_type_options %}
+                <button class="type-btn" data-type="{{ opt }}" onclick="setTypeFilter(this,'{{ opt }}')">{{ opt }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="drawing-list" id="drawingList">
+            {% for d in drawings %}
+            <div class="drawing-item"
+                 data-drawing-id="{{ d.id }}"
+                 data-title-lower="{{ d.title | lower | e }}"
+                 data-type="{{ d.drawing_type }}">
+                <div class="d-flex align-items-start justify-content-between gap-1">
+                    <div style="min-width:0;">
+                        <div class="drawing-item-title">{{ d.title }}</div>
+                        <div class="drawing-item-meta">
+                            <span class="drawing-type-badge badge-type-{{ d.drawing_type }}">{{ d.drawing_type }}</span>
+                            <span>v{{ d.versions | length }}</span>
+                        </div>
+                    </div>
+                    <span class="drawing-item-date">{{ (d.updated_at or d.created_at).strftime('%m/%d') }}</span>
+                </div>
+            </div>
+            {% else %}
+            <div class="text-center py-5 text-muted" style="font-size:.82rem;">
+                등록된 도면이 없습니다.
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 우: PDF 뷰어 패널 -->
+    <div class="pdf-viewer-panel">
+
+        <!-- 빈 상태 -->
+        <div class="empty-viewer" id="emptyViewer">
+            <span class="empty-icon">📄</span>
+            <p class="fw-bold" style="color:var(--mg-ink);font-size:.92rem;">좌측에서 도면을 선택하세요</p>
+            <p style="font-size:.78rem;margin-top:.3rem;">도면을 클릭하면 PDF를 바로 미리볼 수 있습니다.</p>
+        </div>
+
+        <!-- 뷰어 컨텐츠 -->
+        <div id="viewerContent">
+            <!-- 툴바 -->
+            <div class="viewer-toolbar">
+                <div class="viewer-title-wrap">
+                    <span class="viewer-title-text" id="viewerTitle">—</span>
+                    <span class="drawing-type-badge" id="viewerTypeBadge"></span>
+                </div>
+                <div class="viewer-actions">
+                    <div class="version-tabs" id="versionTabs"></div>
+                    <a class="btn btn-sm btn-outline-primary" id="downloadBtn" href="#" style="white-space:nowrap;">⬇ 다운로드</a>
+                    {% if can_write %}
+                    <button class="btn btn-sm btn-outline-danger" id="deleteBtn" onclick="deleteCurrentVersion()" style="white-space:nowrap;">삭제</button>
+                    {% endif %}
+                </div>
+            </div>
+            <!-- PDF iframe -->
+            <iframe id="pdfFrame" src="about:blank" title="PDF 미리보기"></iframe>
+        </div>
+
+    </div>
+</div>
+
+<!-- 업로드 모달 -->
 {% if can_write %}
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-white fw-bold">PDF 업로드 (신규/버전업)</div>
-    <div class="card-body">
-        <form method="POST" action="{{ url_for('drawing.upload_drawing', project_id=project.id) }}" enctype="multipart/form-data" class="row g-2 align-items-end">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <div class="col-md-3">
-                <label class="small fw-bold">기존 도면 선택(버전업)</label>
-                <select class="form-select form-select-sm" name="drawing_id">
-                    <option value="">신규 도면으로 등록</option>
-                    {% for d in drawings %}
-                    <option value="{{ d.id }}">{{ d.title }} ({{ d.drawing_type }})</option>
-                    {% endfor %}
-                </select>
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-1">
+                <h5 class="modal-title fw-bold" id="uploadModalLabel">📁 PDF 업로드</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="col-md-3">
-                <label class="small fw-bold">도면명(신규일 때 필수)</label>
-                <input type="text" class="form-control form-control-sm" name="title" placeholder="예: 주경기장 배치도">
-            </div>
-            <div class="col-md-2">
-                <label class="small fw-bold">도면유형</label>
-                <select class="form-select form-select-sm" name="drawing_type">
-                    {% for opt in drawing_type_options %}
-                    <option value="{{ opt }}">{{ opt }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label class="small fw-bold">PDF 파일</label>
-                <input type="file" class="form-control form-control-sm" name="pdf_file" accept=".pdf,application/pdf" required>
-            </div>
-            <div class="col-md-1 d-grid">
-                <button class="btn btn-sm btn-primary fw-bold">업로드</button>
-            </div>
-        </form>
-        <div class="small text-muted mt-2">※ 권한: 영업부/관리자만 업로드 가능</div>
+            <form id="uploadForm" method="POST"
+                  action="{{ url_for('drawing.upload_drawing', project_id=project.id) }}"
+                  enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">기존 도면 선택 <span class="text-muted fw-normal">(버전 추가 시)</span></label>
+                            <select class="form-select form-select-sm" name="drawing_id" id="modalDrawingSelect">
+                                <option value="">신규 도면으로 등록</option>
+                                {% for d in drawings %}
+                                <option value="{{ d.id }}">{{ d.title }} ({{ d.drawing_type }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">도면명 <span class="text-muted fw-normal">(신규 등록 시)</span></label>
+                            <input type="text" class="form-control form-control-sm" name="title"
+                                   placeholder="예: 1층 배치도" id="modalTitleInput">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">도면 유형</label>
+                            <select class="form-select form-select-sm" name="drawing_type">
+                                {% for opt in drawing_type_options %}
+                                <option value="{{ opt }}">{{ opt }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">PDF 파일</label>
+                            <div class="upload-zone" id="modalDropZone"
+                                 ondragover="handleDragOver(event)"
+                                 ondragleave="handleDragLeave()"
+                                 ondrop="handleDrop(event)"
+                                 onclick="document.getElementById('pdfFileInput').click()">
+                                <span class="upload-zone-icon">☁️</span>
+                                <p class="upload-zone-text">
+                                    <strong>클릭하거나 PDF 파일을 드래그</strong>하여 업로드<br>
+                                    <span style="font-size:.75rem;" id="selectedFileName">PDF 파일만 지원합니다</span>
+                                </p>
+                            </div>
+                            <input type="file" id="pdfFileInput" name="pdf_file"
+                                   accept=".pdf,application/pdf" class="d-none" required
+                                   onchange="onFileSelected(this)">
+                        </div>
+                    </div>
+                    <div class="small text-muted mt-2">※ 업로드 권한: 영업부 / 관리자</div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-sm btn-primary fw-bold">업로드</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 {% endif %}
 
+<script>
+/* ── 도면 데이터 (Jinja → JS) ── */
+const DRAWINGS = [
 {% for d in drawings %}
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <div>
-            <b>{{ d.title }}</b>
-            <span class="badge bg-info text-dark ms-1">{{ d.drawing_type }}</span>
-        </div>
-        <small class="text-muted">최근수정: {{ (d.updated_at or d.created_at).strftime('%y/%m/%d %H:%M') }}</small>
-    </div>
-    <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-            <thead class="table-light">
-                <tr>
-                    <th style="width:70px;">버전</th>
-                    <th>PDF</th>
-                    <th style="width:120px;">상태</th>
-                    <th>메시지</th>
-                    <th style="width:280px;">동작</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for v in d.versions %}
-                <tr>
-                    <td>v{{ v.version_no }} {% if v.is_latest %}<span class="badge bg-dark">latest</span>{% endif %}</td>
-                    <td><code>{{ v.pdf_path or v.dwg_path }}</code></td>
-                    <td>
-                        {% if v.convert_status == 'SUCCESS' %}
-                            <span class="badge bg-success">완료</span>
-                        {% elif v.convert_status == 'FAILED' %}
-                            <span class="badge bg-danger">실패</span>
-                        {% elif v.convert_status == 'PROCESSING' %}
-                            <span class="badge bg-warning text-dark">처리중</span>
-                        {% else %}
-                            <span class="badge bg-secondary">업로드됨</span>
-                        {% endif %}
-                    </td>
-                    <td class="small">{{ v.convert_message or '-' }}</td>
-                    <td class="d-flex flex-wrap gap-1">
-                        {% if v.convert_status == 'SUCCESS' and v.pdf_path %}
-                            <a class="btn btn-sm btn-outline-dark" target="_blank" href="{{ url_for('drawing.view_pdf', version_id=v.id) }}">보기</a>
-                            <a class="btn btn-sm btn-outline-success" href="{{ url_for('drawing.download_pdf', version_id=v.id) }}">다운로드</a>
-                        {% endif %}
-                        {% if can_write %}
-                        <form method="POST" action="{{ url_for('drawing.delete_drawing_version', version_id=v.id) }}" class="d-inline" onsubmit="return confirm('v{{ v.version_no }} 버전을 삭제할까요?');">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                            <button class="btn btn-sm btn-outline-danger">삭제</button>
-                        </form>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% else %}
-<div class="alert alert-light border text-muted">등록된 도면이 없습니다.</div>
+    {
+        id: {{ d.id }},
+        title: {{ d.title | tojson }},
+        drawing_type: {{ d.drawing_type | tojson }},
+        updated_at: {{ (d.updated_at or d.created_at).strftime('%Y-%m-%d') | tojson }},
+        versions: [
+        {% for v in d.versions | sort(attribute='version_no') %}
+            {
+                id: {{ v.id }},
+                version_no: {{ v.version_no }},
+                is_latest: {{ 'true' if v.is_latest else 'false' }},
+                has_pdf: {{ 'true' if v.pdf_path else 'false' }},
+            },
+        {% endfor %}
+        ],
+    },
 {% endfor %}
+];
+
+/* ── 상태 ── */
+const State = {
+    selectedDrawingId: null,
+    selectedVersionId: null,
+    typeFilter: '전체',
+    searchQuery: '',
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    /* 도면 아이템 클릭 */
+    document.querySelectorAll('.drawing-item').forEach(el => {
+        el.addEventListener('click', () => selectDrawing(parseInt(el.dataset.drawingId)));
+    });
+
+    /* 첫 번째 도면 자동 선택 (또는 hash) */
+    const hash = parseInt(location.hash.replace('#d', ''));
+    if (hash && DRAWINGS.find(d => d.id === hash)) {
+        selectDrawing(hash);
+    } else if (DRAWINGS.length > 0) {
+        selectDrawing(DRAWINGS[0].id);
+    }
+});
+
+/* ── 도면 선택 ── */
+function selectDrawing(drawingId) {
+    const d = DRAWINGS.find(d => d.id === drawingId);
+    if (!d) return;
+    State.selectedDrawingId = drawingId;
+
+    /* 리스트 active */
+    document.querySelectorAll('.drawing-item').forEach(el =>
+        el.classList.toggle('active', parseInt(el.dataset.drawingId) === drawingId)
+    );
+
+    /* URL hash 업데이트 */
+    history.replaceState(null, '', `#d${drawingId}`);
+
+    /* 뷰어 표시 */
+    document.getElementById('emptyViewer').style.display = 'none';
+    const vc = document.getElementById('viewerContent');
+    vc.style.display = 'flex';
+
+    /* 제목 + 유형 뱃지 */
+    document.getElementById('viewerTitle').textContent = d.title;
+    const tb = document.getElementById('viewerTypeBadge');
+    tb.textContent = d.drawing_type;
+    tb.className = `drawing-type-badge badge-type-${d.drawing_type}`;
+
+    /* 버전 탭 */
+    renderVersionTabs(d);
+
+    /* 최신 버전 자동 선택 */
+    const latest = d.versions.find(v => v.is_latest) || d.versions[d.versions.length - 1];
+    if (latest) selectVersion(latest.id);
+}
+
+/* ── 버전 탭 렌더 ── */
+function renderVersionTabs(drawing) {
+    const tabs = document.getElementById('versionTabs');
+    const sorted = [...drawing.versions].sort((a, b) => b.version_no - a.version_no);
+    tabs.innerHTML = sorted.map(v =>
+        `<button class="version-tab${v.is_latest ? ' is-latest' : ''}"
+                 data-version-id="${v.id}"
+                 onclick="selectVersion(${v.id})"
+                 ${!v.has_pdf ? 'disabled title="PDF 없음"' : ''}>
+            v${v.version_no}
+        </button>`
+    ).join('');
+}
+
+/* ── 버전 선택 ── */
+function selectVersion(versionId) {
+    State.selectedVersionId = versionId;
+
+    /* 탭 active */
+    document.querySelectorAll('.version-tab').forEach(tab =>
+        tab.classList.toggle('active', parseInt(tab.dataset.versionId) === versionId)
+    );
+
+    /* PDF 로드 */
+    document.getElementById('pdfFrame').src = `/drawings/version/${versionId}/view`;
+
+    /* 다운로드 링크 */
+    document.getElementById('downloadBtn').href = `/drawings/version/${versionId}/download`;
+}
+
+/* ── 검색 필터 ── */
+function filterDrawings(q) {
+    State.searchQuery = (q || '').toLowerCase();
+    applyFilters();
+}
+
+function setTypeFilter(btn, type) {
+    document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    State.typeFilter = type;
+    applyFilters();
+}
+
+function applyFilters() {
+    let count = 0;
+    document.querySelectorAll('.drawing-item').forEach(el => {
+        const titleLower = el.dataset.titleLower || '';
+        const type = el.dataset.type || '';
+        const matchSearch = !State.searchQuery || titleLower.includes(State.searchQuery);
+        const matchType = State.typeFilter === '전체' || type === State.typeFilter;
+        const show = matchSearch && matchType;
+        el.style.display = show ? '' : 'none';
+        if (show) count++;
+    });
+    const countEl = document.getElementById('listCount');
+    if (countEl) countEl.textContent = `(${count}건)`;
+}
+
+/* ── 삭제 ── */
+function deleteCurrentVersion() {
+    if (!State.selectedVersionId) return;
+    const d = DRAWINGS.find(d => d.id === State.selectedDrawingId);
+    const v = d?.versions.find(v => v.id === State.selectedVersionId);
+    if (!v) return;
+
+    const msg = d.versions.length === 1
+        ? `v${v.version_no}을 삭제하면 "${d.title}" 도면 전체가 삭제됩니다.\n계속하시겠습니까?`
+        : `v${v.version_no} 버전을 삭제할까요?`;
+    if (!confirm(msg)) return;
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/drawings/version/${State.selectedVersionId}/delete`;
+    const csrf = document.querySelector('meta[name="csrf-token"]');
+    if (csrf) {
+        const inp = document.createElement('input');
+        inp.type = 'hidden'; inp.name = 'csrf_token'; inp.value = csrf.content;
+        form.appendChild(inp);
+    }
+    document.body.appendChild(form);
+    form.submit();
+}
+
+/* ── 업로드 드래그앤드롭 ── */
+function handleDragOver(e) {
+    e.preventDefault();
+    document.getElementById('modalDropZone').classList.add('drag-over');
+}
+function handleDragLeave() {
+    document.getElementById('modalDropZone').classList.remove('drag-over');
+}
+function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('modalDropZone').classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+        alert('PDF 파일만 업로드 가능합니다.');
+        return;
+    }
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    const input = document.getElementById('pdfFileInput');
+    input.files = dt.files;
+    updateFileLabel(file.name);
+}
+function onFileSelected(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    updateFileLabel(file.name);
+}
+function updateFileLabel(name) {
+    document.getElementById('selectedFileName').textContent = name;
+    const zone = document.getElementById('modalDropZone');
+    zone.style.borderColor = 'var(--mg-primary)';
+    zone.style.background = '#eff6ff';
+}
+
+/* ── 기존 도면 선택 시 제목 자동 채움 ── */
+document.getElementById('modalDrawingSelect')?.addEventListener('change', function () {
+    const titleInput = document.getElementById('modalTitleInput');
+    if (!titleInput) return;
+    if (this.value) {
+        titleInput.disabled = true;
+        titleInput.placeholder = '기존 도면에 버전 추가';
+        titleInput.value = '';
+    } else {
+        titleInput.disabled = false;
+        titleInput.placeholder = '예: 1층 배치도';
+    }
+});
+</script>
 
 {% endblock %}

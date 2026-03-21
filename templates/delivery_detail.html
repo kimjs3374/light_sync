@@ -1,323 +1,10 @@
 {% extends 'base.html' %}
 
-{% block content %}
-<style>
-    .delivery-shell {
-        background: linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
-        border: 1px solid #e2e8f0;
-        border-radius: 22px;
-        padding: 16px;
-    }
-    .delivery-hero {
-        background: linear-gradient(125deg, #0f172a 0%, #1e3a8a 52%, #2563eb 100%);
-        border-radius: 20px;
-        padding: 1.35rem;
-        color: #fff;
-        box-shadow: 0 18px 40px rgba(37, 99, 235, .16);
-    }
-    .delivery-hero-subtle { color: rgba(255,255,255,.74); }
-    .hero-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: .35rem;
-        padding: .36rem .65rem;
-        border-radius: 999px;
-        background: rgba(255,255,255,.12);
-        border: 1px solid rgba(255,255,255,.12);
-        color: #fff;
-        font-size: .78rem;
-        font-weight: 700;
-    }
-    .hero-kpi {
-        background: rgba(255,255,255,.10);
-        border: 1px solid rgba(255,255,255,.14);
-        border-radius: 16px;
-        padding: .9rem 1rem;
-        backdrop-filter: blur(8px);
-    }
-    .hero-kpi .label {
-        font-size: .76rem;
-        color: rgba(255,255,255,.72);
-        margin-bottom: .2rem;
-    }
-    .hero-kpi .value {
-        font-size: 1.35rem;
-        font-weight: 800;
-        line-height: 1;
-        color: #fff;
-    }
-    .delivery-board-card {
-        background: #fff;
-        border: 1px solid #dbe4f0;
-        border-radius: 20px;
-        box-shadow: 0 12px 30px rgba(15, 23, 42, .06);
-        overflow: hidden;
-    }
-    .delivery-board-head {
-        padding: 1rem 1.1rem;
-        border-bottom: 1px solid #edf2f7;
-        background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-    }
-    .delivery-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: .45rem;
-        justify-content: flex-end;
-    }
-    .summary-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: .3rem;
-        padding: .32rem .58rem;
-        border-radius: 999px;
-        border: 1px solid #dbe2ec;
-        background: #fff;
-        color: #334155;
-        font-size: .75rem;
-        font-weight: 700;
-    }
-    .delivery-progress-wrap {
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
-        padding: .85rem;
-    }
-    .detail-panel {
-        height: 100%;
-        background: #f8fafc;
-        border: 1px solid #e5e7eb;
-        border-radius: 18px;
-        padding: 1rem;
-    }
-    .panel-heading {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: .75rem;
-        margin-bottom: .85rem;
-    }
-    .panel-heading h5,
-    .panel-heading h6 {
-        margin: 0;
-        font-weight: 800;
-        color: #0f172a;
-    }
-    .split-stack {
-        display: flex;
-        flex-direction: column;
-        gap: .8rem;
-    }
-    .split-card {
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 16px;
-        padding: .95rem;
-    }
-    .split-card.is-overdue {
-        border-color: #fecaca;
-        background: linear-gradient(180deg, #fffefe 0%, #fff7f7 100%);
-    }
-    .split-card.is-today {
-        border-color: #bfdbfe;
-        background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
-    }
-    .split-card-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: .75rem;
-    }
-    .split-no {
-        font-size: 1rem;
-        font-weight: 800;
-        color: #111827;
-    }
-    .split-meta-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: .7rem;
-        margin-top: .85rem;
-    }
-    .split-meta {
-        background: #f8fafc;
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
-        padding: .7rem;
-    }
-    .split-meta .label {
-        display: block;
-        font-size: .73rem;
-        color: #64748b;
-        margin-bottom: .15rem;
-        font-weight: 700;
-    }
-    .split-meta strong {
-        color: #111827;
-        font-size: .93rem;
-    }
-    .split-note {
-        margin-top: .8rem;
-        padding: .75rem;
-        background: #fff;
-        border: 1px dashed #cbd5e1;
-        border-radius: 14px;
-        color: #475569;
-        font-size: .85rem;
-        white-space: pre-wrap;
-    }
-    .editor-surface {
-        background: #fff;
-        border: 1px dashed #cbd5e1;
-        border-radius: 16px;
-        padding: 1rem;
-    }
-    .editor-surface label {
-        font-size: .76rem;
-        font-weight: 700;
-        color: #64748b;
-        margin-bottom: .25rem;
-    }
-    .photo-stat {
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
-        padding: .8rem;
-    }
-    .photo-stat .label {
-        display: block;
-        font-size: .74rem;
-        color: #64748b;
-        margin-bottom: .25rem;
-        font-weight: 700;
-    }
-    .photo-stat .value {
-        font-size: 1.1rem;
-        font-weight: 800;
-        color: #0f172a;
-    }
-    .photo-gallery-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: .8rem;
-    }
-    .photo-thumb-card {
-        display: block;
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 16px;
-        padding: .55rem;
-        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
-    }
-    .photo-thumb-card:hover {
-        transform: translateY(-2px);
-        border-color: #93c5fd;
-        box-shadow: 0 10px 24px rgba(37, 99, 235, .12);
-    }
-    .photo-thumb-frame {
-        aspect-ratio: 4 / 3;
-        width: 100%;
-        border-radius: 12px;
-        overflow: hidden;
-        background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
-    }
-    .photo-thumb-frame img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-    }
-    .photo-gallery-modal {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 1rem;
-    }
-    .photo-gallery-card {
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 18px;
-        overflow: hidden;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, .06);
-    }
-    .photo-gallery-card .photo-thumb-frame {
-        border-radius: 0;
-        aspect-ratio: 16 / 11;
-    }
-    .photo-gallery-body {
-        padding: .85rem;
-    }
-    .photo-file-name {
-        font-weight: 700;
-        color: #0f172a;
-        font-size: .85rem;
-        word-break: break-all;
-    }
-    .mini-metric-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: .7rem;
-    }
-    .mini-metric {
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
-        padding: .8rem;
-    }
-    .mini-metric .label {
-        font-size: .73rem;
-        color: #64748b;
-        margin-bottom: .2rem;
-        font-weight: 700;
-    }
-    .mini-metric .value {
-        font-size: 1.05rem;
-        font-weight: 800;
-        color: #0f172a;
-    }
-    .alert-item {
-        border-radius: 14px;
-        padding: .8rem .85rem;
-        border: 1px solid transparent;
-        margin-bottom: .7rem;
-    }
-    .alert-item:last-child { margin-bottom: 0; }
-    .alert-item.danger { background: #fef2f2; border-color: #fecaca; }
-    .alert-item.warning { background: #fff7ed; border-color: #fed7aa; }
-    .alert-item.info { background: #eff6ff; border-color: #bfdbfe; }
-    .alert-item.success { background: #ecfdf5; border-color: #bbf7d0; }
-    .alert-item-title {
-        font-weight: 800;
-        color: #0f172a;
-        margin-bottom: .25rem;
-    }
-    .contact-panel-table {
-        min-width: 420px;
-        margin-bottom: 0;
-    }
-    .delivery-side-sticky {
-        position: sticky;
-        top: 84px;
-    }
-    .empty-state-box {
-        border: 1px dashed #cbd5e1;
-        border-radius: 16px;
-        padding: 1.2rem;
-        background: #fff;
-        color: #64748b;
-        text-align: center;
-    }
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/delivery_detail.css') }}">
+{% endblock %}
 
-    @media (max-width: 991.98px) {
-        .delivery-side-sticky { position: static; }
-    }
-    @media (max-width: 767.98px) {
-        .delivery-shell { padding: 12px; border-radius: 18px; }
-        .delivery-hero { padding: 1rem; }
-        .delivery-actions { justify-content: flex-start; }
-        .photo-gallery-grid { grid-template-columns: 1fr; }
-        .split-meta-grid,
-        .mini-metric-grid { grid-template-columns: 1fr; }
-    }
-</style>
+{% block content %}
 
 {% set main_contact = project.contacts[0] if project.contacts else none %}
 {% set project_due = namespace(dday=None) %}
@@ -471,8 +158,7 @@
                             <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#assignOwnerModal{{ d.id }}">담당자 지정</button>
                             {% endif %}
                             <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#addSplit{{ d.id }}">회차 추가</button>
-                            <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="modal" data-bs-target="#addPhotoModal{{ d.id }}">사진 업로드</button>
-                            <button class="btn btn-sm btn-outline-dark" type="button" data-bs-toggle="modal" data-bs-target="#photoListModal{{ d.id }}">사진 목록</button>
+                            <a href="{{ url_for('photos.photo_list', project_id=project.id) }}" class="btn btn-sm btn-outline-success">사진관리</a>
                         </div>
                     </div>
 
@@ -685,8 +371,7 @@
                                 {% endif %}
 
                                 <div class="d-flex flex-wrap gap-2 mt-3">
-                                    <button class="btn btn-sm btn-success fw-bold" type="button" data-bs-toggle="modal" data-bs-target="#addPhotoModal{{ d.id }}">사진 업로드</button>
-                                    <button class="btn btn-sm btn-outline-dark" type="button" data-bs-toggle="modal" data-bs-target="#photoListModal{{ d.id }}">전체 사진 보기</button>
+                                    <a href="{{ url_for('photos.photo_list', project_id=project.id) }}" class="btn btn-sm btn-success fw-bold">사진관리 페이지로</a>
                                 </div>
                             </div>
                         </div>
@@ -725,6 +410,11 @@
                                             <label class="small fw-bold text-muted">검수일</label>
                                             <input type="date" name="inspection_date" class="form-control form-control-sm"
                                                    value="{{ d.inspection_date.strftime('%Y-%m-%d') if d.inspection_date else '' }}">
+                                        </div>
+                                        <div class="col-auto">
+                                            <label class="small fw-bold text-muted">검수자</label>
+                                            <input type="text" name="inspector" class="form-control form-control-sm"
+                                                   value="{{ d.inspector or '' }}" placeholder="검수자명" style="width:120px">
                                         </div>
                                         <div class="col">
                                             <label class="small fw-bold text-muted">검수 비고</label>
@@ -864,102 +554,6 @@
 </div>
 {% endif %}
 
-<div class="modal fade" id="addPhotoModal{{ d.id }}" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <form method="POST" enctype="multipart/form-data" class="modal-content border-0 shadow">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <input type="hidden" name="action" value="add_photo">
-            <input type="hidden" name="delivery_id" value="{{ d.id }}">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title fw-bold">사진 업로드</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row g-3 align-items-end">
-                    <div class="col-md-4">
-                        <label class="small fw-bold">사진 구분</label>
-                        <select name="photo_type" class="form-select form-select-sm">
-                            {% for code in photo_type_options %}
-                            <option value="{{ code }}">{{ photo_type_labels.get(code, code) }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="small fw-bold">회차</label>
-                        <select name="split_id" class="form-select form-select-sm">
-                            <option value="">공통</option>
-                            {% for s in d.splits %}
-                            <option value="{{ s.id }}">{{ s.split_no }}차</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="small fw-bold">품목</label>
-                        <select name="contract_item_id" class="form-select form-select-sm">
-                            <option value="">공통</option>
-                            {% if d.contract and d.contract.items %}
-                                {% for it in d.contract.items %}
-                                <option value="{{ it.id }}">{{ (it.model_name or '품목')[:30] }} ({{ it.quantity or 0 }})</option>
-                                {% endfor %}
-                            {% endif %}
-                        </select>
-                    </div>
-                    <div class="col-12">
-                        <label class="small fw-bold">이미지 파일</label>
-                        <input type="file" name="photo_file" class="form-control" accept="image/*" required>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer bg-light">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
-                <button class="btn btn-success fw-bold">업로드</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div class="modal fade" id="photoListModal{{ d.id }}" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title fw-bold">사진 목록 · {{ d.contract.contract_name if d.contract else '미연결 계약' }}</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="photo-gallery-modal">
-                    {% for ph in d.photos|reverse %}
-                    <div class="photo-gallery-card">
-                        <a href="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" target="_blank" class="text-decoration-none">
-                            <div class="photo-thumb-frame">
-                                <img src="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" alt="{{ ph.file_name }}">
-                            </div>
-                        </a>
-                        <div class="photo-gallery-body">
-                            <div class="d-flex flex-wrap gap-1 mb-2">
-                                <span class="badge bg-light text-dark border">{{ ph._photo_type_label or ph.photo_type }}</span>
-                                <span class="badge bg-light text-secondary border">{{ ('#' ~ ph.split_id) if ph.split_id else '공통' }}</span>
-                            </div>
-                            <div class="photo-file-name mb-1">{{ ph.file_name }}</div>
-                            <div class="small text-muted">{{ ph.uploaded_by or '-' }} · {{ ph.created_at.strftime('%Y-%m-%d %H:%M') if ph.created_at else '-' }}</div>
-                            <div class="d-flex flex-wrap gap-2 mt-3">
-                                <a href="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" target="_blank" class="btn btn-sm btn-outline-dark">원본 보기</a>
-                                <form method="POST" class="d-inline" onsubmit="return confirm('이 사진을 삭제할까요?')">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <input type="hidden" name="action" value="delete_photo">
-                                    <input type="hidden" name="photo_id" value="{{ ph.id }}">
-                                    <button class="btn btn-sm btn-outline-danger">삭제</button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                    {% else %}
-                    <div class="empty-state-box">업로드된 사진이 없습니다.</div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 {% endfor %}
 
 <div class="modal fade" id="addContactModal" tabindex="-1">
@@ -1010,20 +604,6 @@
     </div>
 </div>
 
-<script>
-function openContactEdit(id, category, name, phone, email) {
-    document.getElementById('edit_contact_id').value = id || '';
-    document.getElementById('edit_contact_category').value = category || '';
-    document.getElementById('edit_contact_name').value = name || '';
-    document.getElementById('edit_contact_phone').value = phone || '';
-    document.getElementById('edit_contact_email').value = email || '';
-    new bootstrap.Modal(document.getElementById('editContactModal')).show();
-}
-function openContactEditFromBtn(btn) {
-    openContactEdit(btn.dataset.id, btn.dataset.category, btn.dataset.name, btn.dataset.phone, btn.dataset.email);
-}
-</script>
-
 {% set history_board_title = '납품 히스토리 보드' %}
 {% set history_post_action = 'add_chat' %}
 {% set history_post_url = url_for('delivery.delivery_detail', project_id=project.id) %}
@@ -1031,4 +611,8 @@ function openContactEditFromBtn(btn) {
 {% set history_default_filter = 'delivery' %}
 {% set history_offcanvas_id = 'deliveryHistoryOffcanvas' %}
 {% include 'components/history_offcanvas.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/delivery_detail.js') }}"></script>
 {% endblock %}

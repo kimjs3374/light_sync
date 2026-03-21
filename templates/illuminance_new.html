@@ -1,0 +1,288 @@
+{% extends 'base.html' %}
+{% block title %}조도설계 검증 — 새 현장 등록{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/illuminance_new.css') }}">
+{% endblock %}
+
+{% block content %}
+<!-- ─── 히어로 ───────────────────────────────────────────── -->
+<div class="cmd-hero">
+  <div class="eyebrow">새 현장 등록</div>
+  <h1>조도설계 검증 — 현장 등록</h1>
+  <div class="sub">PDF 업로드 → 구역 파싱 → 설계값 확인 3단계</div>
+  <div class="nav-row">
+    <a href="{{ url_for('illuminance.index') }}" class="btn">← 목록으로</a>
+  </div>
+</div>
+
+<!-- ─── 스텝 인디케이터 ──────────────────────────────────── -->
+<div class="wiz-steps" id="wizSteps">
+  <div class="wiz-step active" id="step-ind-1">
+    <span class="step-num">1</span> <span>기본정보</span>
+  </div>
+  <div class="wiz-step" id="step-ind-2">
+    <span class="step-num">2</span> <span>PDF 업로드</span>
+  </div>
+  <div class="wiz-step" id="step-ind-3">
+    <span class="step-num">3</span> <span>파싱 확인</span>
+  </div>
+</div>
+
+<form id="wizForm" method="POST"
+      action="{{ url_for('illuminance.new_save') }}"
+      enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="upload_token" id="hiddenUploadToken">
+  <input type="hidden" name="areas_json" id="hiddenAreasJson" value="[]">
+
+  <!-- ══════════════════════════════════════════════════════
+       Step 1: 기본정보
+  ══════════════════════════════════════════════════════ -->
+  <div class="wiz-panel active" id="panel-1">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span>기본 정보 입력</span>
+        <span class="badge bg-primary" style="white-space:nowrap">Step 1 / 3</span>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+
+          <!-- ERP 설계현장 연동 (선택) -->
+          <div class="col-12">
+            <label class="form-label fw-semibold" for="fieldErpProject">
+              ERP 설계현장 연결 <span class="text-muted fw-normal" style="font-size:.78rem">(선택)</span>
+            </label>
+            <select class="form-select" id="fieldErpProject" name="erp_project_id"
+                    onchange="onErpProjectChange(this)">
+              <option value="">— 기존 현장과 연결하지 않음 —</option>
+              {% for ep in erp_projects %}
+              <option value="{{ ep.id }}"
+                      data-name="{{ ep.temp_name }}"
+                      data-addr="{{ ep.site_address or '' }}">
+                [{{ ep.project_no }}] {{ ep.temp_name }}
+              </option>
+              {% endfor %}
+            </select>
+            <div class="form-text">설계현장과 연결하면 납품/계약 정보와 함께 관리됩니다.</div>
+          </div>
+
+          <!-- 현장명 -->
+          <div class="col-md-6">
+            <label class="form-label fw-semibold" for="fieldName">
+              현장명 <span class="text-danger">*</span>
+            </label>
+            <input type="text" class="form-control" id="fieldName" name="project_name"
+                   placeholder="예) 삼성전자 기흥캠퍼스 A동" required
+                   value="">
+          </div>
+
+          <!-- 발주처 -->
+          <div class="col-md-6">
+            <label class="form-label fw-semibold" for="fieldClient">발주처</label>
+            <input type="text" class="form-control" id="fieldClient" name="customer"
+                   placeholder="예) 삼성전자"
+                   value="">
+          </div>
+
+          <!-- 설치 위치 -->
+          <div class="col-md-8">
+            <label class="form-label fw-semibold" for="fieldLocation">설치 위치</label>
+            <input type="text" class="form-control" id="fieldLocation" name="location"
+                   placeholder="예) 경남 창원시 의창구 가음정동"
+                   value="">
+          </div>
+
+          <!-- 설치일 -->
+          <div class="col-md-4">
+            <label class="form-label fw-semibold" for="fieldInstallDate">설치일</label>
+            <input type="date" class="form-control" id="fieldInstallDate" name="install_date"
+                   value="">
+          </div>
+
+          <!-- 시설종류 -->
+          <div class="col-md-4">
+            <label class="form-label fw-semibold" for="fieldFacilityType">시설종류</label>
+            <select class="form-select" id="fieldFacilityType" name="facility_type">
+              <option value="">선택 안함</option>
+              <option value="공장" {% if form_data and form_data.facility_type == '공장' %}selected{% endif %}>공장</option>
+              <option value="물류창고" {% if form_data and form_data.facility_type == '물류창고' %}selected{% endif %}>물류창고</option>
+              <option value="체육관" {% if form_data and form_data.facility_type == '체육관' %}selected{% endif %}>체육관</option>
+              <option value="풋살장" {% if form_data and form_data.facility_type == '풋살장' %}selected{% endif %}>풋살장</option>
+              <option value="테니스장" {% if form_data and form_data.facility_type == '테니스장' %}selected{% endif %}>테니스장 (일반)</option>
+              <option value="테니스장_경기" {% if form_data and form_data.facility_type == '테니스장_경기' %}selected{% endif %}>테니스장 (경기용)</option>
+              <option value="주차장" {% if form_data and form_data.facility_type == '주차장' %}selected{% endif %}>주차장</option>
+              <option value="도로" {% if form_data and form_data.facility_type == '도로' %}selected{% endif %}>도로</option>
+              <option value="기타" {% if form_data and form_data.facility_type == '기타' %}selected{% endif %}>기타</option>
+            </select>
+          </div>
+
+          <!-- KS 기준 -->
+          <div class="col-md-4">
+            <label class="form-label fw-semibold" for="fieldKsStandard">KS 기준 (lx)</label>
+            <input type="number" class="form-control" id="fieldKsStandard" name="ks_standard"
+                   placeholder="예) 300" min="0"
+                   value="{{ form_data.ks_standard if form_data else '' }}">
+          </div>
+
+          <!-- 설치높이 -->
+          <div class="col-md-4">
+            <label class="form-label fw-semibold" for="fieldHeight">설치높이 (m)</label>
+            <input type="number" class="form-control" id="fieldHeight" name="height"
+                   placeholder="예) 12" step="0.5" min="0"
+                   value="{{ form_data.height if form_data else '' }}">
+          </div>
+
+          <!-- 기구 와트 -->
+          <div class="col-md-4">
+            <label class="form-label fw-semibold" for="fieldFixtureWatt">기구 (W)</label>
+            <input type="number" class="form-control" id="fieldFixtureWatt" name="fixture_watt"
+                   placeholder="예) 800" min="0"
+                   value="{{ form_data.fixture_watt if form_data else '' }}">
+          </div>
+
+          <!-- 기구 수량 -->
+          <div class="col-md-4">
+            <label class="form-label fw-semibold" for="fieldFixtureCount">기구 수량 (EA)</label>
+            <input type="number" class="form-control" id="fieldFixtureCount" name="fixture_count"
+                   placeholder="예) 12" min="0"
+                   value="{{ form_data.fixture_count if form_data else '' }}">
+          </div>
+
+          <!-- 비고 -->
+          <div class="col-12">
+            <label class="form-label fw-semibold" for="fieldNote">비고</label>
+            <textarea class="form-control" id="fieldNote" name="note" rows="2"
+                      placeholder="특이사항, 설치조건 등">{{ form_data.note if form_data else '' }}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 다음 버튼 -->
+    <div class="d-flex justify-content-end">
+      <button type="button" class="btn btn-primary" onclick="wizGoTo(2)">
+        다음 — PDF 업로드 →
+      </button>
+    </div>
+  </div><!-- /panel-1 -->
+
+  <!-- ══════════════════════════════════════════════════════
+       Step 2: PDF 업로드 → 페이지 선택
+  ══════════════════════════════════════════════════════ -->
+  <div class="wiz-panel" id="panel-2">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span>Relux PDF 업로드</span>
+        <span class="badge bg-primary" style="white-space:nowrap">Step 2 / 3</span>
+      </div>
+      <div class="card-body">
+
+        <!-- 드래그 업로드 -->
+        <div class="upload-dropzone" id="dropzone"
+             onclick="document.getElementById('pdfFile').click()">
+          <div class="upload-icon">&#128196;</div>
+          <div class="upload-text fw-semibold">PDF를 여기에 드래그하거나 클릭하여 선택</div>
+          <div class="upload-hint">Relux 조도 설계 보고서 PDF (최대 50MB)</div>
+        </div>
+        <input type="file" id="pdfFile" name="pdf_file" accept=".pdf"
+               class="d-none" onchange="handleFileSelect(this)">
+
+        <!-- 선택된 파일 표시 -->
+        <div id="fileInfo" class="mt-2 d-none">
+          <div class="d-flex align-items-center gap-2 p-2 rounded border bg-light">
+            <span style="font-size:1.2rem">&#128196;</span>
+            <div class="flex-grow-1 min-width-0">
+              <div class="fw-semibold" id="fileName" style="font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+              <div class="text-muted" id="fileSize" style="font-size:.72rem;white-space:nowrap"></div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger"
+                    style="font-size:.72rem;padding:.2rem .55rem;white-space:nowrap"
+                    onclick="clearFile()">제거</button>
+          </div>
+        </div>
+
+        <!-- 파싱 진행 -->
+        <div class="parse-progress-wrap mt-3" id="parseProgress">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+            <span class="fw-semibold" style="font-size:.82rem">PDF 파싱 중...</span>
+          </div>
+          <div class="progress" style="height:6px;border-radius:3px">
+            <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated"
+                 id="parseProgressBar" role="progressbar" style="width:0%"></div>
+          </div>
+          <div class="parse-status-log" id="parseLog">
+            <div>⬡ PDF 분석 시작...</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 페이지 목록 (파싱 후 표시) -->
+    <div class="card shadow-sm mb-3 d-none" id="pageListCard">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span>페이지 목록 — 구역 선택</span>
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge bg-success" id="selectedCount" style="white-space:nowrap">0개 선택됨</span>
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  style="font-size:.72rem;padding:.2rem .55rem;white-space:nowrap"
+                  onclick="selectAllGridTables()">격자표 전체 선택</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="row g-2" id="pageGrid"></div>
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-between">
+      <button type="button" class="btn btn-outline-secondary" onclick="wizGoTo(1)">
+        ← 이전
+      </button>
+      <button type="button" class="btn btn-primary" id="btnToStep3" onclick="wizGoTo(3)" disabled>
+        다음 — 파싱 확인 →
+      </button>
+    </div>
+  </div><!-- /panel-2 -->
+
+  <!-- ══════════════════════════════════════════════════════
+       Step 3: 파싱 결과 확인
+  ══════════════════════════════════════════════════════ -->
+  <div class="wiz-panel" id="panel-3">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span>파싱 결과 확인</span>
+        <span class="badge bg-primary" style="white-space:nowrap">Step 3 / 3</span>
+      </div>
+      <div class="card-body">
+
+        <!-- 구역별 결과 -->
+        <div id="parseResultAreas"></div>
+
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-between">
+      <button type="button" class="btn btn-outline-secondary" onclick="wizGoTo(2)">
+        ← 이전
+      </button>
+      <button type="submit" class="btn btn-success btn-sm"
+              style="font-size:.85rem;padding:.45rem 1.2rem;white-space:nowrap">
+        저장 — 검증 시작
+      </button>
+    </div>
+  </div><!-- /panel-3 -->
+
+</form><!-- /wizForm -->
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PAGE_DATA = {
+  apiUploadUrl: "{{ url_for('illuminance.api_upload_pdf') }}",
+  apiParsePagesUrl: "{{ url_for('illuminance.api_parse_pages') }}"
+};
+</script>
+<script src="{{ url_for('static', filename='js/illuminance_new.js') }}"></script>
+{% endblock %}

@@ -2,64 +2,187 @@
 
 {% block content %}
 <style>
-    .drawing-list-table .clickable-row { cursor: pointer; }
-    .drawing-list-table .clickable-row:hover { background: #f1f5f9; }
+/* ═══ Drawings Index — Local Styles ═══ */
+
+/* ── 검색 헤더 ── */
+.drawings-index-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+.drawings-index-search {
+    position: relative;
+    max-width: 280px;
+    width: 100%;
+}
+.drawings-index-search .search-icon {
+    position: absolute;
+    left: .65rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--mg-muted);
+    font-size: .82rem;
+    pointer-events: none;
+}
+.drawings-index-search input {
+    padding-left: 2rem;
+    font-size: .82rem;
+}
+
+/* ── 프로젝트 그리드 ── */
+.project-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: .75rem;
+}
+
+/* ── 프로젝트 카드 ── */
+.project-card {
+    background: #fff;
+    border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius);
+    box-shadow: var(--mg-shadow);
+    padding: 1rem 1.1rem;
+    cursor: pointer;
+    transition: transform .14s, box-shadow .14s, border-color .14s;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+}
+.project-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(15,23,42,.1);
+    border-color: #bfdbfe;
+    color: inherit;
+    text-decoration: none;
+}
+.project-card-no {
+    font-size: .7rem;
+    color: var(--mg-muted);
+    font-family: var(--mg-mono, monospace);
+    margin-bottom: .2rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.project-card-name {
+    font-size: .92rem;
+    font-weight: 700;
+    color: var(--mg-ink);
+    margin-bottom: .45rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.project-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+}
+.drawing-count-badge {
+    font-size: .7rem;
+    font-weight: 700;
+    padding: .2rem .55rem;
+    border-radius: 999px;
+    background: #e0e7ff;
+    color: #3730a3;
+    white-space: nowrap;
+}
+.drawing-count-badge.zero {
+    background: #f1f5f9;
+    color: #94a3b8;
+}
+.project-card-arrow {
+    font-size: .78rem;
+    color: var(--mg-muted);
+    transition: color .14s, transform .14s;
+}
+.project-card:hover .project-card-arrow {
+    color: var(--mg-primary);
+    transform: translateX(3px);
+}
+
+/* ── 빈 상태 ── */
+.empty-state {
+    text-align: center;
+    padding: 4rem 1rem;
+    color: var(--mg-muted);
+    grid-column: 1 / -1;
+}
+.empty-state .empty-icon { font-size: 3rem; opacity: .25; margin-bottom: .75rem; display: block; }
+.empty-state p { font-size: .85rem; margin: 0; }
+
+/* ── 카운트 요약 ── */
+.index-summary {
+    font-size: .78rem;
+    color: var(--mg-muted);
+}
 </style>
 
-<div class="page-hero mg-fade">
-    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
-        <div>
-            <div class="hero-eyebrow">Drawing Management</div>
-            <h2>도면관리</h2>
-            <div class="hero-sub">프로젝트별 도면 PDF를 업로드하고 열람합니다</div>
-        </div>
-        <div class="d-flex flex-wrap gap-2"></div>
+<!-- 페이지 헤더 -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <div class="section-kicker">도면 관리</div>
+        <h3 class="m-0" style="font-size:1.15rem;">프로젝트 도면 목록</h3>
     </div>
 </div>
 
-<div class="card shadow-sm border-0 mg-fade" style="animation-delay:.05s">
-    <div class="card-header bg-white fw-bold">프로젝트 목록</div>
-    <div class="table-responsive">
-        <table class="table table-sm table-hover align-middle mb-0 drawing-list-table">
-            <thead class="table-light">
-                <tr>
-                    <th style="width:120px;">관리번호</th>
-                    <th>현장명</th>
-                    <th style="width:120px;">도면건수</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for p in projects %}
-                <tr class="clickable-row" data-href="{{ url_for('drawing.drawings_project', project_id=p.id) }}">
-                    <td>{{ p.project_no }}</td>
-                    <td>
-                        <a href="{{ url_for('drawing.drawings_project', project_id=p.id) }}" class="text-dark text-decoration-none fw-bold">
-                            {{ p.temp_name }}
-                        </a>
-                    </td>
-                    <td>{{ p.drawings|length }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="3" class="text-center text-muted py-4">등록된 프로젝트가 없습니다.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<!-- 검색 + 요약 -->
+<div class="drawings-index-header">
+    <div class="drawings-index-search">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="form-control form-control-sm" id="projectSearchInput"
+               placeholder="현장명 검색..." oninput="filterProjects(this.value)" autocomplete="off">
     </div>
+    <span class="index-summary" id="projectCount">총 {{ projects | length }}개 프로젝트</span>
+</div>
+
+<!-- 프로젝트 그리드 -->
+<div class="project-grid" id="projectGrid">
+    {% for p in projects %}
+    <a class="project-card"
+       href="{{ url_for('drawing.drawings_project', project_id=p.id) }}"
+       data-name-lower="{{ p.temp_name | lower | e }}"
+       data-no-lower="{{ (p.project_no or '') | lower | e }}">
+        <div class="project-card-no">{{ p.project_no or '관리번호 없음' }}</div>
+        <div class="project-card-name">{{ p.temp_name }}</div>
+        <div class="project-card-footer">
+            {% set cnt = p.drawings | length %}
+            <span class="drawing-count-badge {% if cnt == 0 %}zero{% endif %}">
+                📄 도면 {{ cnt }}건
+            </span>
+            <span class="project-card-arrow">→</span>
+        </div>
+    </a>
+    {% else %}
+    <div class="empty-state">
+        <span class="empty-icon">📁</span>
+        <p class="fw-bold" style="color:var(--mg-ink);font-size:.92rem;">등록된 프로젝트가 없습니다.</p>
+        <p style="font-size:.78rem;margin-top:.3rem;">현장/프로젝트가 등록되면 여기서 도면을 관리할 수 있습니다.</p>
+    </div>
+    {% endfor %}
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('.drawing-list-table .clickable-row').forEach((row) => {
-        row.addEventListener('click', function (e) {
-            const interactive = e.target.closest('a, button, input, select, textarea, label, form');
-            if (interactive) return;
-
-            const href = row.dataset.href;
-            if (href) window.location.href = href;
-        });
+function filterProjects(q) {
+    const needle = (q || '').toLowerCase();
+    let count = 0;
+    document.querySelectorAll('#projectGrid .project-card').forEach(el => {
+        const name = el.dataset.nameLower || '';
+        const no   = el.dataset.noLower   || '';
+        const show = !needle || name.includes(needle) || no.includes(needle);
+        el.style.display = show ? '' : 'none';
+        if (show) count++;
     });
-});
+    const countEl = document.getElementById('projectCount');
+    if (countEl) {
+        countEl.textContent = needle ? `${count}개 검색됨` : `총 ${count}개 프로젝트`;
+    }
+}
 </script>
+
 {% endblock %}

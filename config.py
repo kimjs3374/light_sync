@@ -4,17 +4,17 @@ from collections import OrderedDict
 from datetime import timedelta
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 # =====================================================================
 # 메뉴 권한 레지스트리
 # =====================================================================
 MENU_REGISTRY = OrderedDict([
-    # --- 공통 (권한 체크 없이 항상 표시) ---
-    ("dashboard",      {"label": "메인 현황판", "group": "공통",   "endpoint": "dashboard.dashboard_view"}),
-    ("overview",       {"label": "종합현황",   "group": "공통",   "endpoint": "overview.project_overview"}),
-    ("daily_report",   {"label": "업무보고",   "group": "공통",   "endpoint": "daily_report.daily_report_view"}),
+    # --- 워크보드 (권한 체크 없이 항상 표시) ---
+    ("dashboard",      {"label": "메인 현황판", "group": "워크보드", "endpoint": "dashboard.dashboard_view"}),
+    ("overview",       {"label": "종합현황",   "group": "워크보드", "endpoint": "overview.project_overview"}),
+    ("daily_report",   {"label": "업무보고",   "group": "워크보드", "endpoint": "daily_report.daily_report_view"}),
     # --- 영업부 ---
     ("project",        {"label": "설계관리",   "group": "영업부", "endpoint": "project.project_list"}),
     ("contract",       {"label": "계약관리",   "group": "영업부", "endpoint": "project.contract_list"}),
@@ -34,17 +34,23 @@ MENU_REGISTRY = OrderedDict([
     ("procurement",    {"label": "조달내역",   "group": "공유",   "endpoint": "procurement.procurement_list"}),
     ("procurement_summary", {"label": "납품집계", "group": "공유",   "endpoint": "procurement.procurement_summary"}),
     ("warranty",       {"label": "하자관리",   "group": "공유",   "endpoint": "warranty.warranty_list"}),
+    ("photos",         {"label": "사진관리",   "group": "공유",   "endpoint": "photos.photo_list"}),
+    ("drawing",        {"label": "도면관리",   "group": "공유",   "endpoint": "drawing.drawings_index"}),
+    ("illuminance",    {"label": "조도검증",   "group": "영업부", "endpoint": "illuminance.index"}),
     # --- 생산부 ---
     ("production",     {"label": "생산관리",   "group": "생산부", "endpoint": "production.production_main"}),
     # --- 시스템 (admin only) ---
     ("admin_settings", {"label": "시스템관리", "group": "시스템", "endpoint": "auth.admin_settings", "admin_only": True}),
+    ("workboard",      {"label": "현장관리",   "group": "워크보드", "endpoint": "workboard.workboard_list"}),
+    ("asboard",        {"label": "A/S",        "group": "워크보드", "endpoint": "asboard.asboard_list"}),
+    ("chatbot_admin",  {"label": "챗봇 권한",  "group": "시스템", "endpoint": "chatbot.admin_page", "admin_only": True}),
 ])
 
 COMMON_MENU_KEYS = {"dashboard", "overview", "daily_report"}
 
 # 사이드바 그룹 아이콘 매핑
 GROUP_ICONS = {
-    "공통":   "📊",
+    "워크보드": "📊",
     "영업부": "💼",
     "관리부": "📋",
     "공유":   "🔗",
@@ -54,7 +60,7 @@ GROUP_ICONS = {
 
 # 부서별 기본 메뉴 (GroupPermission 초기값 세팅용)
 DEFAULT_GROUP_MENUS = {
-    "영업부": "project,contract,sales,quotation,delivery,procurement,procurement_summary,warranty",
+    "영업부": "project,contract,sales,quotation,delivery,illuminance,procurement,procurement_summary,warranty",
     "관리부": "item,material,vendor,purchase_order,receiving,bom,financial,inventory,procurement,procurement_summary,warranty",
     "생산부": "production,warranty",
     "임원진": "project,contract,sales,quotation,delivery,item,material,vendor,purchase_order,receiving,bom,financial,inventory,procurement,procurement_summary,warranty,production",

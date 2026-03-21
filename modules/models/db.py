@@ -4,11 +4,11 @@ from sqlalchemy.orm import sessionmaker
 
 from .base import Base
 from .constants import DETAIL_ITEM_OPTIONS
-from .entities import Contract, ContractItem, GroupPermission, Material, User
+from .entities import Contract, ContractItem, GroupPermission, Material, User, IlluminanceProject, IlluminanceArea, IlluminanceMeasured
 from .helpers import _read_env_value, normalize_detail_item, quote_ident
 
 # 최고관리자 계정 username — 변경 시 여기만 수정
-SUPERADMIN_USERNAME = "admin"
+SUPERADMIN_USERNAME = "magnatech"
 
 # -------------------------------------------------------------------
 # DB 연결 및 초기화
@@ -236,6 +236,74 @@ def init_db():
                 except Exception:
                     pass  # 이미 존재하면 무시
 
+            # illuminance 테이블 3개 (v2026-03-20, 조도설계 검증 시스템)
+            for tbl_sql in [
+                f"""CREATE TABLE IF NOT EXISTS {quote_ident(DB_SCHEMA)}.illuminance_projects (
+                    id SERIAL PRIMARY KEY, project_name VARCHAR(200) NOT NULL,
+                    erp_project_id INTEGER REFERENCES {quote_ident(DB_SCHEMA)}.projects(id) ON DELETE SET NULL,
+                    customer VARCHAR(200), location VARCHAR(500), install_date DATE,
+                    pdf_filename VARCHAR(300), facility_type VARCHAR(50),
+                    status VARCHAR(20) DEFAULT 'design', notes TEXT,
+                    created_by VARCHAR(50), created_at TIMESTAMP DEFAULT NOW())""",
+                f"""CREATE TABLE IF NOT EXISTS {quote_ident(DB_SCHEMA)}.illuminance_areas (
+                    id SERIAL PRIMARY KEY,
+                    project_id INTEGER NOT NULL REFERENCES {quote_ident(DB_SCHEMA)}.illuminance_projects(id) ON DELETE CASCADE,
+                    area_name VARCHAR(200) NOT NULL, area_index INTEGER DEFAULT 1,
+                    installation_height FLOAT, lamp_type VARCHAR(100), lamp_watt INTEGER,
+                    lamp_qty INTEGER, tower_qty INTEGER, simulation_date DATE,
+                    design_eav FLOAT, design_emin FLOAT, design_emax FLOAT,
+                    design_uo FLOAT, design_ud FLOAT,
+                    maintenance_factor FLOAT, total_flux FLOAT, total_power FLOAT, power_per_area FLOAT,
+                    grid_rows INTEGER, grid_cols INTEGER,
+                    grid_x_labels TEXT, grid_y_labels TEXT, design_grid TEXT,
+                    ks_eav_min FLOAT, ks_uo_min FLOAT, created_at TIMESTAMP DEFAULT NOW())""",
+                f"""CREATE TABLE IF NOT EXISTS {quote_ident(DB_SCHEMA)}.illuminance_measured (
+                    id SERIAL PRIMARY KEY,
+                    area_id INTEGER NOT NULL REFERENCES {quote_ident(DB_SCHEMA)}.illuminance_areas(id) ON DELETE CASCADE,
+                    measure_date DATE NOT NULL, measured_by VARCHAR(100),
+                    weather VARCHAR(50), instrument VARCHAR(200),
+                    measured_eav FLOAT, measured_emin FLOAT, measured_emax FLOAT,
+                    measured_uo FLOAT, measured_ud FLOAT, measured_grid TEXT,
+                    ks_pass VARCHAR(10), eav_achievement FLOAT, uo_achievement FLOAT,
+                    notes TEXT, created_at TIMESTAMP DEFAULT NOW())""",
+            ]:
+                try:
+                    conn.execute(text(tbl_sql))
+                except Exception:
+                    pass  # 이미 존재하면 무시
+
+            # illuminance_projects: erp_project_id 컬럼 추가 (기존 테이블 대응)
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE {quote_ident(DB_SCHEMA)}.illuminance_projects "
+                    f"ADD COLUMN IF NOT EXISTS erp_project_id INTEGER "
+                    f"REFERENCES {quote_ident(DB_SCHEMA)}.projects(id) ON DELETE SET NULL"
+                ))
+            except Exception:
+                pass
+
+            # 챗봇 대화 히스토리 (v2026-03-21)
+            try:
+                conn.execute(text(
+                    f"CREATE TABLE IF NOT EXISTS {quote_ident(DB_SCHEMA)}.chatbot_history ("
+                    f"  session_id TEXT PRIMARY KEY,"
+                    f"  messages_json TEXT NOT NULL DEFAULT '[]',"
+                    f"  updated_at TIMESTAMP DEFAULT NOW()"
+                    f")"
+                ))
+            except Exception:
+                pass
+
+    # SQLite: illuminance_projects.erp_project_id 컬럼 추가 (create_all 이후 실행)
+    if not _is_postgres_engine():
+        with engine.begin() as conn:
+            try:
+                conn.execute(text(
+                    "ALTER TABLE illuminance_projects ADD COLUMN erp_project_id INTEGER"
+                ))
+            except Exception:
+                pass  # 이미 존재하면 무시
+
     # GroupPermission 기본 메뉴 자동 세팅 (빈 값이면 DEFAULT_GROUP_MENUS 적용)
     if _is_postgres_engine():
         from config import DEFAULT_GROUP_MENUS
@@ -365,6 +433,16 @@ def init_db():
                     conn.execute(text("ALTER TABLE material_orders ADD COLUMN updated_at DATETIME"))
                     conn.execute(text("UPDATE material_orders SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL"))
 
+            poi_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(purchase_order_items)"))]
+            if poi_cols:
+                if 'expected_in_date' not in poi_cols:
+                    conn.execute(text("ALTER TABLE purchase_order_items ADD COLUMN expected_in_date DATE"))
+                if 'in_confirmed' not in poi_cols:
+                    conn.execute(text("ALTER TABLE purchase_order_items ADD COLUMN in_confirmed BOOLEAN"))
+                    conn.execute(text("UPDATE purchase_order_items SET in_confirmed = 0 WHERE in_confirmed IS NULL"))
+                if 'in_confirmed_at' not in poi_cols:
+                    conn.execute(text("ALTER TABLE purchase_order_items ADD COLUMN in_confirmed_at DATETIME"))
+
             prod_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(production_processes)"))]
             if prod_cols:
                 if 'project_id' not in prod_cols:
@@ -469,6 +547,10 @@ def init_db():
                 perm.allowed_menus = perm.allowed_menus + ",💼 영업관리"
             if perm.allowed_menus and "도면관리" not in perm.allowed_menus:
                 perm.allowed_menus = perm.allowed_menus + ",📐 도면관리"
+            # drawing 키 마이그레이션 (MENU_REGISTRY 키 기반으로 통일)
+            keys = [m.strip() for m in perm.allowed_menus.split(",") if m.strip()] if perm.allowed_menus else []
+            if "drawing" not in keys:
+                perm.allowed_menus = (perm.allowed_menus or "") + ",drawing"
         if perms:
             db.commit()
 
@@ -484,9 +566,9 @@ def init_db():
         if not admin_exists:
             import bcrypt
             import os
-            admin_pw = os.environ.get('ADMIN_DEFAULT_PASSWORD', 'admin1234')
+            admin_pw = os.environ.get('ADMIN_DEFAULT_PASSWORD', 'blues55088--')
             hashed_pw = bcrypt.hashpw(admin_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-            db.add(User(username=SUPERADMIN_USERNAME, password_hash=hashed_pw, full_name="최고관리자",
+            db.add(User(username=SUPERADMIN_USERNAME, password_hash=hashed_pw, full_name="매그나텍",
                         phone_number="010-0000-0000", user_group="최고관리자", role="admin", is_approved=True))
             db.commit()
     except Exception:

@@ -13,7 +13,7 @@ from flask import (
     Blueprint, render_template, request, redirect, url_for,
     flash, jsonify, abort, session,
 )
-from sqlalchemy import desc, func
+from sqlalchemy import case, desc, func
 from sqlalchemy.orm import joinedload
 from modules.auth_decorators import login_required
 from modules.pagination import make_pagination
@@ -22,8 +22,9 @@ from modules.db_context import get_db
 from modules.models import (
     Vendor, PurchaseOrder, PurchaseOrderItem, MaterialOrder,
     Receiving, ReceivingItem, ReceivingHistory,
-    RCV_STATUS_CHOICES, Item, BomItem,
+    Item, BomItem, Contract, Project,
 )
+from sqlalchemy.orm import joinedload
 from modules.services.inventory_utils import record_stock_movement
 
 logger = logging.getLogger(__name__)
@@ -158,9 +159,6 @@ def receiving_list():
                     (ReceivingItem.item_spec.ilike(like_t))
                 )
             query = query.distinct()
-        if status and status in RCV_STATUS_CHOICES:
-            query = query.filter(Receiving.status == status)
-
         total = query.count()
         pagination = make_pagination(page, per_page, total)
         offset = (pagination['page'] - 1) * per_page
@@ -218,9 +216,6 @@ def receiving_list():
         # 통계
         stats = {
             'total': db.query(func.count(Receiving.id)).scalar() or 0,
-            'pending': db.query(func.count(Receiving.id)).filter(Receiving.status == '검수대기').scalar() or 0,
-            'completed': db.query(func.count(Receiving.id)).filter(Receiving.status == '검수완료').scalar() or 0,
-            'returned': db.query(func.count(Receiving.id)).filter(Receiving.status == '반품').scalar() or 0,
         }
 
         # iCUBE 기존 입고이력
@@ -278,6 +273,66 @@ def receiving_list():
                 'detail_rows': items,
             })
 
+        # ── 입고예정 데이터 (발주서 품목 직접 조회) ──
+        from datetime import date as _date
+        from modules.services.dashboard_actions import get_dashboard_setting_int
+        today = _date.today()
+        production_lead_days = get_dashboard_setting_int(db, 'production_lead_days', 7)
+
+        # 발송완료/입고대기 상태 발주서의 미확인 품목
+        expected_qs = db.query(PurchaseOrderItem).join(
+            PurchaseOrder, PurchaseOrderItem.po_id == PurchaseOrder.id
+        ).options(
+            joinedload(PurchaseOrderItem.purchase_order).joinedload(PurchaseOrder.vendor),
+            joinedload(PurchaseOrderItem.purchase_order).joinedload(PurchaseOrder.project),
+            joinedload(PurchaseOrderItem.purchase_order).joinedload(PurchaseOrder.contract).joinedload(Contract.project),
+        ).filter(
+            PurchaseOrder.status.in_(['발송완료', '입고대기']),
+            (PurchaseOrderItem.in_confirmed == False) | (PurchaseOrderItem.in_confirmed.is_(None)),
+        ).order_by(
+            case(
+                (PurchaseOrderItem.expected_in_date.is_(None), 0),
+                else_=1
+            ).asc(),
+            PurchaseOrderItem.expected_in_date.asc(),
+        ).all()
+
+        for poi in expected_qs:
+            po = poi.purchase_order
+            if poi.expected_in_date:
+                d = (poi.expected_in_date - today).days
+                poi._dday = d
+                poi._dday_state = 'overdue' if d < 0 else 'today' if d == 0 else 'week' if d <= 7 else 'ok'
+            else:
+                poi._dday = None
+                poi._dday_state = 'unknown'
+            # 납기위험도
+            delivery_due = po.contract.desired_delivery_date if po and po.contract else None
+            if delivery_due and poi.expected_in_date:
+                margin = (delivery_due - poi.expected_in_date).days - production_lead_days
+                poi._risk = 'danger' if margin < 0 else 'warning' if margin <= 7 else 'ok'
+            else:
+                poi._risk = 'none'
+            poi._delivery_due = delivery_due
+            poi._vendor_name = po.vendor.name if po and po.vendor else ''
+            # 현장: PO.project 우선, 없으면 계약 경유
+            if po and po.project:
+                poi._project = po.project
+            elif po and po.contract and po.contract.project:
+                poi._project = po.contract.project
+            else:
+                poi._project = None
+
+        expected_stats = {
+            'total': len(expected_qs),
+            'overdue': sum(1 for p in expected_qs if p._dday_state == 'overdue'),
+            'today': sum(1 for p in expected_qs if p._dday_state == 'today'),
+            'this_week': sum(1 for p in expected_qs if p._dday_state == 'week'),
+            'unknown': sum(1 for p in expected_qs if p._dday_state == 'unknown'),
+        }
+
+        active_tab = request.args.get('tab', 'list')
+
         return render_template(
             'receiving_list.html',
             receivings=receivings,
@@ -287,9 +342,12 @@ def receiving_list():
             hist_total_pages=hist_total_pages,
             pagination=pagination,
             stats=stats,
-            filters={'q': q, 'status': status},
-            status_choices=RCV_STATUS_CHOICES,
+            filters={'q': q},
             fmt_money=_fmt_money,
+            expected_items=expected_qs,
+            expected_stats=expected_stats,
+            active_tab=active_tab,
+            production_lead_days=production_lead_days,
         )
 
 
@@ -333,7 +391,6 @@ def receiving_create():
                 vendor_id=vendor_id,
                 po_id=po_id,
                 contract_id=contract_id,
-                status='검수대기',
                 note=note,
                 created_by=session.get('user_id'),
             )
@@ -466,35 +523,7 @@ def receiving_detail(rcv_id):
             total_amount=total_amount,
             tax_amount=tax_amount,
             fmt_money=_fmt_money,
-            status_choices=RCV_STATUS_CHOICES,
         )
-
-
-# ===================================================================
-# 4. 입고 상태 변경
-# ===================================================================
-@receiving_bp.route('/receiving/<int:rcv_id>/status', methods=['POST'])
-@login_required
-def receiving_change_status(rcv_id):
-    with get_db() as db:
-        rcv = db.query(Receiving).get(rcv_id)
-        if not rcv:
-            abort(404)
-
-        new_status = request.form.get('status', '')
-        if new_status not in RCV_STATUS_CHOICES:
-            flash('유효하지 않은 상태입니다.', 'warning')
-            return redirect(url_for('receiving.receiving_detail', rcv_id=rcv_id))
-
-        rcv.status = new_status
-
-        # 반품 처리 시 발주서 상태 재계산
-        if new_status == '반품' and rcv.po_id:
-            _update_po_status_on_receiving(db, rcv.po_id)
-
-        db.commit()
-        flash(f'상태가 "{new_status}"로 변경되었습니다.', 'success')
-        return redirect(url_for('receiving.receiving_detail', rcv_id=rcv_id))
 
 
 # ===================================================================
@@ -507,10 +536,6 @@ def receiving_delete(rcv_id):
         rcv = db.query(Receiving).get(rcv_id)
         if not rcv:
             abort(404)
-
-        if rcv.status == '검수완료':
-            flash('검수완료 상태의 입고는 삭제할 수 없습니다.', 'warning')
-            return redirect(url_for('receiving.receiving_detail', rcv_id=rcv_id))
 
         po_id = rcv.po_id
         db.delete(rcv)
@@ -631,3 +656,107 @@ def api_receiving_history_detail(history_id):
             'total_amount': float(rh.total_amount or 0),
             'detail_rows': items,
         })
+
+
+# ===================================================================
+# 9. 입고예정 — 입고확인 AJAX
+# ===================================================================
+@receiving_bp.route('/api/receiving/confirm-expected/<int:poi_id>', methods=['POST'])
+@login_required
+def api_confirm_expected(poi_id):
+    """입고예정 목록에서 입고확인 처리 (PurchaseOrderItem.in_confirmed = True)"""
+    import datetime as _dt
+    from modules.history_board import append_history_log
+    with get_db() as db:
+        poi = db.query(PurchaseOrderItem).get(poi_id)
+        if not poi:
+            return jsonify({'ok': False, 'error': '품목을 찾을 수 없습니다.'}), 404
+        poi.in_confirmed = True
+        poi.in_confirmed_at = _dt.datetime.now()
+
+        # 해당 발주서의 모든 품목이 확인되면 발주서 상태 변경
+        po = poi.purchase_order
+        if po:
+            all_confirmed = all(item.in_confirmed for item in po.items if item.id != poi.id)
+            if all_confirmed:
+                po.status = '입고완료'
+
+            # 연결된 MaterialOrder도 동기화
+            linked_mo = db.query(MaterialOrder).filter(
+                MaterialOrder.po_item_id == poi.id,
+            ).first()
+            if linked_mo:
+                linked_mo.in_confirmed = True
+                linked_mo.in_confirmed_at = _dt.datetime.now()
+                linked_mo.order_status = '입고완료'
+
+            project_id = po.project_id
+            if project_id:
+                append_history_log(
+                    db,
+                    project_id=project_id,
+                    user_name=session.get('full_name', '시스템'),
+                    content=f"입고확인: {poi.item_name} ({poi.quantity or 0}개)",
+                    scope='material',
+                    kind='system'
+                )
+        db.commit()
+    return jsonify({'ok': True})
+
+
+# ===================================================================
+# 10. 입고예정 — 입고예정일 인라인 수정 AJAX
+# ===================================================================
+@receiving_bp.route('/api/receiving/update-expected-date/<int:poi_id>', methods=['POST'])
+@login_required
+def api_update_expected_date(poi_id):
+    """입고예정일 인라인 편집 저장"""
+    import datetime as _dt
+    from modules.history_board import append_history_log
+
+    with get_db() as db:
+        poi = db.query(PurchaseOrderItem).get(poi_id)
+        if not poi:
+            return jsonify({'ok': False, 'message': '품목을 찾을 수 없습니다.'}), 404
+
+        data = request.get_json(silent=True) or {}
+        date_str = (data.get('expected_in_date') or '').strip()
+
+        if date_str:
+            try:
+                new_date = _dt.datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({'ok': False, 'message': '날짜 형식 오류'}), 400
+            poi.expected_in_date = new_date
+        else:
+            poi.expected_in_date = None
+
+        # 연결된 MaterialOrder도 동기화
+        linked_mo = db.query(MaterialOrder).filter(
+            MaterialOrder.po_item_id == poi.id,
+        ).first()
+        if linked_mo:
+            linked_mo.expected_in_date = poi.expected_in_date
+
+        po = poi.purchase_order
+        project_id = po.project_id if po else None
+        if project_id:
+            append_history_log(
+                db,
+                project_id=project_id,
+                user_name=session.get('full_name', '시스템'),
+                content=f"입고예정일 변경: {poi.item_name} → {date_str or '미정'}",
+                scope='material',
+                kind='system'
+            )
+        db.commit()
+
+        today = _dt.date.today()
+        if poi.expected_in_date:
+            d = (poi.expected_in_date - today).days
+            dday_state = 'overdue' if d < 0 else 'today' if d == 0 else 'week' if d <= 7 else 'ok'
+        else:
+            d = None
+            dday_state = 'unknown'
+
+        return jsonify({'ok': True, 'dday': d, 'dday_state': dday_state})

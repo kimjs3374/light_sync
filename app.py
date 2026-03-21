@@ -36,6 +36,14 @@ from routes.item import item_bp
 from routes.financial import financial_bp
 from routes.inventory import inventory_bp
 from routes.quotation import quotation_bp
+from routes.photos import photos_bp
+from routes.chatbot import chatbot_bp
+from routes.illuminance import ilv_bp
+from routes.workboard import workboard_bp
+from routes.asboard import asboard_bp
+from routes.channel_chat import channel_chat_bp
+from routes.certification import cert_bp
+from routes.spec_doc import spec_doc_bp
 from modules.pagination import pagination_query
 
 # =====================================================================
@@ -58,7 +66,9 @@ file_handler = RotatingFileHandler('logs/light_sync.log', maxBytes=10_000_000, b
 file_handler.setFormatter(logging.Formatter(
     '%(asctime)s %(levelname)s [%(name)s] %(message)s'
 ))
-app.logger.addHandler(file_handler)
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(name)s] %(message)s'))
+logging.basicConfig(level=logging.INFO, handlers=[file_handler, stream_handler])
 app.logger.setLevel(logging.INFO)
 app.jinja_env.auto_reload = app.config.get("TEMPLATES_AUTO_RELOAD", True)
 app.jinja_env.globals['pagination_query'] = pagination_query
@@ -139,10 +149,23 @@ app.register_blueprint(item_bp)
 app.register_blueprint(financial_bp)
 app.register_blueprint(inventory_bp)
 app.register_blueprint(quotation_bp)
+app.register_blueprint(photos_bp)
+app.register_blueprint(chatbot_bp)
 app.register_blueprint(api_bp)
+app.register_blueprint(ilv_bp)
+app.register_blueprint(workboard_bp)
+app.register_blueprint(asboard_bp)
+app.register_blueprint(channel_chat_bp)
+app.register_blueprint(cert_bp)
+app.register_blueprint(spec_doc_bp)
 
 # NAS 동기화 API는 외부(NAS cron)에서 호출하므로 CSRF 면제
 csrf.exempt(api_bp)
+
+# Channel reply 콜백은 Channel 서버(localhost)에서 POST — CSRF 면제
+from routes.channel_chat import channel_reply as _cr
+csrf.exempt(_cr)
+
 
 
 # =====================================================================
@@ -164,7 +187,8 @@ def inject_sidebar_menus():
             continue
         if info.get("admin_only") and not is_admin:
             continue
-        if is_admin or is_executive or key in allowed:
+        always_show = info.get("always_show", False)
+        if always_show or is_admin or is_executive or key in allowed:
             menu_groups.setdefault(info["group"], []).append({
                 "key": key,
                 "label": info["label"],

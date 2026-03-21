@@ -1,0 +1,176 @@
+/* ── 히어로 ─────────────────────────────────────────────── */
+.cmd-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #0f172a 100%);
+  border-radius: 1rem;
+  padding: 1.4rem 1.8rem;
+  position: relative; overflow: hidden; margin-bottom: 1rem;
+}
+.cmd-hero::before {
+  content: ''; position: absolute; top: -60%; right: -5%;
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(59,130,246,.1) 0%, transparent 65%);
+  pointer-events: none;
+}
+.cmd-hero .eyebrow {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .18rem .55rem; border-radius: 999px;
+  background: rgba(59,130,246,.15); color: #60a5fa;
+  font-size: .62rem; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase;
+}
+.cmd-hero h1 {
+  color: #f8fafc; font-size: 1.45rem; font-weight: 800;
+  letter-spacing: -.03em; margin: .4rem 0 .2rem;
+}
+.cmd-hero .sub { color: #94a3b8; font-size: .8rem; }
+.cmd-hero .nav-row {
+  display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .8rem;
+}
+.cmd-hero .nav-row .btn {
+  background: rgba(255,255,255,.06); color: #cbd5e1;
+  border: 1px solid rgba(255,255,255,.1);
+  font-size: .75rem; font-weight: 600;
+  padding: .3rem .65rem; border-radius: .5rem;
+  transition: all .2s; white-space: nowrap; text-decoration: none;
+}
+.cmd-hero .nav-row .btn:hover { background: rgba(255,255,255,.14); color: #fff; }
+
+/* ── 스텝 인디케이터 ────────────────────────────────────── */
+.wiz-steps {
+  display: flex; align-items: center; gap: 0;
+  margin-bottom: 1.25rem; padding: 0;
+}
+.wiz-step {
+  display: flex; align-items: center; gap: .5rem; flex: 1;
+  padding: .6rem .8rem;
+  border-radius: var(--mg-radius);
+  background: var(--mg-bg); border: 1.5px solid var(--mg-border);
+  font-size: .78rem; font-weight: 700; color: var(--mg-subtle);
+  transition: all .2s; white-space: nowrap;
+  cursor: default; user-select: none;
+}
+.wiz-step + .wiz-step { margin-left: 2px; }
+.wiz-step .step-num {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--mg-border); color: var(--mg-muted);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .72rem; font-weight: 800; flex-shrink: 0;
+}
+.wiz-step.active {
+  border-color: var(--mg-primary);
+  background: #eff6ff; color: var(--mg-primary);
+}
+.wiz-step.active .step-num {
+  background: var(--mg-primary); color: #fff;
+}
+.wiz-step.done {
+  border-color: var(--mg-success);
+  background: #f0fdf4; color: var(--mg-success);
+}
+.wiz-step.done .step-num {
+  background: var(--mg-success); color: #fff;
+}
+
+/* ── 마법사 패널 ────────────────────────────────────────── */
+.wiz-panel { display: none; }
+.wiz-panel.active { display: block; }
+
+/* ── PDF 페이지 카드 ────────────────────────────────────── */
+.pdf-page-card {
+  border: 1.5px solid var(--mg-border);
+  border-radius: var(--mg-radius);
+  background: var(--mg-surface);
+  padding: .65rem .85rem;
+  transition: border-color .15s, background .15s;
+  cursor: pointer;
+}
+.pdf-page-card:hover { border-color: var(--mg-primary); }
+.pdf-page-card.selected {
+  border-color: var(--mg-primary);
+  background: #eff6ff;
+}
+.pdf-page-card.type-grid_table {
+  border-color: #2563eb; background: #eff6ff;
+}
+.pdf-page-card .page-num {
+  font-size: .68rem; font-weight: 800; color: var(--mg-subtle);
+  font-family: var(--mg-mono); white-space: nowrap;
+}
+.pdf-page-card .page-excerpt {
+  font-size: .75rem; color: var(--mg-muted);
+  margin-top: .2rem; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.pdf-page-card .area-name-field {
+  margin-top: .5rem; display: none;
+}
+.pdf-page-card.selected .area-name-field { display: block; }
+
+/* 타입 뱃지 */
+.badge-type-cover      { background: #e2e8f0; color: #475569; }
+.badge-type-floor_plan { background: #ede9fe; color: #6d28d9; }
+.badge-type-summary    { background: #dbeafe; color: #1d4ed8; }
+.badge-type-grid_table { background: #dcfce7; color: #15803d; }
+.badge-type-3d_view    { background: #ffedd5; color: #c2410c; }
+
+/* ── 파싱 결과 미니 히트맵 ──────────────────────────────── */
+.mini-heatmap-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.mini-heatmap-table {
+  border-collapse: separate; border-spacing: 1px;
+  table-layout: fixed; min-width: max-content;
+}
+.mini-heatmap-table td {
+  width: 28px; height: 28px; border-radius: 3px;
+  font-size: .58rem; font-family: var(--mg-mono); font-weight: 700;
+  text-align: center; vertical-align: middle; white-space: nowrap;
+}
+.mini-heatmap-table th {
+  font-size: .58rem; color: var(--mg-muted); font-weight: 600;
+  text-align: center; padding: 0 2px; white-space: nowrap;
+}
+
+/* ── 드래그 업로드 ──────────────────────────────────────── */
+.upload-dropzone {
+  border: 2px dashed var(--mg-border);
+  border-radius: var(--mg-radius);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  background: var(--mg-bg);
+  transition: border-color .15s, background .15s;
+  cursor: pointer;
+}
+.upload-dropzone:hover,
+.upload-dropzone.dragover {
+  border-color: var(--mg-primary);
+  background: #eff6ff;
+}
+.upload-dropzone .upload-icon { font-size: 2.5rem; margin-bottom: .5rem; }
+.upload-dropzone .upload-text { font-size: .85rem; color: var(--mg-muted); }
+.upload-dropzone .upload-hint { font-size: .72rem; color: var(--mg-subtle); margin-top: .25rem; }
+
+/* ── 파싱 진행 ──────────────────────────────────────────── */
+.parse-progress-wrap { display: none; }
+.parse-progress-wrap.show { display: block; }
+.parse-status-log {
+  max-height: 120px; overflow-y: auto;
+  font-family: var(--mg-mono); font-size: .72rem;
+  background: #0f172a; color: #4ade80;
+  border-radius: .45rem; padding: .6rem .8rem;
+  margin-top: .5rem;
+}
+
+/* ── 결과 요약 카드 ─────────────────────────────────────── */
+.result-stat-bar {
+  display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem;
+}
+.result-stat {
+  display: flex; flex-direction: column; align-items: center;
+  min-width: 68px; padding: .5rem .7rem;
+  border-radius: var(--mg-radius);
+  background: var(--mg-bg); border: 1px solid var(--mg-border);
+}
+.result-stat .lbl { font-size: .6rem; font-weight: 600; color: var(--mg-subtle); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.result-stat .val { font-size: 1.1rem; font-weight: 800; font-family: var(--mg-mono); color: var(--mg-ink); }
+.result-stat .unit { font-size: .58rem; color: var(--mg-subtle); white-space: nowrap; }

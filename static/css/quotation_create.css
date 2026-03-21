@@ -1,0 +1,71 @@
+.qt-section { border: none; border-radius: 12px; overflow: hidden; }
+.qt-section .card-header {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-bottom: 2px solid #e2e8f0; padding: 14px 20px;
+}
+.qt-section .section-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #0f172a; color: #fff; font-size: .78rem; font-weight: 700; margin-right: 8px;
+}
+.qt-label { font-size: .82rem; color: #64748b; margin-bottom: 4px; font-weight: 600; }
+.qt-label .required { color: #ef4444; }
+.btn-add-item { border: 2px dashed #cbd5e1; color: #64748b; font-weight: 600; border-radius: 8px; transition: all .2s; }
+.btn-add-item:hover { border-color: #3b82f6; color: #3b82f6; background: #eff6ff; }
+.tpl-badge { display: inline-block; padding: 4px 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: .78rem; color: #1e40af; cursor: pointer; white-space: nowrap; }
+.tpl-badge:hover { background: #dbeafe; }
+
+/* 품목 자동완성 */
+.item-ac-dropdown { position: absolute; z-index: 9999; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); max-height: 260px; overflow-y: auto; display: none; }
+.item-ac-dropdown.show { display: block; }
+.item-ac-dropdown .ac-item { padding: 8px 12px; cursor: pointer; font-size: .85rem; border-bottom: 1px solid #f1f5f9; }
+.item-ac-dropdown .ac-item:hover { background: #eff6ff; }
+.item-ac-dropdown .ac-price { color: #059669; font-weight: 600; font-size: .78rem; }
+.item-ac-dropdown .ac-sub { color: #94a3b8; font-size: .78rem; }
+
+/* 단가 추천 드롭다운 */
+.price-dd { position: absolute; z-index: 9998; background: #fff; border: 1px solid #fde68a; border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.1); display: none; min-width: 180px; }
+.price-dd.show { display: block; }
+.price-dd .pd-title { padding: 6px 10px; font-size: .7rem; color: #92400e; font-weight: 700; background: #fffbeb; border-bottom: 1px solid #fde68a; }
+.price-dd .pd-item { padding: 6px 10px; cursor: pointer; font-size: .82rem; border-bottom: 1px solid #f5f5f4; display: flex; justify-content: space-between; gap: 12px; }
+.price-dd .pd-item:hover { background: #fffbeb; }
+.price-dd .pd-price { font-weight: 700; color: #0f172a; }
+.price-dd .pd-meta { font-size: .7rem; color: #94a3b8; }
+
+/* ─── 품목 카드 ─── */
+.qi-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; position: relative; }
+.qi-card:hover { border-color: #93c5fd; }
+.qi-card .qi-no { font-size: .72rem; color: #94a3b8; font-weight: 700; white-space: nowrap; }
+.qi-card .qi-rm { font-size: 1.2rem; color: #ef4444; opacity: .4; cursor: pointer; line-height: 1; background: none; border: none; padding: 2px 4px; white-space: nowrap; }
+.qi-card .qi-rm:hover { opacity: 1; }
+.qi-field label { font-size: .68rem; color: #94a3b8; font-weight: 600; margin-bottom: 1px; display: block; white-space: nowrap; }
+.qi-field input { font-size: .85rem; }
+/* PC: 품명|규격|단위|수량|단가|비고 한 줄 */
+.qi-inline { display: flex; align-items: end; gap: 6px; }
+.qi-f-name { flex: 3; min-width: 0; }
+.qi-f-spec { flex: 2; min-width: 0; }
+.qi-f-unit { flex: 0 0 55px; }
+.qi-f-qty  { flex: 0 0 70px; }
+.qi-f-price { flex: 0 0 110px; }
+.qi-f-note { flex: 1.5; min-width: 0; }
+.qi-f-no   { flex: 0 0 24px; text-align: center; padding-bottom: 6px; }
+.qi-f-rm   { flex: 0 0 24px; text-align: center; padding-bottom: 4px; }
+
+
+/* 합계 바 */
+.total-bar { background: #0f172a; color: #fff; border-radius: 10px; padding: 14px 20px; }
+.total-bar .total-row { display: flex; justify-content: space-between; font-size: .9rem; }
+.total-bar .total-row.grand { font-size: 1.15rem; font-weight: 700; border-top: 1px solid rgba(255,255,255,.15); padding-top: 8px; margin-top: 6px; }
+
+/* 모바일: 줄바꿈 허용 */
+@media (max-width: 767.98px) {
+    .qi-inline { flex-wrap: wrap; }
+    .qi-f-name { flex: 1 1 100%; }
+    .qi-f-spec { flex: 1 1 45%; }
+    .qi-f-unit { flex: 0 0 50px; }
+    .qi-f-qty  { flex: 1 1 45%; }
+    .qi-f-price { flex: 1 1 45%; }
+    .qi-f-note { flex: 1 1 100%; }
+    .qt-section .card-body { padding: 10px; }
+    .qi-card { padding: 8px; }
+}

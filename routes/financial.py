@@ -22,6 +22,7 @@ from modules.models import (
     TaxInvoice, Contract, G2bProcurement, Project,
     MATCH_STATUS_CHOICES,
 )
+from modules.services.warranty_auto import auto_create_warranty
 
 logger = logging.getLogger(__name__)
 
@@ -384,6 +385,8 @@ def tax_invoice_match(invoice_id):
                 contract.payment_status = '입금완료'
                 contract.invoice_date = inv.issue_date
                 contract.payment_date = inv.issue_date
+                # 하자보증 자동 생성
+                auto_create_warranty(db, contract.id, inv.issue_date)
                 db.commit()
                 flash('계약 매칭 완료.', 'success')
             else:

@@ -78,6 +78,17 @@ from .entities import (
     QuoteTemplate,
     QuoteTemplateItem,
     QUOTE_STATUS_CHOICES,
+    ProjectPhoto,
+    IlluminanceProject,
+    IlluminanceArea,
+    IlluminanceMeasured,
+    Certification,
+    CERT_TYPE_CHOICES,
+    SpecDocument,
+    SPEC_DOC_STATUS,
+    SPEC_DOC_TYPES,
+    DesignSimulationDoc,
+    SIMULATION_DOC_TYPES,
 )
 from .db import SessionLocal, engine, init_db
 
@@ -163,4 +174,15 @@ __all__ = [
     "QuoteTemplate",
     "QuoteTemplateItem",
     "QUOTE_STATUS_CHOICES",
+    "ProjectPhoto",
+    "IlluminanceProject",
+    "IlluminanceArea",
+    "IlluminanceMeasured",
+    "Certification",
+    "CERT_TYPE_CHOICES",
+    "SpecDocument",
+    "SPEC_DOC_STATUS",
+    "SPEC_DOC_TYPES",
+    "DesignSimulationDoc",
+    "SIMULATION_DOC_TYPES",
 ]

@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}조도 검증 — {{ project_name | default('현장명') }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/illuminance_verification.css') }}">
+{% endblock %}
+
+{% block content %}
+<!-- ═══════════════════════════════════════════════════════════
+     조도설계 검증 시스템 — IlluminanceVerification
+     컴포넌트: IlluminanceHeatmap / IlluminanceInputGrid /
+               SequentialInputModal / DiffMap
+═══════════════════════════════════════════════════════════ -->
+
+<!-- ─── 페이지 헤더 ──────────────────────────────────────── -->
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div>
+    <h4 class="mb-0">조도설계 검증</h4>
+    <small class="text-muted" id="headerProjectName">풋살장 16m×35m — 8×16 격자</small>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <button class="btn btn-sm btn-outline-secondary" id="btnExportJSON">JSON 내보내기</button>
+    <button class="btn btn-sm btn-primary d-md-none" data-bs-toggle="modal" data-bs-target="#seqModal">
+      순차입력 모드
+    </button>
+  </div>
+</div>
+
+<!-- ─── 탭 ────────────────────────────────────────────────── -->
+<ul class="nav nav-tabs" id="ilvTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabHeatmap" type="button">설계 히트맵</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabInput" type="button">실측 입력</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabDiff" type="button" id="tabDiffBtn">
+      차이 분석 <span class="badge bg-secondary ms-1" id="diffBadge">0/128</span>
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content ilv-tab-content" id="ilvTabContent">
+
+  <!-- ════════════════════════════════════════════════════════
+       탭 1: IlluminanceHeatmap — 설계값 히트맵
+  ════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade show active" id="tabHeatmap" role="tabpanel">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span>설계값 히트맵 (Relux PDF)</span>
+        <div class="ilv-legend">
+          <span class="ilv-legend-label">저조도</span>
+          <div class="ilv-legend-bar"></div>
+          <span class="ilv-legend-label">고조도</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="ilv-table-wrap">
+          <table class="ilv-table" id="heatmapTable" aria-label="설계 조도 히트맵">
+            <!-- JS 렌더링 -->
+          </table>
+        </div>
+        <!-- 통계 -->
+        <div class="ilv-stat-bar" id="heatmapStats"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       탭 2: IlluminanceInputGrid — 실측값 입력
+  ════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade" id="tabInput" role="tabpanel">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span>현장 실측값 입력</span>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-success-subtle text-success border border-success-subtle" style="white-space:nowrap">90%+ 정상</span>
+          <span class="badge bg-warning-subtle text-warning border border-warning-subtle" style="white-space:nowrap">70-90% 주의</span>
+          <span class="badge bg-danger-subtle text-danger border border-danger-subtle" style="white-space:nowrap">&lt;70% 경고</span>
+          <button class="btn btn-sm btn-outline-danger" id="btnClearInput">초기화</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="ilv-table-wrap">
+          <table class="ilv-table" id="inputTable" aria-label="실측값 입력 격자">
+            <!-- JS 렌더링 -->
+          </table>
+        </div>
+        <!-- 실측 통계 -->
+        <div class="ilv-stat-bar" id="inputStats"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       탭 3: DiffMap — 설계 vs 실측 차이
+  ════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade" id="tabDiff" role="tabpanel">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span>설계 대비 실측 차이 맵</span>
+        <div class="d-flex gap-2 flex-wrap align-items-center">
+          <span class="badge" style="background:#2563eb;white-space:nowrap">+10%↑ 초과</span>
+          <span class="badge bg-light text-dark border" style="white-space:nowrap">±10% 정상</span>
+          <span class="badge" style="background:#f97316;white-space:nowrap">-10~-20%</span>
+          <span class="badge" style="background:#dc2626;white-space:nowrap">-20%↓ 불량</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="diffEmpty" class="text-center text-muted py-5" style="display:block!important">
+          <div style="font-size:2rem">&#128202;</div>
+          <p class="mt-2 mb-0">실측값을 입력하면 차이 분석이 표시됩니다.</p>
+        </div>
+        <div id="diffContent" style="display:none">
+          <div class="ilv-table-wrap">
+            <table class="ilv-table" id="diffTable" aria-label="설계-실측 차이 맵">
+              <!-- JS 렌더링 -->
+            </table>
+          </div>
+          <div class="ilv-stat-bar" id="diffStats"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /tab-content -->
+
+
+<!-- ════════════════════════════════════════════════════════
+     SequentialInputModal — 모바일 순차입력 모달
+════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="seqModal" tabindex="-1" aria-label="순차입력 모드">
+  <div class="modal-dialog modal-fullscreen">
+    <div class="modal-content">
+
+      <!-- 헤더 -->
+      <div class="modal-header border-bottom py-2">
+        <div class="flex-grow-1">
+          <div class="progress" style="height:5px;border-radius:3px">
+            <div class="progress-bar bg-primary" id="seqProgress" role="progressbar" style="width:0%"></div>
+          </div>
+          <small class="text-muted" id="seqProgressLabel">0 / 128 완료</small>
+        </div>
+        <button type="button" class="btn-close ms-3" data-bs-dismiss="modal" aria-label="닫기"></button>
+      </div>
+
+      <!-- 바디 -->
+      <div class="modal-body d-flex flex-column gap-3 pt-3">
+
+        <!-- 위치 정보 -->
+        <div class="text-center">
+          <div class="seq-coord-label" id="seqCoordLabel">Row 1, Col 1 — Y=0m, X=0m</div>
+        </div>
+
+        <!-- 설계값 -->
+        <div class="text-center">
+          <div class="text-muted fw-semibold" style="font-size:.78rem">설계값</div>
+          <div class="seq-design-val" id="seqDesignVal">—</div>
+          <div class="text-muted" style="font-size:.78rem">lx</div>
+        </div>
+
+        <!-- 입력 필드 -->
+        <div>
+          <label class="form-label fw-semibold text-center d-block" for="seqInput">실측값 (lx)</label>
+          <input type="number" id="seqInput" class="seq-input-field" inputmode="numeric"
+                 placeholder="0" min="0" max="99999" autocomplete="off">
+        </div>
+
+        <!-- 미니맵 -->
+        <div>
+          <div class="text-center text-muted mb-1" style="font-size:.7rem">측정 진행 현황</div>
+          <div class="seq-minimap" id="seqMinimap"></div>
+        </div>
+
+      </div><!-- /modal-body -->
+
+      <!-- 푸터 -->
+      <div class="modal-footer justify-content-between">
+        <button class="btn btn-outline-secondary" id="seqPrev">
+          &#8592; 이전
+        </button>
+        <div class="text-center">
+          <div id="seqCellLabel" class="fw-bold" style="font-family:var(--mg-mono);font-size:.85rem">1 / 128</div>
+        </div>
+        <button class="btn btn-primary" id="seqNext">
+          다음 &#8594;
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/illuminance_verification.js') }}"></script>
+{% endblock %}

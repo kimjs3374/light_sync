@@ -340,8 +340,24 @@ def quotation_detail(quote_id):
 
 
 # ===================================================================
-# 4. 견적서 수정
+# 4. 견적서 수정 (GET: 폼 표시, POST: 저장)
 # ===================================================================
+@quotation_bp.route('/quotation/<int:quote_id>/edit', methods=['GET'])
+@login_required
+def quotation_edit_form(quote_id):
+    with get_db() as db:
+        quotation = db.query(Quotation).get(quote_id)
+        if not quotation:
+            abort(404)
+        templates = db.query(QuoteTemplate).order_by(desc(QuoteTemplate.id)).all()
+        return render_template(
+            'quotation_create.html',
+            edit_mode=True,
+            q=quotation,
+            templates=templates,
+        )
+
+
 @quotation_bp.route('/quotation/<int:quote_id>/edit', methods=['POST'])
 @login_required
 def quotation_edit(quote_id):
@@ -435,7 +451,9 @@ def quotation_pdf(quote_id):
             abort(404)
 
         from modules.services.quote_pdf import generate_quote_pdf
-        pdf_bytes = generate_quote_pdf(quotation, quotation.items)
+        from modules.models import User
+        creator = db.query(User).get(quotation.created_by) if quotation.created_by else None
+        pdf_bytes = generate_quote_pdf(quotation, quotation.items, creator=creator)
 
         response = make_response(pdf_bytes)
         response.headers['Content-Type'] = 'application/pdf'

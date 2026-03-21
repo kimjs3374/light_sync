@@ -10,7 +10,8 @@ from modules.db_context import get_db
 from modules.utils import safe_int
 from modules.models import (
     Project, User, HistoryLog, Contract, ContractItem,
-    DashboardNotice, Delivery,
+    DashboardNotice, Delivery, MaterialOrder,
+    PurchaseOrder, PurchaseOrderItem,
 )
 from modules.services.dashboard_actions import (
     get_dashboard_setting_int,
@@ -19,6 +20,7 @@ from modules.services.dashboard_actions import (
     handle_update_notice,
     handle_delete_notice,
 )
+from modules.services.ical_sync import get_leave_events_for_month, get_leave_events_for_date
 from modules.dashboard_utils import (
     project_detail_link,
     resolve_kanban_stage,
@@ -385,6 +387,41 @@ def dashboard_view():
                 }
             )
 
+        # ── 입고 지연 알림 자동 생성 (1일 1회) ──
+        try:
+            from modules.services.notification_service import create_receiving_delay_notifications
+            create_receiving_delay_notifications(db)
+        except Exception:
+            pass  # 알림 생성 실패가 대시보드 렌더링을 막으면 안 됨
+
+        # ── 입고예정 통계 (발주서 품목 기준) ──
+        _base_expected = db.query(PurchaseOrderItem).join(
+            PurchaseOrder, PurchaseOrderItem.po_id == PurchaseOrder.id
+        ).filter(
+            PurchaseOrder.status.in_(['발송완료', '입고대기']),
+            (PurchaseOrderItem.in_confirmed == False) | (PurchaseOrderItem.in_confirmed.is_(None)),
+        )
+        _has_date = _base_expected.filter(PurchaseOrderItem.expected_in_date.isnot(None))
+        dash_expected = {
+            'overdue': _has_date.filter(PurchaseOrderItem.expected_in_date < today).count(),
+            'today': _has_date.filter(PurchaseOrderItem.expected_in_date == today).count(),
+            'this_week': _has_date.filter(
+                PurchaseOrderItem.expected_in_date >= today,
+                PurchaseOrderItem.expected_in_date <= week_later,
+            ).count(),
+            'unknown': _base_expected.filter(PurchaseOrderItem.expected_in_date.is_(None)).count(),
+        }
+
+        # 카카오워크 연차 캘린더 동기화
+        leave_by_date = get_leave_events_for_month(today.year, today.month)
+        today_leaves = get_leave_events_for_date(today)
+
+        # calendar_weeks에 연차 정보 주입
+        for week in calendar_weeks:
+            for cell in week:
+                cell_date = datetime.date(today.year, today.month, cell['day']) if cell.get('in_month') else None
+                cell['leaves'] = leave_by_date.get(cell_date, []) if cell_date else []
+
         return render_template(
             'dashboard.html',
             today=today,
@@ -403,6 +440,7 @@ def dashboard_view():
             calendar_weeks=calendar_weeks,
             calendar_month_label=f"{today.year}.{today.month:02d}",
             calendar_weekdays=['일', '월', '화', '수', '목', '금', '토'],
+            today_leaves=today_leaves,
             dashboard_priority=dashboard_priority,
             kanban={
                 '영업/설계': kanban['영업/설계'],
@@ -412,4 +450,5 @@ def dashboard_view():
             },
             workflow_nodes=workflow_nodes,
             action_tabs=action_tabs,
+            dash_expected=dash_expected,
         )

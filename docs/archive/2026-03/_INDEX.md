@@ -27,6 +27,81 @@
 | super-bom | 슈퍼BOM (옵션별 BOM 필터링, 8FR 100% 구현) | 95% | 2026-03-20 | 3 |
 | po-ux-improve | 발주 UX 개선 (선택발주+계약그룹핑+재고표시) | 90% | 2026-03-20 | 4 |
 | mcp-server | Light-Sync ERP MCP 서버 (FastMCP 28Tool+4Resource, Claude Web+LM Studio) | 92% | 2026-03-20 | 4 |
+| photo-management | 현장 사진 독립 갤러리 (모바일 카메라+드래그앤드롭+ZIP다운로드+계약별필터) | 91% | 2026-03-20 | 3 |
+| illuminance-verification | Relux PDF 파싱 + 조도 격자 히트맵 + KS 판정 + 비교 리포트 | 95% | 2026-03-20 | 4 |
+| receiving-expected | 입고예정 v2 (MaterialOrder→PurchaseOrderItem 전환, 검수 제거, 디자인 통일) | N/A | 2026-03-20 | 3 |
+| code-simplify-split | 전체 코드 간소화 및 스플릿 (4Phase: CSS/JS추출+MCP분할+엔티티분할+Route서비스분리) | 100% | 2026-03-21 | 4 |
+| drawing-management | 도면관리 고도화 (SPA 갤러리+PDF 미리보기+DWG 업/다운+버전관리+선택삭제) | ~93% | 2026-03-21 | 1 |
+
+## drawing-management
+
+- **Duration**: 2026-03-21 (1 session)
+- **Iterations**: 1 (CSRF 중복 헤더 버그 수정)
+- **Key Result**: 도면관리 전면 재작성. photo_gallery 동일 SPA 구조, PDF iframe 미리보기, DWG 원본 업/다운, XHR 인라인 업로드(드래그앤드롭), 버전 탭 라이트박스, 전체선택/선택삭제 bulk delete, `api_delete_drawing` 신규 엔드포인트
+- **New Files**: templates/drawings_gallery.html (~850줄)
+- **Modified**: routes/drawing.py, config.py, modules/models/db.py
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Report | [drawing-management.report.md](drawing-management/drawing-management.report.md) |
+
+---
+
+## receiving-expected
+
+- **Duration**: 2026-03-20 (1 session)
+- **Iterations**: 3 (데이터소스 전환, NULL 처리, 미지정 표시)
+- **Key Result**: 입고예정을 MaterialOrder→PurchaseOrderItem 직접 조회로 전환. 계약 없는 발주서도 표시. 불필요한 검수 프로세스 전면 제거. 입고관리 디자인 po_list 기준 통일. 대시보드/전사현황판 입고예정 통계도 동일하게 변경.
+- **Modified**: entities.py, db.py, routes/receiving.py, routes/dashboard.py, modules/production_display_utils.py, templates/receiving_list.html, templates/receiving_detail.html, templates/production_display.html, sql_editer.sql
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [receiving-expected.plan.md](receiving-expected/receiving-expected.plan.md) |
+| Design | [receiving-expected.design.md](receiving-expected/receiving-expected.design.md) |
+| Report | [receiving-expected.report.md](receiving-expected/receiving-expected.report.md) |
+
+---
+
+## illuminance-verification
+
+- **Duration**: 2026-03-20 (1 session)
+- **Iterations**: 1 (82% → 95%, PDF 파서 버그 3건 수정 + 리포트 구현)
+- **Key Result**: Relux PDF layout-mode 파싱 엔진, 구역별 격자 히트맵 UI, 모바일 순차입력 모드, 설계-실측 차이맵, KS 기준 자동 판정, 비교 분석 리포트(인쇄용). `[m]` 치환 버그·all-None 컬럼·Y축 반전 3가지 파서 버그 수정.
+- **New Files**: routes/illuminance.py, modules/services/illuminance_pdf_parser.py, illuminance_list/new/detail/area/report.html (5 templates)
+- **Modified**: entities.py, db.py, app.py, config.py, sql_editer.sql
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [illuminance-verification.plan.md](illuminance-verification/illuminance-verification.plan.md) |
+| Design | [illuminance-verification.design.md](illuminance-verification/illuminance-verification.design.md) |
+| Analysis | [illuminance-verification.analysis.md](illuminance-verification/illuminance-verification.analysis.md) |
+| Report | [illuminance-verification.report.md](illuminance-verification/illuminance-verification.report.md) |
+
+---
+
+## photo-management
+
+- **Duration**: 2026-03-20 (1 session)
+- **Iterations**: 0 (first-pass 91%, 핵심 기능 99%)
+- **Key Result**: 독립 사진관리 페이지(/photos). 현장별 갤러리 UI, 카메라/파일/드래그앤드롭 3중 업로드, 계약별 필터, ZIP 다운로드, 다중 선택삭제, 라이트박스 네비게이션(좌우/Esc), 모바일 2열 대응
+- **New Files**: routes/photos.py (238줄), templates/photo_gallery.html (~980줄)
+- **Modified**: modules/models/entities.py (ProjectPhoto 모델), app.py, config.py, templates/delivery_detail.html
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [photo-management.plan.md](photo-management/photo-management.plan.md) |
+| Design | [photo-management.design.md](photo-management/photo-management.design.md) |
+| Report | [photo-management.report.md](photo-management/photo-management.report.md) |
+
+---
 
 ## mcp-server
 

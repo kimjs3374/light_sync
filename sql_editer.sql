@@ -1,3 +1,126 @@
+-- ══════════════════════════════════════════════
+-- 매그나텍 업무플로우 보강 (2026-03-21)
+-- ══════════════════════════════════════════════
+
+-- 스키마 설정
+SET search_path TO light_sync, public;
+
+-- 1) 검수 관리: 검수자 컬럼
+ALTER TABLE light_sync.deliveries ADD COLUMN IF NOT EXISTS inspector VARCHAR(100);
+
+-- 2) 인증서 만료 관리
+CREATE TABLE IF NOT EXISTS light_sync.certifications (
+    id SERIAL PRIMARY KEY,
+    cert_type VARCHAR(50) NOT NULL,               -- KS인증/성능인증/녹색기술인증/환경표지/조달우수제품/G-PASS/기타
+    cert_name VARCHAR(200) NOT NULL,               -- 인증서명
+    cert_no VARCHAR(100),                          -- 인증번호
+    issued_by VARCHAR(200),                        -- 발급기관
+    issued_date DATE,                              -- 발급일
+    expiry_date DATE,                              -- 만료일
+    product_model VARCHAR(200),                    -- 대상 제품/모델
+    alert_days INTEGER DEFAULT 30,                 -- 만료 전 알림 일수
+    file_path VARCHAR(500),                        -- 첨부파일 경로
+    note TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 3) 하자보증: 보증유형 + 자동산출
+ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS warranty_type VARCHAR(20) DEFAULT '일반';
+ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS auto_generated BOOLEAN DEFAULT FALSE;
+
+-- 4) 시방서/규격서 추적
+CREATE TABLE IF NOT EXISTS light_sync.spec_documents (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES light_sync.projects(id) ON DELETE CASCADE,
+    doc_type VARCHAR(30) NOT NULL DEFAULT '시방서',
+    doc_status VARCHAR(20) NOT NULL DEFAULT '미제출',
+    title VARCHAR(300),
+    file_path VARCHAR(500),
+    submitted_date DATE,
+    confirmed_date DATE,
+    note TEXT,
+    created_by VARCHAR(50),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 5) 조도 시뮬레이션 설계 보고서
+CREATE TABLE IF NOT EXISTS light_sync.design_simulation_docs (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES light_sync.projects(id) ON DELETE CASCADE,
+    doc_type VARCHAR(30) NOT NULL DEFAULT 'DIALux',
+    title VARCHAR(300),
+    file_path VARCHAR(500),
+    simulation_date DATE,
+    target_lux FLOAT,
+    achieved_lux FLOAT,
+    uniformity FLOAT,
+    note TEXT,
+    created_by VARCHAR(50),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ══════════════════════════════════════════════
+-- 채널 권한 + 프리셋 테이블 (2026-03-21)
+-- ══════════════════════════════════════════════
+ALTER TABLE chatbot_permissions
+    ADD COLUMN IF NOT EXISTS channel_enabled BOOLEAN DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS chatbot_presets (
+    name TEXT PRIMARY KEY,
+    tools_json TEXT NOT NULL,
+    channel_enabled BOOLEAN DEFAULT FALSE
+);
+
+-- ══════════════════════════════════════════════
+-- 조도검증 ↔ 설계현장 연동 컬럼 추가 (2026-03-20)
+-- ══════════════════════════════════════════════
+ALTER TABLE illuminance_projects
+    ADD COLUMN IF NOT EXISTS erp_project_id INTEGER REFERENCES light_sync.projects(id) ON DELETE SET NULL;
+
+-- ══════════════════════════════════════════════
+-- 조도설계 검증 시스템 (2026-03-20)
+-- ══════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS illuminance_projects (
+    id SERIAL PRIMARY KEY, project_name VARCHAR(200) NOT NULL,
+    customer VARCHAR(200), location VARCHAR(500), install_date DATE,
+    pdf_filename VARCHAR(300), facility_type VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'design', notes TEXT,
+    created_by VARCHAR(50), created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS illuminance_areas (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES illuminance_projects(id) ON DELETE CASCADE,
+    area_name VARCHAR(200) NOT NULL, area_index INTEGER DEFAULT 1,
+    installation_height FLOAT, lamp_type VARCHAR(100), lamp_watt INTEGER,
+    lamp_qty INTEGER, tower_qty INTEGER, simulation_date DATE,
+    design_eav FLOAT, design_emin FLOAT, design_emax FLOAT,
+    design_uo FLOAT, design_ud FLOAT,
+    maintenance_factor FLOAT, total_flux FLOAT, total_power FLOAT, power_per_area FLOAT,
+    grid_rows INTEGER, grid_cols INTEGER,
+    grid_x_labels TEXT, grid_y_labels TEXT, design_grid TEXT,
+    ks_eav_min FLOAT, ks_uo_min FLOAT, created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS illuminance_measured (
+    id SERIAL PRIMARY KEY,
+    area_id INTEGER NOT NULL REFERENCES illuminance_areas(id) ON DELETE CASCADE,
+    measure_date DATE NOT NULL, measured_by VARCHAR(100),
+    weather VARCHAR(50), instrument VARCHAR(200),
+    measured_eav FLOAT, measured_emin FLOAT, measured_emax FLOAT,
+    measured_uo FLOAT, measured_ud FLOAT, measured_grid TEXT,
+    ks_pass VARCHAR(10), eav_achievement FLOAT, uo_achievement FLOAT,
+    notes TEXT, created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+-- ERP 챗봇 웹 조회 권한 (2026-03-20)
+CREATE TABLE IF NOT EXISTS chatbot_permissions (
+    erp_username TEXT PRIMARY KEY,
+    allowed_tools TEXT NOT NULL
+);
+
 -- 견적서 테이블 생성 (2026-03-19)
 CREATE TABLE IF NOT EXISTS quotations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -198,3 +321,57 @@ ALTER TABLE light_sync.daily_reports ADD COLUMN auto_items_json TEXT;
 -- ===================================================================
 ALTER TABLE light_sync.bom_headers ADD COLUMN option_schema TEXT;
 ALTER TABLE light_sync.bom_items ADD COLUMN option_filter TEXT;
+
+-- ===================================================================
+-- 사진관리: project_photos 테이블 (2026-03-20)
+-- ===================================================================
+CREATE TABLE light_sync.project_photos (
+    id           SERIAL PRIMARY KEY,
+    project_id   INTEGER NOT NULL REFERENCES light_sync.projects(id) ON DELETE CASCADE,
+    contract_id  INTEGER REFERENCES light_sync.contracts(id) ON DELETE SET NULL,
+    photo_type   VARCHAR(30) DEFAULT '기타',
+    file_name    VARCHAR(255) NOT NULL,
+    storage_path VARCHAR(500) NOT NULL,
+    uploaded_by  VARCHAR(50)  DEFAULT '사용자',
+    created_at   TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX idx_project_photos_project_id ON light_sync.project_photos(project_id);
+
+-- ===================================================================
+-- 최고관리자 비밀번호 리셋 (2026-03-20)
+-- ===================================================================
+UPDATE light_sync.users SET password_hash = '$2b$12$VKRbB8LtZeXoTV7mZCW7MebFTvU9U/YhI4TKsUW5fA47CaI01ntdS' WHERE username = 'magnatech';
+
+-- ===================================================================
+-- 사용자 정리: admin/test/magna_test 삭제 + magnatech id=1 (2026-03-20)
+-- ===================================================================
+
+-- 1. FK 참조 정리
+DELETE FROM light_sync.user_priority_permissions WHERE user_id IN (1, 3, 4) OR granted_by_user_id IN (1, 3, 4);
+
+-- 2. 삭제 대상 사용자 제거
+DELETE FROM light_sync.users WHERE username IN ('admin', 'test', 'magna_test');
+
+-- 3. magnatech(id=7) → id=1로 변경
+UPDATE light_sync.user_priority_permissions SET user_id = 1 WHERE user_id = 7;
+UPDATE light_sync.user_priority_permissions SET granted_by_user_id = 1 WHERE granted_by_user_id = 7;
+UPDATE light_sync.users SET id = 1 WHERE id = 7;
+
+-- 4. 시퀀스 리셋 (다음 가입자 id 충돌 방지)
+SELECT setval('light_sync.users_id_seq', (SELECT MAX(id) FROM light_sync.users));
+
+-- ===================================================================
+-- 입고예정: PurchaseOrderItem에 예정일/확인 컬럼 추가 (2026-03-20)
+-- ===================================================================
+ALTER TABLE light_sync.purchase_order_items ADD COLUMN expected_in_date DATE;
+ALTER TABLE light_sync.purchase_order_items ADD COLUMN in_confirmed BOOLEAN DEFAULT FALSE;
+ALTER TABLE light_sync.purchase_order_items ADD COLUMN in_confirmed_at TIMESTAMP;
+
+-- ===================================================================
+-- 챗봇 대화 히스토리 영구저장 (2026-03-21)
+-- ===================================================================
+CREATE TABLE IF NOT EXISTS light_sync.chatbot_history (
+    session_id TEXT PRIMARY KEY,
+    messages_json TEXT NOT NULL DEFAULT '[]',
+    updated_at TIMESTAMP DEFAULT NOW()
+);

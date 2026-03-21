@@ -207,6 +207,7 @@ def parse_tax_invoice_excel(file_path=None, file_stream=None):
 def import_and_match(db, records):
     """세금계산서 DB 저장 + G2B 계약 매칭."""
     from modules.models import TaxInvoice, Contract, G2bProcurement
+    from modules.services.warranty_auto import auto_create_warranty
 
     result = {'imported': 0, 'matched': 0, 'unmatched': 0, 'skipped': 0}
 
@@ -262,6 +263,7 @@ def import_and_match(db, records):
                     if rec['issue_date']:
                         contract.invoice_date = rec['issue_date']
                         contract.payment_date = rec['issue_date']
+                        auto_create_warranty(db, contract.id, rec['issue_date'])
 
         # 2차: 계약번호 매칭 실패 시 계약명으로 매칭 시도
         if not matched and rec['g2b_contract_name']:
@@ -283,6 +285,7 @@ def import_and_match(db, records):
                     if rec['issue_date']:
                         contract.invoice_date = rec['issue_date']
                         contract.payment_date = rec['issue_date']
+                        auto_create_warranty(db, contract.id, rec['issue_date'])
 
         if matched:
             result['matched'] += 1

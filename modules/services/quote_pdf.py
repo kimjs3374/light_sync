@@ -49,7 +49,7 @@ def _truncate(text, font_name, font_size, max_width, canvas_obj):
     return text + '..'
 
 
-def generate_quote_pdf(quotation, items):
+def generate_quote_pdf(quotation, items, creator=None):
     """견적서 PDF를 생성한다. (매그나텍 양식)"""
     import os
     from reportlab.lib import colors
@@ -158,6 +158,13 @@ def generate_quote_pdf(quotation, items):
     # 담당자
     c.setFont(fn, 9)
     c.drawString(left_x, info_y, '담당자')
+    # 공급자 담당자: 이름 직급
+    creator_text = ''
+    if creator:
+        creator_text = creator.full_name or ''
+        if creator.position:
+            creator_text += f' {creator.position}'
+    c.drawString(left_x + 20 * mm, info_y, creator_text)
     c.drawString(right_x, info_y, '담당자')
     c.drawString(right_x + 20 * mm, info_y, quotation.customer_contact or '')
     info_y -= 5 * mm

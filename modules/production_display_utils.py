@@ -16,7 +16,7 @@ import calendar as calendar_lib
 
 from modules.models import (
     MaterialOrder, Contract, ContractItem, Project,
-    PurchaseOrder, Vendor, Delivery, DashboardNotice,
+    PurchaseOrder, PurchaseOrderItem, Vendor, Delivery, DashboardNotice,
 )
 from modules.dashboard_utils import project_detail_link, days_until
 
@@ -158,44 +158,50 @@ def build_display_cards(contracted_projects, deliveries, today):
 def build_material_ticker(db, today):
     week_later = today + datetime.timedelta(days=7)
 
-    orders = (
-        db.query(MaterialOrder)
+    # 발주서 품목 기준 입고예정 티커
+    items = (
+        db.query(PurchaseOrderItem)
+        .join(PurchaseOrder, PurchaseOrderItem.po_id == PurchaseOrder.id)
         .filter(
-            MaterialOrder.expected_in_date.isnot(None),
-            MaterialOrder.expected_in_date >= today,
-            MaterialOrder.expected_in_date <= week_later,
-            MaterialOrder.order_status.notin_(READY_STATUSES),
+            PurchaseOrderItem.expected_in_date.isnot(None),
+            PurchaseOrderItem.expected_in_date >= today,
+            PurchaseOrderItem.expected_in_date <= week_later,
+            PurchaseOrder.status.in_(['발송완료', '입고대기']),
+            (PurchaseOrderItem.in_confirmed == False) | (PurchaseOrderItem.in_confirmed.is_(None)),
         )
         .options(
-            joinedload(MaterialOrder.purchase_order).joinedload(PurchaseOrder.vendor),
-            joinedload(MaterialOrder.contract_item)
-                .joinedload(ContractItem.contract)
+            joinedload(PurchaseOrderItem.purchase_order).joinedload(PurchaseOrder.vendor),
+            joinedload(PurchaseOrderItem.purchase_order).joinedload(PurchaseOrder.project),
+            joinedload(PurchaseOrderItem.purchase_order)
+                .joinedload(PurchaseOrder.contract)
                 .joinedload(Contract.project),
         )
-        .order_by(MaterialOrder.expected_in_date.asc(), MaterialOrder.id.asc())
+        .order_by(PurchaseOrderItem.expected_in_date.asc(), PurchaseOrderItem.id.asc())
         .all()
     )
 
     weekday_names = ['월', '화', '수', '목', '금', '토', '일']
     result = []
-    for o in orders:
-        vendor_name = '미지정'
-        if o.purchase_order and o.purchase_order.vendor:
-            vendor_name = o.purchase_order.vendor.name or '미지정'
+    for poi in items:
+        po = poi.purchase_order
+        vendor_name = po.vendor.name if po and po.vendor else ''
+        project_name = ''
+        if po and po.project:
+            project_name = po.project.short_name or po.project.temp_name or ''
+        elif po and po.contract_id:
+            # project_id 없어도 계약 경유로 현장명 가져오기
+            contract = po.contract
+            if contract and contract.project:
+                project_name = contract.project.short_name or contract.project.temp_name or ''
 
-        project_name = '미지정'
-        if o.contract_item and o.contract_item.contract and o.contract_item.contract.project:
-            p = o.contract_item.contract.project
-            project_name = p.short_name or p.temp_name or '미지정'
-
-        wd = weekday_names[o.expected_in_date.weekday()]
+        wd = weekday_names[poi.expected_in_date.weekday()]
         result.append({
-            'expected_date': f"{o.expected_in_date.strftime('%m/%d')}({wd})",
-            'material_name': o.material_name or '자재',
-            'quantity': o.quantity or 0,
+            'expected_date': f"{poi.expected_in_date.strftime('%m/%d')}({wd})",
+            'material_name': poi.item_name or '자재',
+            'quantity': poi.quantity or 0,
             'vendor_name': vendor_name,
             'project_name': project_name,
-            'is_outsourcing': bool(o.is_outsourcing),
+            'is_outsourcing': False,
         })
 
     return result

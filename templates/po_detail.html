@@ -284,28 +284,6 @@
     </div>
 </div>
 
-<div class="modal fade" id="deleteModal" tabindex="-1">
-    <div class="modal-dialog modal-sm">
-        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
-            <div class="modal-header" style="background:#fef2f2;">
-                <h6 class="modal-title fw-bold text-danger">발주서 삭제</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p class="mb-1">발주서 <strong>{{ po.po_no }}</strong>를 삭제하시겠습니까?</p>
-                <p class="text-danger small mb-0">이 작업은 되돌릴 수 없습니다.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
-                <form method="POST" action="{{ url_for('purchase_order.po_delete', po_id=po.id) }}" class="d-inline">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <button type="submit" class="btn btn-danger btn-sm">삭제</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script>
 (function() {
     document.getElementById('editAddItemBtn').addEventListener('click', function() {
@@ -330,5 +308,28 @@
 })();
 </script>
 {% endif %}
+
+{# ─── 삭제 모달 (상태 무관) ─── #}
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <div class="modal-header" style="background:#fef2f2;">
+                <h6 class="modal-title fw-bold text-danger">발주서 삭제</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-1">발주서 <strong>{{ po.po_no }}</strong>를 삭제하시겠습니까?</p>
+                <p class="text-danger small mb-0">이 작업은 되돌릴 수 없습니다.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <form method="POST" action="{{ url_for('purchase_order.po_delete', po_id=po.id) }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-danger btn-sm">삭제</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}

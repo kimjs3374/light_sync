@@ -149,6 +149,10 @@ def admin_settings():
         # 최초 admin 계정 확인 (프로젝트 초기화 탭 표시 여부)
         is_superadmin = session.get('username') == SUPERADMIN_USERNAME
 
+        # 운영설정
+        from modules.services.dashboard_actions import get_dashboard_setting_int
+        production_lead_days = get_dashboard_setting_int(db, 'production_lead_days', 7)
+
         return render_template('admin_settings.html',
             pending=pending, users=users, delete_requests=delete_requests,
             total_count=total_count, active_count=active_count,
@@ -158,7 +162,25 @@ def admin_settings():
             configurable_menus=configurable_menus,
             position_choices=position_choices,
             is_superadmin=is_superadmin,
-            current_admin_id=session.get('user_id'))
+            current_admin_id=session.get('user_id'),
+            production_lead_days=production_lead_days)
+
+
+@auth_bp.route('/admin/update_ops_setting', methods=['POST'])
+@admin_required
+def update_ops_setting():
+    key = (request.form.get('key') or '').strip()
+    value = (request.form.get('value') or '').strip()
+    allowed_keys = {'production_lead_days'}
+    if key not in allowed_keys:
+        return jsonify({'ok': False, 'error': f'허용되지 않는 설정: {key}'}), 400
+    if not value:
+        return jsonify({'ok': False, 'error': '값을 입력해주세요.'}), 400
+    with get_db() as db:
+        from modules.services.dashboard_actions import set_dashboard_setting_int
+        set_dashboard_setting_int(db, key, int(value))
+        db.commit()
+    return jsonify({'ok': True})
 
 
 @auth_bp.route('/toggle_admin/<int:user_id>', methods=['POST'])
@@ -274,6 +296,13 @@ def approve_user(user_id):
         user = db.get(User, user_id)
         if user:
             user.is_approved = True
+            # 챗봇 권한 초기값: 전체 해제
+            from sqlalchemy import text as _text
+            db.execute(_text("""
+                INSERT INTO chatbot_permissions (erp_username, allowed_tools, channel_enabled)
+                VALUES (:u, '', false)
+                ON CONFLICT (erp_username) DO NOTHING
+            """), {"u": user.username})
             db.commit()
             flash(f"{user.full_name} 계정이 승인되었습니다.", "success")
     return redirect(url_for('auth.admin_settings'))
@@ -392,6 +421,62 @@ def update_user_extra_menus():
         flash(f'{user.full_name} 추가 메뉴 권한이 업데이트되었습니다.', 'success')
 
     return redirect(url_for('auth.admin_settings'))
+
+
+@auth_bp.route('/admin/menu_perms')
+@admin_required
+def menu_perms():
+    """메뉴 권한 관리 전용 페이지"""
+    with get_db() as db:
+        users = db.query(User).filter(User.is_approved == True).order_by(User.user_group, User.full_name).all()
+        group_permissions = db.query(GroupPermission).all()
+        group_menu_data = []
+        for gp in group_permissions:
+            current_menus = [m.strip() for m in gp.allowed_menus.split(",") if m.strip()] if gp.allowed_menus else []
+            group_menu_data.append({"group_name": gp.group_name, "current_menus": current_menus})
+        configurable_menus = [
+            {"key": k, "label": v["label"], "group": v["group"]}
+            for k, v in MENU_REGISTRY.items()
+            if k not in COMMON_MENU_KEYS and not v.get("admin_only")
+        ]
+    return render_template('menu_perms.html',
+        users=users, group_menu_data=group_menu_data, configurable_menus=configurable_menus)
+
+
+@auth_bp.route('/admin/api/group_menus', methods=['POST'])
+@admin_required
+def api_update_group_menus():
+    """그룹 메뉴 권한 JSON API"""
+    body = request.get_json(silent=True) or {}
+    group_name = body.get('group_name', '').strip()
+    menus = body.get('menus', [])
+    if not group_name:
+        return jsonify({'success': False, 'error': '그룹명 필요'}), 400
+    with get_db() as db:
+        group = db.query(GroupPermission).filter(GroupPermission.group_name == group_name).first()
+        if not group:
+            return jsonify({'success': False, 'error': '그룹 없음'}), 404
+        group.allowed_menus = ",".join(menus)
+        db.commit()
+    return jsonify({'success': True})
+
+
+@auth_bp.route('/admin/api/user_extra_menus', methods=['POST'])
+@admin_required
+def api_update_user_extra_menus():
+    """개인 추가 메뉴 권한 JSON API"""
+    body = request.get_json(silent=True) or {}
+    user_id = body.get('user_id')
+    extra_menus = body.get('extra_menus', [])
+    if not user_id:
+        return jsonify({'success': False, 'error': 'user_id 필요'}), 400
+    with get_db() as db:
+        user = db.get(User, user_id)
+        if not user:
+            return jsonify({'success': False, 'error': '사용자 없음'}), 404
+        user.extra_menus = ",".join(extra_menus) if extra_menus else None
+        db.commit()
+    return jsonify({'success': True})
 
 
 @auth_bp.route('/admin/reset_projects', methods=['POST'])

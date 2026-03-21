@@ -1,12 +1,37 @@
 {% extends 'base.html' %}
 {% block content %}
+<style>
+    .stat-card-rcv { border: none; border-radius: 12px; transition: transform .15s; }
+    .stat-card-rcv:hover { transform: translateY(-2px); }
+    .stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
+    .stat-label { font-size: .78rem; color: #64748b; margin-top: 2px; }
+    .rcv-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; white-space: nowrap; text-transform: uppercase; letter-spacing: .03em; background: #f8fafc; position: sticky; top: 0; z-index: 1; }
+    .rcv-table td { vertical-align: middle; white-space: nowrap; font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+    .rcv-table tbody tr { transition: background .12s, box-shadow .12s; }
+    .rcv-table tbody tr:hover { background: #eef2ff; box-shadow: inset 3px 0 0 #2563eb; }
+    .rcv-table .rcv-no-link { font-weight: 700; color: #0f172a; text-decoration: none; font-family: var(--mg-mono); font-size: .82rem; }
+    .rcv-table .rcv-no-link:hover { color: #3b82f6; }
+    .badge-status { font-size: .72rem; padding: 3px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
+    .filter-bar { background: #f8fafc; border-radius: 10px; padding: 10px 14px; }
+    .expected-badge { display:inline-block; padding:2px 7px; border-radius:6px; font-size:0.72rem; font-weight:600; white-space:nowrap; }
+    .rcv-table .vendor-cell { color: #008000; font-weight: 600; }
+    .rcv-table .amount-cell { color: #cc0000; font-weight: 700; }
+    .rcv-table .remark-cell { color: #0000cc; }
+    .rcv-table .spec-cell { color: #808080; }
+    .tab-nav-rcv .nav-link { font-size: .88rem; font-weight: 600; color: #64748b; padding: 8px 18px; border-radius: 8px 8px 0 0; }
+    .tab-nav-rcv .nav-link.active { color: #0f172a; background: #fff; border: 1px solid #e2e8f0; border-bottom-color: #fff; }
+    .tab-nav-rcv .nav-link:not(.active):hover { color: #334155; }
+    @media (max-width: 767.98px) {
+        .stat-num { font-size: 1.4rem; }
+    }
+</style>
 
 <div class="page-hero mg-fade">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
         <div>
             <div class="hero-eyebrow">Receiving Management</div>
             <h2>입고관리</h2>
-            <div class="hero-sub">발주 자재의 입고 및 검수 현황을 관리합니다</div>
+            <div class="hero-sub">발주 자재의 입고 현황을 관리합니다</div>
         </div>
         <div class="d-flex flex-wrap gap-2">
             <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#poSelectModal">발주서 기반 입고</button>
@@ -15,123 +40,121 @@
     </div>
 </div>
 
-{# --- 통계 카드 --- #}
-<div class="row g-3 mb-3 mg-fade" style="animation-delay:.05s">
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm">
-            <div class="card-body py-2 text-center">
-                <small class="text-muted">전체 입고</small>
-                <div class="fw-bold fs-5">{{ stats.total }}</div>
-            </div>
+{# ─── 통계 카드 ─── #}
+<div class="row g-3 mb-4 mg-fade" style="animation-delay:.05s">
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-rcv shadow-sm text-center py-3">
+            <div class="stat-num" style="color:#0f172a;">{{ stats.total }}</div>
+            <div class="stat-label">전체 입고</div>
         </div>
     </div>
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm border-start border-4 border-warning">
-            <div class="card-body py-2 text-center">
-                <small class="text-muted">검수대기</small>
-                <div class="fw-bold fs-5 text-warning">{{ stats.pending }}</div>
-            </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-rcv shadow-sm text-center py-3" style="border-left:3px solid #3b82f6;">
+            <div class="stat-num" style="color:#3b82f6;">{{ expected_stats.total if expected_stats else 0 }}</div>
+            <div class="stat-label">입고예정</div>
         </div>
     </div>
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm border-start border-4 border-success">
-            <div class="card-body py-2 text-center">
-                <small class="text-muted">검수완료</small>
-                <div class="fw-bold fs-5 text-success">{{ stats.completed }}</div>
-            </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-rcv shadow-sm text-center py-3" style="border-left:3px solid #ef4444;">
+            <div class="stat-num" style="color:#ef4444;">{{ expected_stats.overdue if expected_stats else 0 }}</div>
+            <div class="stat-label">지연</div>
         </div>
     </div>
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm border-start border-4 border-danger">
-            <div class="card-body py-2 text-center">
-                <small class="text-muted">반품</small>
-                <div class="fw-bold fs-5 text-danger">{{ stats.returned }}</div>
-            </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-rcv shadow-sm text-center py-3" style="border-left:3px solid #f59e0b;">
+            <div class="stat-num" style="color:#f59e0b;">{{ expected_stats.unknown if expected_stats else 0 }}</div>
+            <div class="stat-label">예정일 미정</div>
         </div>
     </div>
 </div>
 
-{# --- 검색/필터 --- #}
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-2">
-        <form method="GET" class="row g-2 align-items-end">
-            <div class="col-md-4 col-8">
-                <input type="text" name="q" class="form-control form-control-sm" placeholder="입고번호 또는 거래처명 검색" value="{{ filters.q }}">
-            </div>
-            <div class="col-md-2 col-4">
-                <select name="status" class="form-select form-select-sm">
-                    <option value="">전체 상태</option>
-                    {% for s in status_choices %}
-                    <option value="{{ s }}" {{ 'selected' if filters.status == s }}>{{ s }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm">검색</button>
-                <a href="{{ url_for('receiving.receiving_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
-            </div>
-        </form>
-    </div>
+{# ─── 탭 네비게이션 ─── #}
+<ul class="nav tab-nav-rcv mb-0 mg-fade" id="receivingTabs" style="animation-delay:.1s; border-bottom:1px solid #e2e8f0;">
+    <li class="nav-item">
+        <a class="nav-link{% if active_tab != 'expected' %} active{% endif %}" id="tab-list" href="#"
+           data-tab="list" style="white-space:nowrap;">입고목록</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link{% if active_tab == 'expected' %} active{% endif %}" id="tab-expected" href="#"
+           data-tab="expected" style="white-space:nowrap;">
+            입고예정
+            {% set exp_total = expected_items|length if expected_items else 0 %}
+            {% set exp_overdue = expected_stats.overdue if expected_stats else 0 %}
+            {% if exp_total > 0 %}<span class="badge ms-1" style="background:#3b82f6; font-size:.68rem;">{{ exp_total }}</span>{% endif %}
+            {% if exp_overdue > 0 %}<span class="badge ms-1" style="background:#fee2e2; color:#dc2626; font-size:.68rem;">지연 {{ exp_overdue }}</span>{% endif %}
+        </a>
+    </li>
+</ul>
+
+{# ═══════════════════════════════════════════════ #}
+{#  탭1: 입고목록                                   #}
+{# ═══════════════════════════════════════════════ #}
+<div id="pane-list" class="tab-pane-rcv" style="display:{% if active_tab == 'expected' %}none{% else %}block{% endif %};">
+
+{# ─── 검색/필터 ─── #}
+<div class="filter-bar mb-3" style="border-radius:0 0 10px 10px;">
+    <form method="GET" class="row g-2 align-items-end">
+        <div class="col-md-4 col-8">
+            <input type="text" name="q" class="form-control form-control-sm" placeholder="거래처·입고번호·품명·규격 검색" value="{{ filters.q }}">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm">검색</button>
+            <a href="{{ url_for('receiving.receiving_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+        </div>
+    </form>
 </div>
 
-{# --- 자체 입고 목록 (기존 이력과 동일 포맷) --- #}
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-header bg-white py-2">
-        <strong>자체 입고 목록</strong>
-        <span class="badge bg-primary ms-1">{{ pagination.total }}건</span>
-    </div>
+{# ─── 자체 입고 목록 ─── #}
+<div class="card border-0 shadow-sm mb-4" style="border-radius:12px; overflow:hidden;">
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.8rem; border-color:#dee2e6;">
+            <table class="table table-sm mb-0 rcv-table">
                 <colgroup>
-                    <col style="width:88px">
-                    <col style="width:72px">
+                    <col style="width:90px">
+                    <col style="width:80px">
                     <col style="width:100px">
                     <col style="width:22%">
                     <col style="width:18%">
-                    <col style="width:38px">
-                    <col style="width:28px">
-                    <col style="width:62px">
-                    <col style="width:72px">
+                    <col style="width:45px">
+                    <col style="width:32px">
+                    <col style="width:65px">
+                    <col style="width:75px">
                     <col style="width:10%">
                 </colgroup>
                 <thead>
-                    <tr style="background:#f0f0f0; border-bottom:2px solid #999;">
-                        <th class="py-1 text-center">입고번호</th>
-                        <th class="py-1 text-center">입고일</th>
-                        <th class="py-1 text-center">거래처</th>
-                        <th class="py-1 text-center">품명</th>
-                        <th class="py-1 text-center">규격</th>
-                        <th class="py-1 text-center">수량</th>
-                        <th class="py-1 text-center">단위</th>
-                        <th class="py-1 text-center">단가</th>
-                        <th class="py-1 text-center">금액</th>
-                        <th class="py-1 text-center">비고</th>
+                    <tr>
+                        <th class="py-2 text-center">입고번호</th>
+                        <th class="py-2 text-center">입고일</th>
+                        <th class="py-2 text-center">거래처</th>
+                        <th class="py-2 text-center">품명</th>
+                        <th class="py-2 text-center">규격</th>
+                        <th class="py-2 text-center">수량</th>
+                        <th class="py-2 text-center">단위</th>
+                        <th class="py-2 text-end">단가</th>
+                        <th class="py-2 text-end">금액</th>
+                        <th class="py-2 text-center">비고</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for rcv in receivings %}
                     {% set rows = rcv.detail_rows if rcv.detail_rows else [{}] %}
                     {% for item in rows %}
-                    <tr style="border-bottom:1px solid #eee;{% if loop.first %} cursor:pointer;{% endif %}" {% if loop.first %}onclick="location.href='{{ url_for('receiving.receiving_detail', rcv_id=rcv.id) }}'"{% endif %}>
+                    <tr style="cursor:{% if loop.first %}pointer{% else %}default{% endif %};" {% if loop.first %}onclick="location.href='{{ url_for('receiving.receiving_detail', rcv_id=rcv.id) }}'"{% endif %}>
                         {% if loop.first %}
-                        <td rowspan="{{ rows|length }}" class="align-top" style="border-right:1px solid #ccc;">
-                            <a href="{{ url_for('receiving.receiving_detail', rcv_id=rcv.id) }}" class="text-decoration-none" onclick="event.stopPropagation();">{{ rcv.rcv_no }}</a>
-                            {% if rcv.status == '검수대기' %}<br><span class="badge bg-warning text-dark" style="font-size:0.65rem;">대기</span>{% endif %}
-                            {% if rcv.status == '검수완료' %}<br><span class="badge bg-success" style="font-size:0.65rem;">완료</span>{% endif %}
-                            {% if rcv.status == '반품' %}<br><span class="badge bg-danger" style="font-size:0.65rem;">반품</span>{% endif %}
+                        <td rowspan="{{ rows|length }}" class="align-top" style="border-right:1px solid #e2e8f0;">
+                            <a href="{{ url_for('receiving.receiving_detail', rcv_id=rcv.id) }}" class="rcv-no-link" onclick="event.stopPropagation();">{{ rcv.rcv_no }}</a>
                         </td>
-                        <td rowspan="{{ rows|length }}" class="align-top" style="border-right:1px solid #ccc;">{{ rcv.rcv_date.strftime('%Y-%m-%d') if rcv.rcv_date else '-' }}</td>
-                        <td rowspan="{{ rows|length }}" class="align-top fw-bold" style="border-right:1px solid #ccc; color:#008000;">{{ rcv.vendor_name }}</td>
+                        <td rowspan="{{ rows|length }}" class="align-top" style="border-right:1px solid #e2e8f0;">{{ rcv.rcv_date.strftime('%Y-%m-%d') if rcv.rcv_date else '-' }}</td>
+                        <td rowspan="{{ rows|length }}" class="align-top vendor-cell" style="border-right:1px solid #e2e8f0;">{{ rcv.vendor_name }}</td>
                         {% endif %}
                         {% if item %}
                         <td style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_name or '' }}">{{ item.item_name or '' }}</td>
-                        <td style="overflow:hidden;text-overflow:ellipsis; color:#808080;" title="{{ item.spec or '' }}">{{ item.spec or '' }}</td>
+                        <td class="spec-cell" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.spec or '' }}">{{ item.spec or '' }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.qty or 0) }}</td>
                         <td class="text-center">{{ item.unit or '' }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
-                        <td class="text-end fw-bold" style="color:#cc0000;">{{ "{:,.0f}".format(item.amount or 0) }}</td>
-                        <td style="overflow:hidden;text-overflow:ellipsis; color:#0000cc;" title="{{ item.remark or '' }}">{{ item.remark or '' }}</td>
+                        <td class="text-end amount-cell">{{ "{:,.0f}".format(item.amount or 0) }}</td>
+                        <td class="remark-cell" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.remark or '' }}">{{ item.remark or '' }}</td>
                         {% else %}
                         <td colspan="7" class="text-muted">품목 없음</td>
                         {% endif %}
@@ -146,7 +169,7 @@
     </div>
 </div>
 
-{# --- 페이지네이션 --- #}
+{# ─── 페이지네이션 ─── #}
 {% if pagination.total_pages > 1 %}
 <nav class="d-flex justify-content-center mb-4">
     <ul class="pagination pagination-sm mb-0">
@@ -171,65 +194,65 @@
 </nav>
 {% endif %}
 
-{# --- iCUBE 기존 입고이력 (품목 플랫 리스트) --- #}
+{# ─── iCUBE 기존 입고이력 ─── #}
 {% if history_count > 0 %}
-<div class="card border-0 shadow-sm">
-    <div class="card-header bg-white py-2">
-        <strong>iCUBE 기존 입고이력</strong>
-        <span class="badge bg-secondary ms-1">{{ history_count }}건</span>
+<div class="card border-0 shadow-sm" style="border-radius:12px; overflow:hidden;">
+    <div class="card-header py-2" style="background:linear-gradient(135deg,#f8fafc,#f1f5f9); border-bottom:2px solid #e2e8f0;">
+        <strong style="font-size:.88rem;">iCUBE 기존 입고이력</strong>
+        <span class="badge-status ms-1" style="background:#e2e8f0; color:#475569;">{{ history_count }}건</span>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm table-bordered mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.8rem; border-color:#dee2e6;">
+            <table class="table table-sm mb-0 rcv-table">
                 <colgroup>
-                    <col style="width:88px">
-                    <col style="width:72px">
+                    <col style="width:90px">
+                    <col style="width:80px">
                     <col style="width:100px">
                     <col style="width:22%">
                     <col style="width:18%">
-                    <col style="width:38px">
-                    <col style="width:28px">
-                    <col style="width:62px">
-                    <col style="width:72px">
+                    <col style="width:45px">
+                    <col style="width:32px">
+                    <col style="width:65px">
+                    <col style="width:75px">
                     <col style="width:10%">
                 </colgroup>
                 <thead>
-                    <tr style="background:#f0f0f0; border-bottom:2px solid #999;">
-                        <th class="py-1 text-center">입고번호</th>
-                        <th class="py-1 text-center">입고일</th>
-                        <th class="py-1 text-center">거래처</th>
-                        <th class="py-1 text-center">품명</th>
-                        <th class="py-1 text-center">규격</th>
-                        <th class="py-1 text-center">수량</th>
-                        <th class="py-1 text-center">단위</th>
-                        <th class="py-1 text-center">단가</th>
-                        <th class="py-1 text-center">금액</th>
-                        <th class="py-1 text-center">비고</th>
+                    <tr>
+                        <th class="py-2 text-center">입고번호</th>
+                        <th class="py-2 text-center">입고일</th>
+                        <th class="py-2 text-center">거래처</th>
+                        <th class="py-2 text-center">품명</th>
+                        <th class="py-2 text-center">규격</th>
+                        <th class="py-2 text-center">수량</th>
+                        <th class="py-2 text-center">단위</th>
+                        <th class="py-2 text-end">단가</th>
+                        <th class="py-2 text-end">금액</th>
+                        <th class="py-2 text-center">비고</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for rh in history_items %}
                     {% for item in rh.detail_rows %}
-                    <tr style="border-bottom:1px solid #eee;">
+                    <tr>
                         {% if loop.first %}
-                        <td rowspan="{{ rh.detail_rows|length }}" class="align-top" style="border-right:1px solid #ccc;">{{ rh.icube_rcv_nb }}</td>
-                        <td rowspan="{{ rh.detail_rows|length }}" class="align-top" style="border-right:1px solid #ccc;">{{ rh.receive_date.strftime('%Y-%m-%d') if rh.receive_date else '-' }}</td>
-                        <td rowspan="{{ rh.detail_rows|length }}" class="align-top fw-bold" style="border-right:1px solid #ccc; color:#008000;">{{ rh.vendor_name }}</td>
+                        <td rowspan="{{ rh.detail_rows|length }}" class="align-top" style="border-right:1px solid #e2e8f0;">{{ rh.icube_rcv_nb }}</td>
+                        <td rowspan="{{ rh.detail_rows|length }}" class="align-top" style="border-right:1px solid #e2e8f0;">{{ rh.receive_date.strftime('%Y-%m-%d') if rh.receive_date else '-' }}</td>
+                        <td rowspan="{{ rh.detail_rows|length }}" class="align-top vendor-cell" style="border-right:1px solid #e2e8f0;">{{ rh.vendor_name }}</td>
                         {% endif %}
                         <td style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_name or item.item_cd or '' }}">{{ item.item_name or item.item_cd or '' }}</td>
-                        <td style="overflow:hidden;text-overflow:ellipsis; color:#808080;" title="{{ item.spec or '' }}">{{ item.spec or '' }}</td>
+                        <td class="spec-cell" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.spec or '' }}">{{ item.spec or '' }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.qty or 0) }}</td>
                         <td class="text-center">{{ item.unit or '' }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
-                        <td class="text-end fw-bold" style="color:#cc0000;">{{ "{:,.0f}".format(item.amount or 0) }}</td>
-                        <td style="overflow:hidden;text-overflow:ellipsis; color:#0000cc;" title="{{ item.remark or '' }}">{{ item.remark or '' }}</td>
+                        <td class="text-end amount-cell">{{ "{:,.0f}".format(item.amount or 0) }}</td>
+                        <td class="remark-cell" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.remark or '' }}">{{ item.remark or '' }}</td>
                     </tr>
                     {% endfor %}
                     {% if not rh.detail_rows %}
                     <tr>
                         <td>{{ rh.icube_rcv_nb }}</td>
                         <td>{{ rh.receive_date.strftime('%Y-%m-%d') if rh.receive_date else '-' }}</td>
-                        <td class="fw-bold" style="color:#008000;">{{ rh.vendor_name }}</td>
+                        <td class="vendor-cell">{{ rh.vendor_name }}</td>
                         <td colspan="7" class="text-muted">상세 없음</td>
                     </tr>
                     {% endif %}
@@ -252,12 +275,139 @@
 </div>
 {% endif %}
 
-{# --- 발주서 선택 모달 --- #}
+</div>{# /pane-list #}
+
+{# ═══════════════════════════════════════════════ #}
+{#  탭2: 입고예정                                   #}
+{# ═══════════════════════════════════════════════ #}
+<div id="pane-expected" class="tab-pane-rcv" style="display:{% if active_tab == 'expected' %}block{% else %}none{% endif %};">
+
+{# ─── 입고예정 필터 바 ─── #}
+<div class="filter-bar mb-3" style="border-radius:0 0 10px 10px;">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="text-muted" style="font-size:0.8rem; white-space:nowrap;">상태:</span>
+        <div class="btn-group btn-group-sm" id="expectedFilterGroup">
+            <button type="button" class="btn btn-outline-secondary active" data-filter="all" style="white-space:nowrap;">전체 <span class="badge bg-secondary ms-1" id="cnt-all">0</span></button>
+            <button type="button" class="btn btn-outline-secondary" data-filter="unknown" style="white-space:nowrap;">미정 <span class="badge ms-1" style="background:#f1f5f9;color:#64748b;" id="cnt-unknown">0</span></button>
+            <button type="button" class="btn btn-outline-danger" data-filter="overdue" style="white-space:nowrap;">지연 <span class="badge ms-1" style="background:#fee2e2;color:#dc2626;" id="cnt-overdue">0</span></button>
+            <button type="button" class="btn btn-outline-warning" data-filter="today" style="white-space:nowrap;">오늘 <span class="badge ms-1" style="background:#fef3c7;color:#92400e;" id="cnt-today">0</span></button>
+            <button type="button" class="btn btn-outline-success" data-filter="week" style="white-space:nowrap;">이번주 <span class="badge ms-1" style="background:#fefce8;color:#854d0e;" id="cnt-week">0</span></button>
+        </div>
+    </div>
+</div>
+
+{# ─── 입고예정 테이블 ─── #}
+<div class="card border-0 shadow-sm mb-4" style="border-radius:12px; overflow:hidden;">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 rcv-table" id="expectedTable">
+                <colgroup>
+                    <col style="width:14%">
+                    <col style="width:90px">
+                    <col style="width:20%">
+                    <col style="width:52px">
+                    <col style="width:80px">
+                    <col style="width:100px">
+                    <col style="width:62px">
+                    <col style="width:72px">
+                    <col style="width:56px">
+                    <col style="width:62px">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="py-2 text-center">현장</th>
+                        <th class="py-2 text-center">거래처</th>
+                        <th class="py-2 text-center">품명</th>
+                        <th class="py-2 text-center">수량</th>
+                        <th class="py-2 text-center">발주일</th>
+                        <th class="py-2 text-center">입고예정일</th>
+                        <th class="py-2 text-center">D-DAY</th>
+                        <th class="py-2 text-center">납품기일</th>
+                        <th class="py-2 text-center">납기위험</th>
+                        <th class="py-2 text-center">액션</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if expected_items %}
+                    {% for poi in expected_items %}
+                    {% set dday = poi._dday %}
+                    {% set dday_state = poi._dday_state %}
+                    {% set risk = poi._risk %}
+                    {% set po = poi.purchase_order %}
+                    <tr class="expected-row" data-dday-state="{{ dday_state }}">
+                        <td style="overflow:hidden;text-overflow:ellipsis;" title="{{ poi._project.temp_name if poi._project else '-' }}">
+                            {{ poi._project.temp_name if poi._project else '-' }}
+                        </td>
+                        <td class="vendor-cell" style="overflow:hidden;text-overflow:ellipsis;" title="{{ poi._vendor_name or '-' }}">
+                            {{ poi._vendor_name or '-' }}
+                        </td>
+                        <td style="overflow:hidden;text-overflow:ellipsis;" title="{{ poi.item_name or '-' }}">
+                            {{ poi.item_name or '-' }}
+                            {% if poi.item_spec %}<small class="text-muted d-block" style="font-size:.68rem; overflow:hidden; text-overflow:ellipsis;">{{ poi.item_spec }}</small>{% endif %}
+                        </td>
+                        <td class="text-end">{{ "{:,.0f}".format(poi.quantity or 0) }}</td>
+                        <td class="text-center" style="color:#64748b;">{{ po.po_date.strftime('%Y-%m-%d') if po and po.po_date else '-' }}</td>
+                        <td class="text-center" style="overflow:visible;">
+                            <input type="date"
+                                   class="form-control form-control-sm input-expected-date"
+                                   data-mo-id="{{ poi.id }}"
+                                   value="{{ poi.expected_in_date.strftime('%Y-%m-%d') if poi.expected_in_date else '' }}"
+                                   style="font-size:.72rem; padding:2px 4px; border:1px solid #e2e8f0;
+                                          border-radius:6px; width:100%; min-width:0;
+                                          background:transparent; text-align:center;">
+                        </td>
+                        <td class="text-center" id="dday-{{ poi.id }}">
+                            {% if dday_state == 'unknown' %}
+                            <span class="expected-badge" style="background:#f1f5f9; color:#64748b;">미정</span>
+                            {% elif dday_state == 'overdue' %}
+                            <span class="expected-badge" style="background:#fee2e2; color:#dc2626; font-weight:700;">D+{{ dday|abs }}</span>
+                            {% elif dday_state == 'today' %}
+                            <span class="expected-badge" style="background:#fef3c7; color:#92400e; font-weight:700;">D-Day</span>
+                            {% elif dday_state == 'week' %}
+                            <span class="expected-badge" style="background:#fefce8; color:#854d0e; font-weight:700;">D-{{ dday }}</span>
+                            {% else %}
+                            <span class="expected-badge" style="background:#dcfce7; color:#166534;">D-{{ dday }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">{{ poi._delivery_due.strftime('%m/%d') if poi._delivery_due else '-' }}</td>
+                        <td class="text-center">
+                            {% if risk == 'danger' %}
+                            <span class="expected-badge" style="background:#fee2e2; color:#dc2626;">위험</span>
+                            {% elif risk == 'warning' %}
+                            <span class="expected-badge" style="background:#fef3c7; color:#92400e;">주의</span>
+                            {% elif risk == 'ok' %}
+                            <span class="expected-badge" style="background:#dcfce7; color:#166534;">정상</span>
+                            {% else %}
+                            <span class="text-muted" style="font-size:0.75rem;">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <button type="button"
+                                    class="btn btn-outline-success btn-confirm-expected"
+                                    style="font-size:0.7rem; padding:2px 8px; white-space:nowrap; border-radius:6px;"
+                                    data-id="{{ poi.id }}">
+                                입고확인
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr><td colspan="10" class="text-center text-muted py-4">발송완료 발주서가 없습니다.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+</div>{# /pane-expected #}
+
+{# ─── 발주서 선택 모달 ─── #}
 <div class="modal fade" id="poSelectModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h5 class="modal-title">발주서 선택 → 입고 등록</h5>
+        <div class="modal-content" style="border-radius:12px; overflow:hidden;">
+            <div class="modal-header py-2" style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                <h6 class="modal-title fw-bold">발주서 선택 → 입고 등록</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -271,6 +421,154 @@
 </div>
 
 <script>
+/* ─── 탭 전환 ─── */
+(function() {
+    var paneList     = document.getElementById('pane-list');
+    var paneExpected = document.getElementById('pane-expected');
+    var tabList      = document.getElementById('tab-list');
+    var tabExpected  = document.getElementById('tab-expected');
+
+    function activateTab(name) {
+        var isExp = (name === 'expected');
+        paneList.style.display     = isExp ? 'none' : 'block';
+        paneExpected.style.display = isExp ? 'block' : 'none';
+        tabList.classList.toggle('active', !isExp);
+        tabExpected.classList.toggle('active', isExp);
+        var url = new URL(window.location.href);
+        if (isExp) { url.searchParams.set('tab', 'expected'); }
+        else       { url.searchParams.delete('tab'); }
+        history.pushState(null, '', url.toString());
+    }
+
+    tabList.addEventListener('click',     function(e){ e.preventDefault(); activateTab('list'); });
+    tabExpected.addEventListener('click', function(e){ e.preventDefault(); activateTab('expected'); });
+})();
+
+/* ─── 입고예정 필터 ─── */
+(function() {
+    var filterGroup = document.getElementById('expectedFilterGroup');
+    if (!filterGroup) return;
+
+    function getRows() { return Array.from(document.querySelectorAll('.expected-row')); }
+
+    function countByState(rows, state) {
+        if (state === 'all') return rows.length;
+        return rows.filter(function(r){ return r.dataset.ddayState === state; }).length;
+    }
+
+    window.updateExpectedCounts = function() {
+        var rows = getRows();
+        var el;
+        el = document.getElementById('cnt-all');     if(el) el.textContent = rows.length;
+        el = document.getElementById('cnt-unknown');  if(el) el.textContent = countByState(rows, 'unknown');
+        el = document.getElementById('cnt-overdue');  if(el) el.textContent = countByState(rows, 'overdue');
+        el = document.getElementById('cnt-today');    if(el) el.textContent = countByState(rows, 'today');
+        el = document.getElementById('cnt-week');     if(el) el.textContent = countByState(rows, 'week');
+    };
+
+    function applyFilter(state) {
+        getRows().forEach(function(r) {
+            r.style.display = (state === 'all' || r.dataset.ddayState === state) ? '' : 'none';
+        });
+        filterGroup.querySelectorAll('button').forEach(function(btn) {
+            btn.classList.toggle('active', btn.dataset.filter === state);
+        });
+    }
+
+    filterGroup.addEventListener('click', function(e) {
+        var btn = e.target.closest('button[data-filter]');
+        if (!btn) return;
+        applyFilter(btn.dataset.filter);
+    });
+
+    updateExpectedCounts();
+})();
+
+/* ─── 입고예정일 인라인 편집 ─── */
+(function() {
+    var styles = {
+        unknown: 'background:#f1f5f9;color:#64748b;',
+        overdue: 'background:#fee2e2;color:#dc2626;font-weight:700;',
+        today:   'background:#fef3c7;color:#92400e;font-weight:700;',
+        week:    'background:#fefce8;color:#854d0e;font-weight:700;',
+        ok:      'background:#dcfce7;color:#166534;'
+    };
+    var base = 'display:inline-block;padding:2px 7px;border-radius:6px;font-size:0.72rem;font-weight:600;white-space:nowrap;';
+
+    function buildDDayBadge(dday, state) {
+        var text = state === 'unknown' ? '미정'
+                 : state === 'overdue' ? 'D+' + Math.abs(dday)
+                 : state === 'today'   ? 'D-Day'
+                 : 'D-' + dday;
+        return '<span style="' + base + (styles[state] || '') + '">' + text + '</span>';
+    }
+
+    document.addEventListener('change', function(e) {
+        var input = e.target.closest('.input-expected-date');
+        if (!input) return;
+
+        var moId = input.dataset.moId;
+        var val = input.value;
+
+        fetch('/api/receiving/update-expected-date/' + moId, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify({ expected_in_date: val })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.ok) { alert(data.message || '저장 실패'); return; }
+            var ddayTd = document.getElementById('dday-' + moId);
+            if (ddayTd) ddayTd.innerHTML = buildDDayBadge(data.dday, data.dday_state);
+            var row = input.closest('tr');
+            if (row) row.dataset.ddayState = data.dday_state;
+            if (window.updateExpectedCounts) updateExpectedCounts();
+            input.style.borderColor = '#16a34a';
+            setTimeout(function() { input.style.borderColor = '#e2e8f0'; }, 800);
+        })
+        .catch(function() { alert('네트워크 오류'); });
+    });
+})();
+
+/* ─── 입고확인 AJAX ─── */
+(function() {
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.btn-confirm-expected');
+        if (!btn) return;
+        var id = btn.dataset.id;
+        if (!id) return;
+        if (!confirm('해당 품목을 입고확인 처리하시겠습니까?')) return;
+        btn.disabled = true;
+        btn.textContent = '처리중...';
+        fetch('/api/receiving/confirm-expected/' + id, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.ok || data.success) {
+                var row = btn.closest('tr');
+                row.style.transition = 'opacity .4s';
+                row.style.opacity = '0';
+                setTimeout(function() {
+                    row.remove();
+                    if (window.updateExpectedCounts) updateExpectedCounts();
+                }, 420);
+            } else {
+                alert(data.message || '처리 실패');
+                btn.disabled = false;
+                btn.textContent = '입고확인';
+            }
+        })
+        .catch(function() {
+            alert('서버 오류가 발생했습니다.');
+            btn.disabled = false;
+            btn.textContent = '입고확인';
+        });
+    });
+})();
+
+/* ─── 발주서 검색 모달 ─── */
 (function() {
     var searchTimer = null;
     var searchInput = document.getElementById('poModalSearch');
@@ -283,17 +581,17 @@
             resultsDiv.innerHTML = '<p class="text-muted text-center py-3">입고 가능한 발주서가 없습니다</p>';
             return;
         }
-        var html = '<table class="table table-sm table-hover mb-0" style="font-size:0.8rem; white-space:nowrap;">';
-        html += '<thead class="table-light"><tr><th>발주번호</th><th>발주일</th><th>거래처</th><th>상태</th><th class="text-end">금액</th><th></th></tr></thead><tbody>';
+        var html = '<table class="table table-sm table-hover mb-0 rcv-table">';
+        html += '<thead><tr><th>발주번호</th><th>발주일</th><th>거래처</th><th>상태</th><th class="text-end">금액</th><th></th></tr></thead><tbody>';
         data.forEach(function(po) {
-            var statusBadge = po.status === '발송완료' ? 'bg-success' : po.status === '입고대기' ? 'bg-info' : 'bg-secondary';
+            var bg = po.status === '발송완료' ? 'background:#dcfce7;color:#166534;' : po.status === '입고대기' ? 'background:#dbeafe;color:#1e40af;' : 'background:#e2e8f0;color:#475569;';
             html += '<tr>'
                 + '<td><strong>' + po.po_no + '</strong></td>'
                 + '<td>' + po.po_date + '</td>'
-                + '<td>' + po.vendor_name + '</td>'
-                + '<td><span class="badge ' + statusBadge + '">' + po.status + '</span></td>'
+                + '<td class="vendor-cell">' + po.vendor_name + '</td>'
+                + '<td><span class="badge-status" style="' + bg + '">' + po.status + '</span></td>'
                 + '<td class="text-end">' + Number(po.total_amount || 0).toLocaleString() + '</td>'
-                + '<td><a href="/receiving/create?po_id=' + po.id + '" class="btn btn-success btn-xs">입고</a></td>'
+                + '<td><a href="/receiving/create?po_id=' + po.id + '" class="btn btn-success" style="font-size:.7rem;padding:2px 8px;border-radius:6px;">입고</a></td>'
                 + '</tr>';
         });
         html += '</tbody></table>';
@@ -311,7 +609,6 @@
         searchTimer = setTimeout(function() { loadPoList(q); }, 300);
     });
 
-    // 모달 열릴 때 전체 목록 즉시 로딩 + 포커스
     document.getElementById('poSelectModal').addEventListener('shown.bs.modal', function() {
         searchInput.value = '';
         searchInput.focus();

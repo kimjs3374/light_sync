@@ -1,0 +1,95 @@
+.contract-detail-header-actions {
+    justify-content: flex-end;
+}
+.contract-item-table { min-width: 980px; }
+.contact-mini-table { min-width: 420px; }
+.status-action-btn { font-size: 0.78rem; padding: 0.3rem 0.35rem; white-space: nowrap; }
+.contract-detail-meta {
+    font-size: 0.9rem;
+}
+.contract-card .card-header {
+    overflow: hidden;
+}
+.contract-card .form-check {
+    margin-bottom: .25rem;
+}
+.contract-item-table input,
+.contract-item-table select,
+.contract-item-table textarea,
+.contact-mini-table td,
+.contact-mini-table th {
+    min-width: 0;
+}
+
+@media (max-width: 991.98px) {
+    .contract-detail-main,
+    .contract-detail-side {
+        width: 100%;
+    }
+    .contract-detail-header-actions {
+        width: 100%;
+        justify-content: stretch;
+    }
+    .contract-detail-header-actions > * {
+        flex: 1 1 auto;
+    }
+    .contract-card .card-header form .col-md-4,
+    .contract-card .card-header form .col-md-2 {
+        width: 100%;
+    }
+    .contract-card .card-header .d-flex.gap-3 {
+        flex-wrap: wrap;
+    }
+    .contract-card .card-body {
+        padding: .75rem;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .contract-detail-title {
+        font-size: 1.15rem;
+        line-height: 1.45;
+    }
+    .contract-detail-title .fs-5 {
+        display: block;
+        margin-top: .25rem;
+        font-size: .92rem !important;
+    }
+    .contract-detail-meta {
+        font-size: .82rem;
+        line-height: 1.55;
+    }
+    .contract-detail-header-actions {
+        flex-direction: column;
+    }
+    .contract-detail-header-actions > * {
+        width: 100%;
+    }
+    .contract-item-table,
+    .contact-mini-table {
+        min-width: 0;
+    }
+    .contract-item-table td[data-label="바코드"] .btn,
+    .contract-item-table td[data-label="저장"] .btn,
+    .contract-item-table td[data-label="삭제"] .btn {
+        width: 100%;
+    }
+    .contract-card .card-header,
+    .contract-card .card-body,
+    .contract-card .card-footer {
+        padding-left: .75rem;
+        padding-right: .75rem;
+    }
+    .contract-card .card-header .text-end,
+    .contract-card .card-header .d-flex.gap-3 {
+        text-align: left !important;
+        justify-content: flex-start;
+    }
+    .contact-panel-header {
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+    .contact-panel-header .btn {
+        width: 100%;
+    }
+}
