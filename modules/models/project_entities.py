@@ -38,9 +38,9 @@ class Project(Base):
     status = Column(String(50), default="설계/영업")
     is_urgent = Column(Boolean, default=False) # 긴급 현장 여부
 
-    # 설계 시방서 반영 확인 (매그나텍 PHASE 2-3)
-    spec_confirmed = Column(Boolean, default=False)              # 시방서 반영 확인 여부
-    spec_confirmed_date = Column(Date, nullable=True)            # 시방서 반영 확인일
+    # 조도검증-설계관리 통합 연동
+    illuminance_facility_type = Column(String(100))   # 시설종류 (자유입력)
+    illuminance_fixtures = Column(Text)               # 기구 목록 JSON
 
     is_contracted = Column(Boolean, default=False) # 계약 체결 여부
     contract_date = Column(Date, nullable=True) # 설계에서 넘어올 때의 기준일

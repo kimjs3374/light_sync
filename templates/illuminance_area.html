@@ -1,0 +1,733 @@
+{% extends 'base.html' %}
+{% block title %}{{ area_name | default('구역 상세') }} — {{ project_name | default('조도 검증') }}{% endblock %}
+
+{% block content %}
+<style>
+  /* ── 셀 크기 ────────────────────────────────────────── */
+  :root {
+    --ilv-cell-lg: 48px; --ilv-cell-md: 36px; --ilv-cell-sm: 28px;
+    --ilv-font-lg: .72rem; --ilv-font-md: .65rem; --ilv-font-sm: .58rem;
+    --ilv-axis-w: 46px;
+    --ilv-ok-clr:   var(--mg-success);
+    --ilv-warn-clr: var(--mg-warning);
+    --ilv-err-clr:  var(--mg-danger);
+  }
+
+  /* ── 히트맵 테이블 ──────────────────────────────────── */
+  .ilv-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .ilv-table {
+    border-collapse: separate; border-spacing: 2px;
+    table-layout: fixed; min-width: max-content;
+  }
+  .ilv-table th, .ilv-table td { padding: 0; text-align: center; vertical-align: middle; white-space: nowrap; }
+  .ilv-yaxis {
+    width: var(--ilv-axis-w); min-width: var(--ilv-axis-w);
+    font-family: var(--mg-mono); font-size: .62rem; font-weight: 600;
+    color: var(--mg-muted); text-align: right; padding-right: 6px !important;
+    background: var(--mg-surface) !important;
+    position: sticky; left: 0; z-index: 2;
+  }
+  .ilv-xaxis { font-family: var(--mg-mono); font-size: .6rem; font-weight: 600; color: var(--mg-muted); height: 22px; background: transparent !important; }
+  .ilv-cell {
+    width: var(--ilv-cell-lg); height: var(--ilv-cell-lg); border-radius: 5px;
+    font-size: var(--ilv-font-lg); font-family: var(--mg-mono); font-weight: 600;
+    cursor: default; transition: transform .1s, box-shadow .1s; border: 2px solid transparent;
+  }
+  .ilv-cell:hover { transform: scale(1.1); z-index: 10; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+  .ilv-cell.is-min { border-color: var(--mg-primary) !important; box-shadow: 0 0 0 1px var(--mg-primary); }
+  .ilv-cell.is-max { border-color: var(--mg-danger) !important; box-shadow: 0 0 0 1px var(--mg-danger); }
+
+  /* ── 입력 셀 ────────────────────────────────────────── */
+  .ilv-input-cell { width: var(--ilv-cell-lg); height: var(--ilv-cell-lg); border-radius: 5px; position: relative; }
+  .ilv-input-cell input[type="number"] {
+    width: 100%; height: 100%;
+    border: 1.5px solid var(--mg-border); border-radius: 5px;
+    text-align: center; font-family: var(--mg-mono);
+    font-size: var(--ilv-font-lg); font-weight: 700;
+    background: #fff; color: var(--mg-ink); outline: none; padding: 0;
+    transition: border-color .15s, background .15s;
+    -moz-appearance: textfield;
+  }
+  .ilv-input-cell input::-webkit-outer-spin-button,
+  .ilv-input-cell input::-webkit-inner-spin-button { -webkit-appearance: none; }
+  .ilv-input-cell input:focus { border-color: var(--mg-primary); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+  .ilv-input-cell.status-ok   input { border-color: var(--mg-success) !important; }
+  .ilv-input-cell.status-warn input { border-color: var(--mg-warning) !important; }
+  .ilv-input-cell.status-err  input { border-color: var(--mg-danger) !important; }
+
+  /* ── Diff 셀 ────────────────────────────────────────── */
+  .ilv-diff-cell {
+    width: var(--ilv-cell-lg); height: var(--ilv-cell-lg); border-radius: 5px;
+    font-size: var(--ilv-font-lg); font-family: var(--mg-mono); font-weight: 700;
+  }
+
+  /* ── 통계 칩 바 ─────────────────────────────────────── */
+  .ilv-stat-bar { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .85rem; }
+  .ilv-stat {
+    display: flex; flex-direction: column; align-items: center; gap: .05rem;
+    min-width: 66px; padding: .45rem .75rem;
+    border-radius: var(--mg-radius); border: 1px solid var(--mg-border);
+    background: var(--mg-bg);
+  }
+  .ilv-stat-label { font-size: .58rem; font-weight: 600; color: var(--mg-muted); text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+  .ilv-stat-value { font-family: var(--mg-mono); font-size: 1.05rem; font-weight: 800; color: var(--mg-ink); line-height: 1.2; }
+  .ilv-stat-unit  { font-size: .58rem; color: var(--mg-subtle); }
+  .ilv-stat.ks-pass { border-color: #bbf7d0; background: #f0fdf4; }
+  .ilv-stat.ks-pass .ilv-stat-value { color: var(--mg-success); }
+  .ilv-stat.ks-fail { border-color: #fecaca; background: #fef2f2; }
+  .ilv-stat.ks-fail .ilv-stat-value { color: var(--mg-danger); }
+
+  /* ── 범례 ───────────────────────────────────────────── */
+  .ilv-legend { display: flex; align-items: center; gap: .4rem; flex-wrap: nowrap; }
+  .ilv-legend-bar { height: 8px; width: 120px; border-radius: 4px; background: linear-gradient(to right, #2563eb, #22c55e, #dc2626); flex-shrink: 0; }
+  .ilv-legend-label { font-size: .62rem; color: var(--mg-muted); white-space: nowrap; }
+
+  /* ── 측정 메타 폼 ───────────────────────────────────── */
+  .measure-meta-bar {
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: .6rem;
+    padding: .7rem .9rem; background: var(--mg-bg);
+    border-radius: var(--mg-radius); border: 1px solid var(--mg-border); margin-bottom: .75rem;
+  }
+  .measure-meta-bar .meta-field { display: flex; flex-direction: column; gap: .2rem; }
+  .measure-meta-bar label { font-size: .67rem; font-weight: 700; color: var(--mg-muted); white-space: nowrap; text-transform: uppercase; letter-spacing: .04em; }
+  .measure-meta-bar input,
+  .measure-meta-bar select {
+    font-size: .8rem; padding: .26rem .5rem;
+    border: 1.5px solid var(--mg-border); border-radius: .4rem;
+    background: #fff; color: var(--mg-ink); min-width: 90px;
+  }
+  .measure-meta-bar input:focus,
+  .measure-meta-bar select:focus { border-color: var(--mg-primary); outline: none; box-shadow: 0 0 0 2px rgba(37,99,235,.1); }
+
+  /* ── Diff 요약 카드 ─────────────────────────────────── */
+  .diff-summary-card {
+    padding: .55rem .85rem;
+    border-radius: var(--mg-radius); border: 1px solid var(--mg-border);
+    background: var(--mg-surface);
+    display: flex; flex-direction: column; align-items: center; gap: .1rem; min-width: 86px;
+  }
+  .diff-summary-card .ds-label { font-size: .58rem; font-weight: 700; color: var(--mg-muted); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+  .diff-summary-card .ds-value { font-family: var(--mg-mono); font-size: 1.35rem; font-weight: 800; color: var(--mg-ink); line-height: 1; }
+  .diff-summary-card .ds-unit  { font-size: .6rem; color: var(--mg-subtle); white-space: nowrap; }
+  .diff-summary-card.ds-green  { border-color: #bbf7d0; background: #f0fdf4; }
+  .diff-summary-card.ds-green .ds-value { color: var(--mg-success); }
+  .diff-summary-card.ds-orange { border-color: #fed7aa; background: #fff7ed; }
+  .diff-summary-card.ds-orange .ds-value { color: var(--mg-warning); }
+  .diff-summary-card.ds-red    { border-color: #fecaca; background: #fef2f2; }
+  .diff-summary-card.ds-red .ds-value { color: var(--mg-danger); }
+
+  /* ── 설치조건 칩 ────────────────────────────────────── */
+  .install-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .5rem; }
+  .install-chip {
+    display: inline-flex; align-items: center; gap: .22rem;
+    padding: .15rem .45rem; border-radius: .35rem;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+    color: #cbd5e1; font-size: .7rem; font-weight: 600; white-space: nowrap;
+  }
+  .install-chip b { font-family: var(--mg-mono); color: #f1f5f9; }
+
+  /* ── 반응형 ─────────────────────────────────────────── */
+  @media (max-width: 991.98px) {
+    .ilv-cell,.ilv-input-cell,.ilv-diff-cell { width:var(--ilv-cell-md); height:var(--ilv-cell-md); }
+    .ilv-cell,.ilv-diff-cell { font-size:var(--ilv-font-md); }
+    .ilv-input-cell input { font-size:var(--ilv-font-md); }
+  }
+  @media (max-width: 575.98px) {
+    .ilv-cell,.ilv-input-cell,.ilv-diff-cell { width:var(--ilv-cell-sm); height:var(--ilv-cell-sm); }
+    .ilv-cell,.ilv-diff-cell { font-size:var(--ilv-font-sm); }
+    .ilv-input-cell input { font-size:var(--ilv-font-sm); }
+    .ilv-yaxis { width:34px; min-width:34px; font-size:.56rem; }
+    .ilv-xaxis { font-size:.54rem; }
+  }
+
+  /* ── 순차입력 모달 ──────────────────────────────────── */
+  #seqModal .modal-dialog { margin:0; max-width:100%; height:100dvh; }
+  #seqModal .modal-content { height:100dvh; border-radius:0; border:none; display:flex; flex-direction:column; }
+  #seqModal .modal-body { flex:1; overflow-y:auto; }
+  .seq-design-val { font-family:var(--mg-mono); font-size:3rem; font-weight:800; color:var(--mg-primary); line-height:1; }
+  .seq-coord-label { font-size:.85rem; color:var(--mg-muted); font-weight:600; }
+  .seq-input-field {
+    font-family:var(--mg-mono); font-size:2.5rem; font-weight:800;
+    text-align:center; border:3px solid var(--mg-border); border-radius:var(--mg-radius);
+    width:100%; padding:12px; outline:none; -moz-appearance:textfield;
+  }
+  .seq-input-field::-webkit-outer-spin-button,
+  .seq-input-field::-webkit-inner-spin-button { -webkit-appearance:none; }
+  .seq-input-field:focus { border-color:var(--mg-primary); box-shadow:0 0 0 3px rgba(37,99,235,.15); }
+  .seq-minimap { display:grid; gap:2px; margin:0 auto; max-width:240px; }
+  .seq-minimap-cell { border-radius:2px; aspect-ratio:1; }
+  .seq-minimap-cell.done { opacity:.75; }
+  .seq-minimap-cell.current { outline:2px solid var(--mg-primary); outline-offset:1px; }
+  .seq-minimap-cell.pending { background:var(--mg-border) !important; }
+
+  /* ── 탭 ─────────────────────────────────────────────── */
+  .nav-tabs { border-bottom: 1px solid var(--mg-border); }
+  .nav-tabs .nav-link {
+    color: var(--mg-muted); font-weight: 500;
+    border: none; border-bottom: 3px solid transparent;
+    padding: .5rem 1rem; font-size: .88rem;
+    border-radius: 0; margin-bottom: -1px;
+    transition: color .15s;
+  }
+  .nav-tabs .nav-link:hover { color: var(--mg-ink); border-bottom-color: var(--mg-border); }
+  .nav-tabs .nav-link.active {
+    color: var(--mg-ink); font-weight: 700;
+    border-bottom: 3px solid var(--mg-ink);
+    background: transparent;
+  }
+  .ilv-tab-content { padding-top: 14px; }
+</style>
+
+<!-- 브레드크럼 -->
+<nav style="font-size:.78rem;color:var(--mg-muted);margin-bottom:.3rem">
+  <a href="{{ url_for('illuminance.index') }}" style="color:var(--mg-muted);text-decoration:none">조도검증</a>
+  <span style="margin:0 .3rem;color:var(--mg-border)">›</span>
+  <a href="{{ url_for('illuminance.detail', project_id=project_id | default(1)) }}" style="color:var(--mg-muted);text-decoration:none">{{ project_name | default('현장') }}</a>
+  <span style="margin:0 .3rem;color:var(--mg-border)">›</span>
+  <span style="color:var(--mg-ink);font-weight:600">{{ area_name | default('구역') }}</span>
+</nav>
+
+<!-- 히어로 -->
+<div class="page-hero mb-3">
+  <div class="hero-eyebrow">💡 구역 상세</div>
+  <h2>{{ area_name | default('Zone') }}</h2>
+  <div class="install-chips">
+    {% if height %}<span class="install-chip">높이 <b>{{ height }}m</b></span>{% endif %}
+    {% if area_fixtures and area_fixtures|length > 0 %}
+    <span class="install-chip">등기구
+      {% for f in area_fixtures %}
+      <span class="badge bg-info text-dark ms-1">{{ f.type }} {{ f.watt }}W x {{ f.qty }}</span>
+      {% endfor %}
+    </span>
+    {% elif fixture_watt or fixture_count %}<span class="install-chip">등기구 <b>{{ fixture_watt | default('—') }}W × {{ fixture_count | default('—') }}EA</b></span>{% endif %}
+    {% if grid_rows and grid_cols %}<span class="install-chip">격자 <b>{{ grid_rows }}×{{ grid_cols }}</b></span>{% endif %}
+    {% if ks_standard %}<span class="install-chip">KS ≥ <b>{{ ks_standard }} lx</b></span>{% endif %}
+  </div>
+  <div class="d-flex flex-wrap gap-2 mt-2">
+    <a href="{{ url_for('illuminance.detail', project_id=project_id | default(1)) }}" class="btn btn-sm">← 현장으로</a>
+    <button class="btn btn-sm d-md-none" data-bs-toggle="modal" data-bs-target="#seqModal">순차입력 모드</button>
+    <button class="btn btn-sm" onclick="exportJSON()">JSON 내보내기</button>
+  </div>
+</div>
+
+<!-- 탭 -->
+<ul class="nav nav-tabs" id="ilvTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabHeatmap" type="button">설계 히트맵</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabInput" type="button">실측 입력</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-diff-btn" data-bs-toggle="tab" data-bs-target="#tabDiff" type="button">
+      차이 분석 <span class="badge bg-secondary ms-1" id="diffBadge">0</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabHistory" type="button">실측 이력</button>
+  </li>
+</ul>
+
+<div class="tab-content ilv-tab-content" id="ilvTabContent">
+
+  <!-- ══ 탭 1: 설계 히트맵 ══════════════════════════════ -->
+  <div class="tab-pane fade show active" id="tabHeatmap" role="tabpanel">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span>설계값 히트맵 (Relux PDF)</span>
+        <div class="ilv-legend">
+          <span class="ilv-legend-label">저조도</span>
+          <div class="ilv-legend-bar"></div>
+          <span class="ilv-legend-label">고조도</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="ilv-table-wrap">
+          <table class="ilv-table" id="heatmapTable" aria-label="설계 조도 히트맵"></table>
+        </div>
+        <div class="ilv-stat-bar" id="heatmapStats"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 탭 2: 실측 입력 ════════════════════════════════ -->
+  <div class="tab-pane fade" id="tabInput" role="tabpanel">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span>현장 실측값 입력</span>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-success-subtle text-success border border-success-subtle" style="white-space:nowrap">90%+ 정상</span>
+          <span class="badge bg-warning-subtle text-warning border border-warning-subtle" style="white-space:nowrap">70–90% 주의</span>
+          <span class="badge bg-danger-subtle text-danger border border-danger-subtle" style="white-space:nowrap">&lt;70% 경고</span>
+          <button class="btn btn-sm btn-outline-danger" style="font-size:.72rem;padding:.2rem .55rem;white-space:nowrap"
+                  onclick="clearMeasured()">초기화</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="measure-meta-bar">
+          <div class="meta-field">
+            <label for="metaMeasureDate">측정일</label>
+            <input type="date" id="metaMeasureDate" name="measure_date" class="form-control form-control-sm">
+          </div>
+          <div class="meta-field">
+            <label for="metaMeasurer">측정자</label>
+            <input type="text" id="metaMeasurer" name="measurer" placeholder="홍길동" class="form-control form-control-sm">
+          </div>
+          <div class="meta-field">
+            <label for="metaWeather">날씨</label>
+            <select id="metaWeather" name="weather" class="form-select form-select-sm">
+              <option value="">선택</option>
+              <option value="맑음">맑음</option>
+              <option value="구름">구름</option>
+              <option value="흐림">흐림</option>
+              <option value="비">비</option>
+            </select>
+          </div>
+          <div class="meta-field">
+            <label for="metaDevice">측정기기</label>
+            <input type="text" id="metaDevice" name="device" placeholder="조도계 모델" class="form-control form-control-sm">
+          </div>
+          <div class="ms-auto d-flex align-items-end">
+            <span class="text-muted" id="inputProgress" style="font-size:.72rem;white-space:nowrap;font-family:var(--mg-mono)">
+              0 / {{ (grid_rows | default(0)) * (grid_cols | default(0)) }} 입력됨
+            </span>
+          </div>
+        </div>
+
+        <div class="ilv-table-wrap">
+          <table class="ilv-table" id="inputTable" aria-label="실측값 입력 격자"></table>
+        </div>
+        <div class="ilv-stat-bar" id="inputStats"></div>
+        <div id="ksResult" class="d-none mt-2"></div>
+
+        <div class="d-flex justify-content-end mt-3">
+          <button type="button" class="btn btn-primary" style="white-space:nowrap" onclick="saveMeasured()">
+            실측값 저장
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 탭 3: 차이 분석 ════════════════════════════════ -->
+  <div class="tab-pane fade" id="tabDiff" role="tabpanel">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span>설계 대비 실측 차이 맵</span>
+        <div class="d-flex gap-2 flex-wrap align-items-center">
+          <span class="badge" style="background:#2563eb;white-space:nowrap">+10%↑ 초과</span>
+          <span class="badge bg-light text-dark border" style="white-space:nowrap">±10% 정상</span>
+          <span class="badge" style="background:#f97316;white-space:nowrap">–10~–20%</span>
+          <span class="badge" style="background:#dc2626;white-space:nowrap">–20%↓ 불량</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="diffEmpty" class="text-center text-muted py-5">
+          <div style="font-size:2.5rem">📊</div>
+          <p class="mt-2 mb-0" style="font-size:.88rem">실측값을 입력하면 차이 분석이 표시됩니다.</p>
+        </div>
+        <div id="diffContent" style="display:none">
+          <div class="d-flex flex-wrap gap-2 mb-3" id="diffSummaryCards"></div>
+          <div class="ilv-legend mb-2">
+            <span class="ilv-legend-label" style="color:#2563eb">초과</span>
+            <div class="ilv-legend-bar" style="background:linear-gradient(to right,#2563eb,#f0fdf4,#f97316,#dc2626)"></div>
+            <span class="ilv-legend-label" style="color:#dc2626">불량</span>
+          </div>
+          <div class="ilv-table-wrap">
+            <table class="ilv-table" id="diffTable" aria-label="설계-실측 차이 맵"></table>
+          </div>
+          <div class="ilv-stat-bar" id="diffStats"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 탭 4: 실측 이력 ════════════════════════════════ -->
+  <div class="tab-pane fade" id="tabHistory" role="tabpanel">
+    <div class="card shadow-sm">
+      <div class="card-header">실측 이력</div>
+      <div class="card-body p-0">
+        {% if measurements %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0" style="font-size:.8rem">
+            <thead class="table-light">
+              <tr>
+                <th>측정일</th><th>측정자</th><th>날씨</th>
+                <th>Eav</th><th>Emin</th><th>Uo</th><th>KS</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="measureHistoryBody">
+              {% for m in measurements | sort(attribute='measure_date', reverse=True) %}
+              <tr id="measureRow{{ m.id }}">
+                <td class="text-nowrap">{{ m.measure_date }}</td>
+                <td class="text-nowrap">{{ m.measured_by or '—' }}</td>
+                <td class="text-nowrap">{{ m.weather or '—' }}</td>
+                <td class="text-nowrap font-mono">{{ m.measured_eav | int if m.measured_eav else '—' }} lx</td>
+                <td class="text-nowrap font-mono">{{ m.measured_emin | int if m.measured_emin else '—' }} lx</td>
+                <td class="text-nowrap font-mono">{{ '%.2f' % m.measured_uo if m.measured_uo else '—' }}</td>
+                <td class="text-nowrap">
+                  {% if m.ks_pass == 'PASS' %}<span class="badge bg-success">PASS</span>
+                  {% elif m.ks_pass == 'FAIL' %}<span class="badge bg-danger">FAIL</span>
+                  {% elif m.ks_pass %}<span class="badge bg-warning text-dark">{{ m.ks_pass }}</span>
+                  {% else %}—{% endif %}
+                </td>
+                <td>
+                  <button class="btn btn-xs btn-outline-danger py-0 px-1"
+                          style="font-size:.68rem;line-height:1.6;white-space:nowrap"
+                          onclick="deleteMeasure({{ m.id }})">삭제</button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center py-4 mb-0" style="font-size:.85rem">저장된 실측 기록이 없습니다.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div><!-- /tab-content -->
+
+<script>
+async function deleteMeasure(measureId) {
+  if (!confirm('이 실측 기록을 삭제할까요?')) return;
+  const resp = await fetch(`/illuminance/{{ project_id }}/area/{{ area_id }}/measure/${measureId}/delete`, { method: 'POST' });
+  const data = await resp.json();
+  if (data.success) {
+    const row = document.getElementById('measureRow' + measureId);
+    if (row) row.remove();
+    if (!document.querySelector('#measureHistoryBody tr')) {
+      document.querySelector('#tabHistory .card-body').innerHTML =
+        '<p class="text-muted text-center py-4 mb-0" style="font-size:.85rem">저장된 실측 기록이 없습니다.</p>';
+    }
+  }
+}
+</script>
+
+<!-- ══ 순차입력 모달 ══════════════════════════════════════ -->
+<div class="modal fade" id="seqModal" tabindex="-1" aria-label="순차입력 모드">
+  <div class="modal-dialog modal-fullscreen">
+    <div class="modal-content">
+      <div class="modal-header border-bottom py-2">
+        <div class="flex-grow-1">
+          <div class="progress" style="height:5px;border-radius:3px">
+            <div class="progress-bar bg-primary" id="seqProgress" role="progressbar" style="width:0%"></div>
+          </div>
+          <small class="text-muted" id="seqProgressLabel">0 / 0 완료</small>
+        </div>
+        <button type="button" class="btn-close ms-3" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body d-flex flex-column gap-3 pt-3">
+        <div class="text-center">
+          <div class="seq-coord-label" id="seqCoordLabel">위치 로딩 중...</div>
+        </div>
+        <div class="text-center">
+          <div class="text-muted fw-semibold" style="font-size:.78rem">설계값</div>
+          <div class="seq-design-val" id="seqDesignVal">—</div>
+          <div class="text-muted" style="font-size:.78rem">lx</div>
+        </div>
+        <div>
+          <label class="form-label fw-semibold text-center d-block" for="seqInput">실측값 (lx)</label>
+          <input type="number" id="seqInput" class="seq-input-field" inputmode="numeric"
+                 placeholder="0" min="0" max="99999" autocomplete="off">
+        </div>
+        <div>
+          <div class="text-center text-muted mb-1" style="font-size:.7rem">측정 진행 현황</div>
+          <div class="seq-minimap" id="seqMinimap"></div>
+        </div>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <button class="btn btn-outline-secondary" id="seqPrev">← 이전</button>
+        <div id="seqCellLabel" class="fw-bold" style="font-family:var(--mg-mono);font-size:.85rem">1 / 0</div>
+        <button class="btn btn-primary" id="seqNext">다음 →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ILV_DATA = {
+  rows: {{ grid_rows | default(8) }},
+  cols: {{ grid_cols | default(16) }},
+  xLabels: {{ x_labels | default([]) | tojson }},
+  yLabels: {{ y_labels | default([]) | tojson }},
+  design:  {{ design_grid | default([]) | tojson }},
+  measured: {{ measured_grid | default('null') | tojson }},
+  ks_standard: {{ ks_standard | default('null') }},
+  area_id: {{ area_id | default('null') }},
+  project_id: {{ project_id | default('null') }},
+};
+
+if (!ILV_DATA.xLabels.length) ILV_DATA.xLabels = Array.from({length:ILV_DATA.cols},(_,i)=>(i*35/Math.max(ILV_DATA.cols-1,1)).toFixed(1)+'m');
+if (!ILV_DATA.yLabels.length) ILV_DATA.yLabels = Array.from({length:ILV_DATA.rows},(_,i)=>(i*14/Math.max(ILV_DATA.rows-1,1)).toFixed(0)+'m');
+if (!ILV_DATA.design.length)  ILV_DATA.design  = Array.from({length:ILV_DATA.rows},(_,ri)=>Array.from({length:ILV_DATA.cols},(_,ci)=>Math.round(400+Math.sin((ri+ci)*.5)*150+Math.random()*50)));
+if (!ILV_DATA.measured)       ILV_DATA.measured = Array.from({length:ILV_DATA.rows},()=>Array(ILV_DATA.cols).fill(null));
+
+function lxToColor(value, min, max) {
+  if (min===max) return {bg:'hsl(120,60%,55%)',light:false};
+  const ratio=Math.max(0,Math.min(1,(value-min)/(max-min)));
+  const hue=240-ratio*240;
+  const lPeak=60,lEdge=45;
+  const light=lEdge+(lPeak-lEdge)*Math.sin(ratio*Math.PI);
+  const sat=70-ratio*10;
+  return {bg:`hsl(${hue.toFixed(0)},${sat.toFixed(0)}%,${light.toFixed(0)}%)`,light:light>54};
+}
+
+function diffToColor(pct) {
+  if (pct===null) return {bg:'#f1f5f9',txt:'#94a3b8'};
+  if (pct>10)    return {bg:'#dbeafe',txt:'#1d4ed8'};
+  if (pct>=-10)  return {bg:'#f0fdf4',txt:'#15803d'};
+  if (pct>=-20)  return {bg:'#fff7ed',txt:'#c2410c'};
+  return {bg:'#fef2f2',txt:'#b91c1c'};
+}
+
+function calcStats(grid) {
+  const flat=grid.flat().filter(v=>v!==null&&v!==''&&!isNaN(v)).map(Number);
+  if (!flat.length) return null;
+  const eav=flat.reduce((a,b)=>a+b,0)/flat.length;
+  const emin=Math.min(...flat),emax=Math.max(...flat);
+  return {eav:eav.toFixed(0),emin,emax,uo:(emin/eav).toFixed(2),ud:(emin/emax).toFixed(2),count:flat.length};
+}
+
+function renderStats(containerId,stats,label='',ksStd=null) {
+  const el=document.getElementById(containerId);
+  if (!stats){el.innerHTML='';return;}
+  let ksHtml='';
+  if (ksStd&&parseFloat(stats.eav)>0) {
+    const pass=parseFloat(stats.eav)>=ksStd;
+    ksHtml=`<div class="ilv-stat ${pass?'ks-pass':'ks-fail'}"><span class="ilv-stat-label">KS</span><span class="ilv-stat-value">${pass?'달성':'미달'}</span><span class="ilv-stat-unit">${ksStd} lx</span></div>`;
+  }
+  el.innerHTML=`
+    <div class="ilv-stat"><span class="ilv-stat-label">Eav${label}</span><span class="ilv-stat-value">${stats.eav}</span><span class="ilv-stat-unit">lx</span></div>
+    <div class="ilv-stat"><span class="ilv-stat-label">Emin</span><span class="ilv-stat-value">${stats.emin}</span><span class="ilv-stat-unit">lx</span></div>
+    <div class="ilv-stat"><span class="ilv-stat-label">Emax</span><span class="ilv-stat-value">${stats.emax}</span><span class="ilv-stat-unit">lx</span></div>
+    <div class="ilv-stat"><span class="ilv-stat-label">Uo</span><span class="ilv-stat-value">${stats.uo}</span><span class="ilv-stat-unit">Emin/Eav</span></div>
+    <div class="ilv-stat"><span class="ilv-stat-label">Ud</span><span class="ilv-stat-value">${stats.ud}</span><span class="ilv-stat-unit">Emin/Emax</span></div>
+    <div class="ilv-stat"><span class="ilv-stat-label">측점</span><span class="ilv-stat-value">${stats.count}</span><span class="ilv-stat-unit">/ ${ILV_DATA.rows*ILV_DATA.cols}</span></div>
+    ${ksHtml}`;
+}
+
+function renderHeatmapTable(tableId,design,yLabels,xLabels) {
+  const flat=design.flat().filter(v=>v!==null&&!isNaN(v));
+  const gmin=flat.length?Math.min(...flat):0,gmax=flat.length?Math.max(...flat):1;
+  const tbl=document.getElementById(tableId); tbl.innerHTML='';
+  const thead=tbl.createTHead(); const hrow=thead.insertRow();
+  const thC=document.createElement('th'); thC.className='ilv-yaxis'; hrow.appendChild(thC);
+  xLabels.forEach(lbl=>{const th=document.createElement('th');th.className='ilv-xaxis';th.textContent=lbl;hrow.appendChild(th);});
+  const tbody=tbl.createTBody();
+  for (let ri=ILV_DATA.rows-1;ri>=0;ri--) {
+    const tr=tbody.insertRow();
+    const yth=document.createElement('th');yth.className='ilv-yaxis';yth.scope='row';yth.textContent=yLabels[ri];tr.appendChild(yth);
+    design[ri].forEach((val,ci)=>{
+      const td=tr.insertCell();td.className='ilv-cell';
+      if (val===null||val===undefined){td.style.background='#f1f5f9';td.style.color='#cbd5e1';td.textContent='';}
+      else {
+        const {bg,light}=lxToColor(val,gmin,gmax);
+        td.style.background=bg;td.style.color=light?'#0f172a':'#fff';td.textContent=val;
+        td.setAttribute('title',`Y=${yLabels[ri]}, X=${xLabels[ci]}: ${val} lx`);
+        if (val===gmin) td.classList.add('is-min');
+        if (val===gmax) td.classList.add('is-max');
+      }
+    });
+  }
+}
+
+let _inputRefs=[];
+function renderInputTable() {
+  const {rows,cols,xLabels,yLabels,design,measured}=ILV_DATA;
+  const flat=design.flat().filter(v=>v!==null&&!isNaN(v));
+  const gmin=flat.length?Math.min(...flat):0,gmax=flat.length?Math.max(...flat):1;
+  const tbl=document.getElementById('inputTable');tbl.innerHTML='';_inputRefs=[];
+  const thead=tbl.createTHead();const hrow=thead.insertRow();
+  const thC=document.createElement('th');thC.className='ilv-yaxis';hrow.appendChild(thC);
+  xLabels.forEach(lbl=>{const th=document.createElement('th');th.className='ilv-xaxis';th.textContent=lbl;hrow.appendChild(th);});
+  const tbody=tbl.createTBody();
+  for (let ri=rows-1;ri>=0;ri--) {
+    _inputRefs[ri]=[];
+    const tr=tbody.insertRow();
+    const yth=document.createElement('th');yth.className='ilv-yaxis';yth.scope='row';yth.textContent=yLabels[ri];tr.appendChild(yth);
+    for (let ci=0;ci<cols;ci++) {
+      const td=tr.insertCell();td.className='ilv-input-cell';
+      const inp=document.createElement('input');
+      inp.type='number';inp.min=0;inp.max=99999;inp.inputMode='numeric';
+      inp.setAttribute('data-r',ri);inp.setAttribute('data-c',ci);inp.autocomplete='off';
+      if (design[ri][ci]===null){inp.disabled=true;inp.placeholder='—';td.style.background='#f1f5f9';td.style.opacity='0.5';}
+      else inp.placeholder=String(design[ri][ci]);
+      if (measured[ri][ci]!==null&&design[ri][ci]!==null) inp.value=measured[ri][ci];
+      inp.addEventListener('input',()=>{
+        const val=inp.value===''?null:parseFloat(inp.value);
+        ILV_DATA.measured[ri][ci]=val;
+        applyInputColor(inp,td,val,design[ri][ci],gmin,gmax);
+        updateInputStats();updateDiffBadge();
+      });
+      inp.addEventListener('focus',()=>inp.select());
+      td.appendChild(inp);_inputRefs[ri][ci]={inp,td};
+      if (measured[ri][ci]!==null) applyInputColor(inp,td,measured[ri][ci],design[ri][ci],gmin,gmax);
+    }
+  }
+  tbl.addEventListener('keydown',handleInputKeyNav);
+  updateInputStats();
+}
+
+function applyInputColor(inp,td,val,designVal,gmin,gmax) {
+  if (val!==null&&!isNaN(val)){const {bg,light}=lxToColor(val,gmin,gmax);inp.style.background=bg;inp.style.color=light?'#0f172a':'#fff';}
+  else {inp.style.background='';inp.style.color='';}
+  td.classList.remove('status-ok','status-warn','status-err');
+  if (val!==null&&!isNaN(val)&&designVal>0) {
+    const r=val/designVal;
+    if (r>=0.9) td.classList.add('status-ok');
+    else if (r>=0.7) td.classList.add('status-warn');
+    else td.classList.add('status-err');
+  }
+}
+
+function handleInputKeyNav(e) {
+  const inp=e.target;
+  if (!inp.matches('input[type="number"]')) return;
+  const r=parseInt(inp.dataset.r),c=parseInt(inp.dataset.c);
+  let nr=r,nc=c;
+  const {rows,cols}=ILV_DATA;
+  if (e.key==='Tab'&&!e.shiftKey){e.preventDefault();nc=c+1;if(nc>=cols){nc=0;nr=r-1;}if(nr<0)nr=rows-1;}
+  else if(e.key==='Tab'&&e.shiftKey){e.preventDefault();nc=c-1;if(nc<0){nc=cols-1;nr=r+1;}if(nr>=rows)nr=0;}
+  else if(e.key==='Enter'){e.preventDefault();nc=c+1;if(nc>=cols){nc=0;nr=r-1;}if(nr<0)nr=rows-1;}
+  else if(e.key==='ArrowRight') nc=Math.min(c+1,cols-1);
+  else if(e.key==='ArrowLeft')  nc=Math.max(c-1,0);
+  else if(e.key==='ArrowDown')  nr=Math.max(r-1,0);
+  else if(e.key==='ArrowUp')    nr=Math.min(r+1,rows-1);
+  else return;
+  for(let a=0;a<ILV_DATA.rows*ILV_DATA.cols;a++){
+    const ref=_inputRefs[nr]?.[nc];
+    if(ref&&!ref.inp.disabled){ref.inp.focus();ref.inp.select();break;}
+    nc++;if(nc>=ILV_DATA.cols){nc=0;nr--;}if(nr<0)nr=ILV_DATA.rows-1;
+  }
+}
+
+function updateInputStats() {
+  const stats=calcStats(ILV_DATA.measured);
+  renderStats('inputStats',stats,'',ILV_DATA.ks_standard);
+  const filled=ILV_DATA.measured.flat().filter(v=>v!==null).length;
+  const total=ILV_DATA.design.flat().filter(v=>v!==null).length;
+  document.getElementById('inputProgress').textContent=`${filled} / ${total} 입력됨`;
+  const ksEl=document.getElementById('ksResult');
+  if (ILV_DATA.ks_standard&&stats) {
+    const pass=parseFloat(stats.eav)>=ILV_DATA.ks_standard;
+    ksEl.className=`mt-2 alert ${pass?'alert-success':'alert-danger'} py-2`;ksEl.style.display='';ksEl.classList.remove('d-none');
+    ksEl.innerHTML=pass?`<strong>KS 기준 달성</strong> — Eav ${stats.eav} lx ≥ ${ILV_DATA.ks_standard} lx`
+                       :`<strong>KS 기준 미달</strong> — Eav ${stats.eav} lx &lt; ${ILV_DATA.ks_standard} lx`;
+  } else ksEl.classList.add('d-none');
+}
+
+function clearMeasured() {
+  if (!confirm('실측값을 모두 초기화하시겠습니까?')) return;
+  ILV_DATA.measured=Array.from({length:ILV_DATA.rows},()=>Array(ILV_DATA.cols).fill(null));
+  for(let ri=0;ri<ILV_DATA.rows;ri++) for(let ci=0;ci<ILV_DATA.cols;ci++){const ref=_inputRefs[ri]?.[ci];if(ref){ref.inp.value='';ref.inp.style.background='';ref.inp.style.color='';ref.td.classList.remove('status-ok','status-warn','status-err');}}
+  updateInputStats();updateDiffBadge();
+}
+
+function updateDiffBadge() {
+  const filled=ILV_DATA.measured.flat().filter(v=>v!==null).length;
+  const total=ILV_DATA.design.flat().filter(v=>v!==null).length;
+  document.getElementById('diffBadge').textContent=`${filled}/${total}`;
+}
+
+function renderDiffTab() {
+  const filled=ILV_DATA.measured.flat().filter(v=>v!==null).length;
+  const empty=document.getElementById('diffEmpty'),content=document.getElementById('diffContent');
+  if(filled===0){empty.style.display='';content.style.display='none';return;}
+  empty.style.display='none';content.style.display='';
+  const pctGrid=ILV_DATA.design.map((row,ri)=>row.map((dv,ci)=>{const mv=ILV_DATA.measured[ri][ci];if(mv===null||dv===null||dv===0)return null;return(mv-dv)/dv*100;}));
+  const flat=pctGrid.flat().filter(v=>v!==null);
+  const ok=flat.filter(v=>v>=-10&&v<=10).length,warn=flat.filter(v=>v<-10&&v>=-20).length,bad=flat.filter(v=>v<-20).length,excess=flat.filter(v=>v>10).length;
+  document.getElementById('diffSummaryCards').innerHTML=`
+    <div class="diff-summary-card ds-green"><span class="ds-label">정상 (±10%)</span><span class="ds-value">${ok}</span><span class="ds-unit">측점</span></div>
+    <div class="diff-summary-card ds-orange"><span class="ds-label">주의 (–10~–20%)</span><span class="ds-value">${warn}</span><span class="ds-unit">측점</span></div>
+    <div class="diff-summary-card ds-red"><span class="ds-label">불량 (–20%↓)</span><span class="ds-value">${bad}</span><span class="ds-unit">측점</span></div>
+    <div class="diff-summary-card" style="border-color:#bfdbfe;background:#eff6ff"><span class="ds-label">초과 (+10%↑)</span><span class="ds-value" style="color:#2563eb">${excess}</span><span class="ds-unit">측점</span></div>
+    <div class="diff-summary-card"><span class="ds-label">달성률</span><span class="ds-value" style="color:${flat.length&&ok/flat.length>=0.9?'var(--mg-success)':'var(--mg-danger)'}">${flat.length?(ok/flat.length*100).toFixed(0):0}%</span><span class="ds-unit">측점 기준</span></div>`;
+  const {rows,cols,xLabels,yLabels}=ILV_DATA;
+  const tbl=document.getElementById('diffTable');tbl.innerHTML='';
+  const thead=tbl.createTHead();const hrow=thead.insertRow();
+  const thC=document.createElement('th');thC.className='ilv-yaxis';hrow.appendChild(thC);
+  xLabels.forEach(lbl=>{const th=document.createElement('th');th.className='ilv-xaxis';th.textContent=lbl;hrow.appendChild(th);});
+  const tbody=tbl.createTBody();
+  for(let ri=rows-1;ri>=0;ri--){
+    const tr=tbody.insertRow();
+    const yth=document.createElement('th');yth.className='ilv-yaxis';yth.scope='row';yth.textContent=yLabels[ri];tr.appendChild(yth);
+    for(let ci=0;ci<cols;ci++){
+      const td=tr.insertCell();const pct=pctGrid[ri][ci];const{bg,txt}=diffToColor(pct);
+      td.className='ilv-diff-cell';td.style.background=bg;td.style.color=txt;
+      td.textContent=pct!==null?(pct>0?'+':'')+pct.toFixed(0)+'%':'—';
+    }
+  }
+  renderStats('diffStats',calcStats(ILV_DATA.measured),'',ILV_DATA.ks_standard);
+}
+
+function saveMeasured() {
+  fetch(`/illuminance/${ILV_DATA.project_id}/area/${ILV_DATA.area_id}/measure`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({grid_data:ILV_DATA.measured,measure_date:document.getElementById('metaMeasureDate').value,measured_by:document.getElementById('metaMeasurer').value,weather:document.getElementById('metaWeather').value,instrument:document.getElementById('metaDevice').value})
+  }).then(r=>r.json()).then(data=>{
+    if(data.success){const btn=document.querySelector('[onclick="saveMeasured()"]');btn.textContent='저장 완료';btn.classList.replace('btn-primary','btn-success');setTimeout(()=>location.reload(),1500);}
+    else alert('저장 실패: '+(data.error||'서버 오류'));
+  }).catch(e=>alert('네트워크 오류: '+e.message));
+}
+
+function exportJSON() {
+  const data={project:'{{ project_name | default("") }}',area:'{{ area_name | default("") }}',rows:ILV_DATA.rows,cols:ILV_DATA.cols,xLabels:ILV_DATA.xLabels,yLabels:ILV_DATA.yLabels,design:ILV_DATA.design,measured:ILV_DATA.measured,stats:{design:calcStats(ILV_DATA.design),measured:calcStats(ILV_DATA.measured)}};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`illuminance_{{ area_name | default("area") | replace(" ","_") }}.json`;a.click();
+}
+
+class SequentialInputModal {
+  constructor() {
+    this._cells=[];
+    for(let row=ILV_DATA.rows-1;row>=0;row--) for(let col=0;col<ILV_DATA.cols;col++) if(ILV_DATA.design[row][col]!==null) this._cells.push({ri:row,ci:col});
+    this.cursor=0;this.total=this._cells.length;this._initMinimap();this._bindEvents();
+  }
+  get _ri(){return this._cells[this.cursor]?.ri??0;}
+  get _ci(){return this._cells[this.cursor]?.ci??0;}
+  _initMinimap(){
+    const mm=document.getElementById('seqMinimap');mm.style.gridTemplateColumns=`repeat(${ILV_DATA.cols},1fr)`;mm.innerHTML='';
+    for(let row=ILV_DATA.rows-1;row>=0;row--) for(let col=0;col<ILV_DATA.cols;col++){const cell=document.createElement('div');cell.className='seq-minimap-cell';cell.id=`smm-${row}-${col}`;if(ILV_DATA.design[row][col]===null){cell.style.background='#e2e8f0';cell.style.opacity='.4';}else cell.classList.add('pending');mm.appendChild(cell);}
+    this._render();
+  }
+  _render(){
+    const ri=this._ri,ci=this._ci;
+    const pct=this.total?Math.round(this.cursor/this.total*100):0;
+    document.getElementById('seqProgress').style.width=pct+'%';
+    document.getElementById('seqProgressLabel').textContent=`${this.cursor} / ${this.total} 완료`;
+    document.getElementById('seqCellLabel').textContent=`${this.cursor+1} / ${this.total}`;
+    document.getElementById('seqCoordLabel').textContent=`행 ${ILV_DATA.rows-ri}, 열 ${ci+1}  —  Y=${ILV_DATA.yLabels[ri]}, X=${ILV_DATA.xLabels[ci]}`;
+    document.getElementById('seqDesignVal').textContent=ILV_DATA.design[ri]?.[ci]??'—';
+    const inp=document.getElementById('seqInput');inp.value=ILV_DATA.measured[ri]?.[ci]??'';
+    const flat=ILV_DATA.design.flat().filter(v=>v!==null&&!isNaN(v));
+    const gmin=flat.length?Math.min(...flat):0,gmax=flat.length?Math.max(...flat):1;
+    for(let i=0;i<this._cells.length;i++){const{ri:ir,ci:ic}=this._cells[i];const cell=document.getElementById(`smm-${ir}-${ic}`);if(!cell)continue;const filled=ILV_DATA.measured[ir]?.[ic]!=null;cell.className='seq-minimap-cell';if(i===this.cursor){cell.classList.add('current');cell.style.background='#2563eb';}else if(filled){const{bg}=lxToColor(ILV_DATA.measured[ir][ic],gmin,gmax);cell.style.background=bg;cell.classList.add('done');}else{cell.classList.add('pending');cell.style.background='';}}
+    inp.focus();inp.select();
+  }
+  _commit(){
+    const ri=this._ri,ci=this._ci;const val=document.getElementById('seqInput').value;const num=val===''?null:parseFloat(val);ILV_DATA.measured[ri][ci]=num;
+    const ref=_inputRefs[ri]?.[ci];if(ref){ref.inp.value=val;const flat=ILV_DATA.design.flat().filter(v=>v!==null&&!isNaN(v));const gmin=flat.length?Math.min(...flat):0,gmax=flat.length?Math.max(...flat):1;applyInputColor(ref.inp,ref.td,num,ILV_DATA.design[ri][ci],gmin,gmax);}
+    updateInputStats();updateDiffBadge();
+  }
+  _bindEvents(){
+    document.getElementById('seqNext').addEventListener('click',()=>{this._commit();if(this.cursor<this.total-1)this.cursor++;this._render();});
+    document.getElementById('seqPrev').addEventListener('click',()=>{this._commit();if(this.cursor>0)this.cursor--;this._render();});
+    document.getElementById('seqInput').addEventListener('keydown',(e)=>{if(e.key==='Enter'){this._commit();if(this.cursor<this.total-1)this.cursor++;this._render();}});
+    document.getElementById('seqModal').addEventListener('shown.bs.modal',()=>this._render());
+  }
+}
+
+document.getElementById('tab-diff-btn').addEventListener('click', renderDiffTab);
+
+document.addEventListener('DOMContentLoaded', function() {
+  renderHeatmapTable('heatmapTable', ILV_DATA.design, ILV_DATA.yLabels, ILV_DATA.xLabels);
+  renderStats('heatmapStats', calcStats(ILV_DATA.design));
+  renderInputTable();
+  updateDiffBadge();
+  new SequentialInputModal();
+});
+</script>
+{% endblock %}

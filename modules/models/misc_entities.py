@@ -137,8 +137,8 @@ class DailyReport(Base):
 class Warranty(Base):
     __tablename__ = 'warranties'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    contract_id = Column(Integer, ForeignKey('contracts.id'), unique=True, nullable=False)
-    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    contract_id = Column(Integer, ForeignKey('contracts.id'), unique=True, nullable=True)  # G2B 동기화 시 계약 없을 수 있음
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)  # G2B 동기화 시 프로젝트 미연결 가능
     warranty_start = Column(Date, nullable=True)
     warranty_end = Column(Date, nullable=True)
     warranty_amount = Column(Integer, default=0)
@@ -297,7 +297,7 @@ class IlluminanceProject(Base):
     location       = Column(String(500))
     install_date   = Column(Date)
     pdf_filename   = Column(String(300))
-    facility_type  = Column(String(50))   # 풋살장/축구장/테니스장/주차장/보행로
+    facility_type  = Column(String(100))  # 풋살장/축구장/테니스장/주차장/보행로
     status         = Column(String(20), default='design')  # design/measured/reported
     notes          = Column(Text)
     created_by     = Column(String(50))
@@ -336,6 +336,7 @@ class IlluminanceArea(Base):
     design_grid         = Column(Text)   # JSON 2D array
     ks_eav_min          = Column(Float)
     ks_uo_min           = Column(Float)
+    fixtures            = Column(Text)   # JSON: [{"type":"LED투광등","watt":400,"qty":4}]
     created_at          = Column(DateTime, default=datetime.datetime.now)
     project             = relationship('IlluminanceProject', back_populates='areas')
     measurements        = relationship('IlluminanceMeasured', back_populates='area',

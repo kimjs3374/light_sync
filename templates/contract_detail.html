@@ -54,24 +54,6 @@
             </div>
             <div class="card-body bg-white">
                 <p class="text-dark m-0" style="white-space: pre-wrap; font-size: 0.95rem;">{{ project.design_basis or '기준 미입력' }}</p>
-                {# 시방서 반영 확인 (매그나텍 PHASE 2-3) #}
-                <div class="mt-2 pt-2 border-top">
-                    <form method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}" class="d-inline">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        <input type="hidden" name="action" value="confirm_spec">
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="checkbox" name="spec_confirmed"
-                                   id="specConfirmedContract" {{ 'checked' if project.spec_confirmed }}
-                                   onchange="this.form.submit()">
-                            <label class="form-check-label small" for="specConfirmedContract">
-                                시방서 반영 확인
-                                {% if project.spec_confirmed_date %}
-                                  <span class="text-muted">({{ project.spec_confirmed_date }})</span>
-                                {% endif %}
-                            </label>
-                        </div>
-                    </form>
-                </div>
             </div>
         </div>
     </div>
@@ -105,6 +87,58 @@
     </div>
 </div>
 {% endif %}
+
+{# ====== 조도 설계정보 카드 ====== #}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center py-2">
+        <span>💡 조도 설계정보</span>
+        <div class="d-flex gap-1">
+            <label class="btn btn-xs btn-outline-success fw-bold mb-0" style="white-space:nowrap;cursor:pointer;">
+                📄 Relux PDF 업로드
+                <input type="file" accept=".pdf" style="display:none"
+                       onchange="quickCreateIlv(this, {{ project.id }})">
+            </label>
+            <a href="{{ url_for('illuminance.new') }}?erp_project_id={{ project.id }}" class="btn btn-xs btn-outline-secondary fw-bold" style="white-space:nowrap;">직접등록</a>
+            <button class="btn btn-xs btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#editIlluminanceModal" style="white-space:nowrap;">수정</button>
+        </div>
+    </div>
+    <div id="ilvUploadStatus" class="d-none alert alert-info alert-sm py-1 px-2 mb-0 small" style="border-radius:0;"></div>
+    <div class="card-body py-2">
+        <div class="row g-2 mb-2">
+            <div class="col-md-6">
+                <small class="text-muted fw-bold d-block">시설종류</small>
+                <span class="fw-bold">{{ project.illuminance_facility_type or '-' }}</span>
+            </div>
+            <div class="col-md-6">
+                <small class="text-muted fw-bold d-block">기구 목록</small>
+                {% if illuminance_fixtures %}
+                    {% for fix in illuminance_fixtures %}
+                    <span class="badge bg-secondary me-1" style="white-space:nowrap;">{{ fix.type }}{% if fix.model %} {{ fix.model }}{% endif %}{% if fix.watt %} {{ fix.watt }}W{% endif %} x{{ fix.qty }}</span>
+                    {% endfor %}
+                {% else %}
+                    <span class="text-muted">-</span>
+                {% endif %}
+            </div>
+        </div>
+        {% if linked_illuminance_projects %}
+        <div class="border-top pt-2 mt-1">
+            <small class="text-muted fw-bold d-block mb-1">연결된 조도검증 프로젝트</small>
+            {% for lp in linked_illuminance_projects %}
+            <a href="{{ url_for('illuminance.detail', project_id=lp.id) }}" class="badge bg-info text-dark me-1 mb-1 text-decoration-none" style="white-space:nowrap;">
+                {{ lp.project_name }}
+                {% if lp.status == 'reported' %}
+                    <span class="badge bg-success ms-1" style="font-size:0.65rem;">완료</span>
+                {% elif lp.status == 'measured' %}
+                    <span class="badge bg-warning text-dark ms-1" style="font-size:0.65rem;">실측</span>
+                {% else %}
+                    <span class="badge bg-light text-dark ms-1" style="font-size:0.65rem;">설계</span>
+                {% endif %}
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
 
 <div class="row">
     <div class="col-12">
@@ -952,6 +986,52 @@
     </div>
 </div>
 
+{# ====== 조도 설계정보 수정 모달 ====== #}
+<div class="modal fade" id="editIlluminanceModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <form class="modal-content border-0 shadow" method="POST" action="{{ url_for('project.contract_detail', project_id=project.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="update_illuminance">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold">💡 조도 설계정보 수정</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">시설종류</label>
+                    <input type="text" class="form-control form-control-sm" name="illuminance_facility_type"
+                           value="{{ project.illuminance_facility_type or '' }}" list="facilityTypeList" placeholder="예: 풋살장">
+                    <datalist id="facilityTypeList">
+                        <option value="풋살장">
+                        <option value="축구장">
+                        <option value="테니스장">
+                        <option value="주차장">
+                        <option value="보행로">
+                        <option value="운동장">
+                        <option value="공원">
+                        <option value="체육관">
+                        <option value="공장">
+                        <option value="물류창고">
+                        <option value="도로">
+                    </datalist>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="fw-bold small mb-0">기구 목록</label>
+                    <button type="button" class="btn btn-xs btn-outline-dark" onclick="addFixtureRow()">+ 기구 추가</button>
+                </div>
+                <div id="fixtureRows">
+                    {# 기존 기구 데이터는 JS에서 렌더링 #}
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-dark fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -963,4 +1043,71 @@ var PAGE_DATA = {
 };
 </script>
 <script src="{{ url_for('static', filename='js/contract_detail.js') }}"></script>
+<script>
+// 조도 설계정보 기구 동적 행
+var _existingFixtures = {{ illuminance_fixtures|tojson }};
+
+function addFixtureRow(type, watt, qty) {
+    type = type || '';
+    watt = watt || '';
+    qty = qty || '';
+    var container = document.getElementById('fixtureRows');
+    var row = document.createElement('div');
+    row.className = 'row g-2 mb-2 fixture-row';
+    row.innerHTML =
+        '<div class="col-md-5"><input type="text" class="form-control form-control-sm" name="fix_type[]" value="' + type + '" placeholder="기구 종류 (예: 투광등)"></div>' +
+        '<div class="col-md-3"><input type="number" class="form-control form-control-sm" name="fix_watt[]" value="' + watt + '" placeholder="W (와트)" min="0"></div>' +
+        '<div class="col-md-3"><input type="number" class="form-control form-control-sm" name="fix_qty[]" value="' + qty + '" placeholder="수량" min="0"></div>' +
+        '<div class="col-md-1 d-flex align-items-end"><button type="button" class="btn btn-xs btn-outline-danger" onclick="this.closest(\'.fixture-row\').remove()">X</button></div>';
+    container.appendChild(row);
+}
+
+document.getElementById('editIlluminanceModal').addEventListener('show.bs.modal', function () {
+    var container = document.getElementById('fixtureRows');
+    container.innerHTML = '';
+    if (_existingFixtures && _existingFixtures.length) {
+        _existingFixtures.forEach(function (f) {
+            addFixtureRow(f.type, f.watt, f.qty);
+        });
+    } else {
+        addFixtureRow();
+    }
+});
+
+/* ── Relux PDF 원스톱 업로드 → 조도검증 자동 생성 ── */
+function quickCreateIlv(input, projectId) {
+    var file = input.files[0];
+    if (!file) return;
+    var status = document.getElementById('ilvUploadStatus');
+    status.className = 'alert alert-info py-1 px-2 mb-0 small';
+    status.textContent = '⏳ PDF 분석 중... (' + file.name + ')';
+
+    var fd = new FormData();
+    fd.append('pdf', file);
+    fd.append('erp_project_id', projectId);
+
+    fetch('/illuminance/api/quick-create', {
+        method: 'POST',
+        headers: {'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content},
+        body: fd
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            status.className = 'alert alert-success py-1 px-2 mb-0 small';
+            status.innerHTML = '✅ ' + data.project_name + ' (' + data.area_count + '개 구역) 등록 완료 '
+                + '<a href="' + data.detail_url + '" class="alert-link">바로가기</a>';
+            setTimeout(function() { location.reload(); }, 2000);
+        } else {
+            status.className = 'alert alert-danger py-1 px-2 mb-0 small';
+            status.textContent = '❌ ' + (data.error || '오류 발생');
+        }
+    })
+    .catch(function(e) {
+        status.className = 'alert alert-danger py-1 px-2 mb-0 small';
+        status.textContent = '❌ 업로드 실패: ' + e.message;
+    });
+    input.value = '';
+}
+</script>
 {% endblock %}

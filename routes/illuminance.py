@@ -37,14 +37,50 @@ def index():
 @ilv_bp.route('/new', methods=['GET'])
 @login_required
 def new():
+    preselect_id = request.args.get('erp_project_id', type=int)
     with get_db() as db:
         erp_projects = db.query(Project).order_by(Project.created_at.desc()).all()
-        return render_template('illuminance_new.html', erp_projects=erp_projects)
+        return render_template('illuminance_new.html',
+                               erp_projects=erp_projects,
+                               preselect_id=preselect_id)
 
 
 # ──────────────────────────────────────────────────────────────
 # API: PDF 업로드 → 페이지 목록 반환
 # ──────────────────────────────────────────────────────────────
+@ilv_bp.route('/api/project-illuminance/<int:project_id>')
+@login_required
+def api_project_illuminance(project_id):
+    """설계현장의 조도 설계정보 반환"""
+    with get_db() as db:
+        p = db.query(Project).get(project_id)
+        if not p:
+            return jsonify({'error': 'not found'}), 404
+        fixtures = []
+        if p.illuminance_fixtures:
+            try:
+                fixtures = json.loads(p.illuminance_fixtures)
+            except Exception:
+                pass
+        # fallback: 설계반영 자재목록에서 조명기구 파싱
+        if not fixtures and p.materials:
+            from modules.models.constants import LIGHTING_DETAIL_ITEMS
+            for mat in p.materials:
+                if mat.category in LIGHTING_DETAIL_ITEMS:
+                    fixtures.append({
+                        'type': mat.category,
+                        'model': mat.model_name or '',
+                        'watt': 0,
+                        'qty': mat.quantity or 0,
+                    })
+        return jsonify({
+            'project_name': p.temp_name,
+            'site_address': p.site_address or '',
+            'facility_type': p.illuminance_facility_type or '',
+            'fixtures': fixtures,
+        })
+
+
 @ilv_bp.route('/api/upload-pdf', methods=['POST'])
 @login_required
 def api_upload_pdf():
@@ -135,7 +171,10 @@ def new_save():
             db.flush()  # id 확보
 
             facility = form.get('facility_type', '')
+
             ks = get_ks_standard(facility)
+            ks_eav = ks.get('eav', 0)
+            ks_uo = ks.get('uo', 0)
 
             for idx, area_d in enumerate(areas_data, start=1):
                 area = IlluminanceArea(
@@ -162,8 +201,13 @@ def new_save():
                     grid_x_labels=json.dumps(area_d.get('x_labels', []), ensure_ascii=False),
                     grid_y_labels=json.dumps(area_d.get('y_labels', []), ensure_ascii=False),
                     design_grid=json.dumps(area_d.get('design_grid', []), ensure_ascii=False),
-                    ks_eav_min=ks.get('eav'),
-                    ks_uo_min=ks.get('uo'),
+                    ks_eav_min=ks_eav,
+                    ks_uo_min=ks_uo,
+                    fixtures=json.dumps([{
+                        'type': area_d.get('lamp_type', ''),
+                        'watt': area_d.get('lamp_watt', 0),
+                        'qty': area_d.get('lamp_qty', 0),
+                    }], ensure_ascii=False) if area_d.get('lamp_type') else None,
                 )
                 db.add(area)
 
@@ -175,6 +219,110 @@ def new_save():
             current_app.logger.exception('illuminance save failed')
             flash('저장 중 오류가 발생했습니다', 'danger')
             return redirect(url_for('illuminance.new'))
+
+
+# ──────────────────────────────────────────────────────────────
+# API: 설계관리에서 PDF 업로드 → 원스톱 조도검증 프로젝트 생성
+# ──────────────────────────────────────────────────────────────
+@ilv_bp.route('/api/quick-create', methods=['POST'])
+@login_required
+def api_quick_create():
+    """설계관리 페이지에서 PDF 올리면 조도검증 프로젝트를 자동 생성"""
+    f = request.files.get('pdf')
+    erp_project_id = request.form.get('erp_project_id', type=int)
+    if not f or not f.filename.lower().endswith('.pdf'):
+        return jsonify({'success': False, 'error': 'PDF 파일만 허용됩니다'}), 400
+    if not erp_project_id:
+        return jsonify({'success': False, 'error': '설계현장 ID가 필요합니다'}), 400
+
+    try:
+        # 1) PDF 저장
+        token = uuid.uuid4().hex
+        save_path = os.path.join(UPLOAD_FOLDER, f"{token}.pdf")
+        f.save(save_path)
+
+        # 2) 전체 페이지 분석 → 격자 있는 페이지만 자동 파싱
+        parser = ReluxPdfParser(save_path)
+        pages = parser.analyze_pages()
+        grid_pages = [p for p in pages if p.get('has_grid')]
+        if not grid_pages:
+            return jsonify({'success': False, 'error': 'PDF에서 조도 격자표를 찾을 수 없습니다'}), 400
+
+        areas_data = []
+        for pg in grid_pages:
+            parsed = parser.parse_page(pg['page_index'])
+            parsed['area_name'] = pg.get('area_name') or parsed.get('area_name', '구역')
+            areas_data.append(parsed)
+
+        # 3) DB 저장
+        with get_db() as db:
+            erp_project = db.query(Project).get(erp_project_id)
+            if not erp_project:
+                return jsonify({'success': False, 'error': '설계현장을 찾을 수 없습니다'}), 404
+
+            facility = erp_project.illuminance_facility_type or ''
+            ks = get_ks_standard(facility)
+            ks_eav = ks.get('eav', 0)
+            ks_uo = ks.get('uo', 0)
+
+            project = IlluminanceProject(
+                project_name=erp_project.temp_name,
+                erp_project_id=erp_project_id,
+                facility_type=facility,
+                pdf_filename=f"{token}.pdf",
+                status='design',
+                created_by=session.get('username'),
+            )
+            db.add(project)
+            db.flush()
+
+            for idx, area_d in enumerate(areas_data, start=1):
+                area = IlluminanceArea(
+                    project_id=project.id,
+                    area_name=area_d.get('area_name', f'구역{idx}'),
+                    area_index=idx,
+                    installation_height=area_d.get('installation_height'),
+                    lamp_type=area_d.get('lamp_type'),
+                    lamp_watt=area_d.get('lamp_watt'),
+                    lamp_qty=area_d.get('lamp_qty'),
+                    tower_qty=area_d.get('tower_qty'),
+                    simulation_date=_parse_date(area_d.get('simulation_date')),
+                    design_eav=area_d.get('design_eav'),
+                    design_emin=area_d.get('design_emin'),
+                    design_emax=area_d.get('design_emax'),
+                    design_uo=area_d.get('design_uo'),
+                    design_ud=area_d.get('design_ud'),
+                    maintenance_factor=area_d.get('maintenance_factor'),
+                    total_flux=area_d.get('total_flux'),
+                    total_power=area_d.get('total_power'),
+                    power_per_area=area_d.get('power_per_area'),
+                    grid_rows=area_d.get('grid_rows'),
+                    grid_cols=area_d.get('grid_cols'),
+                    grid_x_labels=json.dumps(area_d.get('x_labels', []), ensure_ascii=False),
+                    grid_y_labels=json.dumps(area_d.get('y_labels', []), ensure_ascii=False),
+                    design_grid=json.dumps(area_d.get('design_grid', []), ensure_ascii=False),
+                    ks_eav_min=ks_eav,
+                    ks_uo_min=ks_uo,
+                    fixtures=json.dumps([{
+                        'type': area_d.get('lamp_type', ''),
+                        'watt': area_d.get('lamp_watt', 0),
+                        'qty': area_d.get('lamp_qty', 0),
+                    }], ensure_ascii=False) if area_d.get('lamp_type') else None,
+                )
+                db.add(area)
+
+            db.commit()
+            return jsonify({
+                'success': True,
+                'project_id': project.id,
+                'project_name': project.project_name,
+                'area_count': len(areas_data),
+                'detail_url': url_for('illuminance.detail', project_id=project.id),
+            })
+
+    except Exception as e:
+        current_app.logger.exception('quick-create failed')
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ──────────────────────────────────────────────────────────────
@@ -212,6 +360,13 @@ def area(project_id, area_id):
         latest = ilv_area.latest_measurement
         measured_grid = latest.measured_grid_parsed if latest else None
 
+        area_fixtures = []
+        if ilv_area.fixtures:
+            try:
+                area_fixtures = json.loads(ilv_area.fixtures)
+            except Exception:
+                pass
+
         return render_template('illuminance_area.html',
                                project_id=project_id,
                                project_name=project.project_name,
@@ -227,7 +382,8 @@ def area(project_id, area_id):
                                fixture_watt=ilv_area.lamp_watt,
                                fixture_count=ilv_area.lamp_qty,
                                height=ilv_area.installation_height,
-                               measurements=ilv_area.measurements)
+                               measurements=ilv_area.measurements,
+                               area_fixtures=area_fixtures)
 
 
 # ──────────────────────────────────────────────────────────────

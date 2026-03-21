@@ -223,19 +223,6 @@ def init_db():
                 except Exception:
                     pass  # 이미 존재하면 무시
 
-            # projects: 시방서 반영 확인 컬럼 추가 (v2026-03-19, 매그나텍 PHASE 2-3)
-            for col, col_type in [
-                ('spec_confirmed', 'BOOLEAN DEFAULT FALSE'),
-                ('spec_confirmed_date', 'DATE'),
-            ]:
-                try:
-                    conn.execute(text(
-                        f"ALTER TABLE {quote_ident(DB_SCHEMA)}.projects "
-                        f"ADD COLUMN {col} {col_type}"
-                    ))
-                except Exception:
-                    pass  # 이미 존재하면 무시
-
             # illuminance 테이블 3개 (v2026-03-20, 조도설계 검증 시스템)
             for tbl_sql in [
                 f"""CREATE TABLE IF NOT EXISTS {quote_ident(DB_SCHEMA)}.illuminance_projects (

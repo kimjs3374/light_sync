@@ -104,7 +104,6 @@ def register(mcp: FastMCP):
                 "design_basis": _s(p.design_basis),
                 "site_memo": _s(p.site_memo),
                 "contract_date": _sd(p.contract_date),
-                "spec_confirmed": p.spec_confirmed,
                 "created_at": _sd(p.created_at),
                 "contracts": contracts,
                 "deliveries": deliveries,

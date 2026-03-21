@@ -38,6 +38,8 @@
 ## 2026-03-21
 - [x] 전체 코드 간소화 및 스플릿 — 4Phase 리팩토링 (CSS/JS 추출 14+16파일, MCP registry 2170→43줄, entities 11개 분할, Route 서비스 분리) Match Rate 100%, PDCA 완료
 - [x] 발주서 삭제 모달 버그 수정 — deleteModal이 `{% if status=='작성중' %}` 조건 안에 있어 다른 상태에서 미렌더링, 조건 밖으로 이동
+- [x] 조도검증-설계관리 통합 연동 — 양방향 연동, PDF 원스톱 업로드, 시설종류 자유입력, 기구 다중화, 자재목록 자동 파싱, PDF 파서 격자 개선 (90개 전부 PASS), 불필요 필드 제거 (PDCA 95%)
+- [x] PDF 파서 격자 인식 개선 — 컬럼 매핑 충돌 해결, 비정형/정형 자동 판별, sparse row 병합 (수정 전 null 204셀 → 수정 후 0건)
 - [ ] bkit 플러그인 롤백 — CC 2.1.81 서드파티 마켓플레이스 미지원으로 code-review 플러그인에 임시 합침. 롤백: `bash ~/.claude/plugins/cache/bkit-marketplace/bkit/rollback-bkit.sh` 후 `/reload-plugins`
 - [x] MCP 매출조회 — 세금계산서 기준 → 조달계약(G2B) 기준으로 변경 (get_revenue_summary, get_financial_overview)
 - [x] 그룹 메뉴 권한 UI 재설계 — 챗봇 관리 페이지 스타일 (좌측 조직트리 2단, 우측 메뉴 카드, 그룹/개인 통합 관리)

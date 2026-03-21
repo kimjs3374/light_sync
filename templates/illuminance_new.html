@@ -59,7 +59,8 @@
               {% for ep in erp_projects %}
               <option value="{{ ep.id }}"
                       data-name="{{ ep.temp_name }}"
-                      data-addr="{{ ep.site_address or '' }}">
+                      data-addr="{{ ep.site_address or '' }}"
+                      {{ 'selected' if preselect_id == ep.id else '' }}>
                 [{{ ep.project_no }}] {{ ep.temp_name }}
               </option>
               {% endfor %}
@@ -102,19 +103,27 @@
 
           <!-- 시설종류 -->
           <div class="col-md-4">
-            <label class="form-label fw-semibold" for="fieldFacilityType">시설종류</label>
-            <select class="form-select" id="fieldFacilityType" name="facility_type">
-              <option value="">선택 안함</option>
-              <option value="공장" {% if form_data and form_data.facility_type == '공장' %}selected{% endif %}>공장</option>
-              <option value="물류창고" {% if form_data and form_data.facility_type == '물류창고' %}selected{% endif %}>물류창고</option>
-              <option value="체육관" {% if form_data and form_data.facility_type == '체육관' %}selected{% endif %}>체육관</option>
-              <option value="풋살장" {% if form_data and form_data.facility_type == '풋살장' %}selected{% endif %}>풋살장</option>
-              <option value="테니스장" {% if form_data and form_data.facility_type == '테니스장' %}selected{% endif %}>테니스장 (일반)</option>
-              <option value="테니스장_경기" {% if form_data and form_data.facility_type == '테니스장_경기' %}selected{% endif %}>테니스장 (경기용)</option>
-              <option value="주차장" {% if form_data and form_data.facility_type == '주차장' %}selected{% endif %}>주차장</option>
-              <option value="도로" {% if form_data and form_data.facility_type == '도로' %}selected{% endif %}>도로</option>
-              <option value="기타" {% if form_data and form_data.facility_type == '기타' %}selected{% endif %}>기타</option>
-            </select>
+            <label class="form-label fw-semibold" for="fieldFacility">시설종류</label>
+            <input type="text" name="facility_type" id="fieldFacility"
+                   list="facilityList" class="form-control form-control-sm"
+                   placeholder="시설종류 입력 (예: 풋살장, 주차장)">
+            <datalist id="facilityList">
+              <option value="풋살장">
+              <option value="축구장">
+              <option value="테니스장">
+              <option value="주차장">
+              <option value="보행로">
+              <option value="운동장">
+              <option value="공원">
+              <option value="체육관">
+              <option value="공장">
+              <option value="물류창고">
+              <option value="도로">
+            </datalist>
+          </div>
+
+          <div class="col-12">
+            <small id="erpFixtureInfo" class="text-muted"></small>
           </div>
 
           <!-- KS 기준 -->
@@ -285,4 +294,10 @@ const PAGE_DATA = {
 };
 </script>
 <script src="{{ url_for('static', filename='js/illuminance_new.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var sel = document.getElementById('fieldErpProject');
+    if (sel && sel.value) onErpProjectChange(sel);
+});
+</script>
 {% endblock %}

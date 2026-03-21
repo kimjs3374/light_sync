@@ -1,0 +1,277 @@
+{% extends 'base.html' %}
+{% block title %}{{ project.project_name }} — 구역 목록{% endblock %}
+
+{% block content %}
+<style>
+  .cmd-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #0f172a 100%);
+    border-radius: 1rem;
+    padding: 1.2rem 1.8rem;
+    position: relative; overflow: hidden; margin-bottom: 1rem;
+  }
+  .cmd-hero::before {
+    content: ''; position: absolute; top: -60%; right: -5%;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(59,130,246,.1) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  .cmd-hero .eyebrow {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .18rem .55rem; border-radius: 999px;
+    background: rgba(59,130,246,.15); color: #60a5fa;
+    font-size: .62rem; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase;
+  }
+  .cmd-hero h1 { color: #f8fafc; font-size: 1.3rem; font-weight: 800; margin: .3rem 0 .1rem; }
+  .cmd-hero .sub { color: #94a3b8; font-size: .78rem; }
+  .cmd-hero .nav-row { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .7rem; }
+  .cmd-hero .nav-row a {
+    color: #94a3b8; font-size: .72rem; text-decoration: none;
+    padding: .15rem .5rem; border-radius: .3rem;
+    background: rgba(255,255,255,.05);
+  }
+  .cmd-hero .nav-row a:hover { color: #f1f5f9; background: rgba(255,255,255,.1); }
+  .cmd-hero .nav-row .sep { color: #475569; align-self: center; }
+
+  /* 구역 카드 */
+  .area-card-wrap { position: relative; }
+  .area-card {
+    border: 1px solid var(--mg-border, #e2e8f0);
+    border-radius: .75rem;
+    padding: 1rem 1.2rem;
+    background: var(--mg-card-bg, #fff);
+    transition: box-shadow .15s, border-color .15s;
+    text-decoration: none;
+    display: block;
+    color: inherit;
+  }
+  .area-card:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,.08);
+    border-color: #3b82f6;
+    color: inherit;
+  }
+  .area-card .area-num {
+    font-size: .65rem; font-weight: 700; letter-spacing: .06em;
+    color: #64748b; text-transform: uppercase; margin-bottom: .3rem;
+  }
+  .area-card .area-name {
+    font-size: 1rem; font-weight: 700; color: #0f172a; margin-bottom: .5rem;
+  }
+  .area-card .stats { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .area-card .stat-chip {
+    font-size: .7rem; padding: .15rem .5rem; border-radius: .3rem;
+    background: #f1f5f9; color: #475569; white-space: nowrap;
+  }
+  .area-card .status-badge {
+    font-size: .65rem; font-weight: 700; padding: .15rem .5rem;
+    border-radius: 999px; white-space: nowrap;
+  }
+  .badge-design { background: rgba(59,130,246,.12); color: #2563eb; }
+  .badge-measured { background: rgba(16,185,129,.12); color: #059669; }
+  .badge-pass { background: rgba(22,163,74,.12); color: #16a34a; }
+  .badge-fail { background: rgba(220,38,38,.12); color: #dc2626; }
+  .badge-warning { background: rgba(217,119,6,.12); color: #d97706; }
+</style>
+
+<div class="container-fluid px-3 py-3">
+
+  <!-- 히어로 -->
+  <div class="cmd-hero">
+    <span class="eyebrow">💡 조도설계 검증</span>
+    <h1>{{ project.project_name }}</h1>
+    <div class="sub">
+      {% if project.customer %}{{ project.customer }}{% endif %}
+      {% if project.location %} · {{ project.location }}{% endif %}
+    </div>
+    <div class="nav-row">
+      <a href="{{ url_for('illuminance.index') }}">목록</a>
+      <span class="sep">›</span>
+      <a href="#">{{ project.project_name }}</a>
+    </div>
+  </div>
+
+  <!-- 메타 정보 + 수정/삭제 -->
+  <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+    <span class="badge bg-secondary">{{ project.facility_type or '시설 미지정' }}</span>
+    {% if project.install_date %}
+    <span class="text-muted" style="font-size:.78rem;">설치: {{ project.install_date }}</span>
+    {% endif %}
+    <span class="text-muted" style="font-size:.78rem;">구역 {{ project.areas | length }}개</span>
+    {% if project.erp_project %}
+    <a href="{{ url_for('project.contract_detail', project_id=project.erp_project_id) }}"
+       class="btn btn-xs btn-outline-primary" style="white-space:nowrap;">설계관리 바로가기</a>
+    {% endif %}
+    <span class="ms-auto"></span>
+    <button class="btn btn-sm btn-outline-secondary" onclick="openEditModal()">수정</button>
+    <button class="btn btn-sm btn-outline-danger" onclick="confirmDeleteProject()">삭제</button>
+    <a href="{{ url_for('illuminance.report', project_id=project.id) }}" class="btn btn-sm btn-outline-success">리포트</a>
+    <a href="{{ url_for('illuminance.new') }}" class="btn btn-sm btn-outline-primary">+ 새 프로젝트</a>
+  </div>
+
+  <!-- 구역 목록 -->
+  <div class="row g-3" id="areaGrid">
+    {% for area in project.areas | sort(attribute='area_index') %}
+    {% set latest = area.latest_measurement %}
+    <div class="col-12 col-sm-6 col-lg-4" id="areaRow{{ area.id }}">
+      <div class="area-card-wrap" style="position:relative">
+        <!-- 구역 이름 수정/삭제 버튼 -->
+        <div style="position:absolute;top:.6rem;right:.6rem;display:flex;gap:.3rem;z-index:2">
+          <button class="btn btn-xs btn-outline-secondary py-0 px-1"
+                  style="font-size:.68rem;line-height:1.4"
+                  onclick="editAreaName({{ area.id }}, this)" title="이름 수정">✏️</button>
+          <button class="btn btn-xs btn-outline-danger py-0 px-1"
+                  style="font-size:.68rem;line-height:1.4"
+                  onclick="deleteArea({{ area.id }}, '{{ area.area_name | e }}')" title="구역 삭제">🗑</button>
+        </div>
+        <a class="area-card" href="{{ url_for('illuminance.area', project_id=project.id, area_id=area.id) }}"
+           style="padding-right:4.5rem">
+          <div class="area-num">구역 {{ area.area_index }}</div>
+          <div class="area-name" id="areaName{{ area.id }}">{{ area.area_name }}</div>
+          <div class="stats">
+            {% if area.design_eav %}
+            <span class="stat-chip">설계 Eav {{ area.design_eav | int }} lx</span>
+            {% endif %}
+            {% if area.grid_rows and area.grid_cols %}
+            <span class="stat-chip">{{ area.grid_rows }}×{{ area.grid_cols }} 격자</span>
+            {% endif %}
+            {% if area.installation_height %}
+            <span class="stat-chip">H={{ area.installation_height }}m</span>
+            {% endif %}
+            {% if latest %}
+              {% if latest.ks_pass == 'PASS' %}
+              <span class="status-badge badge-pass">PASS</span>
+              {% elif latest.ks_pass == 'WARNING' %}
+              <span class="status-badge badge-warning">WARNING</span>
+              {% elif latest.ks_pass == 'FAIL' %}
+              <span class="status-badge badge-fail">FAIL</span>
+              {% endif %}
+              <span class="stat-chip">실측 {{ latest.measured_eav | int if latest.measured_eav else '?' }} lx</span>
+            {% else %}
+              <span class="status-badge badge-design">미실측</span>
+            {% endif %}
+          </div>
+        </a>
+      </div>
+    </div>
+    {% else %}
+    <div class="col-12">
+      <p class="text-muted text-center py-4">등록된 구역이 없습니다.</p>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+
+<!-- ── 프로젝트 수정 모달 ─────────────────────────────────── -->
+<div class="modal fade" id="editProjectModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">프로젝트 정보 수정</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label form-label-sm">현장명</label>
+          <input type="text" class="form-control form-control-sm" id="editProjectName"
+                 value="{{ project.project_name }}">
+        </div>
+        <div class="mb-2">
+          <label class="form-label form-label-sm">발주처</label>
+          <input type="text" class="form-control form-control-sm" id="editCustomer"
+                 value="{{ project.customer or '' }}">
+        </div>
+        <div class="mb-2">
+          <label class="form-label form-label-sm">위치</label>
+          <input type="text" class="form-control form-control-sm" id="editLocation"
+                 value="{{ project.location or '' }}">
+        </div>
+        <div class="mb-2">
+          <label class="form-label form-label-sm">시설 종류</label>
+          <select class="form-select form-select-sm" id="editFacilityType">
+            {% for ft in ['공장','물류창고','체육관','풋살장','테니스장','테니스장_경기','주차장','도로','기타'] %}
+            <option value="{{ ft }}" {% if project.facility_type == ft %}selected{% endif %}>{{ ft }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label form-label-sm">설치일</label>
+          <input type="date" class="form-control form-control-sm" id="editInstallDate"
+                 value="{{ project.install_date or '' }}">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-sm btn-primary" onclick="saveEditProject()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 프로젝트 삭제 확인 폼 ─────────────────────────────── -->
+<form id="deleteProjectForm" method="POST"
+      action="{{ url_for('illuminance.delete_project', project_id=project.id) }}" style="display:none">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+
+<script>
+// ── 프로젝트 수정 ──────────────────────────────────────────
+function openEditModal() {
+  new bootstrap.Modal(document.getElementById('editProjectModal')).show();
+}
+async function saveEditProject() {
+  const payload = {
+    project_name:  document.getElementById('editProjectName').value.trim(),
+    customer:      document.getElementById('editCustomer').value.trim(),
+    location:      document.getElementById('editLocation').value.trim(),
+    facility_type: document.getElementById('editFacilityType').value,
+    install_date:  document.getElementById('editInstallDate').value,
+  };
+  const resp = await fetch('{{ url_for("illuminance.edit_project", project_id=project.id) }}', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if ((await resp.json()).success) location.reload();
+}
+
+// ── 프로젝트 삭제 ──────────────────────────────────────────
+function confirmDeleteProject() {
+  if (!confirm('프로젝트 전체(구역·실측 포함)를 삭제합니다. 계속할까요?')) return;
+  document.getElementById('deleteProjectForm').submit();
+}
+
+// ── 구역 이름 수정 ─────────────────────────────────────────
+async function editAreaName(areaId, btn) {
+  const nameEl = document.getElementById('areaName' + areaId);
+  const current = nameEl.textContent.trim();
+  const newName = prompt('구역 이름 수정', current);
+  if (!newName || newName.trim() === current) return;
+  const resp = await fetch(`/illuminance/{{ project.id }}/area/${areaId}/edit-name`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({area_name: newName.trim()}),
+  });
+  const data = await resp.json();
+  if (data.success) nameEl.textContent = data.area_name;
+}
+
+// ── 구역 삭제 ──────────────────────────────────────────────
+async function deleteArea(areaId, areaName) {
+  if (!confirm(`"${areaName}" 구역과 실측 기록을 모두 삭제합니다. 계속할까요?`)) return;
+  const resp = await fetch(`/illuminance/{{ project.id }}/area/${areaId}/delete`, {
+    method: 'POST',
+  });
+  const data = await resp.json();
+  if (data.success) {
+    const row = document.getElementById('areaRow' + areaId);
+    if (row) row.remove();
+    // 구역이 없으면 안내 메시지 표시
+    if (!document.querySelector('.area-card-wrap')) {
+      document.getElementById('areaGrid').innerHTML =
+        '<div class="col-12"><p class="text-muted text-center py-4">등록된 구역이 없습니다.</p></div>';
+    }
+  }
+}
+</script>
+{% endblock %}

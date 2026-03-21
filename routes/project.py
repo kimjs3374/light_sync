@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, current_app
 from modules.auth_decorators import login_required
 import datetime
+import json
 import shutil
 from pathlib import Path
 from collections import defaultdict
@@ -12,7 +13,7 @@ from modules.spec_utils import format_spec_summary
 from modules.models import (
     Project, Material, HistoryLog, Contract, ContractItem,
     ProjectDeleteRequest, UserPriorityPermission,
-    Drawing, DrawingVersion,
+    Drawing, DrawingVersion, IlluminanceProject,
     DETAIL_ITEM_OPTIONS, LIGHTING_DETAIL_ITEMS, normalize_detail_item, DRAWING_TYPE_OPTIONS,
     CONTRACT_ITEM_SPEC_SCHEMA,
 )
@@ -30,7 +31,6 @@ from routes.material import compute_admin_status_from_orders
 from modules.services.project_actions import (
     handle_update_design_basis, handle_update_project,
     handle_update_priority_override, handle_update_work_path, handle_update_material,
-    handle_confirm_spec,
 )
 from modules.services.contract_actions import (
     handle_update_contract, handle_add_contract, handle_delete_contract,
@@ -75,7 +75,6 @@ ACTION_HANDLERS = {
     'add_chat': handle_add_chat,
     'add_history_reply': handle_add_history_reply,
     'update_payment': handle_update_payment,
-    'confirm_spec': handle_confirm_spec,
 }
 
 
@@ -139,7 +138,9 @@ def project_list():
 
     with get_db() as db:
         today = datetime.date.today()
-        all_projects = db.query(Project).options(
+        all_projects = db.query(Project).filter(
+            ~Project.project_no.like('G-%'),  # G2B 계약 프로젝트 제외 (계약관리에서 관리)
+        ).options(
             joinedload(Project.materials),
             joinedload(Project.contacts),
             joinedload(Project.priority_override),
@@ -273,13 +274,17 @@ def contract_list():
     due_filter = request.args.get('due', 'all')
     inspection_filter = request.args.get('inspection', 'all')
     urgent_filter = request.args.get('urgent', 'all')
+    show_done = request.args.get('show_done', '') == '1'
     sort_by = request.args.get('sort', 'due_asc')
     page = safe_int(request.args.get('page'), 1)
     per_page = safe_int(request.args.get('per_page'), 20)
 
     with get_db() as db:
         # 하위 계약/품목/원본자재까지 선로드
-        projects = db.query(Project).filter(Project.is_contracted == True).options(
+        base_query = db.query(Project).filter(Project.is_contracted == True)
+        if not show_done:
+            base_query = base_query.filter(Project.status != '납품완료')
+        projects = base_query.options(
             joinedload(Project.contracts).joinedload(Contract.items).joinedload(ContractItem.material_orders),
             joinedload(Project.materials),
             joinedload(Project.priority_override),
@@ -403,6 +408,7 @@ def contract_list():
                 'due': due_filter,
                 'inspection': inspection_filter,
                 'urgent': urgent_filter,
+                'show_done': '1' if show_done else '',
                 'sort': sort_by,
             },
             pagination=pagination,
@@ -518,6 +524,23 @@ def handle_detail_common(project_id, template_name):
                     flash(*f)
                 if result.get('ajax_log'):
                     ajax_log_entry = result['ajax_log']
+            elif action == 'update_illuminance':
+                form = request.form
+                p.illuminance_facility_type = form.get('illuminance_facility_type') or None
+
+                fix_types = form.getlist('fix_type[]')
+                fix_watts = form.getlist('fix_watt[]')
+                fix_qtys = form.getlist('fix_qty[]')
+                fixtures = []
+                for t, w, q in zip(fix_types, fix_watts, fix_qtys):
+                    if t.strip():
+                        fixtures.append({
+                            'type': t.strip(),
+                            'watt': int(w) if w else 0,
+                            'qty': int(q) if q else 0,
+                        })
+                p.illuminance_fixtures = json.dumps(fixtures, ensure_ascii=False) if fixtures else None
+                flash('조도 설계정보가 저장되었습니다.', 'success')
 
             # 신규/레거시 HistoryLog 객체 공통 기본값 보정
             for obj in list(db.new):
@@ -539,6 +562,29 @@ def handle_detail_common(project_id, template_name):
             default_scope=page_scope,
             limit=500
         )
+
+        # 조도 설계 기구 파싱: JSON 우선, 없으면 설계반영 자재목록에서 조명기구 자동 파싱
+        illuminance_fixtures = []
+        if p.illuminance_fixtures:
+            try:
+                illuminance_fixtures = json.loads(p.illuminance_fixtures)
+            except Exception:
+                pass
+        if not illuminance_fixtures and p.materials:
+            for mat in p.materials:
+                if mat.category in LIGHTING_DETAIL_ITEMS:
+                    illuminance_fixtures.append({
+                        'type': mat.category,
+                        'model': mat.model_name or '',
+                        'watt': 0,
+                        'qty': mat.quantity or 0,
+                    })
+
+        # 연결된 조도검증 프로젝트
+        linked_illuminance_projects = db.query(IlluminanceProject).filter(
+            IlluminanceProject.erp_project_id == p.id
+        ).order_by(IlluminanceProject.created_at.desc()).all()
+
         return render_template(
             template_name,
             project=p,
@@ -550,7 +596,9 @@ def handle_detail_common(project_id, template_name):
             lighting_detail_items=LIGHTING_DETAIL_ITEMS,
             contract_item_spec_schema=CONTRACT_ITEM_SPEC_SCHEMA,
             drawing_type_options=DRAWING_TYPE_OPTIONS,
-            can_write_drawings=(session.get('role') == 'admin' or session.get('user_group') == '영업부')
+            can_write_drawings=(session.get('role') == 'admin' or session.get('user_group') == '영업부'),
+            illuminance_fixtures=illuminance_fixtures,
+            linked_illuminance_projects=linked_illuminance_projects,
         )
 
 # -------------------------------------------------------------------

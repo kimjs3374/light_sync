@@ -91,28 +91,6 @@ def handle_update_work_path(db, project, form, current_user, **ctx):
     return {}
 
 
-def handle_confirm_spec(db, project, form, current_user, **ctx):
-    """시방서 반영 확인 체크 + 히스토리 자동 기록 (매그나텍 PHASE 2-3)"""
-    confirmed = form.get("spec_confirmed") == "on"
-    project.spec_confirmed = confirmed
-    project.spec_confirmed_date = datetime.date.today() if confirmed else None
-
-    if confirmed:
-        content = "시방서 반영 확인됨"
-    else:
-        content = "시방서 반영 확인 해제"
-
-    append_history_log(
-        db,
-        project_id=project.id,
-        user_name="System",
-        content=f"{current_user} [설계] {content}",
-        scope="design",
-        kind="system",
-    )
-    return {'flash': (content, 'success')}
-
-
 def handle_update_material(db, project, form, current_user, **ctx):
     template_name = ctx.get('page_scope', '')
     user_group = ctx.get('user_group')

@@ -7,10 +7,25 @@
 function onErpProjectChange(sel) {
   const opt = sel.options[sel.selectedIndex];
   if (!opt.value) return;
-  const nameEl = document.getElementById('fieldName');
-  const addrEl = document.getElementById('fieldLocation');
-  if (nameEl && !nameEl.value) nameEl.value = opt.dataset.name || '';
-  if (addrEl && !addrEl.value) addrEl.value = opt.dataset.addr || '';
+
+  // 현장명, 위치: 항상 반영
+  document.getElementById('fieldName').value = opt.dataset.name || '';
+  document.getElementById('fieldLocation').value = opt.dataset.addr || '';
+
+  // 설계관리에서 조도정보 AJAX
+  fetch('/illuminance/api/project-illuminance/' + opt.value)
+    .then(r => r.json())
+    .then(data => {
+      if (data.facility_type) {
+        document.getElementById('fieldFacility').value = data.facility_type;
+      }
+      if (data.fixtures && data.fixtures.length) {
+        var info = data.fixtures.map(function(f) { return f.type + ' ' + f.watt + 'W x ' + f.qty; }).join(', ');
+        var el = document.getElementById('erpFixtureInfo');
+        if (el) el.textContent = '설계관리 기구: ' + info;
+      }
+    })
+    .catch(function() {});
 }
 
 /* ── 마법사 스텝 이동 ─────────────────────────────────── */

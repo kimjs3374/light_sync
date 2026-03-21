@@ -1,9 +1,25 @@
 -- ══════════════════════════════════════════════
+-- 조도검증-설계관리 통합 연동 (2026-03-21)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.projects ADD COLUMN IF NOT EXISTS illuminance_facility_type VARCHAR(100);
+ALTER TABLE light_sync.projects ADD COLUMN IF NOT EXISTS illuminance_design_lux FLOAT;
+ALTER TABLE light_sync.projects ADD COLUMN IF NOT EXISTS illuminance_design_uo FLOAT;
+ALTER TABLE light_sync.projects ADD COLUMN IF NOT EXISTS illuminance_fixtures TEXT;
+ALTER TABLE light_sync.illuminance_areas ADD COLUMN IF NOT EXISTS fixtures TEXT;
+ALTER TABLE light_sync.illuminance_projects ALTER COLUMN facility_type TYPE VARCHAR(100);
+
+-- ══════════════════════════════════════════════
 -- 매그나텍 업무플로우 보강 (2026-03-21)
 -- ══════════════════════════════════════════════
 
 -- 스키마 설정
 SET search_path TO light_sync, public;
+
+-- 0) G2B→계약 동기화: project_id nullable 변경
+ALTER TABLE light_sync.contracts ALTER COLUMN project_id DROP NOT NULL;
+ALTER TABLE light_sync.warranties ALTER COLUMN contract_id DROP NOT NULL;
+ALTER TABLE light_sync.warranties ALTER COLUMN project_id DROP NOT NULL;
+ALTER TABLE light_sync.warranties DROP CONSTRAINT IF EXISTS warranties_contract_id_key;  -- unique 제약 제거 (G2B 건은 contract 없을 수 있음)
 
 -- 1) 검수 관리: 검수자 컬럼
 ALTER TABLE light_sync.deliveries ADD COLUMN IF NOT EXISTS inspector VARCHAR(100);
