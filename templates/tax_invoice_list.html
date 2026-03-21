@@ -4,11 +4,12 @@
 .inv-tbl { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .inv-tbl th, .inv-tbl td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; vertical-align: middle; }
 .inv-tbl th { background: #f1f5f9; font-weight: 700; position: sticky; top: 0; z-index: 1; }
-.inv-tbl tr:hover { background: #f8fafc; cursor: pointer; }
+.inv-tbl tr:hover { background: #f8fafc; }
 .inv-tbl .text-end { text-align: right; }
 .inv-tbl .ellipsis { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge-sm { font-size: 0.7rem; padding: 2px 6px; white-space: nowrap; }
 .filter-bar select, .filter-bar input { font-size: 0.82rem; }
+.score-bar { display: inline-block; height: 6px; border-radius: 3px; vertical-align: middle; }
 </style>
 
 <div class="page-hero mg-fade">
@@ -25,8 +26,118 @@
     </div>
 </div>
 
-{# ====== 필터 ====== #}
+{# ====== 탭 ====== #}
+<ul class="nav nav-tabs mb-3 mg-fade" style="animation-delay:.03s">
+    <li class="nav-item">
+        <a class="nav-link {{ 'active' if match_filter == 'matched' }}" href="?match=matched">매칭완료</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {{ 'active' if match_filter == 'unmatched' }}" href="?match=unmatched">
+            미청구 {% if unpaid_contract_count %}<span class="badge bg-danger badge-sm">{{ unpaid_contract_count }}</span>{% endif %}
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {{ 'active' if match_filter == 'partial' }}" href="?match=partial">
+            잔금미청구 {% if partial_contract_count %}<span class="badge bg-warning text-dark badge-sm">{{ partial_contract_count }}</span>{% endif %}
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {{ 'active' if match_filter == 'all' }}" href="?match=all">전체</a>
+    </li>
+</ul>
+
+{% if match_filter in ('unmatched', 'partial') %}
+{# ====== 미청구 계약 정렬 ====== #}
+<form class="d-flex align-items-center gap-2 mb-3 flex-wrap" method="GET">
+    <input type="hidden" name="match" value="{{ match_filter }}">
+    <small class="text-muted fw-bold" style="white-space:nowrap">{{ unpaid_contracts|length }}건</small>
+    <select name="due" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+        <option value="all" {{ 'selected' if unpaid_due == 'all' }}>전체</option>
+        <option value="overdue" {{ 'selected' if unpaid_due == 'overdue' }}>납기경과</option>
+        <option value="month" {{ 'selected' if unpaid_due == 'month' }}>30일 이내</option>
+        <option value="future" {{ 'selected' if unpaid_due == 'future' }}>납기 미도래</option>
+    </select>
+    <select name="sort" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+        <option value="due_asc" {{ 'selected' if unpaid_sort == 'due_asc' }}>납기 오래된순</option>
+        <option value="due_desc" {{ 'selected' if unpaid_sort == 'due_desc' }}>납기 최신순</option>
+        <option value="date_asc" {{ 'selected' if unpaid_sort == 'date_asc' }}>계약일 오래된순</option>
+        <option value="date_desc" {{ 'selected' if unpaid_sort == 'date_desc' }}>계약일 최신순</option>
+    </select>
+</form>
+
+{# ====== 미청구 계약 목록 (계약 기준 매칭) ====== #}
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="inv-tbl">
+                <thead>
+                    <tr>
+                        <th>계약일</th>
+                        <th>납기일</th>
+                        <th>계약명</th>
+                        <th>발주처</th>
+                        <th style="white-space:nowrap">G2B 번호</th>
+                        <th style="white-space:nowrap">D-Day</th>
+                        <th style="white-space:nowrap">상태</th>
+                        <th style="white-space:nowrap">매칭</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for c in unpaid_contracts %}
+                    {% set dday = (c.delivery_due_date - today).days if c.delivery_due_date else none %}
+                    <tr class="{{ 'table-danger' if dday is not none and dday < 0 else 'table-warning' if dday is not none and dday <= 30 else '' }}">
+                        <td>{{ c.contract_date.strftime('%Y-%m-%d') if c.contract_date else '-' }}</td>
+                        <td>{{ c.delivery_due_date.strftime('%Y-%m-%d') if c.delivery_due_date else '-' }}</td>
+                        <td class="ellipsis" title="{{ c.contract_name or '' }}" style="max-width:300px">{{ c.contract_name or '-' }}</td>
+                        <td style="white-space:nowrap">{{ c.project.short_name if c.project else '-' }}</td>
+                        <td style="white-space:nowrap;font-size:.75rem">{{ c.g2b_contract_no or '-' }}</td>
+                        <td style="white-space:nowrap">
+                            {% if dday is not none %}
+                                {% if dday < 0 %}
+                                    <span class="badge bg-danger badge-sm">{{ dday|abs }}일 경과</span>
+                                {% elif dday == 0 %}
+                                    <span class="badge bg-danger badge-sm">오늘</span>
+                                {% elif dday <= 7 %}
+                                    <span class="badge bg-warning text-dark badge-sm">D-{{ dday }}</span>
+                                {% elif dday <= 30 %}
+                                    <span class="badge bg-info badge-sm">D-{{ dday }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary badge-sm">D-{{ dday }}</span>
+                                {% endif %}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td style="white-space:nowrap">
+                            <span class="badge {{ 'bg-warning text-dark' if c.payment_status == '부분입금' else 'bg-secondary' }} badge-sm">{{ c.payment_status }}</span>
+                            {% if c.project and c.project.status == '납품완료' and c.payment_status != '입금완료' %}
+                                <span class="badge bg-dark badge-sm">예외</span>
+                            {% endif %}
+                        </td>
+                        <td style="white-space:nowrap">
+                            <button type="button" class="btn btn-xs btn-outline-primary" style="white-space:nowrap"
+                                onclick="openMatchModal({{ c.id }})">
+                                세금계산서 찾기
+                            </button>
+                            <button type="button" class="btn btn-xs btn-outline-secondary" style="white-space:nowrap"
+                                onclick="openExcludeModal({{ c.id }}, '{{ (c.contract_name or '')|e }}')">
+                                예외
+                            </button>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="8" class="text-center text-muted py-4">해당 건이 없습니다.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% else %}
+{# ====== 매칭완료 / 전체 필터+테이블 ====== #}
 <form class="card border-0 shadow-sm mb-3 mg-fade" style="animation-delay:.05s" method="GET">
+    <input type="hidden" name="match" value="{{ match_filter }}">
     <div class="card-body py-2 px-3 filter-bar">
         <div class="row g-2 align-items-center">
             <div class="col-auto">
@@ -41,19 +152,17 @@
             </div>
             <div class="col-auto">
                 <button class="btn btn-primary btn-sm" type="submit" style="white-space:nowrap;">검색</button>
-                <a href="{{ url_for('financial.tax_invoice_list') }}" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">초기화</a>
+                <a href="{{ url_for('financial.tax_invoice_list') }}?match={{ match_filter }}" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">초기화</a>
             </div>
         </div>
     </div>
 </form>
 
-{# ====== 합계 ====== #}
 <div class="d-flex gap-3 mb-2">
     <small class="text-muted fw-bold">공급가액 합계: <span class="text-dark">{{ fmt_money(sum_supply) }}원</span></small>
     <small class="text-muted">{{ pagination.total }}건</small>
 </div>
 
-{# ====== 테이블 ====== #}
 <div class="card border-0 shadow-sm">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -68,12 +177,13 @@
                         <th class="text-end">세액</th>
                         <th class="text-end">합계</th>
                         <th>G2B 계약명</th>
+                        {% if match_filter == 'all' %}<th>상태</th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
                 {% for inv in invoices %}
                     {% set g2b = g2b_map.get(inv.g2b_contract_no) %}
-                    <tr onclick="location.href='{{ url_for('financial.tax_invoice_detail', invoice_id=inv.id) }}'">
+                    <tr onclick="location.href='{{ url_for('financial.tax_invoice_detail', invoice_id=inv.id) }}'" style="cursor:pointer">
                         <td>{{ inv.issue_date.strftime('%Y-%m-%d') if inv.issue_date else '-' }}</td>
                         <td>
                             {% if inv.invoice_type == '수정세금계산서' %}
@@ -84,15 +194,24 @@
                         </td>
                         <td class="ellipsis" title="{{ inv.buyer_name or '' }}">{{ inv.buyer_name or '-' }}</td>
                         <td class="ellipsis" title="{{ inv.item_name or '' }}">{{ inv.item_name or '-' }}</td>
-                        <td class="text-end {% if inv.supply_amount and inv.supply_amount < 0 %}text-danger{% endif %}">{{ fmt_money(inv.supply_amount) }}</td>
+                        <td class="text-end {% if inv.total_amount and inv.total_amount < 0 %}text-danger{% endif %}">{{ fmt_money(inv.total_amount) }}</td>
                         <td class="text-end">{{ fmt_money(inv.tax_amount) }}</td>
                         <td class="text-end fw-bold">{{ fmt_money(inv.total_amount) }}</td>
                         <td class="ellipsis" title="{{ inv.g2b_contract_name or (g2b.cntrct_dlvr_req_nm if g2b else '') }}">
                             {{ inv.g2b_contract_name or (g2b.cntrct_dlvr_req_nm[:25] if g2b else '-') }}
                         </td>
+                        {% if match_filter == 'all' %}
+                        <td>
+                            {% if inv.match_status == '미매칭' %}
+                            <span class="badge bg-secondary badge-sm">미매칭</span>
+                            {% else %}
+                            <span class="badge bg-success badge-sm">{{ inv.match_status }}</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
                     </tr>
                 {% else %}
-                    <tr><td colspan="8" class="text-center text-muted py-4">세금계산서가 없습니다. 엑셀 임포트를 진행해주세요.</td></tr>
+                    <tr><td colspan="{{ 9 if match_filter == 'all' else 8 }}" class="text-center text-muted py-4">세금계산서가 없습니다.</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
@@ -100,22 +219,88 @@
     </div>
 </div>
 
-{# ====== 페이지네이션 ====== #}
 {% if pagination.total_pages > 1 %}
 <nav class="mt-3">
     <ul class="pagination pagination-sm justify-content-center mb-0">
         {% if pagination.has_prev %}
-        <li class="page-item"><a class="page-link" href="?page={{ pagination.prev_page }}">&laquo;</a></li>
+        <li class="page-item"><a class="page-link" href="?match={{ match_filter }}&page={{ pagination.prev_page }}">&laquo;</a></li>
         {% endif %}
         {% for p in pagination.page_range %}
-        <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="?page={{ p }}">{{ p }}</a></li>
+        <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="?match={{ match_filter }}&page={{ p }}">{{ p }}</a></li>
         {% endfor %}
         {% if pagination.has_next %}
-        <li class="page-item"><a class="page-link" href="?page={{ pagination.next_page }}">&raquo;</a></li>
+        <li class="page-item"><a class="page-link" href="?match={{ match_filter }}&page={{ pagination.next_page }}">&raquo;</a></li>
         {% endif %}
     </ul>
 </nav>
 {% endif %}
+{% endif %}
+
+{# ====== 수동매칭 모달 (계약→세금계산서 방향) ====== #}
+<div class="modal fade" id="matchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white py-2">
+                <h6 class="modal-title fw-bold mb-0">세금계산서 매칭</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="mb-3 p-2 bg-light rounded" id="matchContractInfo" style="font-size:.82rem">
+                    <div class="text-center text-muted py-2">계약 정보 로딩 중...</div>
+                </div>
+                <h6 class="fw-bold mb-2" style="font-size:.85rem">승인번호로 직접 매칭</h6>
+                <div class="d-flex gap-2 mb-3">
+                    <input type="text" class="form-control form-control-sm" id="approvalNoInput" placeholder="승인번호 입력 (예: 20181231-...)">
+                    <button class="btn btn-sm btn-outline-secondary" style="white-space:nowrap" onclick="findByApproval()">조회</button>
+                    <button class="btn btn-sm btn-primary" style="white-space:nowrap" onclick="matchByApproval()">매칭</button>
+                </div>
+                <div id="approvalResult" style="font-size:.82rem" class="mb-3"></div>
+                <hr class="my-2">
+                <h6 class="fw-bold mb-2" style="font-size:.85rem">추천 매칭 후보</h6>
+                <div id="matchRecommend" style="font-size:.82rem">
+                    <div class="text-center text-muted py-3">추천 후보 로딩 중...</div>
+                </div>
+                <hr class="my-2">
+                <h6 class="fw-bold mb-2" style="font-size:.85rem">조달 세금계산서 검색 <small class="text-muted fw-normal" id="matchPublicCount"></small></h6>
+                <div class="d-flex gap-2 mb-2">
+                    <input type="text" class="form-control form-control-sm" id="matchSearch" placeholder="거래처/품목명/G2B번호 검색 후 Enter">
+                    <button class="btn btn-sm btn-outline-primary" style="white-space:nowrap" onclick="doSearch()">검색</button>
+                </div>
+                <div id="matchSearchResults" style="max-height:300px;overflow-y:auto;font-size:.82rem"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ====== 예외처리 모달 ====== #}
+<div class="modal fade" id="excludeModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-secondary text-white py-2">
+                <h6 class="modal-title fw-bold mb-0">예외 처리</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3">
+                <p class="small mb-2" id="excludeContractName"></p>
+                <div class="mb-2">
+                    <label class="form-label small fw-bold">처리 사유</label>
+                    <select class="form-select form-select-sm" id="excludeReason">
+                        <option value="민수계약">민수계약 (G2B 아님)</option>
+                        <option value="변경완료">변경계약으로 대체</option>
+                        <option value="대금완료">대금 수령 확인 (수기)</option>
+                        <option value="취소">계약 취소</option>
+                        <option value="기타">기타</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small fw-bold">메모 (선택)</label>
+                    <input type="text" class="form-control form-control-sm" id="excludeNote" placeholder="사유 메모">
+                </div>
+                <button class="btn btn-secondary btn-sm w-100 fw-bold" onclick="doExclude()">예외 처리</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 {# ====== 임포트 모달 ====== #}
 <div class="modal fade" id="importModal" tabindex="-1">
@@ -144,5 +329,220 @@
         </form>
     </div>
 </div>
+
+<script>
+let _currentContractId = null;
+let _excludeContractId = null;
+
+function openExcludeModal(contractId, contractName) {
+    _excludeContractId = contractId;
+    document.getElementById('excludeContractName').textContent = contractName;
+    document.getElementById('excludeNote').value = '';
+    new bootstrap.Modal(document.getElementById('excludeModal')).show();
+}
+
+function doExclude() {
+    const reason = document.getElementById('excludeReason').value;
+    const note = document.getElementById('excludeNote').value.trim();
+    if (!confirm(`이 계약을 "${reason}"(으)로 예외 처리하시겠습니까?`)) return;
+    fetch('/financial/api/exclude-contract', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: JSON.stringify({contract_id: _excludeContractId, reason: reason, note: note})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('excludeModal')).hide();
+            location.reload();
+        } else {
+            alert('처리 실패: ' + (data.error || ''));
+        }
+    })
+    .catch(e => alert('오류: ' + e.message));
+}
+const _fmtMoney = n => n ? n.toLocaleString() + '원' : '-';
+
+function openMatchModal(contractId) {
+    _currentContractId = contractId;
+    const infoEl = document.getElementById('matchContractInfo');
+    infoEl.innerHTML = '<div class="text-center text-muted py-2">계약 정보 로딩 중...</div>';
+    document.getElementById('matchRecommend').innerHTML = '<div class="text-center text-muted py-3">추천 후보 로딩 중...</div>';
+    document.getElementById('matchSearchResults').innerHTML = '';
+    document.getElementById('matchSearch').value = '';
+    document.getElementById('matchPublicCount').textContent = '';
+    new bootstrap.Modal(document.getElementById('matchModal')).show();
+
+    loadModalData();
+}
+
+function loadModalData() {
+    const infoEl = document.getElementById('matchContractInfo');
+    Promise.all([
+        fetch(`/financial/api/contract-info/${_currentContractId}`).then(r => r.json()),
+        fetch(`/financial/api/invoice-candidates/${_currentContractId}`).then(r => r.json()),
+    ]).then(([info, data]) => {
+        renderContractInfo(infoEl, info);
+        _allCandidates = data.recommend || [];
+        renderInvTable(document.getElementById('matchRecommend'), _allCandidates, true);
+        document.getElementById('matchPublicCount').textContent = `(조달 추정 ${data.public_total}건)`;
+    }).catch(() => {
+        infoEl.innerHTML = '<div class="text-danger">조회 실패</div>';
+        document.getElementById('matchRecommend').innerHTML = '';
+    });
+}
+
+function renderContractInfo(el, info) {
+    let itemsHtml = '';
+    if (info.items && info.items.length) {
+        itemsHtml = '<div class="mt-1"><small class="text-muted">품목:</small> ' +
+            info.items.map(i => `<span class="badge bg-light text-dark me-1" style="font-size:.72rem;white-space:nowrap">${i.category} ${i.model_name} ×${i.quantity}</span>`).join('') +
+            '</div>';
+    }
+    const remaining = info.g2b_amount - (info.invoiced_total || 0);
+    const pctClass = remaining <= 0 ? 'text-success' : 'text-danger';
+    let matchedHtml = '';
+    if (info.matched_invoices && info.matched_invoices.length) {
+        matchedHtml = '<div class="mt-2"><small class="text-muted fw-bold">매칭된 세금계산서:</small><table class="table table-sm mb-0 mt-1" style="font-size:.78rem"><tbody>';
+        for (const mi of info.matched_invoices) {
+            matchedHtml += `<tr><td style="white-space:nowrap">${mi.issue_date}</td><td>${mi.buyer_name}</td><td class="text-end" style="white-space:nowrap">${_fmtMoney(mi.total_amount)}</td><td style="white-space:nowrap">${mi.approval_no.substring(0,20)}</td></tr>`;
+        }
+        matchedHtml += `<tr class="fw-bold"><td colspan="2">합계</td><td class="text-end">${_fmtMoney(info.invoiced_total)}</td><td></td></tr>`;
+        matchedHtml += '</tbody></table></div>';
+    }
+    el.innerHTML =
+        `<div class="row g-2">` +
+        `<div class="col-12"><strong>${info.contract_name || '-'}</strong></div>` +
+        `<div class="col-auto"><small class="text-muted">발주처:</small> <strong>${info.buyer || '-'}</strong></div>` +
+        `<div class="col-auto"><small class="text-muted">G2B:</small> ${info.g2b_no || '-'}</div>` +
+        `<div class="col-auto"><small class="text-muted">계약일:</small> ${info.contract_date}</div>` +
+        `<div class="col-auto"><small class="text-muted">납기:</small> ${info.delivery_due}</div>` +
+        `<div class="col-auto"><small class="text-muted">계약금액:</small> <strong>${_fmtMoney(info.g2b_amount)}</strong></div>` +
+        `<div class="col-auto"><small class="text-muted">청구합계:</small> <strong>${_fmtMoney(info.invoiced_total || 0)}</strong></div>` +
+        `<div class="col-auto"><small class="text-muted">잔액:</small> <strong class="${pctClass}">${_fmtMoney(remaining)}</strong></div>` +
+        `<div class="col-auto"><small class="text-muted">수금:</small> <span class="badge ${info.payment_status==='입금완료'?'bg-success':info.payment_status==='부분입금'?'bg-warning text-dark':'bg-secondary'} badge-sm">${info.payment_status}</span></div>` +
+        `</div>` + itemsHtml + matchedHtml;
+}
+
+function renderInvTable(el, list, showScore) {
+    if (!list || !list.length) {
+        el.innerHTML = '<div class="text-center text-muted py-2">해당 건이 없습니다.</div>';
+        return;
+    }
+    let html = '<table class="table table-sm table-hover mb-0"><thead><tr>';
+    if (showScore) html += '<th style="white-space:nowrap">유사도</th>';
+    html += '<th>발행일</th><th>거래처</th><th>품목</th><th class="text-end">합계금액</th><th style="white-space:nowrap">G2B</th><th></th></tr></thead><tbody>';
+    for (const c of list) {
+        html += '<tr>';
+        if (showScore) {
+            const color = c.score >= 60 ? '#22c55e' : c.score >= 30 ? '#f59e0b' : '#94a3b8';
+            html += `<td style="white-space:nowrap"><span class="score-bar" style="width:${Math.min(c.score,100)}px;background:${color}"></span> <span class="fw-bold" style="color:${color}">${c.score}%</span></td>`;
+        }
+        html += `<td style="white-space:nowrap">${c.issue_date}</td>` +
+            `<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.buyer_name}">${c.buyer_name}</td>` +
+            `<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.item_name}">${c.item_name || '-'}</td>` +
+            `<td class="text-end" style="white-space:nowrap">${_fmtMoney(c.total_amount)}</td>` +
+            `<td style="white-space:nowrap;font-size:.75rem">${c.g2b_no || '-'}</td>` +
+            `<td style="white-space:nowrap"><button class="btn btn-xs btn-primary" onclick="doMatch(${c.invoice_id})">매칭</button></td></tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}
+
+function doSearch() {
+    const q = document.getElementById('matchSearch').value.trim();
+    if (!q) return;
+    const el = document.getElementById('matchSearchResults');
+    el.innerHTML = '<div class="text-center text-muted py-2">검색 중...</div>';
+    fetch(`/financial/api/invoice-candidates/${_currentContractId}?q=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(data => renderInvTable(el, data.search_results, false))
+        .catch(() => { el.innerHTML = '<div class="text-danger py-2">검색 실패</div>'; });
+}
+
+document.getElementById('matchSearch').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
+});
+
+function findByApproval() {
+    const q = document.getElementById('approvalNoInput').value.trim();
+    if (!q) return;
+    const el = document.getElementById('approvalResult');
+    el.innerHTML = '<span class="text-muted">조회 중...</span>';
+    fetch(`/financial/api/find-invoice?q=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.length) {
+                el.innerHTML = '<span class="text-danger">해당 승인번호의 세금계산서를 찾을 수 없습니다.</span>';
+                return;
+            }
+            let html = '<table class="table table-sm mb-0"><thead><tr><th>승인번호</th><th>발행일</th><th>거래처</th><th>품목</th><th class="text-end">합계금액</th><th>매칭상태</th><th>매칭계약</th></tr></thead><tbody>';
+            for (const inv of data) {
+                const statusBadge = inv.match_status === '미매칭'
+                    ? '<span class="badge bg-secondary badge-sm">미매칭</span>'
+                    : `<span class="badge bg-success badge-sm">${inv.match_status}</span>`;
+                html += `<tr>
+                    <td style="white-space:nowrap;font-size:.75rem">${inv.approval_no}</td>
+                    <td style="white-space:nowrap">${inv.issue_date}</td>
+                    <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${inv.buyer_name}</td>
+                    <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${inv.item_name || '-'}</td>
+                    <td class="text-end" style="white-space:nowrap">${_fmtMoney(inv.total_amount)}</td>
+                    <td style="white-space:nowrap">${statusBadge}</td>
+                    <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${inv.matched_contract || '-'}</td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            el.innerHTML = html;
+        })
+        .catch(() => { el.innerHTML = '<span class="text-danger">조회 실패</span>'; });
+}
+
+function matchByApproval() {
+    const approvalNo = document.getElementById('approvalNoInput').value.trim();
+    if (!approvalNo) { alert('승인번호를 입력해주세요.'); return; }
+    if (!confirm(`승인번호 ${approvalNo}를 이 계약에 매칭하시겠습니까?`)) return;
+    fetch('/financial/api/match-by-approval', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: JSON.stringify({approval_no: approvalNo, contract_id: _currentContractId})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            document.getElementById('approvalResult').innerHTML = `<div class="alert alert-success small py-1 mb-0">${data.message}</div>`;
+            document.getElementById('approvalNoInput').value = '';
+            refreshModal();
+        } else {
+            document.getElementById('approvalResult').innerHTML = `<div class="alert alert-danger small py-1 mb-0">${data.error}</div>`;
+        }
+    })
+    .catch(e => { document.getElementById('approvalResult').innerHTML = `<div class="alert alert-danger small py-1 mb-0">오류: ${e.message}</div>`; });
+}
+
+function doMatch(invoiceId) {
+    if (!confirm('이 세금계산서를 매칭하시겠습니까?')) return;
+    fetch('/financial/api/quick-match', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: JSON.stringify({invoice_id: invoiceId, contract_id: _currentContractId})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            // 모달 닫지 않고 계약 정보 + 후보 새로고침
+            refreshModal();
+        } else {
+            alert('매칭 실패: ' + (data.error || ''));
+        }
+    })
+    .catch(e => alert('오류: ' + e.message));
+}
+
+function refreshModal() {
+    document.getElementById('matchRecommend').innerHTML = '<div class="text-center text-muted py-2">갱신 중...</div>';
+    document.getElementById('matchSearchResults').innerHTML = '';
+    loadModalData();
+}
+</script>
 
 {% endblock %}

@@ -84,11 +84,6 @@ from .entities import (
     IlluminanceMeasured,
     Certification,
     CERT_TYPE_CHOICES,
-    SpecDocument,
-    SPEC_DOC_STATUS,
-    SPEC_DOC_TYPES,
-    DesignSimulationDoc,
-    SIMULATION_DOC_TYPES,
 )
 from .db import SessionLocal, engine, init_db
 
@@ -180,9 +175,4 @@ __all__ = [
     "IlluminanceMeasured",
     "Certification",
     "CERT_TYPE_CHOICES",
-    "SpecDocument",
-    "SPEC_DOC_STATUS",
-    "SPEC_DOC_TYPES",
-    "DesignSimulationDoc",
-    "SIMULATION_DOC_TYPES",
 ]

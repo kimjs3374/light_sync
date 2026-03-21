@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ '인증서 수정' if cert else '인증서 등록' }}{% endblock %}
+
+{% block content %}
+<div class="container py-3" style="max-width:700px">
+  <h5 class="mb-3">{{ '인증서 수정' if cert else '인증서 등록' }}</h5>
+
+  <form method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label small fw-bold">인증 유형 <span class="text-danger">*</span></label>
+        <select name="cert_type" class="form-select form-select-sm" required>
+          {% for code, label in cert_types %}
+            <option value="{{ code }}" {{ 'selected' if cert and cert.cert_type == code }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small fw-bold">인증서명 <span class="text-danger">*</span></label>
+        <input type="text" name="cert_name" class="form-control form-control-sm" required
+               value="{{ cert.cert_name if cert else '' }}" placeholder="예: KS C 7653">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small fw-bold">인증번호</label>
+        <input type="text" name="cert_no" class="form-control form-control-sm"
+               value="{{ cert.cert_no if cert else '' }}" placeholder="예: 제16-0239호">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small fw-bold">발급기관</label>
+        <input type="text" name="issued_by" class="form-control form-control-sm"
+               value="{{ cert.issued_by if cert else '' }}" placeholder="예: 한국표준협회">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small fw-bold">발급일</label>
+        <input type="date" name="issued_date" class="form-control form-control-sm"
+               value="{{ cert.issued_date.strftime('%Y-%m-%d') if cert and cert.issued_date else '' }}">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small fw-bold">만료일</label>
+        <input type="date" name="expiry_date" class="form-control form-control-sm"
+               value="{{ cert.expiry_date.strftime('%Y-%m-%d') if cert and cert.expiry_date else '' }}">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small fw-bold">대상 제품/모델</label>
+        <input type="text" name="product_model" class="form-control form-control-sm"
+               value="{{ cert.product_model if cert else '' }}" placeholder="예: ARENA-200(S)">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small fw-bold">만료 전 알림 (일)</label>
+        <input type="number" name="alert_days" class="form-control form-control-sm"
+               value="{{ cert.alert_days if cert else 30 }}" min="1" max="365">
+      </div>
+      <div class="col-12">
+        <label class="form-label small fw-bold">인증서 파일</label>
+        <input type="file" name="cert_file" class="form-control form-control-sm" accept=".pdf,.jpg,.png,.jpeg">
+        {% if cert and cert.file_path %}
+          <small class="text-muted">현재: <a href="{{ url_for('static', filename=cert.file_path) }}" target="_blank">{{ cert.file_path.split('/')[-1] }}</a></small>
+        {% endif %}
+      </div>
+      <div class="col-12">
+        <label class="form-label small fw-bold">비고</label>
+        <textarea name="note" class="form-control form-control-sm" rows="2">{{ cert.note if cert else '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="mt-3 d-flex gap-2">
+      <button type="submit" class="btn btn-sm btn-primary">{{ '수정' if cert else '등록' }}</button>
+      <a href="{{ url_for('certification.cert_list') }}" class="btn btn-sm btn-outline-secondary">취소</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

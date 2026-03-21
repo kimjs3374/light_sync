@@ -138,9 +138,15 @@
                 <option value="created_desc" {% if filters.sort=='created_desc' %}selected{% endif %}>최신등록순</option>
             </select>
         </div>
-        <div class="col-12 text-md-end mobile-actions">
-            <a href="{{ url_for('project.contract_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
-            <button class="btn btn-primary btn-sm fw-bold">검색</button>
+        <div class="col-12 d-flex align-items-center justify-content-end gap-3 mobile-actions">
+            <label class="form-check-label small" style="white-space:nowrap">
+                <input type="checkbox" class="form-check-input" name="show_done" value="1"
+                       {{ 'checked' if filters.show_done == '1' }} onchange="this.form.submit()"> 완료건 포함
+            </label>
+            <div>
+                <a href="{{ url_for('project.contract_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+                <button class="btn btn-primary btn-sm fw-bold">검색</button>
+            </div>
         </div>
     </div>
 </form>

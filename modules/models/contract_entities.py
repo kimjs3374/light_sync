@@ -21,7 +21,7 @@ from .constants import DETAIL_ITEM_OPTIONS
 class Contract(Base):
     __tablename__ = 'contracts'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)  # G2B 동기화 시 프로젝트 미연결 가능
 
     contract_name = Column(String(200), nullable=False) # 계약명
     item_group = Column(String(50), default=DETAIL_ITEM_OPTIONS[0])     # 계약 상세품목(단일 규칙)

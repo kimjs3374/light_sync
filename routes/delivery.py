@@ -10,6 +10,7 @@ from modules.pagination import make_pagination
 
 from modules.history_board import append_history_log, get_project_history_context
 from modules.db_context import get_db
+from modules.contract_filters import active_contract_filter
 from modules.models import Project, Contract, User, Delivery, DeliveryPhoto
 from modules.storage_adapter import download_bytes
 from modules.priority_utils import (
@@ -35,7 +36,6 @@ from modules.services.delivery_actions import (
     handle_delete_contact,
     handle_add_chat,
     handle_add_history_reply,
-    handle_update_inspection,
 )
 
 
@@ -87,7 +87,6 @@ ACTION_HANDLERS = {
     'delete_contact': handle_delete_contact,
     'add_chat': handle_add_chat,
     'add_history_reply': handle_add_history_reply,
-    'update_inspection': handle_update_inspection,
 }
 
 
@@ -120,8 +119,12 @@ def delivery_management():
         q = (request.args.get("q") or "").strip().lower()
         status_filter = (request.args.get("status") or "all").strip()
         sort_by = (request.args.get("sort") or "due_asc").strip()
+        show_done = request.args.get("show_done", "") == "1"
 
-        projects = db.query(Project).filter(Project.is_contracted.is_(True)).options(
+        base_query = db.query(Project).filter(Project.is_contracted.is_(True))
+        if not show_done:
+            base_query = base_query.filter(active_contract_filter())
+        projects = base_query.options(
             joinedload(Project.contracts),
             joinedload(Project.deliveries).joinedload(Delivery.splits),
             joinedload(Project.priority_override),
@@ -234,7 +237,7 @@ def delivery_management():
             priority_projects=priority_projects,
             stats=stats,
             pagination=pagination,
-            filters={"q": request.args.get("q", ""), "status": status_filter, "sort": sort_by},
+            filters={"q": request.args.get("q", ""), "status": status_filter, "sort": sort_by, "show_done": "1" if show_done else ""},
             status_labels=STATUS_LABELS,
             status_badge=_status_badge,
         )

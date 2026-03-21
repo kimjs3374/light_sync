@@ -3,6 +3,7 @@ import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, abort
 from sqlalchemy.orm import joinedload
 from modules.auth_decorators import login_required
+from modules.contract_filters import active_contract_filter
 
 from modules.history_board import get_project_history_context
 from modules.services.ical_sync import get_leave_events_for_date
@@ -58,7 +59,7 @@ def production_display():
 
         contracted_projects = (
             db.query(Project)
-            .filter(Project.is_contracted.is_(True))
+            .filter(Project.is_contracted.is_(True), active_contract_filter())
             .options(
                 joinedload(Project.contracts)
                     .joinedload(Contract.items)
@@ -74,7 +75,7 @@ def production_display():
         deliveries = (
             db.query(Delivery)
             .join(Project, Project.id == Delivery.project_id)
-            .filter(Project.is_contracted.is_(True))
+            .filter(Project.is_contracted.is_(True), active_contract_filter())
             .options(joinedload(Delivery.project))
             .all()
         )

@@ -1,30 +1,33 @@
+# G2B 조달 기준 상세품목 (나라장터 세부품명 기준 통일)
 DETAIL_ITEM_OPTIONS = [
-    "투광등기구",
-    "가로등기구",
-    "보안등기구",
-    "터널등기구",
+    "LED투광등기구",
+    "LED가로등기구",
+    "LED보안등기구",
+    "LED터널용등기구",
+    "스포츠조명기구",
     "조명타워",
     "철제가로등주",
-    "스텐가로등주",
-    "LED경관조명",
+    "스테인리스가로등주",
+    "가로등주부속자재",
+    "LED경관조명기구",
     "태양광가로등",
-    "도로표지병",
 ]
 
 # 바코드 입력 허용 대상 (조명기구 계열)
 LIGHTING_DETAIL_ITEMS = {
-    "투광등기구",
-    "가로등기구",
-    "보안등기구",
-    "터널등기구",
-    "LED경관조명",
+    "LED투광등기구",
+    "LED가로등기구",
+    "LED보안등기구",
+    "LED터널용등기구",
+    "스포츠조명기구",
+    "LED경관조명기구",
     "태양광가로등",
 }
 
 
 # 계약 품목별 동적 입력 스키마 (JSON 저장 기준)
 CONTRACT_ITEM_SPEC_SCHEMA = {
-    "투광등기구": {
+    "LED투광등기구": {
         "required": ["lens_angle", "spacing_distance", "body_type", "has_stabilizer_box"],
         "conditional_required": {
             "has_stabilizer_box": {
@@ -33,13 +36,22 @@ CONTRACT_ITEM_SPEC_SCHEMA = {
             }
         }
     },
-    "가로등기구": {
+    "스포츠조명기구": {
+        "required": ["lens_angle", "spacing_distance", "body_type", "has_stabilizer_box"],
+        "conditional_required": {
+            "has_stabilizer_box": {
+                "equals": True,
+                "fields": ["stabilizer_vendor_contact", "stabilizer_address", "smps_shipment_schedule"]
+            }
+        }
+    },
+    "LED가로등기구": {
         "required": ["spacing_distance", "is_integrated"],
     },
-    "보안등기구": {
+    "LED보안등기구": {
         "required": ["spacing_distance", "is_integrated"],
     },
-    "터널등기구": {
+    "LED터널용등기구": {
         "required": ["spacing_distance", "is_integrated"],
     },
     "조명타워": {
@@ -54,7 +66,7 @@ CONTRACT_ITEM_SPEC_SCHEMA = {
             }
         }
     },
-    "스텐가로등주": {
+    "스테인리스가로등주": {
         "required": ["replace_or_new", "anchor_spacing", "arm_type", "stainless_finish_type"],
         "conditional_required": {
             "stainless_finish_type": {
@@ -65,22 +77,35 @@ CONTRACT_ITEM_SPEC_SCHEMA = {
     },
 }
 
-# 기존 데이터/레거시 입력값 호환용 별칭
+# 기존 ERP 레거시 명칭 → 조달 기준 명칭 변환
 DETAIL_ITEM_ALIASES = {
-    "💡 조명기구": "투광등기구",
+    # 레거시 ERP 명칭
+    "💡 조명기구": "LED투광등기구",
     "🗼 조명타워": "조명타워",
-    "📦 기타부속": "도로표지병",
-    "조명기구": "투광등기구",
-    "LED투광등기구": "투광등기구",
-    "LED가로등기구": "가로등기구",
-    "LED보안등기구": "보안등기구",
+    "📦 기타부속": "가로등주부속자재",
+    "조명기구": "LED투광등기구",
+    "투광등기구": "LED투광등기구",
+    "가로등기구": "LED가로등기구",
+    "보안등기구": "LED보안등기구",
+    "터널등기구": "LED터널용등기구",
+    "LED경관조명": "LED경관조명기구",
+    "경관조명": "LED경관조명기구",
+    "스텐가로등주": "스테인리스가로등주",
     "철제가로등주(보안등주)": "철제가로등주",
-    "스텐가로등주(보안등주)": "스텐가로등주",
-    "가로등기구": "가로등기구",
-    "보안등기구": "보안등기구",
-    "경관조명": "LED경관조명",
+    "스텐가로등주(보안등주)": "스테인리스가로등주",
     "타워": "조명타워",
-    "미분류": "투광등기구",
+    "미분류": "LED투광등기구",
+    # G2B 세부품명 (이미 정규명칭이지만 안전하게)
+    "LED투광등기구": "LED투광등기구",
+    "LED가로등기구": "LED가로등기구",
+    "LED보안등기구": "LED보안등기구",
+    "LED터널용등기구": "LED터널용등기구",
+    "LED터널등기구": "LED터널용등기구",
+    "스테인리스가로등주": "스테인리스가로등주",
+    "가로등주부속자재": "가로등주부속자재",
+    "LED경관조명기구": "LED경관조명기구",
+    "스포츠조명기구": "스포츠조명기구",
+    "도로표지병": "가로등주부속자재",
 }
 
 

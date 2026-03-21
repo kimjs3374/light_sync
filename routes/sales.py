@@ -6,6 +6,7 @@ from modules.utils import safe_int
 from modules.pagination import make_pagination
 
 from modules.db_context import get_db
+from modules.contract_filters import active_contract_filter
 from modules.models import (
     Project, Contract, ContractItem,
     DETAIL_ITEM_OPTIONS, LIGHTING_DETAIL_ITEMS,
@@ -45,11 +46,15 @@ def sales_list():
 
     sort_by = request.args.get('sort', 'due_asc')
     q = (request.args.get('q') or '').strip().lower()
+    show_done = request.args.get('show_done', '') == '1'
     page = safe_int(request.args.get('page'), 1)
     per_page = safe_int(request.args.get('per_page'), 20)
 
     with get_db() as db:
-        projects = db.query(Project).filter(Project.is_contracted == True).options(
+        base_query = db.query(Project).filter(Project.is_contracted == True)
+        if not show_done:
+            base_query = base_query.filter(active_contract_filter())
+        projects = base_query.options(
             joinedload(Project.contracts).joinedload(Contract.items),
             joinedload(Project.priority_override),
         ).order_by(Project.id.desc()).all()
@@ -167,6 +172,7 @@ def sales_list():
             filters={
                 'sort': sort_by,
                 'q': q,
+                'show_done': '1' if show_done else '',
             }
         )
 

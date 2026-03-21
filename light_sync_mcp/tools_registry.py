@@ -18,6 +18,7 @@ from .tools import (
     daily_report,
     notification,
     overview,
+    archive,
 )
 from .resources import magnatech
 
@@ -39,4 +40,5 @@ def register_all(mcp: FastMCP):
     daily_report.register(mcp)
     notification.register(mcp)
     overview.register(mcp)
+    archive.register(mcp)
     magnatech.register(mcp)

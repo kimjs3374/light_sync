@@ -72,9 +72,15 @@
                 <option value="created_desc" {% if filters.sort=='created_desc' %}selected{% endif %}>생성 최신순</option>
             </select>
         </div>
-        <div class="col-12 col-md-2 text-md-end mobile-actions">
-            <a href="{{ url_for('delivery.delivery_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
-            <button class="btn btn-primary btn-sm fw-bold">검색</button>
+        <div class="col-12 col-md-auto d-flex align-items-center justify-content-end gap-3 mobile-actions">
+            <label class="form-check-label small" style="white-space:nowrap">
+                <input type="checkbox" class="form-check-input" name="show_done" value="1"
+                       {{ 'checked' if filters.show_done == '1' }} onchange="this.form.submit()"> 완료건 포함
+            </label>
+            <div>
+                <a href="{{ url_for('delivery.delivery_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+                <button class="btn btn-primary btn-sm fw-bold">검색</button>
+            </div>
         </div>
     </div>
 </form>

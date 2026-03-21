@@ -25,10 +25,16 @@ DEFECT_TYPES = [
     ('LENS', '렌즈/리플렉터 손상'),
     ('MOISTURE', '결로/침수'),
     ('CONTROL', '제어 불량'),
+    ('WIRING', '배선/커넥터 불량'),
+    ('BODY', '등기구 외함 손상'),
+    ('POLE', '등주/타워 손상'),
+    ('PAINT', '도장 박리/부식'),
+    ('ANCHOR', '앵커/기초 문제'),
+    ('SENSOR', '센서 오동작'),
     ('OTHER', '기타'),
 ]
 
-CASE_STATUS_STEPS = ['접수', '현장확인', '수리중', '완료', '보류']
+CASE_STATUS_STEPS = ['접수', '현장확인', '부품준비', '수리/교체', '완료', '보류']
 
 
 class HistoryLog(Base):
@@ -147,6 +153,13 @@ class Warranty(Base):
     insurance_no = Column(String(100), nullable=True)
     insurance_returned = Column(Boolean, default=False)
     note = Column(Text, nullable=True)
+    contract_name = Column(String(200), nullable=True)
+    item_group = Column(String(50), nullable=True)
+    model_name = Column(String(200), nullable=True)
+    quantity = Column(Integer, nullable=True)
+    site_address = Column(String(500), nullable=True)
+    customer_contact = Column(String(200), nullable=True)
+    customer_phone = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
@@ -176,6 +189,29 @@ class WarrantyCase(Base):
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
+    # 유상/무상
+    is_chargeable = Column(Boolean, default=False)
+    charge_amount = Column(Integer, default=0)
+    charge_status = Column(String(20), nullable=True)
+
+    # 고객 정보
+    request_channel = Column(String(30), nullable=True)
+    customer_name = Column(String(100), nullable=True)
+    customer_phone = Column(String(50), nullable=True)
+
+    # 교체 부품
+    parts_json = Column(Text, nullable=True)
+
+    # 물류
+    shipping_method = Column(String(30), nullable=True)
+    shipping_tracking = Column(String(100), nullable=True)
+    shipping_date = Column(Date, nullable=True)
+
+    # 비정규화
+    contract_name = Column(String(200), nullable=True)
+    item_group = Column(String(50), nullable=True)
+    model_name = Column(String(200), nullable=True)
+
     # 수기입력 전용 필드 (보증 연결 없이 접수할 때 사용)
     manual_site_name = Column(String(200), nullable=True)      # 현장명 수기
     manual_contract_name = Column(String(200), nullable=True)   # 계약명 수기
@@ -185,6 +221,17 @@ class WarrantyCase(Base):
     warranty = relationship("Warranty", back_populates="cases")
     project = relationship("Project")
     logs = relationship("WarrantyCaseLog", back_populates="case", cascade="all, delete-orphan")
+
+    @property
+    def parts(self):
+        try:
+            return json.loads(self.parts_json or '[]')
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    @parts.setter
+    def parts(self, value):
+        self.parts_json = json.dumps(value, ensure_ascii=False)
 
 
 class WarrantyCaseLog(Base):

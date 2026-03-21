@@ -31,7 +31,7 @@
         <div class="tab-content">
             <!-- 탭1: 보증 연결 접수 -->
             <div class="tab-pane fade show active" id="tab-warranty">
-                <form method="POST" action="{{ url_for('warranty.warranty_create') }}">
+                <form method="POST" action="{{ url_for('warranty.case_create') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="input_mode" value="warranty">
 
@@ -95,7 +95,7 @@
                 <div class="alert alert-info small mb-3">
                     보증 등록이 안 된 이전 납품건의 AS를 접수할 때 사용합니다. 현장명/계약명을 직접 입력하세요.
                 </div>
-                <form method="POST" action="{{ url_for('warranty.warranty_create') }}">
+                <form method="POST" action="{{ url_for('warranty.case_create') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="input_mode" value="manual">
 

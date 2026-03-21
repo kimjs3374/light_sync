@@ -37,6 +37,7 @@ MENU_REGISTRY = OrderedDict([
     ("photos",         {"label": "사진관리",   "group": "공유",   "endpoint": "photos.photo_list"}),
     ("drawing",        {"label": "도면관리",   "group": "공유",   "endpoint": "drawing.drawings_index"}),
     ("illuminance",    {"label": "조도검증",   "group": "영업부", "endpoint": "illuminance.index"}),
+    ("certification",  {"label": "인증서관리", "group": "관리부", "endpoint": "certification.cert_list"}),
     # --- 생산부 ---
     ("production",     {"label": "생산관리",   "group": "생산부", "endpoint": "production.production_main"}),
     # --- 시스템 (admin only) ---
@@ -61,7 +62,7 @@ GROUP_ICONS = {
 # 부서별 기본 메뉴 (GroupPermission 초기값 세팅용)
 DEFAULT_GROUP_MENUS = {
     "영업부": "project,contract,sales,quotation,delivery,illuminance,procurement,procurement_summary,warranty",
-    "관리부": "item,material,vendor,purchase_order,receiving,bom,financial,inventory,procurement,procurement_summary,warranty",
+    "관리부": "item,material,vendor,purchase_order,receiving,bom,financial,inventory,certification,procurement,procurement_summary,warranty",
     "생산부": "production,warranty",
     "임원진": "project,contract,sales,quotation,delivery,item,material,vendor,purchase_order,receiving,bom,financial,inventory,procurement,procurement_summary,warranty,production",
 }

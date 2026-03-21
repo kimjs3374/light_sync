@@ -377,68 +377,6 @@
                         </div>
                     </div>
 
-                    {# 검수 결과 입력 (매그나텍 PHASE 7) #}
-                    <div class="row g-3 mt-0">
-                        <div class="col-12">
-                            <div class="detail-panel">
-                                <div class="panel-heading">
-                                    <h6>검수 결과</h6>
-                                    {% if d.inspection_status == '합격' %}
-                                      <span class="badge bg-success" style="white-space:nowrap">합격</span>
-                                    {% elif d.inspection_status == '불합격' %}
-                                      <span class="badge bg-danger" style="white-space:nowrap">불합격</span>
-                                    {% elif d.inspection_status == '보완' %}
-                                      <span class="badge bg-warning text-dark" style="white-space:nowrap">보완</span>
-                                    {% else %}
-                                      <span class="badge bg-secondary" style="white-space:nowrap">미검수</span>
-                                    {% endif %}
-                                </div>
-                                <form method="POST">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <input type="hidden" name="action" value="update_inspection">
-                                    <input type="hidden" name="delivery_id" value="{{ d.id }}">
-                                    <div class="row g-2 align-items-end">
-                                        <div class="col-auto">
-                                            <label class="small fw-bold text-muted">검수 상태</label>
-                                            <select name="inspection_status" class="form-select form-select-sm">
-                                                {% for st in ['미검수', '합격', '불합격', '보완'] %}
-                                                  <option value="{{ st }}" {{ 'selected' if d.inspection_status == st }}>{{ st }}</option>
-                                                {% endfor %}
-                                            </select>
-                                        </div>
-                                        <div class="col-auto">
-                                            <label class="small fw-bold text-muted">검수일</label>
-                                            <input type="date" name="inspection_date" class="form-control form-control-sm"
-                                                   value="{{ d.inspection_date.strftime('%Y-%m-%d') if d.inspection_date else '' }}">
-                                        </div>
-                                        <div class="col-auto">
-                                            <label class="small fw-bold text-muted">검수자</label>
-                                            <input type="text" name="inspector" class="form-control form-control-sm"
-                                                   value="{{ d.inspector or '' }}" placeholder="검수자명" style="width:120px">
-                                        </div>
-                                        <div class="col">
-                                            <label class="small fw-bold text-muted">검수 비고</label>
-                                            <input type="text" name="inspection_note" class="form-control form-control-sm"
-                                                   value="{{ d.inspection_note or '' }}" placeholder="검수 비고">
-                                        </div>
-                                        <div class="col-auto">
-                                            <button type="submit" class="btn btn-sm btn-outline-primary fw-bold" style="white-space:nowrap">저장</button>
-                                        </div>
-                                    </div>
-                                </form>
-                                <details class="mt-2">
-                                    <summary class="small text-muted">검수 체크리스트 참조</summary>
-                                    <ul class="small mt-1 mb-0">
-                                        <li>모델명/수량 일치 확인</li>
-                                        <li>외관 손상 여부</li>
-                                        <li>부속품 확인</li>
-                                        <li>G2B 식별번호/인증마크 확인</li>
-                                        <li>납품서류 (성적서, 시험성적서, 인증서) 확인</li>
-                                    </ul>
-                                </details>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
             {% else %}

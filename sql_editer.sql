@@ -1,4 +1,69 @@
 -- ══════════════════════════════════════════════
+-- A/S 관리 시스템 전면 재설계 (2026-03-21)
+-- ══════════════════════════════════════════════
+
+-- 불필요 컬럼 제거
+ALTER TABLE light_sync.warranties DROP COLUMN IF EXISTS project_name;
+
+-- 테이블 생성은 Flask init_db() → Base.metadata.create_all()이 자동 처리
+-- 아래는 기존 테이블에 새 컬럼을 추가하는 마이그레이션만 담당
+
+-- 먼저 스키마 설정
+SET search_path TO light_sync, public;
+
+-- Warranty 비정규화 필드 (기존 테이블에 컬럼 추가)
+ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS contract_name VARCHAR(200);
+ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS project_name VARCHAR(200);
+ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS item_group VARCHAR(50);
+ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS model_name VARCHAR(200);
+ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS quantity INTEGER;
+ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS site_address VARCHAR(500);
+ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS customer_contact VARCHAR(200);
+ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(50);
+
+-- WarrantyCase 유상/무상 + 고객 + 부품 + 물류 + 비정규화
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS is_chargeable BOOLEAN DEFAULT FALSE;
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS charge_amount INTEGER DEFAULT 0;
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS charge_status VARCHAR(20);
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS request_channel VARCHAR(30);
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS customer_name VARCHAR(100);
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(50);
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS parts_json TEXT;
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS shipping_method VARCHAR(30);
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS shipping_tracking VARCHAR(100);
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS shipping_date DATE;
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS contract_name VARCHAR(200);
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS item_group VARCHAR(50);
+ALTER TABLE light_sync.warranty_cases ADD COLUMN IF NOT EXISTS model_name VARCHAR(200);
+
+-- 인덱스
+CREATE INDEX IF NOT EXISTS idx_warranty_end ON light_sync.warranties(warranty_end);
+CREATE INDEX IF NOT EXISTS idx_warranty_type ON light_sync.warranties(warranty_type);
+CREATE INDEX IF NOT EXISTS idx_case_status ON light_sync.warranty_cases(status);
+CREATE INDEX IF NOT EXISTS idx_case_reported ON light_sync.warranty_cases(reported_date DESC);
+
+-- ══════════════════════════════════════════════
+-- 아카이브 (워크보드+A/S 과거 데이터) (2026-03-21)
+-- ══════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS light_sync.archive_posts (
+    id INTEGER PRIMARY KEY,
+    board_type VARCHAR(20) NOT NULL,
+    author VARCHAR(100),
+    content_text TEXT,
+    is_notice BOOLEAN DEFAULT FALSE,
+    children_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS light_sync.archive_comments (
+    id SERIAL PRIMARY KEY,
+    post_id INTEGER NOT NULL REFERENCES light_sync.archive_posts(id) ON DELETE CASCADE,
+    author VARCHAR(100),
+    content_text TEXT,
+    created_at TIMESTAMP
+);
+
+-- ══════════════════════════════════════════════
 -- 조도검증-설계관리 통합 연동 (2026-03-21)
 -- ══════════════════════════════════════════════
 ALTER TABLE light_sync.projects ADD COLUMN IF NOT EXISTS illuminance_facility_type VARCHAR(100);

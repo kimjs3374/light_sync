@@ -535,6 +535,141 @@ def sync_g2b_procurement():
     })
 
 
+# ─── 미매칭 세금계산서 재매칭 API ─────────────────────────────
+
+@api_bp.route('/rematch_invoices', methods=['POST'])
+@login_required
+def rematch_invoices():
+    """미매칭 세금계산서를 contracts 테이블과 재매칭 시도
+    1) 기존 g2b_contract_no로 정확 매칭
+    2) 비고에서 G2B 번호 재파싱 후 매칭
+    """
+    from modules.models import TaxInvoice, Contract
+    from modules.services.warranty_auto import auto_create_warranty
+    from modules.services.tax_invoice_import import find_g2b_no_from_remark
+    from sqlalchemy import func, text as sa_text
+    import traceback
+
+    try:
+        with get_db() as db:
+            unmatched = db.query(TaxInvoice).filter(
+                TaxInvoice.match_status == '미매칭',
+            ).all()
+
+            g2b_set = set(
+                r[0] for r in db.execute(sa_text(
+                    'SELECT DISTINCT cntrct_dlvr_req_no FROM light_sync.g2b_procurements'
+                )).fetchall()
+            )
+
+            matched_count = 0
+            reparsed_count = 0
+
+            for inv in unmatched:
+                g2b_no = inv.g2b_contract_no
+
+                # DB에 없는 G2B 번호는 무효 처리
+                if g2b_no and g2b_no not in g2b_set:
+                    g2b_no = None
+
+                # 비고에서 G2B 번호 재파싱
+                if not g2b_no and inv.remark:
+                    g2b_no, _ = find_g2b_no_from_remark(inv.remark, g2b_set)
+                    if g2b_no and g2b_no != inv.g2b_contract_no:
+                        inv.g2b_contract_no = g2b_no
+                        reparsed_count += 1
+
+                if not g2b_no:
+                    continue
+
+                # contracts에서 매칭 (직접 → 변경차수 순)
+                contract = db.query(Contract).filter(
+                    Contract.g2b_contract_no == g2b_no
+                ).first()
+
+                # 변경차수: 같은 계약명의 다른 G2B번호로 계약 검색
+                if not contract:
+                    proc = db.execute(sa_text(
+                        'SELECT cntrct_dlvr_req_nm FROM light_sync.g2b_procurements WHERE cntrct_dlvr_req_no = :no LIMIT 1'
+                    ), {'no': g2b_no}).first()
+                    if proc and proc[0]:
+                        siblings = db.execute(sa_text(
+                            'SELECT DISTINCT cntrct_dlvr_req_no FROM light_sync.g2b_procurements WHERE cntrct_dlvr_req_nm = :nm'
+                        ), {'nm': proc[0]}).fetchall()
+                        for r in siblings:
+                            if r[0] != g2b_no:
+                                contract = db.query(Contract).filter(
+                                    Contract.g2b_contract_no == r[0]
+                                ).first()
+                                if contract:
+                                    break
+
+                if not contract:
+                    continue
+
+                inv.contract_id = contract.id
+                inv.project_id = contract.project_id
+                inv.match_status = '자동매칭'
+                if not contract.invoice_date or (inv.issue_date and inv.issue_date > contract.invoice_date):
+                    contract.invoice_date = inv.issue_date
+
+                # 수금상태 재계산
+                g2b_amt = 0
+                if contract.g2b_contract_no:
+                    g2b_amt = db.execute(sa_text(
+                        'SELECT SUM(prdct_amt) FROM light_sync.g2b_procurements WHERE cntrct_dlvr_req_no = :no'
+                    ), {'no': contract.g2b_contract_no}).scalar() or 0
+                inv_total = db.query(func.coalesce(func.sum(TaxInvoice.total_amount), 0)).filter(
+                    TaxInvoice.contract_id == contract.id,
+                ).scalar() or 0
+
+                if g2b_amt > 0 and inv_total >= g2b_amt:
+                    contract.payment_status = '입금완료'
+                    contract.payment_date = inv.issue_date
+                    auto_create_warranty(db, contract.id, inv.issue_date)
+                elif inv_total > 0:
+                    contract.payment_status = '부분입금'
+
+                matched_count += 1
+
+            db.commit()
+        return jsonify({
+            'ok': True,
+            'message': f'재매칭 완료: {matched_count}건 매칭 (비고 재파싱: {reparsed_count}건)',
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+# ─── G2B → 계약 동기화 API ──────────────────────────────────
+
+@api_bp.route('/sync_g2b_contracts', methods=['POST'])
+@login_required
+def sync_g2b_contracts():
+    """G2B 조달내역 → 계약/세금계산서 매칭/하자보증 일괄 동기화"""
+    from modules.services.g2b_contract_sync import sync_g2b_to_contracts
+
+    try:
+        with get_db() as db:
+            result = sync_g2b_to_contracts(db)
+        return jsonify({
+            'ok': True,
+            'message': (
+                f"동기화 완료: "
+                f"계약 {result['created']}건 생성, "
+                f"{result['skipped']}건 스킵, "
+                f"세금계산서 {result['matched_invoices']}건 매칭, "
+                f"하자보증 {result['warranties_created']}건 생성"
+            ),
+            **result,
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 # ─── 히스토리보드 AJAX API ───────────────────────────────────
 
 @api_bp.route('/history/<int:project_id>/add', methods=['POST'])

@@ -1,199 +1,234 @@
 {% extends 'base.html' %}
-{% block content %}
+{% block head %}
 <style>
-    .warranty-board .table {
-        table-layout: fixed;
-        border-collapse: collapse;
-    }
-    .warranty-board th, .warranty-board td {
-        vertical-align: middle;
-        padding-top: .62rem;
-        padding-bottom: .62rem;
-        border-left: 0 !important;
-        border-right: 0 !important;
-    }
-    .warranty-board thead th {
-        background: #f8fafc !important;
-        color: #334155 !important;
-        border-top: 0 !important;
-        border-bottom: 1px solid #e2e8f0 !important;
-    }
-    .warranty-board tbody td {
-        border-top: 1px solid #eef2f7 !important;
-        border-bottom: 1px solid #eef2f7 !important;
-    }
-    .warranty-board tbody tr {
-        cursor: pointer;
-        transition: background-color .15s ease;
-    }
-    .warranty-board tbody tr:hover {
-        background: #f8fafc !important;
-    }
-    @media (max-width: 767.98px) {
-        .warranty-header-actions,
-        .warranty-header-actions .btn {
-            width: 100%;
-        }
-    }
-</style>
+/* ── 보증 목록 전용 ── */
+.stat-card-wl {
+    border: none; border-radius: var(--mg-radius);
+    transition: transform .15s;
+}
+.stat-card-wl:hover { transform: translateY(-2px); }
+.stat-num-wl { font-size: 1.75rem; font-weight: 800; line-height: 1.1; font-family: var(--mg-mono); }
+.stat-label-wl { font-size: .75rem; color: var(--mg-muted); margin-top: 2px; }
 
+.filter-bar-wl {
+    background: #f8fafc; border-radius: var(--mg-radius);
+    padding: 10px 14px; border: 1px solid var(--mg-border);
+}
+
+/* 보증 테이블 */
+.wl-table th {
+    font-size: .72rem; color: var(--mg-muted); font-weight: 700;
+    text-transform: uppercase; letter-spacing: .03em;
+    white-space: nowrap; background: #f8fafc;
+}
+.wl-table td {
+    vertical-align: middle; white-space: nowrap;
+    font-size: .82rem; padding: 7px 10px;
+    border-bottom: 1px solid #e2e8f0;
+}
+.wl-table tbody tr { transition: background .12s, box-shadow .12s; cursor: pointer; }
+.wl-table tbody tr:hover {
+    background: #eef2ff !important;
+    box-shadow: inset 3px 0 0 var(--mg-primary);
+}
+.wl-table .site-link {
+    font-weight: 700; color: var(--mg-ink); text-decoration: none;
+    display: block;
+}
+.wl-table .site-link:hover { color: var(--mg-primary); }
+
+/* D-day 배지 */
+.dday-badge {
+    display: inline-block; font-size: .7rem; font-weight: 700;
+    padding: 2px 7px; border-radius: 6px; white-space: nowrap;
+    font-family: var(--mg-mono);
+}
+.dday-critical { background: #fef2f2; color: #dc2626; }
+.dday-warn     { background: #fffbeb; color: #d97706; }
+.dday-ok       { background: #f0fdf4; color: #16a34a; }
+.dday-expired  { background: #f1f5f9; color: #94a3b8; }
+
+/* 페이지네이션 */
+.pager .page-link {
+    font-size: .8rem; padding: .3rem .6rem;
+    color: var(--mg-muted); border-color: var(--mg-border);
+}
+.pager .page-item.active .page-link {
+    background: var(--mg-primary); border-color: var(--mg-primary); color: #fff;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ═══ HERO ═══ #}
 <div class="page-hero mg-fade">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
         <div>
-            <div class="hero-eyebrow">Warranty & Service</div>
-            <h2>하자보증 / AS 관리</h2>
-            <div class="hero-sub">하자보증 등록 및 AS 접수 이력을 관리합니다</div>
+            <div class="hero-eyebrow">Warranty Management</div>
+            <h2>보증 / A/S 관리</h2>
+            <div class="hero-sub">계약별 보증 현황 · 만료 일정 · A/S 케이스 이력</div>
         </div>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="{{ url_for('warranty.warranty_create') }}" class="btn btn-primary fw-bold">+ AS 접수</a>
-            <a href="{{ url_for('warranty.warranty_list') }}?view=register" class="btn btn-outline-secondary fw-bold">보증등록</a>
+        <div class="d-flex flex-wrap gap-2 warranty-header-actions">
+            <a href="{{ url_for('warranty.dashboard') }}" class="btn btn-sm">대시보드</a>
+            <a href="{{ url_for('warranty.case_create') }}" class="btn btn-sm btn-hi">+ AS 접수</a>
         </div>
     </div>
 </div>
 
+{# ═══ 통계 카드 ═══ #}
 <div class="row g-3 mb-3 mg-fade" style="animation-delay:.05s">
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm">
-            <div class="card-body py-2">
-                <small class="text-muted">전체</small>
-                <div class="fw-bold fs-5">{{ stats.total }}</div>
-            </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-wl shadow-sm text-center py-3">
+            <div class="stat-num-wl">{{ stats.total }}</div>
+            <div class="stat-label-wl">전체</div>
         </div>
     </div>
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm">
-            <div class="card-body py-2">
-                <small class="text-muted">조회결과</small>
-                <div class="fw-bold fs-5">{{ stats.filtered }}</div>
-            </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-wl shadow-sm text-center py-3" style="border-left:3px solid #f59e0b;">
+            <div class="stat-num-wl" style="color:#d97706;">{{ stats.open }}</div>
+            <div class="stat-label-wl">미완료 케이스</div>
         </div>
     </div>
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm border-start border-4 border-warning">
-            <div class="card-body py-2">
-                <small class="text-muted">미완료</small>
-                <div class="fw-bold fs-5 text-warning">{{ stats.open }}</div>
-            </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-wl shadow-sm text-center py-3" style="border-left:3px solid #0ea5e9;">
+            <div class="stat-num-wl" style="color:#0ea5e9;">{{ stats.filtered }}</div>
+            <div class="stat-label-wl">조회 결과</div>
         </div>
     </div>
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm border-start border-4 border-info">
-            <div class="card-body py-2">
-                <small class="text-muted">하자유형별 최다</small>
-                {% set top_code = stats.defect_counts|dictsort(by='value', reverse=true)|first if stats.defect_counts else none %}
-                <div class="fw-bold fs-5 text-info">
-                    {% if top_code and top_code[1] > 0 %}
-                        {% for code, label in defect_types %}{% if code == top_code[0] %}{{ label }}({{ top_code[1] }}){% endif %}{% endfor %}
-                    {% else %}-{% endif %}
-                </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-wl shadow-sm text-center py-3" style="border-left:3px solid #64748b;">
+            {% set top_defect = stats.defect_counts|dictsort(by='value', reverse=true)|first if stats.defect_counts else none %}
+            <div class="stat-num-wl" style="color:#64748b;font-size:1.1rem;">
+                {% if top_defect and top_defect[1] > 0 %}
+                    {{ top_defect[0] }}
+                {% else %}-{% endif %}
             </div>
+            <div class="stat-label-wl">최다 하자유형</div>
         </div>
     </div>
 </div>
 
-<form class="card border-0 shadow-sm mb-4" method="GET">
-    <div class="card-body row g-2 align-items-end">
-        <div class="col-md-3">
-            <label class="small fw-bold">검색</label>
-            <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/케이스번호">
+{# ═══ 필터 바 ═══ #}
+<form class="filter-bar-wl mb-3 mg-fade" style="animation-delay:.08s" method="GET">
+    <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-4 col-lg-3">
+            <input type="text" name="q" class="form-control form-control-sm"
+                   placeholder="계약명 / 모델명"
+                   value="{{ search }}">
         </div>
-        <div class="col-md-2">
-            <label class="small fw-bold">상태</label>
-            <select class="form-select" name="status">
-                <option value="all" {% if filters.status == 'all' %}selected{% endif %}>전체</option>
-                <option value="접수" {% if filters.status == '접수' %}selected{% endif %}>접수</option>
-                <option value="현장확인" {% if filters.status == '현장확인' %}selected{% endif %}>현장확인</option>
-                <option value="수리중" {% if filters.status == '수리중' %}selected{% endif %}>수리중</option>
-                <option value="완료" {% if filters.status == '완료' %}selected{% endif %}>완료</option>
-                <option value="보류" {% if filters.status == '보류' %}selected{% endif %}>보류</option>
+        <div class="col-6 col-md-2">
+            <select name="status" class="form-select form-select-sm">
+                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>전체 상태</option>
+                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>보증 진행중</option>
+                <option value="expired" {% if status_filter == 'expired' %}selected{% endif %}>보증 만료</option>
             </select>
         </div>
-        <div class="col-md-2">
-            <label class="small fw-bold">하자유형</label>
-            <select class="form-select" name="defect">
-                <option value="all" {% if filters.defect == 'all' %}selected{% endif %}>전체</option>
+        <div class="col-6 col-md-2">
+            <select name="defect" class="form-select form-select-sm">
+                <option value="all" {% if filters.defect == 'all' %}selected{% endif %}>하자유형 전체</option>
                 {% for code, label in defect_types %}
                 <option value="{{ code }}" {% if filters.defect == code %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-2">
-            <label class="small fw-bold">정렬</label>
-            <select class="form-select" name="sort">
-                <option value="created_desc" {% if filters.sort == 'created_desc' %}selected{% endif %}>최신등록순</option>
-                <option value="reported_asc" {% if filters.sort == 'reported_asc' %}selected{% endif %}>접수일 오래된순</option>
-                <option value="reported_desc" {% if filters.sort == 'reported_desc' %}selected{% endif %}>접수일 최신순</option>
+        <div class="col-6 col-md-2">
+            <select name="type" class="form-select form-select-sm">
+                <option value="" {% if not type_filter %}selected{% endif %}>보증유형 전체</option>
+                <option value="일반" {% if type_filter == '일반' %}selected{% endif %}>일반</option>
+                <option value="우수제품" {% if type_filter == '우수제품' %}selected{% endif %}>우수제품</option>
+                <option value="혁신제품" {% if type_filter == '혁신제품' %}selected{% endif %}>혁신제품</option>
             </select>
         </div>
-        <div class="col-12 text-md-end mobile-actions">
+        <div class="col-6 col-md-2">
+            <select name="item" class="form-select form-select-sm">
+                <option value="" {% if not item_filter %}selected{% endif %}>품목 전체</option>
+                {% for ig in item_groups %}
+                <option value="{{ ig }}" {% if item_filter == ig %}selected{% endif %}>{{ ig }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm fw-bold">검색</button>
             <a href="{{ url_for('warranty.warranty_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
-            <button class="btn btn-primary btn-sm fw-bold">검색</button>
         </div>
     </div>
 </form>
 
-<div class="table-responsive warranty-board">
-    <table class="table shadow-sm align-middle mobile-stack-table">
-        <thead class="text-center small">
-            <tr>
-                <th style="width: 130px;">케이스번호</th>
-                <th>현장명</th>
-                <th style="width: 110px;">하자유형</th>
-                <th style="width: 90px;">상태</th>
-                <th style="width: 110px;">접수일</th>
-                <th style="width: 110px;">완료일</th>
-                <th style="width: 100px;">담당기사</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for c in cases %}
-            <tr data-href="{{ url_for('warranty.warranty_detail', case_id=c.id) }}">
-                <td class="text-center fw-bold" data-label="케이스번호">{{ c.case_no }}</td>
-                <td data-label="현장명">{{ c.project.temp_name if c.project else '-' }}</td>
-                <td class="text-center" data-label="하자유형">
-                    {% for code, label in defect_types %}
-                        {% if code == c.defect_type %}{{ label }}{% endif %}
-                    {% endfor %}
-                </td>
-                <td class="text-center" data-label="상태">
-                    {% if c.status == '접수' %}
-                        <span class="badge bg-secondary">접수</span>
-                    {% elif c.status == '현장확인' %}
-                        <span class="badge bg-info text-dark">현장확인</span>
-                    {% elif c.status == '수리중' %}
-                        <span class="badge bg-warning text-dark">수리중</span>
-                    {% elif c.status == '완료' %}
-                        <span class="badge bg-success">완료</span>
-                    {% elif c.status == '보류' %}
-                        <span class="badge bg-dark">보류</span>
-                    {% else %}
-                        <span class="badge bg-light text-dark">{{ c.status }}</span>
-                    {% endif %}
-                </td>
-                <td class="text-center" data-label="접수일">{{ c.reported_date or '-' }}</td>
-                <td class="text-center" data-label="완료일">{{ c.completed_date or '-' }}</td>
-                <td class="text-center" data-label="담당기사">{{ c.assigned_to or '-' }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="7" class="text-center py-5 text-muted">등록된 AS 케이스가 없습니다.</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
+{# ═══ 보증 목록 테이블 ═══ #}
+<div class="card shadow-sm border-0 mg-fade warranty-board" style="animation-delay:.1s">
+    <div class="table-responsive">
+        <table class="table table-sm table-hover wl-table mb-0">
+            <thead>
+                <tr>
+                    <th>계약명</th>
+                    <th style="width:100px;">품목</th>
+                    <th style="width:100px;">보증유형</th>
+                    <th style="width:110px;">보증시작</th>
+                    <th style="width:110px;">보증만료</th>
+                    <th style="width:80px;">D-day</th>
+                    <th style="width:70px;">A/S건</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for w in warranties %}
+                {% set dday = (w.warranty_end - today).days if w.warranty_end else none %}
+                <tr data-href="{{ url_for('warranty.case_create') }}?warranty_id={{ w.id }}">
+                    <td>
+                        <a href="{{ url_for('warranty.case_create') }}?warranty_id={{ w.id }}" class="site-link">
+                            {{ w.contract_name|default('-') }}
+                        </a>
+                    </td>
+                    <td>{{ w.item_group|default('-') }}</td>
+                    <td>
+                        <span class="badge {% if w.warranty_type == '우수제품' %}bg-primary{% elif w.warranty_type == '혁신제품' %}bg-success{% else %}bg-secondary{% endif %}" style="font-size:.68rem;white-space:nowrap;">{{ w.warranty_type|default('일반') }}</span>
+                    </td>
+                    <td class="font-mono" style="color:var(--mg-muted);">{{ w.warranty_start or '-' }}</td>
+                    <td class="font-mono" style="color:var(--mg-muted);">{{ w.warranty_end or '-' }}</td>
+                    <td>
+                        {% if dday is not none %}
+                            {% if dday < 0 %}
+                                <span class="dday-badge dday-expired">만료</span>
+                            {% elif dday <= 10 %}
+                                <span class="dday-badge dday-critical">D-{{ dday }}</span>
+                            {% elif dday <= 30 %}
+                                <span class="dday-badge dday-warn">D-{{ dday }}</span>
+                            {% else %}
+                                <span class="dday-badge dday-ok">D-{{ dday }}</span>
+                            {% endif %}
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>
+                        {% if warranty_case_counts.get(w.id, 0) > 0 %}
+                        <span class="badge bg-danger" style="font-size:.68rem;white-space:nowrap;">{{ warranty_case_counts[w.id] }}건</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="text-center py-5 text-muted" style="font-size:.88rem;">등록된 보증 정보가 없습니다.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
+{# ═══ 페이지네이션 ═══ #}
 {% include 'components/pagination.html' %}
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.warranty-board tbody tr[data-href]').forEach(function (row) {
         row.addEventListener('click', function (e) {
-            var interactive = e.target.closest('a, button, input, select, textarea, label, form');
-            if (interactive) return;
-
+            if (e.target.closest('a, button, input, select, textarea, label, form')) return;
             var href = row.dataset.href;
             if (href) window.location.href = href;
         });
     });
 });
 </script>
+
 {% endblock %}

@@ -5,6 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
 from modules.utils import safe_int, parse_date, is_true_value
+from modules.contract_filters import active_contract_filter
 from modules.models import (
     Project,
     ProductionProcess,
@@ -443,7 +444,8 @@ def enrich_detail_items(project, today):
 def get_site_list(db, today):
     """production_main: 현장 목록 조회"""
     projects = db.query(Project).filter(
-        Project.is_contracted.is_(True)
+        Project.is_contracted.is_(True),
+        active_contract_filter(),
     ).options(
         joinedload(Project.contracts)
         .joinedload(Contract.items)

@@ -43,7 +43,6 @@ from routes.workboard import workboard_bp
 from routes.asboard import asboard_bp
 from routes.channel_chat import channel_chat_bp
 from routes.certification import cert_bp
-from routes.spec_doc import spec_doc_bp
 from modules.pagination import pagination_query
 
 # =====================================================================
@@ -157,7 +156,6 @@ app.register_blueprint(workboard_bp)
 app.register_blueprint(asboard_bp)
 app.register_blueprint(channel_chat_bp)
 app.register_blueprint(cert_bp)
-app.register_blueprint(spec_doc_bp)
 
 # NAS 동기화 API는 외부(NAS cron)에서 호출하므로 CSRF 면제
 csrf.exempt(api_bp)

@@ -146,7 +146,7 @@
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-white fw-bold">상태 변경</div>
     <div class="card-body">
-        <form method="POST" action="{{ url_for('warranty.warranty_detail', case_id=case.id) }}">
+        <form method="POST" action="{{ url_for('warranty.case_detail', case_id=case.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="update_status">
             <div class="row g-3">
@@ -185,7 +185,7 @@
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-white fw-bold">처리 내역</div>
     <div class="card-body">
-        <form method="POST" action="{{ url_for('warranty.warranty_detail', case_id=case.id) }}">
+        <form method="POST" action="{{ url_for('warranty.case_detail', case_id=case.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="update_detail">
             <div class="row g-3">
@@ -248,7 +248,7 @@
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-white fw-bold">메모 추가</div>
     <div class="card-body">
-        <form method="POST" action="{{ url_for('warranty.warranty_detail', case_id=case.id) }}">
+        <form method="POST" action="{{ url_for('warranty.case_detail', case_id=case.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="add_note">
             <div class="mb-3">

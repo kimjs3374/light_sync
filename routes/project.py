@@ -7,6 +7,7 @@ from pathlib import Path
 from collections import defaultdict
 from sqlalchemy.orm import joinedload
 from modules.db_context import get_db
+from modules.contract_filters import active_contract_filter
 from modules.utils import safe_int, parse_date
 from modules.pagination import make_pagination
 from modules.spec_utils import format_spec_summary
@@ -283,7 +284,7 @@ def contract_list():
         # 하위 계약/품목/원본자재까지 선로드
         base_query = db.query(Project).filter(Project.is_contracted == True)
         if not show_done:
-            base_query = base_query.filter(Project.status != '납품완료')
+            base_query = base_query.filter(active_contract_filter())
         projects = base_query.options(
             joinedload(Project.contracts).joinedload(Contract.items).joinedload(ContractItem.material_orders),
             joinedload(Project.materials),

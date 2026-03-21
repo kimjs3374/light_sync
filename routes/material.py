@@ -11,8 +11,9 @@ from modules.models import (
     BomHeader, BomItem, PurchaseOrder, PurchaseOrderItem,
     Item, Vendor,
 )
-from sqlalchemy import or_, func, desc
+from sqlalchemy import func, desc
 from modules.history_board import append_history_log, get_project_history_context
+from modules.contract_filters import active_contract_filter
 from modules.priority_utils import (
     append_due_priority_reason,
     append_manual_priority_reason,
@@ -379,9 +380,13 @@ def material_management():
         q = (request.args.get('q') or '').strip().lower()
         status = request.args.get('status', 'all')
         outsource = request.args.get('outsource', 'all')
+        show_done = request.args.get('show_done', '') == '1'
         sort_by = request.args.get('sort', 'due_asc')
 
-        projects = db.query(Project).filter(Project.is_contracted.is_(True)).options(
+        base_query = db.query(Project).filter(Project.is_contracted.is_(True))
+        if not show_done:
+            base_query = base_query.filter(active_contract_filter())
+        projects = base_query.options(
             joinedload(Project.contracts).joinedload(Contract.items).joinedload(ContractItem.material_orders),
             joinedload(Project.priority_override),
         ).order_by(Project.id.desc()).all()
@@ -513,7 +518,7 @@ def material_management():
             priority_projects=priority_projects,
             stats=stats,
             pagination=pagination,
-            filters={'q': request.args.get('q', ''), 'status': status, 'outsource': outsource, 'sort': sort_by}
+            filters={'q': request.args.get('q', ''), 'status': status, 'outsource': outsource, 'sort': sort_by, 'show_done': '1' if show_done else ''}
         )
 
 @material_bp.route('/material_management/<int:project_id>', methods=['GET', 'POST'])

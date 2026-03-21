@@ -80,11 +80,14 @@
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="ops-tab" data-bs-toggle="tab" data-bs-target="#opsPane" type="button" role="tab">운영설정</button>
     </li>
+    {% if is_superadmin %}
     <li class="nav-item" role="presentation">
-        {% if is_superadmin %}
-        <button class="nav-link text-danger" id="reset-tab" data-bs-toggle="tab" data-bs-target="#resetPane" type="button" role="tab">프로젝트 초기화</button>
-        {% endif %}
+        <button class="nav-link" id="g2bsync-tab" data-bs-toggle="tab" data-bs-target="#g2bSyncPane" type="button" role="tab">G2B 계약동기화</button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link text-danger" id="reset-tab" data-bs-toggle="tab" data-bs-target="#resetPane" type="button" role="tab">프로젝트 초기화</button>
+    </li>
+    {% endif %}
 </ul>
 
 <!-- 탭 컨텐츠 -->
@@ -450,6 +453,34 @@
     </div>
 </div>
 
+{# ── G2B 계약동기화 탭 ── #}
+{% if is_superadmin %}
+<div class="tab-pane fade p-3" id="g2bSyncPane" role="tabpanel">
+    <div class="alert alert-info mb-3">
+        <strong>G2B 조달내역 → 계약 동기화</strong><br>
+        나라장터 조달내역을 계약관리로 일괄 등록하고, 세금계산서 매칭 + 하자보증을 자동 생성합니다.
+    </div>
+    <div class="card">
+        <div class="card-body">
+            <h6 class="fw-bold mb-3">동기화 내용</h6>
+            <ul class="small mb-3">
+                <li>G2B 조달내역 (계약번호 기준) → <strong>계약(contracts)</strong> 자동 생성</li>
+                <li>매칭된 세금계산서 → 계약에 연결 + <strong>입금완료</strong> 처리</li>
+                <li>입금완료 건 → <strong>하자보증</strong> 자동 생성 (우수/혁신 3년, 일반 1년)</li>
+                <li>이미 등록된 G2B 번호는 스킵 (중복 방지)</li>
+            </ul>
+            <button type="button" class="btn btn-primary btn-sm" id="btnG2bSync" onclick="runG2bSync()">
+                G2B → 계약 동기화 실행
+            </button>
+            <button type="button" class="btn btn-outline-primary btn-sm ms-2" onclick="runRematch()">
+                미매칭 세금계산서 재매칭
+            </button>
+            <div id="g2bSyncResult" class="mt-3" style="display:none"></div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {# ── 프로젝트 초기화 탭 ── #}
 {% if is_superadmin %}
 <div class="tab-pane fade p-3" id="resetPane" role="tabpanel">
@@ -518,6 +549,53 @@
 window.ADMIN_RESET_PW_URL = '{{ url_for("auth.reset_password", user_id=0) }}';
 document.getElementById('userSearchInput').addEventListener('input', filterUsers);
 document.getElementById('groupFilter').addEventListener('change', filterUsers);
+
+function runRematch() {
+    if (!confirm('미매칭 세금계산서를 계약과 재매칭합니다. 진행하시겠습니까?')) return;
+    const div = document.getElementById('g2bSyncResult');
+    div.style.display = 'block';
+    div.innerHTML = '<span class="text-muted">재매칭 중...</span>';
+    fetch('/api/rematch_invoices', {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token() }}', 'Content-Type': 'application/json'},
+    })
+    .then(r => r.json())
+    .then(data => {
+        div.innerHTML = data.ok
+            ? '<div class="alert alert-success small mb-0">' + data.message + '</div>'
+            : '<div class="alert alert-danger small mb-0">오류: ' + (data.error||'') + '</div>';
+    })
+    .catch(e => { div.innerHTML = '<div class="alert alert-danger small mb-0">오류: ' + e.message + '</div>'; });
+}
+
+function runG2bSync() {
+    const btn = document.getElementById('btnG2bSync');
+    const div = document.getElementById('g2bSyncResult');
+    if (!confirm('G2B 조달내역을 계약관리로 동기화합니다. 진행하시겠습니까?')) return;
+    btn.disabled = true;
+    btn.textContent = '동기화 중...';
+    div.style.display = 'block';
+    div.innerHTML = '<span class="text-muted">처리 중...</span>';
+    fetch('/api/sync_g2b_contracts', {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token() }}', 'Content-Type': 'application/json'},
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = 'G2B → 계약 동기화 실행';
+        if (data.ok) {
+            div.innerHTML = '<div class="alert alert-success small mb-0">' + data.message + '</div>';
+        } else {
+            div.innerHTML = '<div class="alert alert-danger small mb-0">오류: ' + (data.error || '알 수 없는 오류') + '</div>';
+        }
+    })
+    .catch(e => {
+        btn.disabled = false;
+        btn.textContent = 'G2B → 계약 동기화 실행';
+        div.innerHTML = '<div class="alert alert-danger small mb-0">네트워크 오류: ' + e.message + '</div>';
+    });
+}
 </script>
 <script src="{{ url_for('static', filename='js/admin_settings.js') }}"></script>
 {% endblock %}
