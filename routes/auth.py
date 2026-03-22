@@ -1,13 +1,32 @@
 import datetime
+import re
+import secrets
+import string
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app, jsonify
 from modules.auth_decorators import admin_required, login_required
 import bcrypt
 from modules.db_context import get_db
-from modules.models import User, GroupPermission, ProjectDeleteRequest, UserPriorityPermission
+import json as _json_mod
+from modules.models import User, GroupPermission, ProjectDeleteRequest, UserPriorityPermission, DashboardSetting
 from modules.models.db import SUPERADMIN_USERNAME
 from config import MENU_REGISTRY, COMMON_MENU_KEYS
 
 auth_bp = Blueprint('auth', __name__)
+
+
+def _validate_password(pw):
+    """비밀번호 규칙: 8자 이상, 영문 대/소문자·숫자·특수문자 중 3종 이상"""
+    if len(pw) < 8:
+        return "비밀번호는 8자 이상 입력해주세요."
+    types = sum([
+        bool(re.search(r'[a-z]', pw)),
+        bool(re.search(r'[A-Z]', pw)),
+        bool(re.search(r'[0-9]', pw)),
+        bool(re.search(r'[^a-zA-Z0-9]', pw)),
+    ])
+    if types < 3:
+        return "영문 대문자, 소문자, 숫자, 특수문자 중 3종 이상 조합해주세요."
+    return None
 
 
 def _get_limiter():
@@ -88,6 +107,10 @@ def login():
                         'can_approve_delete': bool(user.role == 'admin' or user.can_approve_delete),
                         'can_manage_priority': can_manage_priority,
                     })
+                    # 비밀번호 초기화 후 강제 변경
+                    if getattr(user, 'must_change_password', False):
+                        session['must_change_password'] = True
+                        return redirect(url_for('auth.force_change_password'))
                     return redirect(url_for('dashboard.dashboard_view'))
                 else:
                     flash("승인 대기 중입니다.", "warning")
@@ -98,22 +121,126 @@ def login():
         return render_template('login.html', groups=groups)
 
 
+@auth_bp.route('/find_username', methods=['POST'])
+def find_username():
+    full_name = (request.form.get('find_name') or '').strip()
+    contact = (request.form.get('find_contact') or '').strip()
+
+    if not full_name or not contact:
+        flash("이름과 연락처(또는 이메일)를 입력해주세요.", "danger")
+        return redirect(url_for('auth.login'))
+
+    with get_db() as db:
+        from sqlalchemy import or_
+        user = db.query(User).filter(
+            User.full_name == full_name,
+            or_(User.phone_number == contact, User.email == contact)
+        ).first()
+        if user:
+            # 아이디 일부 마스킹 (앞2자 + ***)
+            uid = user.username
+            masked = uid[:2] + '*' * max(1, len(uid) - 2) if len(uid) > 2 else uid[0] + '*'
+            flash(f"아이디: {masked}", "success")
+        else:
+            flash("일치하는 계정을 찾을 수 없습니다.", "danger")
+    return redirect(url_for('auth.login'))
+
+
+@auth_bp.route('/find_password', methods=['POST'])
+def find_password():
+    username = (request.form.get('reset_username') or '').strip()
+    email = (request.form.get('reset_email') or '').strip()
+
+    if not username or not email:
+        flash("아이디와 이메일을 입력해주세요.", "danger")
+        return redirect(url_for('auth.login'))
+
+    with get_db() as db:
+        user = db.query(User).filter(User.username == username, User.email == email).first()
+        if not user:
+            flash("아이디와 이메일이 일치하는 계정이 없습니다.", "danger")
+            return redirect(url_for('auth.login'))
+
+        # 임시 비밀번호 생성 (8자리 영숫자)
+        temp_pw = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+        hashed_pw = bcrypt.hashpw(temp_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        user.password_hash = hashed_pw
+        user.must_change_password = True
+        db.commit()
+
+        # 이메일 발송
+        from modules.services.email_sender import send_email_with_attachments
+        result = send_email_with_attachments(
+            to_email=email,
+            subject='[Light-Sync ERP] 비밀번호 초기화 안내',
+            body_text=f'{user.full_name}님 안녕하세요.\n\n'
+                      f'비밀번호가 초기화되었습니다.\n\n'
+                      f'임시 비밀번호: {temp_pw}\n\n'
+                      f'로그인 후 반드시 비밀번호를 변경해주세요.\n\n'
+                      f'- 매그나텍 ERP',
+            from_email='dontreplyme@mgnt.kr',
+            from_name='매그나텍 ERP'
+        )
+        if result.get('success'):
+            flash("임시 비밀번호가 이메일로 발송되었습니다.", "success")
+        else:
+            flash(f"이메일 발송 실패: {result.get('message', '')}", "danger")
+    return redirect(url_for('auth.login'))
+
+
+@auth_bp.route('/force_change_password', methods=['GET', 'POST'])
+def force_change_password():
+    if 'user_id' not in session:
+        return redirect(url_for('auth.login'))
+    if not session.get('must_change_password'):
+        return redirect(url_for('dashboard.dashboard_view'))
+
+    if request.method == 'POST':
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        pw_err = _validate_password(new_password)
+        if pw_err:
+            flash(pw_err, "danger")
+            return redirect(url_for('auth.force_change_password'))
+        if new_password != confirm_password:
+            flash("비밀번호가 일치하지 않습니다.", "danger")
+            return redirect(url_for('auth.force_change_password'))
+
+        with get_db() as db:
+            user = db.get(User, session['user_id'])
+            if user:
+                hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                user.password_hash = hashed_pw
+                user.must_change_password = False
+                db.commit()
+                session.pop('must_change_password', None)
+                flash("비밀번호가 변경되었습니다.", "success")
+                return redirect(url_for('dashboard.dashboard_view'))
+
+    return render_template('force_change_password.html')
+
+
 @auth_bp.route('/register', methods=['POST'])
 def register():
     username = (request.form.get('new_username') or '').strip()
     password = request.form.get('new_password') or ''
     fullname = (request.form.get('new_fullname') or '').strip()
     phone = (request.form.get('new_phone') or '').strip()
+    email = (request.form.get('new_email') or '').strip()
     group = request.form.get('new_group') or ''
 
     # 입력값 검증
     errors = []
     if len(username) < 3:
         errors.append("아이디는 3자 이상 입력해주세요.")
-    if len(password) < 6:
-        errors.append("비밀번호는 6자 이상 입력해주세요.")
+    pw_err = _validate_password(password)
+    if pw_err:
+        errors.append(pw_err)
     if not fullname:
         errors.append("이름을 입력해주세요.")
+    if not email:
+        errors.append("이메일을 입력해주세요.")
 
     if errors:
         for e in errors:
@@ -131,6 +258,7 @@ def register():
             db.add(User(
                 username=username, password_hash=hashed_pw,
                 full_name=fullname, phone_number=phone,
+                email=email or None,
                 user_group=group, is_approved=False
             ))
             db.commit()
@@ -205,9 +333,23 @@ def admin_settings():
         # 최초 admin 계정 확인 (프로젝트 초기화 탭 표시 여부)
         is_superadmin = session.get('username') == SUPERADMIN_USERNAME
 
-        # 운영설정
+        # 운영설정 + 메뉴 순서
         from modules.services.dashboard_actions import get_dashboard_setting_int
         production_lead_days = get_dashboard_setting_int(db, 'production_lead_days', 7)
+
+        # 메뉴 순서
+        _mo_row = db.query(DashboardSetting).filter(DashboardSetting.setting_key == 'menu_order').first()
+        menu_order_data = _json_mod.loads(_mo_row.setting_value) if _mo_row else {}
+
+        # menu_order 기준 그룹 이동 반영 (configurable_menus + 권한관리에 적용)
+        if menu_order_data:
+            _key_to_group = {}
+            for _gn in menu_order_data.get('groups', []):
+                for _mk in menu_order_data.get(_gn, []):
+                    _key_to_group[_mk] = _gn
+            for _m in configurable_menus:
+                if _m["key"] in _key_to_group:
+                    _m["group"] = _key_to_group[_m["key"]]
 
         # ── 공지관리 데이터 ──
         from modules.models import DashboardNotice
@@ -303,7 +445,8 @@ def admin_settings():
             chatbot_users=chatbot_users, perm_map=perm_map, channel_map=channel_map,
             all_tools=_ALL_TOOLS, default_tools=_cb_default.split(","),
             tool_groups=_tool_groups, chatbot_presets=chatbot_presets,
-            presets_map=presets_map)
+            presets_map=presets_map,
+            menu_order_data=menu_order_data)
 
 
 @auth_bp.route('/admin/update_ops_setting', methods=['POST'])
@@ -436,13 +579,16 @@ def approve_user(user_id):
         user = db.get(User, user_id)
         if user:
             user.is_approved = True
-            # 챗봇 권한 초기값: 전체 해제
+            # 챗봇 권한 초기값: 일반직원 프리셋 적용
             from sqlalchemy import text as _text
+            import json as _json
+            _preset_row = db.execute(_text("SELECT tools_json FROM chatbot_presets WHERE name = '일반직원'")).fetchone()
+            _default_tools = ','.join(_json.loads(_preset_row[0])) if _preset_row and _preset_row[0] else ''
             db.execute(_text("""
                 INSERT INTO chatbot_permissions (erp_username, allowed_tools, channel_enabled)
-                VALUES (:u, '', false)
+                VALUES (:u, :t, false)
                 ON CONFLICT (erp_username) DO NOTHING
-            """), {"u": user.username})
+            """), {"u": user.username, "t": _default_tools})
             db.commit()
             flash(f"{user.full_name} 계정이 승인되었습니다.", "success")
     return redirect(url_for('auth.admin_settings'))
@@ -475,8 +621,9 @@ def change_password():
         flash("새 비밀번호가 일치하지 않습니다.", "danger")
         return redirect(request.referrer or url_for('dashboard.dashboard_view'))
 
-    if len(new_password) < 6:
-        flash("비밀번호는 6자 이상 입력해주세요.", "danger")
+    pw_err = _validate_password(new_password)
+    if pw_err:
+        flash(pw_err, "danger")
         return redirect(request.referrer or url_for('dashboard.dashboard_view'))
 
     with get_db() as db:
@@ -496,6 +643,64 @@ def change_password():
     return redirect(request.referrer or url_for('dashboard.dashboard_view'))
 
 
+@auth_bp.route('/my_profile', methods=['GET'])
+@login_required
+def my_profile():
+    with get_db() as db:
+        user = db.get(User, session['user_id'])
+        if not user:
+            flash("사용자를 찾을 수 없습니다.", "danger")
+            return redirect(url_for('dashboard.dashboard_view'))
+        return render_template('my_profile.html', user=user)
+
+
+@auth_bp.route('/update_profile', methods=['POST'])
+@login_required
+def update_profile():
+    full_name = (request.form.get('full_name') or '').strip()
+    phone_number = (request.form.get('phone_number') or '').strip()
+    email = (request.form.get('email') or '').strip()
+
+    if not full_name:
+        flash("이름을 입력해주세요.", "danger")
+        return redirect(url_for('auth.my_profile'))
+    if not email:
+        flash("이메일을 입력해주세요.", "danger")
+        return redirect(url_for('auth.my_profile'))
+
+    with get_db() as db:
+        user = db.get(User, session['user_id'])
+        if not user:
+            flash("사용자를 찾을 수 없습니다.", "danger")
+            return redirect(url_for('dashboard.dashboard_view'))
+        user.full_name = full_name
+        user.phone_number = phone_number or None
+        user.email = email or None
+        db.commit()
+        session['full_name'] = full_name
+        flash("정보가 저장되었습니다.", "success")
+    return redirect(url_for('auth.my_profile'))
+
+
+@auth_bp.route('/admin/update_user_info/<int:user_id>', methods=['POST'])
+@admin_required
+def update_user_info(user_id):
+    full_name = (request.form.get('full_name') or '').strip()
+    phone_number = (request.form.get('phone_number') or '').strip()
+    email = (request.form.get('email') or '').strip()
+
+    with get_db() as db:
+        user = db.get(User, user_id)
+        if not user:
+            return jsonify({'ok': False, 'error': '사용자 없음'}), 404
+        if full_name:
+            user.full_name = full_name
+        user.phone_number = phone_number or None
+        user.email = email or None
+        db.commit()
+    return jsonify({'ok': True})
+
+
 @auth_bp.route('/reset_password/<int:user_id>', methods=['POST'])
 @admin_required
 def reset_password(user_id):
@@ -509,8 +714,9 @@ def reset_password(user_id):
 
         hashed_pw = bcrypt.hashpw(DEFAULT_PASSWORD.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         user.password_hash = hashed_pw
+        user.must_change_password = True
         db.commit()
-        flash(f"{user.full_name} 비밀번호가 초기화되었습니다.", "success")
+        flash(f"{user.full_name} 비밀번호가 초기화되었습니다. (다음 로그인 시 변경 필수)", "success")
     return redirect(url_for('auth.admin_settings'))
 
 
@@ -583,6 +789,17 @@ def menu_perms():
             for k, v in MENU_REGISTRY.items()
             if k not in COMMON_MENU_KEYS and not v.get("admin_only")
         ]
+        # menu_order 기준 그룹 이동 반영
+        _mo2 = db.query(DashboardSetting).filter(DashboardSetting.setting_key == 'menu_order').first()
+        if _mo2:
+            _ord2 = _json_mod.loads(_mo2.setting_value)
+            _k2g = {}
+            for _gn in _ord2.get('groups', []):
+                for _mk in _ord2.get(_gn, []):
+                    _k2g[_mk] = _gn
+            for _m in configurable_menus:
+                if _m["key"] in _k2g:
+                    _m["group"] = _k2g[_m["key"]]
     return render_template('menu_perms.html',
         users=users, group_menu_data=group_menu_data, configurable_menus=configurable_menus)
 
@@ -757,6 +974,71 @@ def reset_projects():
         flash(f'프로젝트 초기화 완료 — 총 {total}건 삭제. ({detail})', 'success')
 
     return redirect(url_for('auth.admin_settings') + '#resetPane')
+
+
+@auth_bp.route('/admin/api/menu_order', methods=['POST', 'DELETE'])
+@admin_required
+def api_menu_order():
+    """메뉴 순서 저장/삭제"""
+    with get_db() as db:
+        if request.method == 'DELETE':
+            db.query(DashboardSetting).filter(DashboardSetting.setting_key == 'menu_order').delete()
+            db.commit()
+            return jsonify(ok=True)
+
+        data = request.get_json(silent=True) or {}
+        value = _json_mod.dumps(data, ensure_ascii=False)
+        row = db.query(DashboardSetting).filter(DashboardSetting.setting_key == 'menu_order').first()
+        if row:
+            row.setting_value = value
+        else:
+            db.add(DashboardSetting(setting_key='menu_order', setting_value=value))
+
+        # 그룹 간 메뉴 이동 시 권한 이전 (원래 그룹에서 빼고 새 그룹에 동일 권한으로 넣기)
+        # 이동된 메뉴 감지: menu_order에서 그룹 != MENU_REGISTRY 원래 그룹
+        moved = {}  # {menu_key: new_group}
+        for gname in data.get('groups', []):
+            for mk in data.get(gname, []):
+                reg = MENU_REGISTRY.get(mk)
+                if reg and reg["group"] != gname:
+                    moved[mk] = gname
+
+        if moved:
+            all_gps = db.query(GroupPermission).all()
+            for gp in all_gps:
+                if not gp.allowed_menus:
+                    continue
+                entries = [e.strip() for e in gp.allowed_menus.split(",") if e.strip()]
+                perm_map = {}
+                for e in entries:
+                    if ':' in e:
+                        k, p = e.rsplit(':', 1)
+                    else:
+                        k, p = e, 'rw'
+                    perm_map[k] = p
+
+                changed = False
+                for mk, new_group in moved.items():
+                    orig_group = MENU_REGISTRY[mk]["group"]
+                    if mk in perm_map:
+                        perm_level = perm_map[mk]
+                        # 원래 그룹의 권한에서 제거
+                        if gp.group_name == orig_group:
+                            del perm_map[mk]
+                            changed = True
+                        # 새 그룹의 권한에 동일 레벨로 추가
+                        if gp.group_name == new_group and mk not in perm_map:
+                            perm_map[mk] = perm_level
+                            changed = True
+                    elif gp.group_name == new_group:
+                        # 원래 그룹 권한에 없었으면 새 그룹에도 안 넣음 (권한 없던 메뉴)
+                        pass
+
+                if changed:
+                    gp.allowed_menus = ",".join(f"{k}:{v}" for k, v in perm_map.items())
+
+        db.commit()
+        return jsonify(ok=True)
 
 
 @auth_bp.route('/logout')

@@ -8,7 +8,8 @@
 - `.claude/magnatech_workflow.md` — 업무 워크플로우 (G2B 기준 생명주기 + 댓글 패턴 분석)
 - `.claude/chatbot_mcp_design.md` — 챗봇 MCP 응답 설계 (시나리오 + 호출체인 + 응답템플릿)
 - `.claude/archive_matching_spec.md` — 워크보드 아카이브 ↔ 조달계약 매칭 명세서 (4단계 로직 + 수동 6건)
-- `MCP_ERROR.md` — MCP API 업데이트 해야할 사항, MCP호출 하다 업데이트 해야할 내용들 수시로 업데이트 해야함
+- `MCP_ERROR.md` — MCP API 주의사항 + 추가 이력 (호출 시 반드시 참고)
+- `.claude/mcp_guide.md` — MCP 서버 사용 가이드 (61개 Tool + 4개 Resource + 실행방법)
 
 ## 아키텍처 핵심
 

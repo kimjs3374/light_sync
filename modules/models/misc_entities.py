@@ -49,6 +49,8 @@ class HistoryLog(Base):
     parent_log_id = Column(Integer, ForeignKey('history_logs.id'), nullable=True)
     root_log_id = Column(Integer, ForeignKey('history_logs.id'), nullable=True)
     origin_snapshot = Column(Text, nullable=True)
+    attachments_json = Column(Text, nullable=True)
+    mentions_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
 
     project = relationship("Project", back_populates="history_logs")
@@ -63,6 +65,7 @@ class HistoryReadMark(Base):
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
     last_read_at = Column(DateTime, nullable=False, default=datetime.datetime.now)
+    full_name = Column(String(50), nullable=True)
 
 
 class ActivityLog(Base):

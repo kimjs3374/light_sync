@@ -41,3 +41,13 @@
     .stat-number { font-size: 1.5rem; }
     .stat-cards-row .col { min-width: 0; }
 }
+
+/* 메뉴 순서 관리 */
+.mo-group { transition: border-color .15s; }
+.mo-group.mo-drag-over { border-color: var(--mg-primary) !important; border-width: 2px; }
+.mo-menu-list { min-height: 30px; }
+.mo-menu-list.mo-drag-over { background: #eff6ff; border-radius: 4px; }
+.mo-menu-item { transition: background .1s; }
+.mo-menu-item:hover { background: #f1f5f9; }
+.mo-menu-item.mo-drag-over { background: #dbeafe; border-radius: 4px; }
+.mo-drag-handle { user-select: none; }

@@ -30,7 +30,18 @@
       "mcp__light-sync-erp__get_delivery_summary",
       "Skill(code-review:pdca)",
       "mcp__light-sync-erp__search_projects",
-      "mcp__light-sync-erp__get_project_detail"
+      "mcp__light-sync-erp__get_project_detail",
+      "mcp__light-sync-erp__get_contracts",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_close",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_handle_dialog",
+      "mcp__playwright__browser_snapshot"
     ]
   },
   "enabledMcpjsonServers": [

@@ -70,9 +70,11 @@ def _save_history(session_id, history):
 
 
 def _append_history(session_id, user_text, reply_text):
+    import datetime as _dt
+    now = _dt.datetime.now().isoformat()
     history = _load_history(session_id)
-    history.append({"role": "user", "content": user_text})
-    history.append({"role": "assistant", "content": reply_text})
+    history.append({"role": "user", "content": user_text, "ts": now})
+    history.append({"role": "assistant", "content": reply_text, "ts": now})
     if len(history) > MAX_HISTORY:
         history = history[-MAX_HISTORY:]
     _save_history(session_id, history)

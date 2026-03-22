@@ -3,6 +3,7 @@ var _chatPanelBusy = false;
 var _chatPanelLoaded = false;
 var _panelChannelAllowed = false;
 var _panelEngine = 'groq';
+var _panelLastDateLabel = '';
 
 var _PANEL_ENGINES = {
     groq:   { title: '\uD83D\uDCAC 매그니',      badge: 'Groq',    sendUrl: '/chatbot/send',       historyUrl: '/chatbot/history' },
@@ -31,15 +32,15 @@ function panelSwitchEngine() {
     localStorage.setItem('chatEngine', _panelEngine);
     document.getElementById('chatPanelBox').innerHTML = '';
     _chatPanelLoaded = false;
+    _panelLastDateLabel = '';
     _panelUpdateUI();
 
     if (_panelEngine === 'claude') {
-        // 연결 확인은 비동기로 — UI는 이미 전환됨
         fetch('/channel-chat/history').then(function(r) {
             if (r.ok) return r.json();
             throw new Error();
         }).then(function(msgs) {
-            msgs.forEach(function(m) { appendChatMsg(m.content, m.role === 'user' ? 'user' : 'bot'); });
+            msgs.forEach(function(m) { appendChatMsg(m.content, m.role === 'user' ? 'user' : 'bot', m.ts || null); });
             _chatPanelLoaded = true;
         }).catch(function() {
             appendChatMsg('Claude Channel 서버에 연결할 수 없습니다.', 'bot');
@@ -49,13 +50,57 @@ function panelSwitchEngine() {
     }
 }
 
-function appendChatMsg(text, role) {
+function _panelFormatTime(ts) {
+    if (!ts) return '';
+    var d = new Date(ts);
+    if (isNaN(d)) return '';
+    return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0') + ':' + d.getSeconds().toString().padStart(2,'0');
+}
+
+function _panelDateLabel(ts) {
+    if (!ts) return '';
+    var d = new Date(ts);
+    if (isNaN(d)) return '';
+    var now = new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var diff = (today - target) / 86400000;
+    if (diff === 0) return '오늘';
+    if (diff === 1) return '어제';
+    return d.getFullYear() + '년 ' + (d.getMonth()+1) + '월 ' + d.getDate() + '일';
+}
+
+function _panelInsertDateDivider(ts) {
+    var label = _panelDateLabel(ts);
+    if (!label || label === _panelLastDateLabel) return;
+    _panelLastDateLabel = label;
     var box = document.getElementById('chatPanelBox');
+    var div = document.createElement('div');
+    div.className = 'chat-date-divider';
+    div.textContent = label;
+    box.appendChild(div);
+}
+
+function appendChatMsg(text, role, ts) {
+    var box = document.getElementById('chatPanelBox');
+    // 날짜 구분선
+    if (ts) _panelInsertDateDivider(ts);
     var d = document.createElement('div');
     var cls = 'chat-msg ' + (role === 'user' ? 'chat-msg-user' : 'chat-msg-bot');
     if (role !== 'user' && _panelEngine === 'claude') cls += ' claude';
     d.className = cls;
-    d.textContent = text;
+    // 내용
+    var content = document.createElement('div');
+    content.textContent = text;
+    d.appendChild(content);
+    // 시간
+    var timeStr = ts ? _panelFormatTime(ts) : _panelFormatTime(new Date().toISOString());
+    if (timeStr) {
+        var timeEl = document.createElement('div');
+        timeEl.className = 'chat-msg-time';
+        timeEl.textContent = timeStr;
+        d.appendChild(timeEl);
+    }
     box.appendChild(d);
     box.scrollTop = box.scrollHeight;
     return d;
@@ -64,10 +109,11 @@ function appendChatMsg(text, role) {
 async function _loadPanelHistory() {
     var url = _PANEL_ENGINES[_panelEngine].historyUrl;
     if (!url) return;
+    _panelLastDateLabel = '';
     try {
         var res = await fetch(url);
         var msgs = await res.json();
-        msgs.forEach(function(m) { appendChatMsg(m.content, m.role === 'user' ? 'user' : 'bot'); });
+        msgs.forEach(function(m) { appendChatMsg(m.content, m.role === 'user' ? 'user' : 'bot', m.ts || null); });
     } catch(e) {}
     _chatPanelLoaded = true;
 }
@@ -147,6 +193,7 @@ async function clearChatPanel() {
     var e = _PANEL_ENGINES[_panelEngine];
     await fetch(e.sendUrl, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text: '초기화'}) });
     document.getElementById('chatPanelBox').innerHTML = '';
+    _panelLastDateLabel = '';
     _chatPanelLoaded = true;
 }
 

@@ -4,6 +4,7 @@ NAS 폴더 동기화 API
 - 폴더명 패턴: YYYY.MM.DD_현장명
 """
 import datetime
+import json
 import os
 import re
 
@@ -704,6 +705,20 @@ def sync_g2b_contracts():
 
 # ─── 히스토리보드 AJAX API ───────────────────────────────────
 
+@api_bp.route('/users/search')
+@login_required
+def users_search():
+    """사용자 이름 검색 (멘션 자동완성용)"""
+    q = request.args.get('q', '').strip()
+    with get_db() as db:
+        query = db.query(User).filter(User.is_approved == True, User.is_active == True)
+        if q:
+            query = query.filter(User.full_name.ilike(f'%{q}%'))
+        users = query.order_by(User.full_name).limit(20).all()
+        return jsonify([{'id': u.id, 'name': u.full_name, 'position': u.position or '',
+                         'group': u.user_group or ''} for u in users])
+
+
 @api_bp.route('/history/<int:project_id>/add', methods=['POST'])
 @login_required
 def history_add_comment(project_id):
@@ -716,12 +731,29 @@ def history_add_comment(project_id):
         action = request.form.get('action', 'add_chat')
         user_name = session.get('full_name', '사용자')
 
+        # 멘션 파싱
+        mentions_raw = request.form.get('mentions_json', '[]')
+        try:
+            mentions = json.loads(mentions_raw) if mentions_raw else []
+        except (json.JSONDecodeError, TypeError):
+            mentions = []
+
+        # 첨부파일 업로드
+        attachments = []
+        files = request.files.getlist('attachments')
+        if files:
+            attachments = _upload_history_files(files, project_id)
+
         if action == 'add_chat':
             msg = (request.form.get('chat_message') or '').strip()
-            if not msg:
+            if not msg and not attachments:
                 return jsonify({'ok': False, 'error': '내용을 입력하세요'}), 400
-            append_history_log(db, project_id=project.id, user_name=user_name,
-                               content=msg, scope='common', kind='comment')
+            log = append_history_log(db, project_id=project.id, user_name=user_name,
+                               content=msg or '(첨부파일)', scope='common', kind='comment')
+            if mentions:
+                log.mentions_json = json.dumps(mentions, ensure_ascii=False)
+            if attachments:
+                log.attachments_json = json.dumps(attachments, ensure_ascii=False)
         elif action == 'add_history_reply':
             msg = (request.form.get('reply_message') or '').strip()
             parent_id = request.form.get('parent_log_id', type=int)
@@ -729,11 +761,14 @@ def history_add_comment(project_id):
                 return jsonify({'ok': False, 'error': '내용을 입력하세요'}), 400
             parent = db.query(HistoryLog).get(parent_id)
             origin = (parent.content or '')[:200] if parent else ''
-            append_history_log(db, project_id=project.id, user_name=user_name,
-                               content=msg, scope='common', kind='reply',
-                               parent_log_id=parent_id,
-                               root_log_id=parent.root_log_id or parent_id if parent else parent_id,
-                               origin_snapshot=origin)
+            # 독립 코멘트로 저장 — 답글 먼저, 원글인용 아래
+            formatted = f'[대댓글] 답글:{msg}\n---원글---\n{origin}'
+            log = append_history_log(db, project_id=project.id, user_name=user_name,
+                               content=formatted, scope='common', kind='comment')
+            if mentions:
+                log.mentions_json = json.dumps(mentions, ensure_ascii=False)
+            if attachments:
+                log.attachments_json = json.dumps(attachments, ensure_ascii=False)
         else:
             return jsonify({'ok': False, 'error': f'알 수 없는 action: {action}'}), 400
 
@@ -787,7 +822,7 @@ def history_mark_read(project_id):
     if not user_id:
         return jsonify({'ok': False}), 401
     with get_db() as db:
-        mark_history_read(db, user_id, project_id)
+        mark_history_read(db, user_id, project_id, full_name=session.get('full_name'))
     return jsonify({'ok': True})
 
 
@@ -830,6 +865,51 @@ def timeline_live():
         for i in items:
             i.pop('ts', None)
         return jsonify(items[:30])
+
+
+def _upload_history_files(files, project_id):
+    """히스토리 첨부파일 → Supabase Storage 업로드."""
+    import urllib.request, urllib.error, urllib.parse, mimetypes, uuid
+    from modules.models.helpers import _read_env_value
+    supabase_url = _read_env_value('SUPABASE_URL')
+    supabase_key = _read_env_value('SUPABASE_SERVICE_ROLE_KEY')
+    if not supabase_url or not supabase_key:
+        return []
+
+    result = []
+    for f in files:
+        if not f or not f.filename:
+            continue
+        fname = f.filename
+        ext = os.path.splitext(fname)[1].lower()
+        unique_name = f'{uuid.uuid4().hex[:8]}_{fname}'
+        storage_path = f'history/{project_id}/{unique_name}'
+        content_type = mimetypes.guess_type(fname)[0] or 'application/octet-stream'
+        data = f.read()
+        if not data:
+            continue
+
+        encoded_path = urllib.parse.quote(storage_path)
+        url = f'{supabase_url}/storage/v1/object/company-files/{encoded_path}'
+        req = urllib.request.Request(url, data=data, method='POST', headers={
+            'Authorization': f'Bearer {supabase_key}',
+            'apikey': supabase_key,
+            'Content-Type': content_type,
+            'x-upsert': 'true',
+        })
+        try:
+            urllib.request.urlopen(req, timeout=30)
+            file_url = f'{supabase_url}/storage/v1/object/public/company-files/{encoded_path}'
+            is_image = ext in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')
+            result.append({
+                'file_name': fname,
+                'url': file_url,
+                'size': len(data),
+                'is_image': is_image,
+            })
+        except Exception as e:
+            print(f'[WARN] history file upload failed: {fname}: {e}')
+    return result
 
 
 def _render_history_fragment(db, project_id, default_scope='common', board_id='history-board'):

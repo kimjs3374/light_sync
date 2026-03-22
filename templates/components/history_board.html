@@ -1,6 +1,6 @@
 {% set hb_id = history_board_id or 'history-board' %}
 <style>
-    .history-wrap { max-height: 60vh; overflow-y: auto; }
+    .history-wrap { max-height: 60vh; overflow-y: auto; padding-right: 8px; }
     .scope-chip-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap:.45rem; }
     .scope-chip { border:1px solid #dbe2ea; background:#fff; color:#334155; border-radius:.8rem; padding:.42rem .5rem; font-size:.76rem; font-weight:700; }
     .scope-chip .badge { font-size:.65rem; }
@@ -22,6 +22,31 @@
         overflow:hidden;
     }
     .quote-toggle { font-size:.7rem; color:#475569; border:0; background:transparent; padding:0; margin-top:.2rem; font-weight:700; }
+    /* @멘션 */
+    .hb-mention { color:#2563eb; font-weight:700; background:#eff6ff; border-radius:3px; padding:0 2px; }
+    .hb-mention-group { color:#dc2626; background:#fef2f2; }
+    /* 멘션 자동완성 */
+    .mention-popup { position:absolute; bottom:100%; left:0; right:0; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.15); max-height:180px; overflow-y:auto; z-index:100; display:none; }
+    .mention-popup.show { display:block; }
+    .mention-item { padding:8px 12px; cursor:pointer; font-size:13px; display:flex; align-items:center; gap:8px; }
+    .mention-item:hover, .mention-item.active { background:#f0f4ff; }
+    .mention-avatar { width:28px; height:28px; border-radius:50%; background:#a0d468; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; }
+    .mention-name { font-weight:600; }
+    .mention-pos { font-size:11px; color:#999; }
+    /* 첨부파일 */
+    .hb-attach-btn { border:none; background:none; color:#94a3b8; font-size:1.2rem; cursor:pointer; padding:4px 8px; }
+    .hb-attach-btn:hover { color:#64748b; }
+    .hb-file-preview { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+    .hb-file-tag { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; background:#f1f5f9; border-radius:12px; font-size:11px; color:#475569; }
+    .hb-file-tag .remove { cursor:pointer; color:#ef4444; font-weight:700; }
+    .hb-att-grid { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+    .hb-att-thumb { width:80px; height:80px; object-fit:cover; border-radius:6px; border:1px solid #e2e8f0; cursor:pointer; }
+    .hb-att-file { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border:1px solid #e2e8f0; border-radius:6px; font-size:11px; color:#475569; text-decoration:none; margin-top:4px; }
+    .hb-att-file:hover { background:#f8fafc; }
+    /* 읽음 표시 */
+    .hb-readers { display:flex; align-items:center; gap:4px; padding:8px 0; font-size:12px; color:#94a3b8; }
+    .hb-reader-avatar { width:22px; height:22px; border-radius:50%; background:#cbd5e1; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; border:2px solid #fff; margin-left:-6px; }
+    .hb-reader-avatar:first-child { margin-left:0; }
 </style>
 
 <div id="{{ hb_id }}" class="history-board-component">
@@ -34,21 +59,41 @@
     <button type="button" class="scope-chip" data-history-filter="material">📦 자재 <span class="badge bg-secondary ms-1">{{ history_counts.material or 0 }}</span></button>
     <button type="button" class="scope-chip" data-history-filter="production">🏭 생산 <span class="badge bg-secondary ms-1">{{ history_counts.production or 0 }}</span></button>
     <button type="button" class="scope-chip" data-history-filter="delivery">🚚 납품 <span class="badge bg-secondary ms-1">{{ history_counts.delivery or 0 }}</span></button>
-    {# drawing/technical scope 제거 - 도면은 용도별(설계/자재)로 분배 #}
     <button type="button" class="scope-chip" data-history-filter="comments">💬 코멘트 <span class="badge bg-secondary ms-1">{{ history_counts.comments or 0 }}</span></button>
 </div>
 
 <form class="mb-2 history-ajax-form" data-project-id="{{ project.id if project else '' }}"
       data-default-scope="{{ history_default_filter or 'common' }}"
       data-board-id="{{ hb_id }}"
-      data-fallback-url="{% if history_post_url %}{{ history_post_url }}{% endif %}">
+      data-fallback-url="{% if history_post_url %}{{ history_post_url }}{% endif %}"
+      enctype="multipart/form-data" style="position:relative;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="action" value="{{ history_post_action or 'add_chat' }}">
+    <input type="hidden" name="mentions_json" value="[]" class="hb-mentions-input">
+    <div class="mention-popup" data-mention-popup></div>
     <div class="input-group shadow-sm">
-        <textarea name="chat_message" class="form-control" rows="2" placeholder="메모 입력..." required></textarea>
+        <textarea name="chat_message" class="form-control hb-textarea" rows="2" placeholder="메모 입력... (@로 멘션)" required></textarea>
+        <label class="hb-attach-btn d-flex align-items-center" title="파일 첨부">
+            📎
+            <input type="file" name="attachments" multiple class="d-none hb-file-input" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.hwp">
+        </label>
         <button type="submit" class="btn btn-warning fw-bold">등록</button>
     </div>
+    <div class="hb-file-preview" data-file-preview></div>
 </form>
+
+<!-- 읽음 표시 -->
+{% if history_counts.readers %}
+<div class="hb-readers">
+    <span>읽음:</span>
+    {% for r in history_counts.readers[:8] %}
+    <span class="hb-reader-avatar" title="{{ r.name }} ({{ r.read_at }})" style="background:{{ ['#a0d468','#4fc1e9','#fc6e51','#ed5565','#ac92ec','#48cfad','#ffce54','#5d9cec'][r.name.__len__() % 8] }}">{{ r.name[:1] }}</span>
+    {% endfor %}
+    {% if history_counts.readers|length > 8 %}
+    <span style="font-size:11px;color:#94a3b8">+{{ history_counts.readers|length - 8 }}명</span>
+    {% endif %}
+</div>
+{% endif %}
 
 <div class="card shadow-sm border-0" style="height:min(560px, 62vh); background-color:#f1f5f9;">
     <div class="card-body p-2 h-100">
@@ -92,8 +137,25 @@
                         </div>
                         {% endif %}
                     {% else %}
-                    <div style="white-space: pre-wrap;">{{ _content }}</div>
+                    <div class="hb-content-text" style="white-space: pre-wrap;">{{ _content }}</div>
                     {% endif %}
+
+                    {# 첨부파일 표시 #}
+                    {% if log.attachments_json %}
+                    {% set atts = log.attachments_json if log.attachments_json is mapping or log.attachments_json is iterable and log.attachments_json is not string else [] %}
+                    {% if atts %}
+                    <div class="hb-att-grid">
+                        {% for att in atts %}
+                        {% if att.is_image %}
+                        <img src="{{ att.url }}" alt="{{ att.file_name }}" class="hb-att-thumb" onclick="kwLightbox && kwLightbox(this.src)">
+                        {% else %}
+                        <a href="{{ att.url }}" target="_blank" class="hb-att-file">📎 {{ att.file_name }}</a>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% endif %}
+
                     <div class="text-end mt-1">
                         <button type="button" class="btn btn-xs btn-outline-secondary" onclick="toggleReplyForm('reply_form_{{ log.id }}')">답글</button>
                         {% if kind == 'comment' or kind == 'reply' %}
@@ -102,12 +164,14 @@
                     </div>
                     <form id="reply_form_{{ log.id }}" class="mt-1 d-none history-ajax-form"
                           data-project-id="{{ project.id if project else '' }}"
-                          data-default-scope="{{ history_default_filter or 'common' }}">
+                          data-default-scope="{{ history_default_filter or 'common' }}"
+                          enctype="multipart/form-data">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="add_history_reply">
                         <input type="hidden" name="parent_log_id" value="{{ log.id }}">
+                        <input type="hidden" name="mentions_json" value="[]" class="hb-mentions-input">
                         <div class="input-group input-group-sm">
-                            <input type="text" name="reply_message" class="form-control" placeholder="대댓글 입력..." required>
+                            <input type="text" name="reply_message" class="form-control" placeholder="대댓글 입력... (@로 멘션)" required>
                             <button type="submit" class="btn btn-outline-primary">등록</button>
                         </div>
                     </form>
@@ -116,12 +180,25 @@
                     <div class="history-reply mt-2">
                         {% for r in log.thread_replies %}
                         <div class="mb-2">
-                            <div class="origin-quote small text-muted mb-1">원글 인용: {{ r.origin_snapshot or log.content }}</div>
                             <div class="small">
                                 <b>{{ r.user_name }}</b>
                                 <span class="text-muted float-end">{{ r.created_at.strftime('%y/%m/%d %H:%M:%S') }}</span>
                             </div>
-                            <div style="white-space: pre-wrap;">{{ r.content }}</div>
+                            <div class="hb-content-text" style="white-space: pre-wrap;">{{ r.content }}</div>
+                            {% if r.attachments_json %}
+                            {% set r_atts = r.attachments_json if r.attachments_json is mapping or r.attachments_json is iterable and r.attachments_json is not string else [] %}
+                            {% if r_atts %}
+                            <div class="hb-att-grid">
+                                {% for att in r_atts %}
+                                {% if att.is_image %}
+                                <img src="{{ att.url }}" alt="{{ att.file_name }}" class="hb-att-thumb">
+                                {% else %}
+                                <a href="{{ att.url }}" target="_blank" class="hb-att-file">📎 {{ att.file_name }}</a>
+                                {% endif %}
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            {% endif %}
                         </div>
                         {% endfor %}
                     </div>
@@ -168,11 +245,9 @@
             el.classList.toggle('d-none', !show);
             if (show) visible += 1;
         });
-
         if (emptyState) emptyState.classList.toggle('d-none', visible > 0);
         chips.forEach(btn => btn.classList.toggle('active', btn.dataset.historyFilter === scope));
     };
-
     chips.forEach(btn => {
         btn.addEventListener('click', () => applyHistoryFilter(btn.dataset.historyFilter));
     });
@@ -196,6 +271,133 @@
     });
 
     applyHistoryFilter(defaultFilter);
+
+    // ─── @멘션 하이라이트 (표시용) ───
+    const GROUP_MENTIONS = ['전체','영업부','관리부','생산부'];
+    root.querySelectorAll('.hb-content-text').forEach(el => {
+        el.innerHTML = el.innerHTML.replace(/@(\S+)/g, (match, name) => {
+            if (GROUP_MENTIONS.includes(name)) {
+                return `<span class="hb-mention hb-mention-group">@${name}</span>`;
+            }
+            return `<span class="hb-mention">@${name}</span>`;
+        });
+    });
+
+    // ─── @멘션 자동완성 ───
+    let mentionUsers = null;
+    const SPECIAL_MENTIONS = [
+        {name: '전체', position: '', group: '', icon: '📢', desc: '모든 사람에게 알림'},
+        {name: '영업부', position: '', group: '영업부', icon: '💼', desc: '영업부 전체'},
+        {name: '관리부', position: '', group: '관리부', icon: '📋', desc: '관리부 전체'},
+        {name: '생산부', position: '', group: '생산부', icon: '🏭', desc: '생산부 전체'},
+    ];
+    async function fetchUsers(q) {
+        if (!mentionUsers) {
+            const resp = await fetch('/api/users/search?q=');
+            mentionUsers = await resp.json();
+        }
+        let results = [];
+        // 특수 멘션 필터
+        const specials = SPECIAL_MENTIONS.filter(s => !q || s.name.includes(q));
+        results = results.concat(specials.map(s => ({...s, isSpecial: true})));
+        // 사용자 필터
+        const users = q ? mentionUsers.filter(u => u.name.includes(q)) : mentionUsers;
+        results = results.concat(users.map(u => ({...u, isSpecial: false})));
+        return results;
+    }
+
+    function renderMentionItem(u, i) {
+        if (u.isSpecial) {
+            return `<div class="mention-item${i===0?' active':''}" data-idx="${i}" data-name="${u.name}">
+                <span class="mention-avatar" style="background:#334155;font-size:14px">${u.icon}</span>
+                <span class="mention-name">${u.name}</span>
+                <span class="mention-pos">${u.desc}</span>
+            </div>`;
+        }
+        return `<div class="mention-item${i===0?' active':''}" data-idx="${i}" data-name="${u.name}">
+            <span class="mention-avatar" style="background:${['#a0d468','#4fc1e9','#fc6e51','#ed5565','#ac92ec','#48cfad','#ffce54','#5d9cec'][u.name.length%8]}">${u.name[0]}</span>
+            <span class="mention-name">${u.name}</span>
+            <span class="mention-pos">${u.position} ${u.group}</span>
+        </div>`;
+    }
+
+    root.querySelectorAll('.hb-textarea').forEach(textarea => {
+        const form = textarea.closest('form');
+        const popup = form.querySelector('[data-mention-popup]');
+        const mentionsInput = form.querySelector('.hb-mentions-input');
+        if (!popup) return;
+        let mentions = [];
+        let activeIdx = -1;
+
+        textarea.addEventListener('input', async () => {
+            const val = textarea.value;
+            const cursor = textarea.selectionStart;
+            const before = val.substring(0, cursor);
+            const match = before.match(/@([^\s]*)$/);
+            if (!match) { popup.classList.remove('show'); return; }
+            const q = match[1];
+            const users = await fetchUsers(q);
+            if (!users.length) { popup.classList.remove('show'); return; }
+            activeIdx = 0;
+            popup.innerHTML = users.map((u, i) => renderMentionItem(u, i)).join('');
+            popup.classList.add('show');
+
+            popup.querySelectorAll('.mention-item').forEach(item => {
+                item.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    insertMention(textarea, item.dataset.name, mentions, mentionsInput);
+                    popup.classList.remove('show');
+                });
+            });
+        });
+
+        textarea.addEventListener('keydown', (e) => {
+            if (!popup.classList.contains('show')) return;
+            const items = popup.querySelectorAll('.mention-item');
+            if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = (activeIdx+1)%items.length; updateActive(items); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = (activeIdx-1+items.length)%items.length; updateActive(items); }
+            else if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                if (items[activeIdx]) insertMention(textarea, items[activeIdx].dataset.name, mentions, mentionsInput);
+                popup.classList.remove('show');
+            }
+            else if (e.key === 'Escape') popup.classList.remove('show');
+        });
+
+        textarea.addEventListener('blur', () => { setTimeout(() => popup.classList.remove('show'), 200); });
+
+        function updateActive(items) {
+            items.forEach((it, i) => it.classList.toggle('active', i === activeIdx));
+        }
+    });
+
+    function insertMention(textarea, name, mentions, mentionsInput) {
+        const val = textarea.value;
+        const cursor = textarea.selectionStart;
+        const before = val.substring(0, cursor);
+        const after = val.substring(cursor);
+        const newBefore = before.replace(/@[^\s]*$/, '@' + name + ' ');
+        textarea.value = newBefore + after;
+        textarea.selectionStart = textarea.selectionEnd = newBefore.length;
+        textarea.focus();
+        if (!mentions.find(m => m.name === name)) mentions.push({name});
+        mentionsInput.value = JSON.stringify(mentions);
+    }
+
+    // ─── 파일 첨부 미리보기 ───
+    root.querySelectorAll('.hb-file-input').forEach(input => {
+        const preview = input.closest('form').querySelector('[data-file-preview]');
+        input.addEventListener('change', () => {
+            if (!preview) return;
+            preview.innerHTML = '';
+            Array.from(input.files).forEach((f, i) => {
+                const tag = document.createElement('span');
+                tag.className = 'hb-file-tag';
+                tag.innerHTML = `${f.type.startsWith('image/')?'🖼️':'📎'} ${f.name} <span class="remove" data-idx="${i}">&times;</span>`;
+                preview.appendChild(tag);
+            });
+        });
+    });
 
     // ─── 공용: AJAX 후 보드 교체 ───
     const _boardId = root.id;
@@ -238,12 +440,12 @@
         });
     });
 
-    // AJAX 코멘트/답글 제출 — 페이지 새로고침 없이 보드만 갱신
+    // AJAX 코멘트/답글 제출
     root.querySelectorAll('.history-ajax-form').forEach(form => {
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const projectId = form.dataset.projectId;
-            if (!projectId) { form.submit(); return; } // fallback
+            if (!projectId) { form.submit(); return; }
 
             const btn = form.querySelector('button[type="submit"]');
             const origText = btn.textContent;
@@ -260,7 +462,7 @@
                 _replaceBoard(await resp.json());
             } catch (err) {
                 console.error('history ajax error', err);
-                form.submit(); // AJAX 실패 시 일반 제출 fallback
+                form.submit();
             } finally {
                 btn.disabled = false;
                 btn.textContent = origText;

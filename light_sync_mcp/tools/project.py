@@ -20,7 +20,9 @@ def register(mcp: FastMCP):
         limit: int = 100,
     ) -> str:
         """현장 목록 조회. 상태, 계약 여부, 연도, 월, 검색어로 필터링합니다.
-        status 예: '설계/영업', '계약', '생산', '납품완료'
+        status: '설계/영업'(미계약), '계약'(납품대기/진행중), '납품완료'(완료)
+        ★ '납품해야 되는 현장' = status='계약' (계약 체결 후 납품 전 현장)
+        ★ '진행 중인 현장' = status='계약'
         month: 1~12 (year와 함께 사용)
         """
         from modules.models.entities import Project

@@ -1,5 +1,5 @@
 import functools
-from flask import session, redirect, url_for, flash, request, jsonify
+from flask import session, redirect, url_for, flash, request, jsonify, g
 
 
 def login_required(f):
@@ -32,6 +32,7 @@ def menu_required(menu_key, write=False):
     def decorator(f):
         @functools.wraps(f)
         def decorated(*args, **kwargs):
+            g.active_menu_key = menu_key
             if 'user_id' not in session:
                 return redirect(url_for('auth.login'))
             if session.get('role') == 'admin' or session.get('user_group') == '임원진':

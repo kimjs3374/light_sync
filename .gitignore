@@ -25,6 +25,10 @@ DB/*.db
 *.sqlite3
 
 storage/drawings/
+storage/archive/
+scripts/download_progress.json
+scripts/upload_progress.json
+scripts/attachments_manifest.json
 
 .bkit/
 logs/

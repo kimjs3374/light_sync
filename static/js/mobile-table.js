@@ -32,8 +32,12 @@
 
 (function () {
     function markStackTables(root) {
-        (root || document).querySelectorAll('.main-content table.table').forEach(function (table) {
-            if (table.classList.contains('no-stack-table')) return;
+        (root || document).querySelectorAll('.main-content table.table, .main-content table[class*="table"]').forEach(function (table) {
+            if (table.classList.contains('tree-card-table')) return;
+            if (table.closest('.modal')) return;
+            // no-stack-table도 모바일에서는 카드형으로 변환 (가로 스크롤 제거)
+            table.classList.remove('no-stack-table');
+            table.style.minWidth = '0';
             table.classList.add('mobile-stack-table');
         });
     }
@@ -52,6 +56,25 @@
                     if (colspan > 1) {
                         cell.classList.add('mobile-full-row');
                         cell.setAttribute('data-label', '');
+                        // 빈 상태 행: 부모 tr도 스타일 재설정
+                        var tr = cell.closest('tr');
+                        if (tr) {
+                            tr.style.display = 'block';
+                            tr.style.border = 'none';
+                            tr.style.borderLeft = 'none';
+                            tr.style.boxShadow = 'none';
+                            tr.style.background = 'transparent';
+                            tr.style.padding = '0';
+                        }
+                        cell.style.display = 'block';
+                        cell.style.width = '100%';
+                        cell.style.textAlign = 'center';
+                        cell.style.padding = '12px 0';
+                        cell.style.color = '#94a3b8';
+                        cell.style.wordBreak = 'keep-all';
+                        cell.style.overflowWrap = 'normal';
+                        cell.style.whiteSpace = 'normal';
+                        cell.style.fontSize = '.85rem';
                         return;
                     }
 

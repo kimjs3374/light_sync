@@ -19,6 +19,13 @@ from .tools import (
     notification,
     overview,
     archive,
+    g2b,
+    certification,
+    spec_doc,
+    lighting_layout,
+    illuminance,
+    employee,
+    processing_order,
 )
 from .resources import magnatech
 
@@ -41,4 +48,11 @@ def register_all(mcp: FastMCP):
     notification.register(mcp)
     overview.register(mcp)
     archive.register(mcp)
+    g2b.register(mcp)
+    certification.register(mcp)
+    spec_doc.register(mcp)
+    lighting_layout.register(mcp)
+    illuminance.register(mcp)
+    employee.register(mcp)
+    processing_order.register(mcp)
     magnatech.register(mcp)

@@ -670,3 +670,11 @@ ALTER TABLE light_sync.archive_posts ADD COLUMN IF NOT EXISTS attachments_json J
 ALTER TABLE light_sync.archive_posts ADD COLUMN IF NOT EXISTS contract_no VARCHAR(50);
 ALTER TABLE light_sync.archive_comments ADD COLUMN IF NOT EXISTS content_json JSONB;
 ALTER TABLE light_sync.archive_comments ADD COLUMN IF NOT EXISTS attachments_json JSONB DEFAULT '[]'::jsonb;
+
+-- ===================================================================
+-- 히스토리보드 업그레이드 — @멘션 + 파일첨부 + 읽음표시 (2026-03-23)
+-- ===================================================================
+ALTER TABLE light_sync.history_logs ADD COLUMN IF NOT EXISTS attachments_json JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE light_sync.history_logs ADD COLUMN IF NOT EXISTS mentions_json JSONB DEFAULT '[]'::jsonb;
+-- history_read_marks: full_name 캐시 (아바타 표시용)
+ALTER TABLE light_sync.history_read_marks ADD COLUMN IF NOT EXISTS full_name VARCHAR(50);

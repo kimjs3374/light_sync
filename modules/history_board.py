@@ -1,6 +1,8 @@
 import datetime
+import json
 
-from modules.models import HistoryLog
+from sqlalchemy import func
+from modules.models import HistoryLog, HistoryReadMark
 
 
 # drawing → design으로 통합, technical → 미사용 (하자AS 별도 PDCA 예정)
@@ -58,6 +60,16 @@ def build_history_view(history_rows, default_scope='common'):
     }
 
     for log in history_rows:
+        # attachments_json → list 변환
+        raw = getattr(log, 'attachments_json', None)
+        if raw and isinstance(raw, str):
+            try:
+                log.attachments_json = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                log.attachments_json = []
+        elif not raw:
+            log.attachments_json = []
+
         if not log.log_kind:
             log.log_kind = 'system' if '시스템' in (log.user_name or '') else 'comment'
         if not log.log_scope:
@@ -88,10 +100,48 @@ def build_history_view(history_rows, default_scope='common'):
     return top_logs, counts
 
 
-def get_project_history_context(db, project_id, default_scope='common', limit=500):
+def get_project_history_context(db, project_id, default_scope='common', limit=500, user_id=None):
     """프로젝트 기준 히스토리 조회 + 보드 렌더링용 집계 공통 유틸"""
     history_rows = db.query(HistoryLog).filter(
         HistoryLog.project_id == project_id
     ).order_by(HistoryLog.created_at.desc(), HistoryLog.id.desc()).limit(limit).all()
     history, history_counts = build_history_view(history_rows, default_scope=default_scope)
+
+    # 안 읽은 건수 계산
+    unread = 0
+    if user_id and history_rows:
+        mark = db.query(HistoryReadMark).filter_by(
+            user_id=user_id, project_id=project_id
+        ).first()
+        last_read = mark.last_read_at if mark else None
+        if last_read:
+            unread = sum(1 for log in history_rows if log.created_at and log.created_at > last_read)
+        else:
+            unread = len(history_rows)
+    history_counts['unread'] = unread
+
+    # 읽은 사람 목록 (최근 읽음 기준)
+    readers = db.query(HistoryReadMark).filter_by(project_id=project_id).all()
+    read_users = []
+    for r in readers:
+        if r.full_name:
+            read_users.append({'name': r.full_name, 'read_at': r.last_read_at.strftime('%m/%d %H:%M') if r.last_read_at else ''})
+    history_counts['readers'] = read_users
+
     return history, history_counts
+
+
+def mark_history_read(db, user_id, project_id, full_name=None):
+    """히스토리 읽음 처리 — last_read_at을 현재 시각으로 갱신"""
+    mark = db.query(HistoryReadMark).filter_by(
+        user_id=user_id, project_id=project_id
+    ).first()
+    now = datetime.datetime.now()
+    if mark:
+        mark.last_read_at = now
+        if full_name:
+            mark.full_name = full_name
+    else:
+        db.add(HistoryReadMark(user_id=user_id, project_id=project_id,
+                               last_read_at=now, full_name=full_name))
+    db.commit()

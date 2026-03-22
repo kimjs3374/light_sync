@@ -564,7 +564,8 @@ def handle_detail_common(project_id, template_name):
             db,
             project_id=project_id,
             default_scope=page_scope,
-            limit=500
+            limit=500,
+            user_id=session.get('user_id'),
         )
 
         # 조도 설계 기구 파싱: JSON 우선, 없으면 설계반영 자재목록에서 조명기구 자동 파싱
@@ -584,8 +585,10 @@ def handle_detail_common(project_id, template_name):
                         'qty': mat.quantity or 0,
                     })
 
-        # 연결된 조도검증 프로젝트
-        linked_illuminance_projects = db.query(IlluminanceProject).filter(
+        # 연결된 조도검증 프로젝트 (areas eager load)
+        linked_illuminance_projects = db.query(IlluminanceProject).options(
+            joinedload(IlluminanceProject.areas)
+        ).filter(
             IlluminanceProject.erp_project_id == p.id
         ).order_by(IlluminanceProject.created_at.desc()).all()
 

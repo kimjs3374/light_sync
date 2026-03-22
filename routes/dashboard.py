@@ -1,7 +1,7 @@
 import datetime
 from collections import defaultdict
 
-from flask import Blueprint, render_template, session, redirect, url_for, request, flash
+from flask import Blueprint, render_template, session, redirect, url_for, request, flash, jsonify
 from modules.auth_decorators import login_required, admin_required
 from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
@@ -457,3 +457,56 @@ def dashboard_view():
             action_tabs=action_tabs,
             dash_expected=dash_expected,
         )
+
+
+@dashboard_bp.route('/api/kpi-summary')
+@login_required
+def kpi_summary_api():
+    """상단 고정 바용 KPI 요약 (가벼운 카운트만)"""
+    with get_db() as db:
+        today = datetime.date.today()
+        week_later = today + datetime.timedelta(days=7)
+
+        contracted_count = db.query(Project).filter(
+            Project.is_contracted.is_(True), active_contract_filter()
+        ).count()
+
+        active_project_ids = [
+            pid for (pid,) in db.query(Project.id).filter(
+                Project.is_contracted.is_(True), active_contract_filter()
+            ).all()
+        ]
+
+        urgent_delivery_count = db.query(Contract).join(
+            Project, Project.id == Contract.project_id
+        ).filter(
+            Project.is_contracted.is_(True),
+            Contract.delivery_due_date.isnot(None),
+            Contract.delivery_due_date >= today,
+            Contract.delivery_due_date <= week_later,
+        ).count()
+
+        overdue_count = 0
+        if active_project_ids:
+            overdue_count = db.query(Contract.project_id).join(
+                ContractItem, ContractItem.contract_id == Contract.id
+            ).filter(
+                Contract.project_id.in_(active_project_ids),
+                Contract.delivery_due_date.isnot(None),
+                Contract.delivery_due_date < today,
+                ContractItem.status_prod != '생산완료',
+            ).distinct().count()
+
+        pending_users = db.query(User).filter(
+            User.is_approved.is_(False)
+        ).count()
+
+        weekdays = ['월', '화', '수', '목', '금', '토', '일']
+        return jsonify({
+            'contracted_count': contracted_count,
+            'urgent_delivery_count': urgent_delivery_count,
+            'overdue_count': overdue_count,
+            'pending_users': pending_users,
+            'today': today.strftime('%Y.%m.%d'),
+            'weekday': weekdays[today.weekday()],
+        })

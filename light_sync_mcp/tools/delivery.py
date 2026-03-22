@@ -16,7 +16,9 @@ def register(mcp: FastMCP):
         project_id: Optional[int] = None,
         limit: int = 50,
     ) -> str:
-        """납품 현황 조회. 상태, 현장으로 필터링합니다.
+        """특정 현장의 납품 상세 현황 조회 (분할납품 포함).
+        ★ '납품해야 되는 현장 몇 건?' 질문에는 이 Tool 대신 get_projects(status='계약') 사용.
+        이 Tool은 특정 현장(project_id)의 납품 진행 상태를 볼 때 사용.
         status 예: 대기, 진행중, 완료
         """
         from modules.models.entities import Delivery, Project
@@ -89,7 +91,10 @@ def register(mcp: FastMCP):
 
     @mcp.tool()
     def get_delivery_status_summary() -> str:
-        """납품 상태별 요약 통계. 상태별 건수와 수량을 반환합니다."""
+        """납품 레코드의 상태별 통계 (내부 관리용).
+        ★ '납품해야 되는 현장 몇 건?' → 이 Tool 아님! get_projects(status='계약') 사용.
+        이 Tool은 납품 레코드(delivery 테이블)의 상태별 집계를 반환합니다.
+        """
         from modules.models.entities import Delivery
         from sqlalchemy import func
         session = get_session()

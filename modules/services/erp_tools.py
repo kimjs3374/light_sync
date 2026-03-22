@@ -75,6 +75,25 @@ ALL_TOOLS = [
     # 아카이브 (2)
     ("search_archive",          "아카이브 검색",       "전체"),
     ("get_archive_post_detail", "아카이브 상세",       "전체"),
+    # G2B 조달 (2)
+    ("get_g2b_contract_detail", "G2B 계약 상세",       "전체"),
+    ("get_warranty_by_g2b",     "G2B 하자보증 조회",   "전체"),
+    # 인증서 (1)
+    ("get_cert_expiry_alerts",  "인증서 만료 알림",    "전체"),
+    # 시방서 (1)
+    ("get_spec_doc_status",     "시방서 현황",         "전체"),
+    # 조명배치도 (2)
+    ("get_lighting_layouts",    "조명배치도 목록",     "전체"),
+    ("get_lighting_layout_detail", "배치도 상세",      "전체"),
+    # 조도검증 (2)
+    ("get_illuminance_projects","조도 프로젝트 목록",  "전체"),
+    ("get_illuminance_detail",  "조도 상세/KS판정",    "전체"),
+    # 직원/근무 (2)
+    ("get_employees",           "직원 목록",           "전체"),
+    ("get_today_attendance",    "오늘 근무인원",       "전체"),
+    # 가공발주 (2)
+    ("get_processing_orders",   "가공발주 목록",       "전체"),
+    ("get_processing_order_detail", "가공발주 상세",   "전체"),
 ]
 
 RESTRICTED_TOOLS = {

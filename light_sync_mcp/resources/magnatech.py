@@ -63,6 +63,44 @@ def register(mcp: FastMCP):
         finally:
             session.close()
 
+    @mcp.resource("lightsync://query-patterns")
+    def get_query_patterns() -> str:
+        """학습된 질문→Tool 매핑 패턴. 자주 사용되는 질문별 최적 Tool 조합을 반환합니다.
+        hit_count 높은 순으로 정렬되며, AI가 비슷한 질문에 동일 Tool을 선택하도록 돕습니다.
+        """
+        from ..db import get_session
+        from sqlalchemy import text
+        session = get_session()
+        try:
+            rows = session.execute(text("""
+                SELECT question, tool_name, tool_args, hit_count, success
+                FROM mcp_query_patterns
+                WHERE success = true
+                ORDER BY hit_count DESC
+                LIMIT 100
+            """)).fetchall()
+
+            if not rows:
+                return json.dumps({"message": "아직 학습된 패턴이 없습니다.", "patterns": []},
+                                  ensure_ascii=False)
+
+            patterns = []
+            for r in rows:
+                patterns.append({
+                    "question": r[0],
+                    "tool": r[1],
+                    "args": json.loads(r[2]) if r[2] else {},
+                    "hit_count": r[3],
+                })
+            return json.dumps({
+                "total": len(patterns),
+                "patterns": patterns,
+            }, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e), "patterns": []}, ensure_ascii=False)
+        finally:
+            session.close()
+
     @mcp.resource("lightsync://schema")
     def get_schema_doc() -> str:
         """ERP DB 스키마 요약. 주요 테이블 구조와 컬럼을 설명합니다."""

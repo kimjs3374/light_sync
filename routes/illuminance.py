@@ -39,7 +39,9 @@ def index():
 def new():
     preselect_id = request.args.get('erp_project_id', type=int)
     with get_db() as db:
-        erp_projects = db.query(Project).order_by(Project.created_at.desc()).all()
+        erp_projects = db.query(Project).filter(
+            ~Project.project_no.like('G-%')
+        ).order_by(Project.created_at.desc()).all()
         return render_template('illuminance_new.html',
                                erp_projects=erp_projects,
                                preselect_id=preselect_id)
@@ -175,9 +177,14 @@ def new_save():
 
             facility = form.get('facility_type', '')
 
-            ks = get_ks_standard(facility)
-            ks_eav = ks.get('eav', 0)
-            ks_uo = ks.get('uo', 0)
+            # 폼 입력 우선, 없으면 시설종류 기반 자동 추출
+            form_ks_eav = form.get('ks_eav_min', type=float)
+            form_ks_uo = form.get('ks_uo_min', type=float)
+            form_ks_ud = form.get('ks_ud_min', type=float)
+            if form_ks_eav is None and form_ks_uo is None:
+                ks = get_ks_standard(facility)
+                form_ks_eav = form_ks_eav or ks.get('eav', 0)
+                form_ks_uo = form_ks_uo or ks.get('uo', 0)
 
             for idx, area_d in enumerate(areas_data, start=1):
                 area = IlluminanceArea(
@@ -204,8 +211,9 @@ def new_save():
                     grid_x_labels=json.dumps(area_d.get('x_labels', []), ensure_ascii=False),
                     grid_y_labels=json.dumps(area_d.get('y_labels', []), ensure_ascii=False),
                     design_grid=json.dumps(area_d.get('design_grid', []), ensure_ascii=False),
-                    ks_eav_min=ks_eav,
-                    ks_uo_min=ks_uo,
+                    ks_eav_min=form_ks_eav,
+                    ks_uo_min=form_ks_uo,
+                    ks_ud_min=form_ks_ud,
                     fixtures=json.dumps([{
                         'type': area_d.get('lamp_type', ''),
                         'watt': area_d.get('lamp_watt', 0),
@@ -307,6 +315,7 @@ def api_quick_create():
                     design_grid=json.dumps(area_d.get('design_grid', []), ensure_ascii=False),
                     ks_eav_min=ks_eav,
                     ks_uo_min=ks_uo,
+                    ks_ud_min=None,
                     fixtures=json.dumps([{
                         'type': area_d.get('lamp_type', ''),
                         'watt': area_d.get('lamp_watt', 0),
