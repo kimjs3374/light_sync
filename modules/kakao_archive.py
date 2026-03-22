@@ -1,121 +1,125 @@
-"""카카오워크 워크보드 아카이브 공용 헬퍼."""
+"""카카오워크 워크보드 아카이브 공용 헬퍼 (Supabase 버전)."""
 import json
-import sqlite3
 from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import text
+from modules.db_context import get_db
 
 PAGE_SIZE = 20
 
 
-def get_conn(db_path):
-    conn = sqlite3.connect(db_path)
-    conn.text_factory = bytes
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def decode_row(row):
-    d = {}
-    for key in row.keys():
-        val = row[key]
-        if isinstance(val, bytes):
-            val = val.decode('utf-8')
-        d[key] = val
-    return d
-
-
-def parse_content(content_node):
-    """ProseMirror doc → plain text (bold → **text**)"""
-    if not content_node:
+def fmt_dt(val):
+    if not val:
         return ''
-    lines = []
-    for block in content_node.get('content', []):
-        parts = []
-        for inline in block.get('content', []):
-            text = inline.get('text', '')
-            if 'bold' in [m['type'] for m in inline.get('marks', [])]:
-                text = f'**{text}**'
-            parts.append(text)
-        lines.append(''.join(parts))
-    return '\n'.join(lines)
-
-
-def fmt_dt(iso_str):
-    if not iso_str:
-        return ''
+    if isinstance(val, datetime):
+        return (val + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M') if val.tzinfo else val.strftime('%Y-%m-%d %H:%M')
     try:
-        dt = datetime.strptime(iso_str, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+        dt = datetime.strptime(str(val), '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
         return (dt + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M')
     except Exception:
-        return iso_str
+        return str(val)
 
 
-def load_post(db_path, post_id):
-    with get_conn(db_path) as conn:
-        table_exists = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='posts'"
-        ).fetchone()
-        if not table_exists:
+def load_post(board_type, post_id):
+    """게시글 상세 + 댓글 조회."""
+    with get_db() as db:
+        row = db.execute(text("""
+            SELECT p.id, p.board_type, p.author, p.content_text,
+                   p.is_notice, p.children_count, p.created_at, p.updated_at,
+                   p.contract_id
+            FROM light_sync.archive_posts p
+            WHERE p.id = :id
+        """), {'id': post_id}).fetchone()
+
+        if not row:
             return None
-        cur = conn.execute('SELECT * FROM posts WHERE id=?', (post_id,))
-        row = cur.fetchone()
-    if not row:
-        return None
-    d = decode_row(row)
-    raw = json.loads(d['raw_json'])
-    d['body'] = parse_content(raw.get('content'))
-    d['created_fmt'] = fmt_dt(d['created_at'])
-    d['updated_fmt'] = fmt_dt(d['updated_at'])
-    d['attachments'] = raw.get('attachments', [])
-    d['comments'] = [
-        {
-            'id': ch['id'],
-            'author': ch.get('user', {}).get('display_name', ''),
-            'body': parse_content(ch.get('content')),
-            'created_fmt': fmt_dt(ch.get('created_at', '')),
-            'attachments': ch.get('attachments', []),
-        }
-        for ch in raw.get('children', [])
-    ]
+
+        comments_rows = db.execute(text("""
+            SELECT id, author, content_text, created_at
+            FROM light_sync.archive_comments
+            WHERE post_id = :pid
+            ORDER BY created_at ASC
+        """), {'pid': post_id}).fetchall()
+
+    d = {
+        'id': row.id,
+        'board_type': row.board_type,
+        'author': row.author or '',
+        'content_text': row.content_text or '',
+        'body': row.content_text or '',
+        'is_notice': row.is_notice,
+        'children_count': row.children_count or 0,
+        'created_at': str(row.created_at or ''),
+        'updated_at': str(row.updated_at or ''),
+        'created_fmt': fmt_dt(row.created_at),
+        'updated_fmt': fmt_dt(row.updated_at),
+        'contract_id': row.contract_id,
+        'attachments': [],
+        'comments': [
+            {
+                'id': c.id,
+                'author': c.author or '',
+                'body': c.content_text or '',
+                'created_fmt': fmt_dt(c.created_at),
+                'attachments': [],
+            }
+            for c in comments_rows
+        ],
+    }
     return d
 
 
-def list_posts(db_path, page, q, author):
+def list_posts(board_type, page, q, author):
+    """게시글 목록 조회."""
     offset = (page - 1) * PAGE_SIZE
-    wheres, params = [], []
+    wheres = ['p.board_type = :bt']
+    params = {'bt': board_type}
+
     if q:
-        wheres.append('content_text LIKE ?')
-        params.append(f'%{q}%')
+        wheres.append('p.content_text ILIKE :q')
+        params['q'] = f'%{q}%'
     if author:
-        wheres.append('author = ?')
-        params.append(author.encode('utf-8'))
+        wheres.append('p.author = :author')
+        params['author'] = author
 
-    where_sql = ('WHERE ' + ' AND '.join(wheres)) if wheres else ''
+    where_sql = 'WHERE ' + ' AND '.join(wheres)
 
-    with get_conn(db_path) as conn:
-        # 테이블 존재 여부 확인
-        table_exists = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='posts'"
-        ).fetchone()
-        if not table_exists:
-            return [], 0, []
-
+    with get_db() as db:
         authors_raw = [
-            r[0].decode('utf-8') if isinstance(r[0], bytes) else r[0]
-            for r in conn.execute('SELECT DISTINCT author FROM posts ORDER BY author').fetchall()
+            r[0] for r in db.execute(text(f"""
+                SELECT DISTINCT author FROM light_sync.archive_posts
+                WHERE board_type = :bt AND author IS NOT NULL
+                ORDER BY author
+            """), {'bt': board_type}).fetchall()
         ]
-        total = conn.execute(f'SELECT COUNT(*) FROM posts {where_sql}', params).fetchone()[0]
-        rows = conn.execute(
-            f'SELECT id, author, content_text, is_notice, children_count, created_at '
-            f'FROM posts {where_sql} ORDER BY created_at DESC LIMIT ? OFFSET ?',
-            params + [PAGE_SIZE, offset],
-        ).fetchall()
+
+        total = db.execute(text(f"""
+            SELECT COUNT(*) FROM light_sync.archive_posts p {where_sql}
+        """), params).fetchone()[0]
+
+        rows = db.execute(text(f"""
+            SELECT p.id, p.author, p.content_text, p.is_notice,
+                   p.children_count, p.created_at, p.contract_id
+            FROM light_sync.archive_posts p
+            {where_sql}
+            ORDER BY p.created_at DESC
+            LIMIT :lim OFFSET :off
+        """), {**params, 'lim': PAGE_SIZE, 'off': offset}).fetchall()
 
     posts = []
     for row in rows:
-        d = decode_row(row)
-        lines = [l for l in d['content_text'].split('\n') if l.strip()]
-        d['preview'] = '\n'.join(lines[:3])
-        d['created_fmt'] = fmt_dt(d['created_at'])
-        posts.append(d)
+        content = row.content_text or ''
+        lines = [l for l in content.split('\n') if l.strip()]
+        posts.append({
+            'id': row.id,
+            'author': row.author or '',
+            'content_text': content,
+            'preview': '\n'.join(lines[:3]),
+            'is_notice': row.is_notice,
+            'children_count': row.children_count or 0,
+            'created_at': str(row.created_at or ''),
+            'created_fmt': fmt_dt(row.created_at),
+            'contract_id': row.contract_id,
+        })
 
     return posts, total, authors_raw
