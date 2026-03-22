@@ -56,18 +56,18 @@
             <div class="small text-muted">{{ priority_section_subtitle|default('수동 우선순위가 최우선이며, 미지정 건은 시스템 우선순위를 따릅니다.') }}</div>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <span class="badge text-bg-danger">{{ priority_projects|length }}건</span>
+            <span class="badge text-bg-danger" style="font-size:.85rem;padding:.35rem .65rem;">🔥 {{ priority_projects|length }}건</span>
             <button class="btn btn-sm btn-outline-secondary"
                     type="button"
                     data-bs-toggle="collapse"
                     data-bs-target="#{{ priority_dom_id }}"
-                    aria-expanded="true"
+                    aria-expanded="false"
                     aria-controls="{{ priority_dom_id }}">
                 열기/닫기
             </button>
         </div>
     </div>
-    <div class="collapse show" id="{{ priority_dom_id }}">
+    <div class="collapse" id="{{ priority_dom_id }}">
     <div class="table-responsive">
         <table class="table align-middle mb-0 mobile-stack-table">
             <thead class="text-center small">
