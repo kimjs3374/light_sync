@@ -120,3 +120,51 @@ def auto_create_warranty(db, contract_id, issue_date):
         contract_id, warranty_type, start_date, end_date,
     )
     return warranty
+
+
+def recalc_contract_payment_status(db, contract, latest_issue_date=None):
+    """계약의 payment_status를 G2B 금액 vs 세금계산서 합계로 재계산.
+
+    Args:
+        db: DB session
+        contract: Contract 객체
+        latest_issue_date: 최신 세금계산서 발행일 (없으면 DB에서 조회)
+
+    Returns:
+        str: 계산된 payment_status
+    """
+    from sqlalchemy import func, text as sa_text
+    from modules.models import TaxInvoice
+
+    # 예외/변경완료/취소 상태는 건드리지 않음
+    if contract.payment_status in ('예외', '변경완료', '취소'):
+        return contract.payment_status
+
+    # G2B 조달금액 합계
+    g2b_amt = 0
+    if contract.g2b_contract_no:
+        g2b_amt = db.execute(sa_text(
+            'SELECT SUM(prdct_amt) FROM light_sync.g2b_procurements WHERE cntrct_dlvr_req_no = :no'
+        ), {'no': contract.g2b_contract_no}).scalar() or 0
+
+    # 매칭된 세금계산서 합계 (수정세금계산서 +/- 상쇄 포함)
+    invoiced_total = db.query(func.coalesce(func.sum(TaxInvoice.total_amount), 0)).filter(
+        TaxInvoice.contract_id == contract.id,
+    ).scalar() or 0
+
+    if g2b_amt > 0 and invoiced_total >= g2b_amt:
+        contract.payment_status = '입금완료'
+        if latest_issue_date:
+            contract.payment_date = latest_issue_date
+        auto_create_warranty(db, contract.id, latest_issue_date or contract.invoice_date)
+    elif invoiced_total > 0:
+        contract.payment_status = '부분입금'
+    else:
+        contract.payment_status = '미청구'
+
+    # 최신 발행일 갱신
+    if latest_issue_date:
+        if not contract.invoice_date or latest_issue_date > contract.invoice_date:
+            contract.invoice_date = latest_issue_date
+
+    return contract.payment_status

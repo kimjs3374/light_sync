@@ -15,7 +15,7 @@ from flask import (
 )
 from sqlalchemy import desc, func
 from sqlalchemy.orm import joinedload
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.db_context import get_db
@@ -221,6 +221,7 @@ def po_list():
 # ===================================================================
 @purchase_order_bp.route('/purchase-order/create', methods=['GET', 'POST'])
 @login_required
+@menu_required('purchase_order')
 def po_create():
     with get_db() as db:
         if request.method == 'POST':
@@ -317,6 +318,7 @@ def po_create():
 # ===================================================================
 @purchase_order_bp.route('/purchase-order/<int:po_id>')
 @login_required
+@menu_required('purchase_order')
 def po_detail(po_id):
     with get_db() as db:
         po = db.query(PurchaseOrder).options(
@@ -344,6 +346,7 @@ def po_detail(po_id):
 # ===================================================================
 @purchase_order_bp.route('/purchase-order/<int:po_id>/edit', methods=['POST'])
 @login_required
+@menu_required('purchase_order')
 def po_edit(po_id):
     with get_db() as db:
         po = db.query(PurchaseOrder).get(po_id)
@@ -411,6 +414,7 @@ def po_edit(po_id):
 # ===================================================================
 @purchase_order_bp.route('/purchase-order/<int:po_id>/delete', methods=['POST'])
 @login_required
+@menu_required('purchase_order')
 def po_delete(po_id):
     with get_db() as db:
         po = db.query(PurchaseOrder).get(po_id)
@@ -435,6 +439,7 @@ def po_delete(po_id):
 # ===================================================================
 @purchase_order_bp.route('/purchase-order/<int:po_id>/status', methods=['POST'])
 @login_required
+@menu_required('purchase_order')
 def po_change_status(po_id):
     with get_db() as db:
         po = db.query(PurchaseOrder).get(po_id)
@@ -477,6 +482,7 @@ def po_pdf(po_id):
 # ===================================================================
 @purchase_order_bp.route('/purchase-order/<int:po_id>/send-email', methods=['POST'])
 @login_required
+@menu_required('purchase_order')
 def po_send_email(po_id):
     with get_db() as db:
         po = db.query(PurchaseOrder).get(po_id)
@@ -616,6 +622,7 @@ def po_send_email(po_id):
 # ===================================================================
 @purchase_order_bp.route('/purchase-order/<int:po_id>/sync-materials', methods=['POST'])
 @login_required
+@menu_required('purchase_order')
 def po_sync_materials(po_id):
     with get_db() as db:
         po = db.query(PurchaseOrder).get(po_id)
@@ -804,6 +811,7 @@ def api_get_signature():
 
 @purchase_order_bp.route('/api/signature', methods=['POST'])
 @login_required
+@menu_required('purchase_order')
 def api_save_signature():
     """서명 저장/수정"""
     data = request.get_json(silent=True) or {}
@@ -876,6 +884,7 @@ def api_contract_search():
 # ===================================================================
 @purchase_order_bp.route('/api/vendors/create', methods=['POST'])
 @login_required
+@menu_required('purchase_order')
 def api_vendor_create():
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '').strip()

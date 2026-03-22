@@ -15,7 +15,7 @@ from flask import (
 )
 from sqlalchemy import case, desc, func
 from sqlalchemy.orm import joinedload
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.db_context import get_db
@@ -356,6 +356,7 @@ def receiving_list():
 # ===================================================================
 @receiving_bp.route('/receiving/create', methods=['GET', 'POST'])
 @login_required
+@menu_required('receiving')
 def receiving_create():
     with get_db() as db:
         if request.method == 'POST':
@@ -503,6 +504,7 @@ def receiving_create():
 # ===================================================================
 @receiving_bp.route('/receiving/<int:rcv_id>')
 @login_required
+@menu_required('receiving')
 def receiving_detail(rcv_id):
     with get_db() as db:
         rcv = db.query(Receiving).options(
@@ -531,6 +533,7 @@ def receiving_detail(rcv_id):
 # ===================================================================
 @receiving_bp.route('/receiving/<int:rcv_id>/delete', methods=['POST'])
 @login_required
+@menu_required('receiving')
 def receiving_delete(rcv_id):
     with get_db() as db:
         rcv = db.query(Receiving).get(rcv_id)
@@ -663,6 +666,7 @@ def api_receiving_history_detail(history_id):
 # ===================================================================
 @receiving_bp.route('/api/receiving/confirm-expected/<int:poi_id>', methods=['POST'])
 @login_required
+@menu_required('receiving')
 def api_confirm_expected(poi_id):
     """입고예정 목록에서 입고확인 처리 (PurchaseOrderItem.in_confirmed = True)"""
     import datetime as _dt
@@ -709,6 +713,7 @@ def api_confirm_expected(poi_id):
 # ===================================================================
 @receiving_bp.route('/api/receiving/update-expected-date/<int:poi_id>', methods=['POST'])
 @login_required
+@menu_required('receiving')
 def api_update_expected_date(poi_id):
     """입고예정일 인라인 편집 저장"""
     import datetime as _dt

@@ -11,11 +11,12 @@ function openExtraMenuModal(userId, userName, currentMenus) {
     new bootstrap.Modal(document.getElementById('extraMenuModal')).show();
 }
 
-/* 비밀번호 초기화 모달 */
+/* 비밀번호 초기화 */
 function openResetPwModal(userId, userName) {
-    document.getElementById('resetPwUserName').textContent = userName;
-    document.getElementById('resetPwForm').action = window.ADMIN_RESET_PW_URL.replace('/0', '/' + userId);
-    new bootstrap.Modal(document.getElementById('resetPwModal')).show();
+    if (!confirm(userName + ' 비밀번호를 초기화하시겠습니까?')) return;
+    var form = document.getElementById('resetPwForm');
+    form.action = window.ADMIN_RESET_PW_URL.replace('/0', '/' + userId);
+    form.submit();
 }
 
 /* 사용자 검색 필터 */

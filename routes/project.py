@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, current_app
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 import datetime
 import json
 import shutil
@@ -428,6 +428,7 @@ def contract_list():
 # -------------------------------------------------------------------
 @project_bp.route('/project_create', methods=['GET', 'POST'])
 @login_required
+@menu_required('project')
 def project_create():
     if _is_prod_group():
         flash('생산부는 설계 현장 등록 권한이 없습니다.', 'danger')
@@ -479,11 +480,13 @@ def project_create():
 # -------------------------------------------------------------------
 @project_bp.route('/project_detail/<int:project_id>', methods=['GET', 'POST'])
 @login_required
+@menu_required('project')
 def project_detail(project_id):
     return handle_detail_common(project_id, 'project_detail.html')
 
 @project_bp.route('/contract_detail/<int:project_id>', methods=['GET', 'POST'])
 @login_required
+@menu_required('contract')
 def contract_detail(project_id):
     return handle_detail_common(project_id, 'contract_detail.html')
 
@@ -607,6 +610,7 @@ def handle_detail_common(project_id, template_name):
 # -------------------------------------------------------------------
 @project_bp.route('/convert_to_contract/<int:project_id>', methods=['POST'])
 @login_required
+@menu_required('contract')
 def convert_to_contract(project_id):
     if _is_prod_group():
         flash('생산부는 계약 전환 권한이 없습니다.', 'danger')
@@ -679,6 +683,7 @@ def convert_to_contract(project_id):
 # -------------------------------------------------------------------
 @project_bp.route('/project_delete_request/<int:project_id>', methods=['POST'])
 @login_required
+@menu_required('project')
 def project_delete_request(project_id):
     if _is_prod_group():
         flash('생산부는 삭제요청 권한이 없습니다.', 'danger')
@@ -727,6 +732,7 @@ def project_delete_request(project_id):
 
 @project_bp.route('/project_delete_requests/<int:req_id>/approve', methods=['POST'])
 @login_required
+@menu_required('project')
 def approve_project_delete_request(req_id):
     if not _can_approve_delete():
         flash('삭제 승인 권한이 없습니다.', 'danger')
@@ -769,6 +775,7 @@ def approve_project_delete_request(req_id):
 
 @project_bp.route('/project_delete_requests/<int:req_id>/reject', methods=['POST'])
 @login_required
+@menu_required('project')
 def reject_project_delete_request(req_id):
     if not _can_approve_delete():
         flash('삭제 반려 권한이 없습니다.', 'danger')
@@ -799,6 +806,7 @@ def reject_project_delete_request(req_id):
 
 @project_bp.route('/project_delete/<int:project_id>', methods=['POST'])
 @login_required
+@menu_required('project')
 def project_delete(project_id):
     """기존 라우트 호환: 승인권자만 즉시삭제 가능(일반 사용자는 삭제요청 사용)."""
     if not _can_approve_delete():
@@ -841,6 +849,7 @@ def project_delete(project_id):
 # -------------------------------------------------------------------
 @project_bp.route('/api/design-projects/search')
 @login_required
+@menu_required('project')
 def api_design_projects_search():
     q = (request.args.get('q') or '').strip().lower()
     with get_db() as db:
@@ -880,6 +889,7 @@ def api_design_projects_search():
 # -------------------------------------------------------------------
 @project_bp.route('/api/project/<int:project_id>/merge-design/<int:design_id>', methods=['POST'])
 @login_required
+@menu_required('project')
 def api_merge_design_project(project_id, design_id):
     if _is_prod_group():
         return jsonify({'ok': False, 'error': '생산부는 병합 권한이 없습니다.'}), 403

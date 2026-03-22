@@ -2,7 +2,7 @@ import json
 import os
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 import datetime
 from sqlalchemy.orm import joinedload
 from modules.utils import safe_int
@@ -212,6 +212,7 @@ def sales_list():
 
 @sales_bp.route('/sales_management/<int:project_id>', methods=['GET', 'POST'])
 @login_required
+@menu_required('sales')
 def sales_detail(project_id):
 
     with get_db() as db:
@@ -269,6 +270,7 @@ def sales_detail(project_id):
 # ── 협의 스펙 항목 관리 ──────────────────────────────────
 @sales_bp.route('/sales_management/spec_schema', methods=['GET'])
 @login_required
+@menu_required('sales')
 def spec_schema_admin():
     if session.get('role') != 'admin' and session.get('user_group') != '영업부':
         flash('영업부 또는 관리자만 접근 가능합니다.', 'warning')
@@ -286,6 +288,7 @@ def spec_schema_admin():
 
 @sales_bp.route('/sales_management/spec_schema/save', methods=['POST'])
 @login_required
+@menu_required('sales')
 def spec_schema_save():
     if session.get('role') != 'admin' and session.get('user_group') != '영업부':
         return jsonify({'ok': False, 'error': '권한 없음'}), 403

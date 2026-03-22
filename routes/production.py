@@ -132,6 +132,7 @@ ACTION_HANDLERS = {
 
 @production_bp.route('/production_management', methods=['GET', 'POST'])
 @login_required
+@menu_required('production')
 def production_management():
     # GET → 새 카드형 메인으로 redirect
     if request.method == 'GET':
@@ -179,6 +180,7 @@ def production_management():
 
 @production_bp.route('/production_management/<int:project_id>', methods=['GET', 'POST'])
 @login_required
+@menu_required('production')
 def production_detail(project_id):
 
     with get_db() as db:
@@ -251,6 +253,7 @@ def production_detail(project_id):
 
 @production_bp.route('/production')
 @login_required
+@menu_required('production')
 def production_main():
     """생산관리 메인 — 현장 목록 (현장 선택 → 상세)"""
     site_id = safe_int(request.args.get('site'), 0) or None

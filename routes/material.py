@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 import datetime
 from sqlalchemy.orm import joinedload
 from modules.db_context import get_db
@@ -351,6 +351,7 @@ ACTION_HANDLERS = {
 
 @material_bp.route('/material_management', methods=['GET', 'POST'])
 @login_required
+@menu_required('material')
 def material_management():
 
     with get_db() as db:
@@ -519,6 +520,7 @@ def material_management():
 
 @material_bp.route('/material_management/<int:project_id>', methods=['GET', 'POST'])
 @login_required
+@menu_required('material')
 def material_detail(project_id):
 
     with get_db() as db:

@@ -1,0 +1,316 @@
+{% extends 'base.html' %}
+{% block title %}{{ tower.tower_name }} — 조명배치도{% endblock %}
+
+{% block content %}
+<style>
+  /* ── 타워 상세 전용 ─────────────────────────────── */
+  .page-hero::before {
+    background: radial-gradient(circle, rgba(245,158,11,.1) 0%, transparent 65%);
+  }
+  .hero-eyebrow.is-amber { background: rgba(245,158,11,.15); color: #fbbf24; }
+  .hero-meta { color: var(--mg-subtle); font-size: .78rem; margin-top: .15rem; }
+  .hero-meta strong { color: #cbd5e1; }
+
+  /* 형제 타워 탭 */
+  .sibling-tabs { display: flex; gap: .3rem; margin-top: .6rem; flex-wrap: wrap; }
+  .sibling-tabs a {
+    padding: .2rem .5rem; border-radius: .35rem; font-size: .7rem; font-weight: 600;
+    background: rgba(255,255,255,.06); color: var(--mg-subtle);
+    border: 1px solid rgba(255,255,255,.08); text-decoration: none; transition: all .15s;
+  }
+  .sibling-tabs a:hover { background: rgba(245,158,11,.15); color: #fbbf24; border-color: rgba(245,158,11,.3); }
+
+  /* 그리드 패널 */
+  .grid-panel {
+    background: var(--mg-surface); border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius); box-shadow: var(--mg-shadow); padding: 1rem 1.2rem;
+  }
+  .toolbar {
+    display: flex; gap: .4rem; align-items: center; flex-wrap: wrap;
+    margin-bottom: .8rem; padding-bottom: .6rem; border-bottom: 1px solid var(--mg-border);
+  }
+  .toolbar .section-kicker { margin: 0; }
+  .fill-select { width: 100px; }
+
+  /* 그리드 셀 */
+  .tower-grid { display: inline-grid; gap: 5px; }
+  .tower-cell {
+    width: 88px; height: 76px; border-radius: .45rem;
+    border: 2px solid var(--mg-border); background: var(--mg-bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; transition: all .15s; position: relative;
+  }
+  .tower-cell:hover { border-color: var(--mg-warning); background: #fffbeb; }
+  .tower-cell.has-angle { border-color: var(--mg-success); background: #f0fdf4; }
+  .tower-cell .cell-no {
+    position: absolute; top: 3px; left: 6px;
+    font-family: var(--mg-mono); font-size: .58rem; font-weight: 800; color: var(--mg-subtle);
+  }
+  .tower-cell .cell-icon { font-size: 1.1rem; color: var(--mg-border); }
+  .tower-cell.has-angle .cell-icon { display: none; }
+  .tower-cell .cell-angle {
+    font-family: var(--mg-mono); font-size: .95rem; font-weight: 800; color: var(--mg-ink);
+  }
+  .tower-cell.has-angle .cell-angle { color: #059669; }
+
+  /* 인라인 팝오버 (body 직속, fixed) */
+  .angle-popover {
+    display: none; position: fixed; z-index: 9999;
+    background: var(--mg-surface); border: 1px solid var(--mg-border);
+    border-radius: .45rem; box-shadow: 0 8px 24px rgba(15,23,42,.18);
+    padding: .4rem; white-space: nowrap;
+  }
+  .angle-popover.active { display: flex; flex-wrap: wrap; gap: .2rem; }
+  .angle-popover .a-chip {
+    padding: .25rem .45rem; border-radius: .3rem; font-size: .72rem; font-weight: 700;
+    border: 1px solid var(--mg-border); background: var(--mg-bg); color: var(--mg-ink);
+    cursor: pointer; transition: all .1s; font-family: var(--mg-mono);
+  }
+  .angle-popover .a-chip:hover { background: var(--mg-success); color: #fff; border-color: var(--mg-success); }
+  .angle-popover .a-chip.is-cur { background: var(--mg-success); color: #fff; border-color: var(--mg-success); }
+  .angle-popover .a-clear {
+    padding: .25rem .35rem; border-radius: .3rem; font-size: .65rem;
+    border: 1px solid #fca5a5; background: #fef2f2; color: var(--mg-danger);
+    cursor: pointer; transition: all .1s;
+  }
+  .angle-popover .a-clear:hover { background: var(--mg-danger); color: #fff; }
+
+  /* 타워 정보 수정 */
+  .info-panel {
+    background: var(--mg-surface); border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius); box-shadow: var(--mg-shadow);
+    padding: 1rem 1.2rem; max-width: 560px; margin-top: .8rem;
+  }
+  .info-panel label { font-size: .72rem; font-weight: 600; color: var(--mg-muted); }
+
+  /* 토스트 */
+  .toast-msg {
+    position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999;
+    padding: .45rem .9rem; border-radius: .45rem;
+    font-size: .78rem; font-weight: 600; box-shadow: 0 4px 16px rgba(15,23,42,.15);
+    animation: mgFadeUp .3s both;
+  }
+  .toast-msg.is-ok { background: var(--mg-success); color: #fff; }
+  .toast-msg.is-err { background: var(--mg-danger); color: #fff; }
+
+  /* 인쇄용 */
+  @media print {
+    .page-hero, .toolbar, .sibling-tabs, .info-panel, .angle-popover,
+    .sidebar, .navbar, .btn { display: none !important; }
+    .grid-panel { border: none; padding: 0; box-shadow: none; }
+    .tower-cell { width: 68px; height: 56px; border: 1px solid #333; }
+    .tower-cell .cell-angle { font-size: .85rem; color: #000; }
+  }
+</style>
+
+<!-- 히어로 -->
+<div class="page-hero mg-fade">
+  <span class="hero-eyebrow is-amber"><i class="bi bi-lightbulb-fill"></i> TOWER LAYOUT</span>
+  <h2>🗼 {{ tower.tower_name }}</h2>
+  <div class="hero-meta">
+    <strong>{{ tower.project.name or tower.project.temp_name or '(미정)' }}</strong>
+    ({{ tower.project.project_no }})
+    · <span class="mono">{{ tower.rows }}×{{ tower.cols }}={{ tower.rows * tower.cols }}등</span>
+    {% if tower.model_name %}· {{ tower.model_name }}{% endif %}
+    {% if tower.watt %} {{ tower.watt }}W{% endif %}
+  </div>
+  {% if siblings %}
+  <div class="sibling-tabs">
+    {% for s in siblings %}
+    <a href="{{ url_for('lighting_layout.tower_detail', tower_id=s.id) }}">{{ s.tower_name }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- 그리드 패널 -->
+<div class="grid-panel mg-fade" style="animation-delay:.05s;">
+  <div class="toolbar">
+    <p class="section-kicker" style="margin:0;">GRID LAYOUT</p>
+    {% if matched_model %}
+    <span style="font-size:.65rem;font-weight:600;color:var(--mg-success);background:rgba(22,163,74,.08);padding:.15rem .4rem;border-radius:.3rem;">
+      <i class="bi bi-check-circle-fill"></i> {{ tower.model_name }} 전용 렌즈
+    </span>
+    {% elif tower.model_name %}
+    <span style="font-size:.65rem;font-weight:600;color:var(--mg-warning);background:rgba(217,119,6,.08);padding:.15rem .4rem;border-radius:.3rem;">
+      <i class="bi bi-exclamation-circle"></i> BOM 미매칭 — 전체 렌즈 표시
+    </span>
+    {% endif %}
+    <div style="flex:1;"></div>
+    <select id="fill-angle" class="form-select form-select-sm fill-select">
+      <option value="">일괄각도</option>
+      {% for opt in lens_options %}
+      <option value="{{ opt }}">{{ opt }}</option>
+      {% endfor %}
+    </select>
+    <button type="button" class="btn btn-xs btn-outline-success" onclick="fillAll()">
+      <i class="bi bi-grid-fill"></i> 일괄적용
+    </button>
+    <button type="button" class="btn btn-xs btn-success" onclick="saveAll()">
+      <i class="bi bi-check-lg"></i> 저장
+    </button>
+    <button type="button" class="btn btn-xs btn-outline-secondary" onclick="window.print()">
+      <i class="bi bi-printer"></i>
+    </button>
+    <a href="{{ url_for('lighting_layout.lens_config') }}" class="btn btn-xs btn-outline-secondary">
+      <i class="bi bi-sliders"></i> 렌즈관리
+    </a>
+    <a href="{{ url_for('lighting_layout.layout_list') }}" class="btn btn-xs btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> 목록
+    </a>
+  </div>
+
+  <div class="tower-grid" id="tower-grid" style="grid-template-columns: repeat({{ tower.cols }}, 88px);">
+    {% for pos in tower.positions %}
+    <div class="tower-cell{% if pos.lens_angle %} has-angle{% endif %}"
+         data-id="{{ pos.id }}" data-no="{{ pos.position_no }}"
+         data-angle="{{ pos.lens_angle or '' }}"
+         onclick="openAnglePicker(this)">
+      <span class="cell-no">#{{ pos.position_no }}</span>
+      <i class="bi bi-lightbulb cell-icon"></i>
+      <span class="cell-angle">{{ pos.lens_angle or '' }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- 타워 정보 수정 -->
+<div class="info-panel mg-fade" style="animation-delay:.1s;">
+  <p class="section-kicker">TOWER INFO</p>
+  <form method="POST" action="{{ url_for('lighting_layout.edit_tower', tower_id=tower.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="row mb-2">
+      <div class="col-4">
+        <label class="form-label">타워 이름</label>
+        <input type="text" name="tower_name" class="form-control form-control-sm" value="{{ tower.tower_name }}" required>
+      </div>
+      <div class="col-2">
+        <label class="form-label">행</label>
+        <input type="number" name="rows" class="form-control form-control-sm" value="{{ tower.rows }}" min="1" max="20">
+      </div>
+      <div class="col-2">
+        <label class="form-label">열</label>
+        <input type="number" name="cols" class="form-control form-control-sm" value="{{ tower.cols }}" min="1" max="20">
+      </div>
+      <div class="col-4">
+        <label class="form-label">모델명</label>
+        <input type="text" name="model_name" class="form-control form-control-sm" value="{{ tower.model_name or '' }}">
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-3">
+        <label class="form-label">와트(W)</label>
+        <input type="number" name="watt" class="form-control form-control-sm" value="{{ tower.watt or '' }}">
+      </div>
+      <div class="col-9">
+        <label class="form-label">비고</label>
+        <input type="text" name="note" class="form-control form-control-sm" value="{{ tower.note or '' }}">
+      </div>
+    </div>
+    <div class="d-flex gap-2 mt-2">
+      <button type="submit" class="btn btn-xs btn-primary"><i class="bi bi-pencil"></i> 수정</button>
+      <button type="button" class="btn btn-xs btn-outline-danger"
+              onclick="if(confirm('이 타워 배치도를 삭제하시겠습니까?')) document.getElementById('delete-form').submit();">
+        <i class="bi bi-trash"></i> 삭제
+      </button>
+    </div>
+  </form>
+  <form id="delete-form" method="POST" action="{{ url_for('lighting_layout.delete_tower', tower_id=tower.id) }}" style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  </form>
+</div>
+
+<!-- 인라인 팝오버 (DOM 상 하나만 존재, 위치 이동) -->
+<div class="angle-popover" id="angle-popover">
+  {% for opt in lens_options %}
+  <span class="a-chip" data-val="{{ opt }}">{{ opt }}</span>
+  {% endfor %}
+  <span class="a-clear" data-val="">✕</span>
+</div>
+
+<script>
+const popover = document.getElementById('angle-popover');
+let activeCell = null;
+
+function closePopover() {
+  popover.classList.remove('active');
+  activeCell = null;
+}
+
+function openAnglePicker(cell) {
+  // 같은 셀 다시 누르면 닫기
+  if (activeCell === cell) { closePopover(); return; }
+  activeCell = cell;
+
+  // 현재 각도 하이라이트
+  const cur = cell.dataset.angle;
+  popover.querySelectorAll('.a-chip').forEach(c => c.classList.toggle('is-cur', c.dataset.val === cur));
+
+  // 셀 바로 아래에 fixed 위치
+  const rect = cell.getBoundingClientRect();
+  document.body.appendChild(popover);
+  popover.classList.add('active');
+  // 표시 후 팝오버 크기 계산하여 화면 밖 방지
+  const pw = popover.offsetWidth;
+  let left = rect.left;
+  if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+  if (left < 8) left = 8;
+  popover.style.left = left + 'px';
+  popover.style.top = (rect.bottom + 4) + 'px';
+}
+
+// 각도 칩 클릭 → 즉시 적용
+popover.querySelectorAll('[data-val]').forEach(chip => {
+  chip.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!activeCell) return;
+    const val = chip.dataset.val;
+    activeCell.dataset.angle = val;
+    activeCell.querySelector('.cell-angle').textContent = val;
+    activeCell.classList.toggle('has-angle', !!val);
+    closePopover();
+  });
+});
+
+// 바깥 클릭 시 닫기
+document.addEventListener('click', e => {
+  if (!popover.classList.contains('active')) return;
+  if (popover.contains(e.target) || (activeCell && activeCell.contains(e.target))) return;
+  closePopover();
+});
+
+function fillAll() {
+  const angle = document.getElementById('fill-angle').value;
+  if (!angle) { alert('일괄 적용할 각도를 선택하세요.'); return; }
+  if (!confirm(`모든 위치에 ${angle}를 적용하시겠습니까?`)) return;
+  document.querySelectorAll('.tower-cell').forEach(cell => {
+    cell.dataset.angle = angle;
+    cell.querySelector('.cell-angle').textContent = angle;
+    cell.classList.add('has-angle');
+  });
+}
+
+function showToast(msg, ok) {
+  const t = document.createElement('div');
+  t.className = 'toast-msg ' + (ok ? 'is-ok' : 'is-err');
+  t.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'exclamation-circle'}"></i> ${msg}`;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+function saveAll() {
+  const positions = [];
+  document.querySelectorAll('.tower-cell').forEach(cell => {
+    positions.push({ id: parseInt(cell.dataset.id), lens_angle: cell.dataset.angle || '' });
+  });
+  fetch('{{ url_for("lighting_layout.save_positions", tower_id=tower.id) }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+    body: JSON.stringify({ positions })
+  })
+  .then(r => r.json())
+  .then(data => showToast(data.msg, data.ok))
+  .catch(() => showToast('네트워크 오류', false));
+}
+</script>
+{% endblock %}

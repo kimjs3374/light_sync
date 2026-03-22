@@ -3,7 +3,7 @@ import json
 
 from flask import Blueprint, render_template, request, session, jsonify, flash, redirect, url_for
 from sqlalchemy.orm import joinedload
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from modules.models import (
     DailyReport, User, HistoryLog, Project, Contract, ContractItem,
@@ -287,6 +287,7 @@ def daily_report_view():
 
 @daily_report_bp.route('/daily-report/save', methods=['POST'])
 @login_required
+@menu_required('daily_report')
 def daily_report_save():
     """수동 추가 항목 + 기본사항 저장"""
     target_date_str = request.form.get('report_date', '')

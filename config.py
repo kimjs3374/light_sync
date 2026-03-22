@@ -37,6 +37,7 @@ MENU_REGISTRY = OrderedDict([
     ("photos",         {"label": "사진관리",   "group": "공유",   "endpoint": "photos.photo_list"}),
     ("drawing",        {"label": "도면관리",   "group": "공유",   "endpoint": "drawing.drawings_index"}),
     ("illuminance",    {"label": "조도검증",   "group": "영업부", "endpoint": "illuminance.index"}),
+    ("lighting_layout",{"label": "조명배치도", "group": "영업부", "endpoint": "lighting_layout.layout_list"}),
     ("certification",  {"label": "인증서관리", "group": "관리부", "endpoint": "certification.cert_list"}),
     # --- 생산부 ---
     ("production",     {"label": "생산관리",   "group": "생산부", "endpoint": "production.production_main"}),

@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, request, jsonify, session, abort, 
 from sqlalchemy import func
 from werkzeug.utils import secure_filename
 
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from modules.models import Project, Contract, ContractItem, ProjectPhoto
 from modules.storage_adapter import upload_bytes, download_bytes, delete_object
@@ -136,6 +136,7 @@ def api_photos():
 
 @photos_bp.route('/api/upload', methods=['POST'])
 @login_required
+@menu_required('photos')
 def api_upload():
     file = request.files.get('file')
     site_id = request.form.get('site_id', type=int)
@@ -186,6 +187,7 @@ def api_upload():
 
 @photos_bp.route('/api/photos/<int:photo_id>', methods=['DELETE'])
 @login_required
+@menu_required('photos')
 def api_delete(photo_id):
     with get_db() as db:
         photo = db.query(ProjectPhoto).filter(ProjectPhoto.id == photo_id).first()
@@ -199,6 +201,7 @@ def api_delete(photo_id):
 
 @photos_bp.route('/api/download', methods=['POST'])
 @login_required
+@menu_required('photos')
 def api_download():
     photo_ids = request.json.get('ids', []) if request.is_json else []
     if not photo_ids:

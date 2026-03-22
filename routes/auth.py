@@ -499,10 +499,7 @@ def change_password():
 @auth_bp.route('/reset_password/<int:user_id>', methods=['POST'])
 @admin_required
 def reset_password(user_id):
-    new_password = request.form.get('new_password', '')
-    if len(new_password) < 6:
-        flash("비밀번호는 6자 이상 입력해주세요.", "danger")
-        return redirect(url_for('auth.admin_settings'))
+    DEFAULT_PASSWORD = '3925508'
 
     with get_db() as db:
         user = db.get(User, user_id)
@@ -510,7 +507,7 @@ def reset_password(user_id):
             flash("사용자를 찾을 수 없습니다.", "danger")
             return redirect(url_for('auth.admin_settings'))
 
-        hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        hashed_pw = bcrypt.hashpw(DEFAULT_PASSWORD.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         user.password_hash = hashed_pw
         db.commit()
         flash(f"{user.full_name} 비밀번호가 초기화되었습니다.", "success")

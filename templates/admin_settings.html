@@ -317,29 +317,10 @@
     {% endif %}{# admin only reset pane #}
 </div>{# /tab-content #}
 
-<!-- 비밀번호 초기화 모달 -->
-<div class="modal fade" id="resetPwModal" tabindex="-1">
-    <div class="modal-dialog modal-sm">
-        <div class="modal-content">
-            <form method="POST" id="resetPwForm">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <div class="modal-header">
-                    <h6 class="modal-title">비밀번호 초기화</h6>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="mb-2 text-muted small">대상: <strong id="resetPwUserName"></strong></p>
-                    <label class="form-label small">새 비밀번호 (6자 이상)</label>
-                    <input type="password" class="form-control form-control-sm" name="new_password" required minlength="6" autocomplete="new-password">
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
-                    <button type="submit" class="btn btn-sm btn-primary">초기화</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
+<!-- 비밀번호 초기화용 hidden form -->
+<form method="POST" id="resetPwForm" style="display:none">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+</form>
 
 <!-- 개인 추가 메뉴 권한 모달 -->
 <div class="modal fade" id="extraMenuModal" tabindex="-1">

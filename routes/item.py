@@ -13,7 +13,7 @@ import logging
 import tempfile
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, session
 from sqlalchemy import or_, func, distinct, desc
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.db_context import get_db
@@ -278,6 +278,7 @@ def item_detail(item_id):
 # ===================================================================
 @item_bp.route('/item/<int:item_id>/edit', methods=['POST'])
 @login_required
+@menu_required('item')
 def item_edit(item_id):
     with get_db() as db:
         item = db.query(Item).get(item_id)
@@ -327,6 +328,7 @@ def item_edit(item_id):
 # ===================================================================
 @item_bp.route('/item/create', methods=['GET', 'POST'])
 @login_required
+@menu_required('item')
 def item_create():
     if request.method == 'POST':
         with get_db() as db:
@@ -373,6 +375,7 @@ def item_create():
 # ===================================================================
 @item_bp.route('/item/<int:item_id>/delete', methods=['POST'])
 @login_required
+@menu_required('item')
 def item_delete(item_id):
     with get_db() as db:
         item = db.query(Item).get(item_id)
@@ -392,6 +395,7 @@ def item_delete(item_id):
 # ===================================================================
 @item_bp.route('/api/item/categories')
 @login_required
+@menu_required('item')
 def api_item_categories():
     with get_db() as db:
         categories = [r[0] for r in db.query(distinct(Item.category)).filter(
@@ -432,6 +436,7 @@ def api_item_search():
 # ===================================================================
 @item_bp.route('/item/stock-match', methods=['GET', 'POST'])
 @login_required
+@menu_required('item')
 def stock_match():
     import os
     json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'reference', 'stock_data.json')
@@ -507,6 +512,7 @@ def stock_match():
 # ===================================================================
 @item_bp.route('/item/export')
 @login_required
+@menu_required('item')
 def item_export():
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -576,6 +582,7 @@ def item_export():
 # ===================================================================
 @item_bp.route('/item/import', methods=['GET', 'POST'])
 @login_required
+@menu_required('item')
 def item_import():
     if request.method == 'POST':
         action = request.form.get('action', '')

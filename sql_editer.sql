@@ -1,4 +1,50 @@
 -- ══════════════════════════════════════════════
+-- 조명배치도 테이블 생성 (2026-03-22)
+-- ══════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS light_sync.tower_layouts (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES light_sync.projects(id),
+    tower_name VARCHAR(100) NOT NULL,
+    rows INTEGER NOT NULL DEFAULT 2,
+    cols INTEGER NOT NULL DEFAULT 3,
+    model_name VARCHAR(200),
+    watt INTEGER,
+    note TEXT,
+    created_by VARCHAR(50),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS light_sync.tower_layout_positions (
+    id SERIAL PRIMARY KEY,
+    tower_layout_id INTEGER NOT NULL REFERENCES light_sync.tower_layouts(id) ON DELETE CASCADE,
+    position_no INTEGER NOT NULL,
+    row_idx INTEGER NOT NULL,
+    col_idx INTEGER NOT NULL,
+    lens_angle VARCHAR(50),
+    note VARCHAR(200)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tower_layouts_project ON light_sync.tower_layouts(project_id);
+CREATE INDEX IF NOT EXISTS idx_tower_layout_pos_layout ON light_sync.tower_layout_positions(tower_layout_id);
+
+CREATE TABLE IF NOT EXISTS light_sync.lens_angle_configs (
+    id SERIAL PRIMARY KEY,
+    model_name VARCHAR(100) UNIQUE NOT NULL,
+    angles VARCHAR(500) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 초기 데이터 (예시)
+INSERT INTO light_sync.lens_angle_configs (model_name, angles) VALUES
+    ('STA', '20|35|55'),
+    ('BATOO', '15|30|45|60|120'),
+    ('ARENA', '광각|중각|협각')
+ON CONFLICT (model_name) DO NOTHING;
+
+-- ══════════════════════════════════════════════
 -- 완료/취소 현장 → 생산완료 일괄 처리 (2026-03-22)
 -- 입금완료/변경완료/취소 = 더 이상 생산 불필요
 -- ══════════════════════════════════════════════

@@ -1,5 +1,5 @@
 import functools
-from flask import session, redirect, url_for, flash, request
+from flask import session, redirect, url_for, flash, request, jsonify
 
 
 def login_required(f):
@@ -38,12 +38,16 @@ def menu_required(menu_key, write=False):
                 return f(*args, **kwargs)
             allowed = session.get('allowed_menus', [])
             if menu_key not in allowed:
+                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({'error': '접근 권한이 없습니다.'}), 403
                 flash('접근 권한이 없습니다.', 'danger')
                 return redirect(url_for('dashboard.dashboard_view'))
-            # 쓰기 권한 체크: write=True이거나 POST 요청인데 쓰기 권한 없으면 차단
-            if write or request.method == 'POST':
+            # 쓰기 권한 체크: write=True이거나 GET 이외 요청이면 쓰기 권한 필요
+            if write or request.method != 'GET':
                 writable = session.get('writable_menus', [])
                 if menu_key not in writable:
+                    if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        return jsonify({'error': '읽기 전용 권한입니다. 수정할 수 없습니다.'}), 403
                     flash('읽기 전용 권한입니다. 수정할 수 없습니다.', 'warning')
                     return redirect(request.referrer or url_for('dashboard.dashboard_view'))
             return f(*args, **kwargs)

@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 import datetime
 from modules.db_context import get_db
 from modules.utils import safe_int
@@ -14,6 +14,7 @@ contract_bp = Blueprint('contract', __name__)
 
 @contract_bp.route('/contract_create', methods=['GET', 'POST'])
 @login_required
+@menu_required('contract')
 def contract_create():
     if session.get('user_group') == '생산부':
         flash('생산부는 계약 현장 등록 권한이 없습니다.', 'danger')

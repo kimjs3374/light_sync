@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from modules.utils import safe_int, parse_date
 from modules.pagination import make_pagination, pagination_query
@@ -257,6 +257,7 @@ def warranty_list():
 # ===================================================================
 @warranty_bp.route('/warranty/case/create', methods=['GET', 'POST'])
 @login_required
+@menu_required('warranty')
 def case_create():
     if request.method == 'POST':
         with get_db() as db:
@@ -383,6 +384,7 @@ def case_create():
 # ===================================================================
 @warranty_bp.route('/warranty/case/<int:case_id>', methods=['GET', 'POST'])
 @login_required
+@menu_required('warranty')
 def case_detail(case_id):
     with get_db() as db:
         case = (
@@ -521,6 +523,7 @@ def case_detail(case_id):
 # ===================================================================
 @warranty_bp.route('/warranty/api/contract-search')
 @login_required
+@menu_required('warranty')
 def api_contract_search():
     q = request.args.get('q', '').strip()
     if len(q) < 2:
@@ -561,6 +564,7 @@ def api_contract_search():
 # ===================================================================
 @warranty_bp.route('/warranty/register/<int:contract_id>', methods=['GET', 'POST'])
 @login_required
+@menu_required('warranty')
 def warranty_register(contract_id):
     with get_db() as db:
         contract = (
@@ -615,6 +619,7 @@ def warranty_register(contract_id):
 # ===================================================================
 @warranty_bp.route('/warranty/create')
 @login_required
+@menu_required('warranty')
 def legacy_create():
     """기존 /warranty/create → /warranty/case/create 리다이렉트"""
     return redirect(url_for('warranty.case_create', **request.args), code=301)
@@ -622,6 +627,7 @@ def legacy_create():
 
 @warranty_bp.route('/warranty/<int:case_id>')
 @login_required
+@menu_required('warranty')
 def legacy_detail(case_id):
     """기존 /warranty/<id> → /warranty/case/<id> 리다이렉트"""
     return redirect(url_for('warranty.case_detail', case_id=case_id), code=301)

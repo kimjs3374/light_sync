@@ -206,24 +206,10 @@ def sync_g2b_to_contracts(db):
                 inv.project_id = project_id
                 result['matched_invoices'] += 1
 
-            contract.payment_status = '입금완료'
-            contract.invoice_date = latest_invoice.issue_date
-
-            # ── 6. 하자보증 자동 생성 ──
-            years = 3 if warranty_type in ('혁신제품', '우수제품') else 1
-            start_date = latest_invoice.issue_date
-            if start_date:
-                end_date = start_date.replace(year=start_date.year + years)
-                warranty = Warranty(
-                    contract_id=contract.id,
-                    project_id=project_id,
-                    warranty_start=start_date,
-                    warranty_end=end_date,
-                    warranty_type=warranty_type,
-                    auto_generated=True,
-                    note=f'{g.buyer_name or ""} | {warranty_type} {years}년',
-                )
-                db.add(warranty)
+            # 금액 비교 후 수금상태 재계산
+            from modules.services.warranty_auto import recalc_contract_payment_status
+            status = recalc_contract_payment_status(db, contract, latest_invoice.issue_date)
+            if status == '입금완료':
                 result['warranties_created'] += 1
 
         result['created'] += 1

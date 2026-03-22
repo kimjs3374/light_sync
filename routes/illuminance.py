@@ -8,7 +8,7 @@ import uuid
 import datetime
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, jsonify, current_app)
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from modules.models.entities import IlluminanceProject, IlluminanceArea, IlluminanceMeasured, Project
 from modules.services.illuminance_pdf_parser import ReluxPdfParser, get_ks_standard, judge_ks
@@ -83,6 +83,7 @@ def api_project_illuminance(project_id):
 
 @ilv_bp.route('/api/upload-pdf', methods=['POST'])
 @login_required
+@menu_required('illuminance')
 def api_upload_pdf():
     f = request.files.get('pdf')
     if not f or not f.filename.lower().endswith('.pdf'):
@@ -113,6 +114,7 @@ def api_upload_pdf():
 # ──────────────────────────────────────────────────────────────
 @ilv_bp.route('/api/parse-pages', methods=['POST'])
 @login_required
+@menu_required('illuminance')
 def api_parse_pages():
     data = request.get_json()
     token = data.get('upload_token')
@@ -143,6 +145,7 @@ def api_parse_pages():
 # ──────────────────────────────────────────────────────────────
 @ilv_bp.route('/new', methods=['POST'])
 @login_required
+@menu_required('illuminance')
 def new_save():
     form = request.form
     areas_json = form.get('areas_json', '[]')
@@ -226,6 +229,7 @@ def new_save():
 # ──────────────────────────────────────────────────────────────
 @ilv_bp.route('/api/quick-create', methods=['POST'])
 @login_required
+@menu_required('illuminance')
 def api_quick_create():
     """설계관리 페이지에서 PDF 올리면 조도검증 프로젝트를 자동 생성"""
     f = request.files.get('pdf')
@@ -391,6 +395,7 @@ def area(project_id, area_id):
 # ──────────────────────────────────────────────────────────────
 @ilv_bp.route('/<int:project_id>/area/<int:area_id>/measure', methods=['POST'])
 @login_required
+@menu_required('illuminance')
 def save_measure(project_id, area_id):
     with get_db() as db:
         ilv_area = db.query(IlluminanceArea).get(area_id)
@@ -473,6 +478,7 @@ def save_measure(project_id, area_id):
 # ──────────────────────────────────────────────────────────────
 @ilv_bp.route('/<int:project_id>/edit', methods=['POST'])
 @login_required
+@menu_required('illuminance')
 def edit_project(project_id):
     with get_db() as db:
         project = db.query(IlluminanceProject).get(project_id)
@@ -495,6 +501,7 @@ def edit_project(project_id):
 # ──────────────────────────────────────────────────────────────
 @ilv_bp.route('/<int:project_id>/delete', methods=['POST'])
 @login_required
+@menu_required('illuminance')
 def delete_project(project_id):
     with get_db() as db:
         project = db.query(IlluminanceProject).get(project_id)
@@ -513,6 +520,7 @@ def delete_project(project_id):
 # ──────────────────────────────────────────────────────────────
 @ilv_bp.route('/<int:project_id>/area/<int:area_id>/edit-name', methods=['POST'])
 @login_required
+@menu_required('illuminance')
 def edit_area_name(project_id, area_id):
     with get_db() as db:
         area = db.query(IlluminanceArea).get(area_id)
@@ -532,6 +540,7 @@ def edit_area_name(project_id, area_id):
 # ──────────────────────────────────────────────────────────────
 @ilv_bp.route('/<int:project_id>/area/<int:area_id>/delete', methods=['POST'])
 @login_required
+@menu_required('illuminance')
 def delete_area(project_id, area_id):
     with get_db() as db:
         area = db.query(IlluminanceArea).get(area_id)
@@ -547,6 +556,7 @@ def delete_area(project_id, area_id):
 # ──────────────────────────────────────────────────────────────
 @ilv_bp.route('/<int:project_id>/area/<int:area_id>/measure/<int:measure_id>/delete', methods=['POST'])
 @login_required
+@menu_required('illuminance')
 def delete_measure(project_id, area_id, measure_id):
     with get_db() as db:
         m = db.query(IlluminanceMeasured).get(measure_id)

@@ -2,7 +2,7 @@ import datetime
 import io
 from pathlib import Path, PurePosixPath
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, send_file, abort, current_app, jsonify, Response
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from werkzeug.utils import secure_filename
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
@@ -154,6 +154,7 @@ def api_project_drawings(project_id):
 
 @drawing_bp.route('/drawings/api/drawing/<int:drawing_id>', methods=['DELETE'])
 @login_required
+@menu_required('drawing')
 def api_delete_drawing(drawing_id):
     """도면 전체(모든 버전) 삭제"""
     if not _can_write_drawings():
@@ -189,6 +190,7 @@ def api_delete_drawing(drawing_id):
 
 @drawing_bp.route('/drawings/api/version/<int:version_id>', methods=['DELETE'])
 @login_required
+@menu_required('drawing')
 def api_delete_version(version_id):
     if not _can_write_drawings():
         return jsonify({'error': '삭제 권한이 없습니다.'}), 403
@@ -256,6 +258,7 @@ def api_delete_version(version_id):
 
 @drawing_bp.route('/drawings/api/upload/<int:project_id>', methods=['POST'])
 @login_required
+@menu_required('drawing')
 def api_upload_drawing(project_id):
     if not _can_write_drawings():
         return jsonify({'error': '업로드 권한이 없습니다.'}), 403
@@ -389,6 +392,7 @@ def api_upload_drawing(project_id):
 
 @drawing_bp.route('/drawings/project/<int:project_id>/upload', methods=['POST'])
 @login_required
+@menu_required('drawing')
 def upload_drawing(project_id):
     if not _can_write_drawings():
         flash('도면 업로드/수정 권한은 영업부(RW)만 가능합니다.', 'danger')

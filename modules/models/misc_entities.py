@@ -532,3 +532,57 @@ class DesignSimulationDoc(Base):
     created_at = Column(DateTime, default=datetime.datetime.now)
 
     project = relationship('Project')
+
+
+# ── 조명배치도 (타워별 투광등 넘버링 + 렌즈각도) ──
+
+class TowerLayout(Base):
+    """현장 타워별 조명배치도 마스터"""
+    __tablename__ = 'tower_layouts'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    tower_name = Column(String(100), nullable=False)       # 타워 이름 (예: T1, T2)
+    rows = Column(Integer, nullable=False, default=2)       # 행 수
+    cols = Column(Integer, nullable=False, default=3)       # 열 수
+    model_name = Column(String(200), nullable=True)         # 투광등 모델명
+    watt = Column(Integer, nullable=True)                   # 와트수
+    note = Column(Text, nullable=True)
+    created_by = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    project = relationship('Project')
+    positions = relationship('TowerLayoutPosition', back_populates='tower_layout',
+                             cascade='all, delete-orphan',
+                             order_by='TowerLayoutPosition.position_no')
+
+
+class TowerLayoutPosition(Base):
+    """타워 내 개별 투광등 위치 (번호 + 렌즈각도)"""
+    __tablename__ = 'tower_layout_positions'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tower_layout_id = Column(Integer, ForeignKey('tower_layouts.id', ondelete='CASCADE'), nullable=False)
+    position_no = Column(Integer, nullable=False)           # 좌상단→우측 순번 (1~rows*cols)
+    row_idx = Column(Integer, nullable=False)               # 행 인덱스 (0-based)
+    col_idx = Column(Integer, nullable=False)               # 열 인덱스 (0-based)
+    lens_angle = Column(String(50), nullable=True)          # 렌즈각도 (예: 20°, 30°)
+    note = Column(String(200), nullable=True)               # 비고
+
+    tower_layout = relationship('TowerLayout', back_populates='positions')
+
+
+class LensAngleConfig(Base):
+    """모델별 렌즈각도 설정"""
+    __tablename__ = 'lens_angle_configs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_name = Column(String(100), unique=True, nullable=False)   # 모델 키워드 (예: STA, BATOO, ARENA)
+    angles = Column(String(500), nullable=False)                     # 파이프 구분 (예: 20|35|55)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    @property
+    def angle_list(self):
+        return [a.strip() for a in self.angles.split('|') if a.strip()]

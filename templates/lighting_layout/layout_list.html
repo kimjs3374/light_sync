@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block title %}조명배치도{% endblock %}
+
+{% block content %}
+<style>
+  /* ── 조명배치도 목록 전용 ─────────────────────────────── */
+  .page-hero::before {
+    background: radial-gradient(circle, rgba(245,158,11,.1) 0%, transparent 65%);
+  }
+  .hero-eyebrow.is-amber { background: rgba(245,158,11,.15); color: #fbbf24; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .7rem; }
+
+  /* KPI 칩 */
+  .kpi-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+  .kpi-chip {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .3rem .65rem; border-radius: .5rem;
+    background: var(--mg-surface); border: 1px solid var(--mg-border);
+    font-size: .75rem; font-weight: 600; color: var(--mg-muted);
+  }
+  .kpi-chip .kpi-val { font-family: var(--mg-mono); font-weight: 800; color: var(--mg-ink); font-size: .85rem; }
+  .kpi-chip.is-amber .kpi-val { color: var(--mg-warning); }
+  .kpi-chip.is-green .kpi-val { color: var(--mg-success); }
+
+  /* 현장 카드 */
+  .site-card {
+    background: var(--mg-surface); border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius); margin-bottom: .7rem;
+    box-shadow: var(--mg-shadow); transition: box-shadow .15s;
+  }
+  .site-card:hover { box-shadow: 0 4px 20px rgba(15,23,42,.08); }
+  .site-card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: .7rem 1rem; border-bottom: 1px solid var(--mg-border);
+  }
+  .site-card-head h3 { font-size: .88rem; font-weight: 700; color: var(--mg-ink); margin: 0; }
+  .site-card-head .site-no { font-size: .72rem; color: var(--mg-subtle); font-weight: 400; margin-left: .4rem; }
+  .site-card-body { padding: .7rem 1rem; display: flex; flex-wrap: wrap; gap: .45rem; }
+
+  /* 타워 칩 */
+  .tower-chip {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .3rem .6rem; border-radius: .45rem;
+    background: var(--mg-bg); border: 1px solid var(--mg-border);
+    font-size: .78rem; color: var(--mg-ink); text-decoration: none;
+    transition: all .15s; font-weight: 600;
+  }
+  .tower-chip:hover { background: #eff6ff; border-color: #93c5fd; color: var(--mg-primary); }
+  .tower-chip .t-size { color: var(--mg-subtle); font-size: .68rem; font-weight: 500; }
+  .tower-chip .t-fill {
+    font-family: var(--mg-mono); font-size: .62rem; font-weight: 700;
+    color: var(--mg-success); background: rgba(22,163,74,.08);
+    padding: .1rem .3rem; border-radius: .25rem;
+  }
+
+  /* 빈 상태 */
+  .empty-state {
+    text-align: center; padding: 3rem 1rem; color: var(--mg-subtle);
+    background: var(--mg-surface); border: 1px dashed var(--mg-border);
+    border-radius: var(--mg-radius);
+  }
+  .empty-state i { font-size: 2.2rem; display: block; margin-bottom: .5rem; color: var(--mg-border); }
+</style>
+
+<!-- 히어로 -->
+<div class="page-hero mg-fade">
+  <span class="hero-eyebrow is-amber"><i class="bi bi-lightbulb-fill"></i> LIGHTING LAYOUT</span>
+  <h2>조명배치도</h2>
+  <p class="hero-sub">현장별 타워 투광등 넘버링 + 렌즈각도 관리</p>
+  <div class="hero-actions">
+    <a href="{{ url_for('lighting_layout.add_tower') }}" class="btn btn-hi btn-sm">
+      <i class="bi bi-plus-lg"></i> 타워 추가
+    </a>
+    <a href="{{ url_for('lighting_layout.lens_config') }}" class="btn btn-sm">
+      <i class="bi bi-sliders"></i> 렌즈관리
+    </a>
+  </div>
+</div>
+
+<!-- KPI -->
+{% set total_towers = project_map.values()|map(attribute='towers')|map('length')|sum %}
+{% set total_sites = project_map|length %}
+<div class="kpi-row mg-fade" style="animation-delay:.05s;">
+  <div class="kpi-chip is-amber">
+    <span>현장</span> <span class="kpi-val">{{ total_sites }}</span>
+  </div>
+  <div class="kpi-chip is-green">
+    <span>타워</span> <span class="kpi-val">{{ total_towers }}</span>
+  </div>
+</div>
+
+<!-- 현장별 목록 -->
+{% if project_map %}
+  {% for pid, info in project_map.items() %}
+  <div class="site-card mg-fade" style="animation-delay:{{ 0.1 + loop.index0 * 0.05 }}s;">
+    <div class="site-card-head">
+      <h3>
+        <i class="bi bi-building" style="color:var(--mg-subtle);"></i>
+        {{ info.project.name or info.project.temp_name or '(미정)' }}
+        <span class="site-no">{{ info.project.project_no }}</span>
+      </h3>
+      <a href="{{ url_for('lighting_layout.add_tower', project_id=pid) }}"
+         class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;">
+        <i class="bi bi-plus"></i> 타워추가
+      </a>
+    </div>
+    <div class="site-card-body">
+      {% for t in info.towers %}
+      <a href="{{ url_for('lighting_layout.tower_detail', tower_id=t.id) }}" class="tower-chip">
+        🗼 {{ t.tower_name }}
+        <span class="t-size">{{ t.rows }}×{{ t.cols }}</span>
+        {% set filled = t.positions | selectattr('lens_angle') | list | length %}
+        {% if filled > 0 %}
+        <span class="t-fill">{{ filled }}/{{ t.rows * t.cols }}</span>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty-state mg-fade" style="animation-delay:.1s;">
+    <i class="bi bi-lightbulb"></i>
+    <p style="margin:0 0 .5rem;">등록된 조명배치도가 없습니다.</p>
+    <a href="{{ url_for('lighting_layout.add_tower') }}" class="btn btn-sm btn-hi">
+      <i class="bi bi-plus-lg"></i> 첫 타워 추가하기
+    </a>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from modules.pagination import make_pagination
 from modules.utils import safe_int
@@ -248,6 +248,7 @@ def catalog_list():
 
 @catalog_bp.route('/product_catalog', methods=['POST'])
 @login_required
+@menu_required('item')
 def catalog_action():
     """POST 액션 처리 (sync_catalog, update_price)"""
     action = request.form.get('action')

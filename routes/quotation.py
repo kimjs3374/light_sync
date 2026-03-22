@@ -15,7 +15,7 @@ from flask import (
     flash, jsonify, abort, session, make_response,
 )
 from sqlalchemy import desc, func, or_
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.db_context import get_db
@@ -251,6 +251,7 @@ def quotation_list():
 # ===================================================================
 @quotation_bp.route('/quotation/create', methods=['GET', 'POST'])
 @login_required
+@menu_required('quotation')
 def quotation_create():
     with get_db() as db:
         if request.method == 'POST':
@@ -322,6 +323,7 @@ def quotation_create():
 # ===================================================================
 @quotation_bp.route('/quotation/<int:quote_id>')
 @login_required
+@menu_required('quotation')
 def quotation_detail(quote_id):
     with get_db() as db:
         quotation = db.query(Quotation).get(quote_id)
@@ -360,6 +362,7 @@ def quotation_edit_form(quote_id):
 
 @quotation_bp.route('/quotation/<int:quote_id>/edit', methods=['POST'])
 @login_required
+@menu_required('quotation')
 def quotation_edit(quote_id):
     with get_db() as db:
         quotation = db.query(Quotation).get(quote_id)
@@ -405,6 +408,7 @@ def quotation_edit(quote_id):
 # ===================================================================
 @quotation_bp.route('/quotation/<int:quote_id>/delete', methods=['POST'])
 @login_required
+@menu_required('quotation')
 def quotation_delete(quote_id):
     with get_db() as db:
         quotation = db.query(Quotation).get(quote_id)
@@ -422,6 +426,7 @@ def quotation_delete(quote_id):
 # ===================================================================
 @quotation_bp.route('/quotation/<int:quote_id>/status', methods=['POST'])
 @login_required
+@menu_required('quotation')
 def quotation_change_status(quote_id):
     with get_db() as db:
         quotation = db.query(Quotation).get(quote_id)
@@ -530,6 +535,7 @@ def api_template_detail(tpl_id):
 
 @quotation_bp.route('/api/quote-templates', methods=['POST'])
 @login_required
+@menu_required('quotation')
 def api_template_create():
     """현재 품목을 템플릿으로 저장"""
     data = request.get_json(silent=True) or {}
@@ -605,6 +611,7 @@ def api_template_create():
 
 @quotation_bp.route('/api/quote-templates/<int:tpl_id>', methods=['DELETE'])
 @login_required
+@menu_required('quotation')
 def api_template_delete(tpl_id):
     """템플릿 삭제"""
     with get_db() as db:
@@ -621,6 +628,7 @@ def api_template_delete(tpl_id):
 # ===================================================================
 @quotation_bp.route('/api/items/create-quote-item', methods=['POST'])
 @login_required
+@menu_required('quotation')
 def api_create_quote_item():
     """견적 전용 품목을 Item DB에 category='견적전용'으로 등록"""
     data = request.get_json(silent=True) or {}

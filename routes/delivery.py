@@ -3,7 +3,7 @@ import io
 import os
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, abort, send_file
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from sqlalchemy.orm import joinedload
 from modules.utils import safe_int
 from modules.pagination import make_pagination
@@ -92,6 +92,7 @@ ACTION_HANDLERS = {
 
 @delivery_bp.route("/delivery_management", methods=["GET", "POST"])
 @login_required
+@menu_required('delivery')
 def delivery_management():
 
     with get_db() as db:
@@ -244,6 +245,7 @@ def delivery_management():
 
 @delivery_bp.route("/delivery_management/<int:project_id>", methods=["GET", "POST"])
 @login_required
+@menu_required('delivery')
 def delivery_detail(project_id):
 
     with get_db() as db:

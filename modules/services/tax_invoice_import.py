@@ -240,17 +240,15 @@ def parse_tax_invoice_excel(file_path=None, file_stream=None, g2b_numbers_set=No
 def _link_invoice_to_contract(db, inv, g2b_no, issue_date, auto_create_warranty):
     """G2B 번호로 계약을 찾아 세금계산서에 연결하고 수금 처리."""
     from modules.models import Contract
+    from modules.services.warranty_auto import recalc_contract_payment_status
     contract = db.query(Contract).filter(
         Contract.g2b_contract_no == g2b_no
     ).first()
     if contract:
         inv.contract_id = contract.id
         inv.project_id = contract.project_id
-        contract.payment_status = '입금완료'
-        if issue_date:
-            contract.invoice_date = issue_date
-            contract.payment_date = issue_date
-            auto_create_warranty(db, contract.id, issue_date)
+        # 금액 비교 후 수금상태 재계산
+        recalc_contract_payment_status(db, contract, issue_date)
 
 
 def import_and_match(db, records):

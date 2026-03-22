@@ -139,6 +139,7 @@ def audit_list():
 # -- 4. 재고실사 생성 --
 @inventory_bp.route('/inventory/audit/create', methods=['GET', 'POST'])
 @login_required
+@menu_required('inventory')
 def audit_create():
     with get_db() as db:
         if request.method == 'POST':
@@ -170,6 +171,7 @@ def audit_create():
 # -- 5. 재고실사 상세 (수량 입력) --
 @inventory_bp.route('/inventory/audit/<int:audit_id>')
 @login_required
+@menu_required('inventory')
 def audit_detail(audit_id):
     with get_db() as db:
         audit, audit_items, items_map = get_audit_detail(db, audit_id)
@@ -186,6 +188,7 @@ def audit_detail(audit_id):
 # -- 6. 재고실사 수량 저장 (임시저장) --
 @inventory_bp.route('/inventory/audit/<int:audit_id>/save', methods=['POST'])
 @login_required
+@menu_required('inventory')
 def audit_save(audit_id):
     with get_db() as db:
         audit = db.query(StockAudit).get(audit_id)
@@ -201,6 +204,7 @@ def audit_save(audit_id):
 # -- 7. 재고실사 조정 확정 --
 @inventory_bp.route('/inventory/audit/<int:audit_id>/confirm', methods=['POST'])
 @login_required
+@menu_required('inventory')
 def audit_confirm(audit_id):
     with get_db() as db:
         audit = db.query(StockAudit).get(audit_id)
@@ -223,6 +227,7 @@ def audit_confirm(audit_id):
 # -- 7-0. 실사 삭제 --
 @inventory_bp.route('/inventory/audit/<int:audit_id>/delete', methods=['POST'])
 @login_required
+@menu_required('inventory')
 def audit_delete(audit_id):
     with get_db() as db:
         audit = db.query(StockAudit).get(audit_id)
@@ -257,6 +262,7 @@ def audit_template_download(audit_id):
 # -- 7-2. 실사 엑셀 업로드 (실재고 반영) --
 @inventory_bp.route('/inventory/audit/<int:audit_id>/upload', methods=['POST'])
 @login_required
+@menu_required('inventory')
 def audit_upload(audit_id):
     with get_db() as db:
         audit = db.query(StockAudit).get(audit_id)

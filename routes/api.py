@@ -12,7 +12,7 @@ from flask_wtf.csrf import CSRFProtect
 
 from sqlalchemy import or_
 
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from flask import render_template, session
 
@@ -539,6 +539,7 @@ def sync_g2b_procurement():
 
 @api_bp.route('/rematch_invoices', methods=['POST'])
 @login_required
+@menu_required('financial')
 def rematch_invoices():
     """미매칭 세금계산서를 contracts 테이블과 재매칭 시도
     1) 기존 g2b_contract_no로 정확 매칭
@@ -613,22 +614,9 @@ def rematch_invoices():
                 if not contract.invoice_date or (inv.issue_date and inv.issue_date > contract.invoice_date):
                     contract.invoice_date = inv.issue_date
 
-                # 수금상태 재계산
-                g2b_amt = 0
-                if contract.g2b_contract_no:
-                    g2b_amt = db.execute(sa_text(
-                        'SELECT SUM(prdct_amt) FROM light_sync.g2b_procurements WHERE cntrct_dlvr_req_no = :no'
-                    ), {'no': contract.g2b_contract_no}).scalar() or 0
-                inv_total = db.query(func.coalesce(func.sum(TaxInvoice.total_amount), 0)).filter(
-                    TaxInvoice.contract_id == contract.id,
-                ).scalar() or 0
-
-                if g2b_amt > 0 and inv_total >= g2b_amt:
-                    contract.payment_status = '입금완료'
-                    contract.payment_date = inv.issue_date
-                    auto_create_warranty(db, contract.id, inv.issue_date)
-                elif inv_total > 0:
-                    contract.payment_status = '부분입금'
+                # 수금상태 재계산 (공통 함수)
+                from modules.services.warranty_auto import recalc_contract_payment_status
+                recalc_contract_payment_status(db, contract, inv.issue_date)
 
                 matched_count += 1
 
@@ -642,10 +630,53 @@ def rematch_invoices():
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
+# ─── 계약 수금상태 일괄 재계산 API ──────────────────────────
+
+@api_bp.route('/recalc_payment_status', methods=['POST'])
+@login_required
+@menu_required('financial')
+def recalc_payment_status():
+    """입금완료 계약의 수금상태를 G2B 금액 vs 세금계산서 합계로 일괄 재계산"""
+    from modules.services.warranty_auto import recalc_contract_payment_status
+    import traceback
+
+    try:
+        with get_db() as db:
+            contracts = db.query(Contract).filter(
+                Contract.payment_status == '입금완료',
+                Contract.g2b_contract_no.isnot(None),
+            ).all()
+
+            fixed = []
+            for c in contracts:
+                old_status = c.payment_status
+                new_status = recalc_contract_payment_status(db, c)
+                if new_status != old_status:
+                    fixed.append({
+                        'contract_id': c.id,
+                        'g2b_no': c.g2b_contract_no,
+                        'old': old_status,
+                        'new': new_status,
+                    })
+
+            db.commit()
+        return jsonify({
+            'ok': True,
+            'message': f'재계산 완료: {len(contracts)}건 검사, {len(fixed)}건 수정',
+            'total': len(contracts),
+            'fixed': len(fixed),
+            'details': fixed,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 # ─── G2B → 계약 동기화 API ──────────────────────────────────
 
 @api_bp.route('/sync_g2b_contracts', methods=['POST'])
 @login_required
+@menu_required('procurement')
 def sync_g2b_contracts():
     """G2B 조달내역 → 계약/세금계산서 매칭/하자보증 일괄 동기화"""
     from modules.services.g2b_contract_sync import sync_g2b_to_contracts
@@ -674,6 +705,7 @@ def sync_g2b_contracts():
 
 @api_bp.route('/history/<int:project_id>/add', methods=['POST'])
 @login_required
+@menu_required('project')
 def history_add_comment(project_id):
     """코멘트/답글 등록 (AJAX) → 히스토리 HTML 조각 반환"""
     db = get_db()

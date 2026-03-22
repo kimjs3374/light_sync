@@ -485,13 +485,11 @@ def tax_invoice_match(invoice_id):
                 inv.contract_id = contract.id
                 inv.project_id = contract.project_id
                 inv.match_status = '수동매칭'
-                contract.payment_status = '입금완료'
-                contract.invoice_date = inv.issue_date
-                contract.payment_date = inv.issue_date
-                # 하자보증 자동 생성
-                auto_create_warranty(db, contract.id, inv.issue_date)
+                # 금액 비교 후 수금상태 재계산
+                from modules.services.warranty_auto import recalc_contract_payment_status
+                status = recalc_contract_payment_status(db, contract, inv.issue_date)
                 db.commit()
-                flash('계약 매칭 완료.', 'success')
+                flash(f'계약 매칭 완료. ({status})', 'success')
             else:
                 flash('계약을 찾을 수 없습니다.', 'danger')
         else:
@@ -691,27 +689,9 @@ def _do_match_invoice(db, inv, contract):
     if not contract.invoice_date or (inv.issue_date and inv.issue_date > contract.invoice_date):
         contract.invoice_date = inv.issue_date
 
-    # 수금상태: G2B 계약금액 vs 매칭된 세금계산서 합산으로 판별
-    g2b_amt = 0
-    if contract.g2b_contract_no:
-        row = db.execute(text(
-            'SELECT SUM(prdct_amt) FROM light_sync.g2b_procurements WHERE cntrct_dlvr_req_no = :no'
-        ), {'no': contract.g2b_contract_no}).scalar()
-        g2b_amt = row or 0
-
-    # 수정세금계산서 포함 전체 합산 (수정분은 +/- 상쇄됨)
-    invoiced_total = db.query(func.coalesce(func.sum(TaxInvoice.total_amount), 0)).filter(
-        TaxInvoice.contract_id == contract.id,
-    ).scalar() or 0
-
-    if g2b_amt > 0 and invoiced_total >= g2b_amt:
-        contract.payment_status = '입금완료'
-        contract.payment_date = inv.issue_date
-        auto_create_warranty(db, contract.id, inv.issue_date)
-    elif invoiced_total > 0:
-        contract.payment_status = '부분입금'
-    else:
-        contract.payment_status = '미청구'
+    # 수금상태 재계산 (공통 함수)
+    from modules.services.warranty_auto import recalc_contract_payment_status
+    recalc_contract_payment_status(db, contract, inv.issue_date)
 
     return f'{(contract.contract_name or "")[:40]} ← {inv.buyer_name or ""}'
 
@@ -877,7 +857,15 @@ def tax_invoice_delete(invoice_id):
         inv = db.query(TaxInvoice).get(invoice_id)
         if not inv:
             abort(404)
+        contract_id = inv.contract_id
         db.delete(inv)
+        db.flush()
+        # 연관 계약 수금상태 재계산
+        if contract_id:
+            contract = db.query(Contract).get(contract_id)
+            if contract:
+                from modules.services.warranty_auto import recalc_contract_payment_status
+                recalc_contract_payment_status(db, contract)
         db.commit()
         flash('삭제되었습니다.', 'info')
     return redirect(url_for('financial.tax_invoice_list'))

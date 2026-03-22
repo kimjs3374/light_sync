@@ -11,7 +11,7 @@ import json
 import logging
 from flask import Blueprint, render_template, request, jsonify, abort
 from sqlalchemy import or_, func, desc
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.db_context import get_db
@@ -235,6 +235,7 @@ def vendor_detail(tr_cd):
 # ===================================================================
 @vendor_bp.route('/api/vendor/<int:vendor_id>/note', methods=['POST'])
 @login_required
+@menu_required('vendor')
 def api_vendor_note(vendor_id):
     """거래처 메모 저장"""
     data = request.get_json(silent=True) or {}

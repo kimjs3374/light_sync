@@ -13,7 +13,7 @@ from flask import (
 )
 from sqlalchemy import desc, func
 from sqlalchemy.orm import joinedload
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.db_context import get_db
@@ -107,6 +107,7 @@ def bom_list():
 # ===================================================================
 @bom_bp.route('/bom/create', methods=['GET', 'POST'])
 @login_required
+@menu_required('bom')
 def bom_create():
     with get_db() as db:
         if request.method == 'POST':
@@ -170,6 +171,7 @@ def bom_create():
 # ===================================================================
 @bom_bp.route('/bom/<int:bom_id>')
 @login_required
+@menu_required('bom')
 def bom_detail(bom_id):
     with get_db() as db:
         bom = db.query(BomHeader).options(
@@ -209,6 +211,7 @@ def bom_detail(bom_id):
 # ===================================================================
 @bom_bp.route('/bom/<int:bom_id>/edit', methods=['POST'])
 @login_required
+@menu_required('bom')
 def bom_edit(bom_id):
     with get_db() as db:
         bom = db.query(BomHeader).get(bom_id)
@@ -241,6 +244,7 @@ def bom_edit(bom_id):
 # ===================================================================
 @bom_bp.route('/bom/<int:bom_id>/delete', methods=['POST'])
 @login_required
+@menu_required('bom')
 def bom_delete(bom_id):
     with get_db() as db:
         bom = db.query(BomHeader).get(bom_id)
@@ -257,6 +261,7 @@ def bom_delete(bom_id):
 # ===================================================================
 @bom_bp.route('/bom/bulk-delete', methods=['POST'])
 @login_required
+@menu_required('bom')
 def bom_bulk_delete():
     ids = request.form.getlist('bom_ids')
     if not ids:
@@ -284,6 +289,7 @@ def bom_bulk_delete():
 # ===================================================================
 @bom_bp.route('/bom/bulk-deactivate', methods=['POST'])
 @login_required
+@menu_required('bom')
 def bom_bulk_deactivate():
     ids = request.form.getlist('bom_ids')
     if not ids:
@@ -328,6 +334,7 @@ def bom_export():
 # ===================================================================
 @bom_bp.route('/bom/import', methods=['GET', 'POST'])
 @login_required
+@menu_required('bom')
 def bom_import():
     if request.method == 'POST':
         action = request.form.get('action', '')
@@ -398,6 +405,7 @@ def bom_import():
 # ===================================================================
 @bom_bp.route('/bom/material-requirement')
 @login_required
+@menu_required('bom')
 def material_requirement():
     contract_id = safe_int(request.args.get('contract_id'), 0)
 
@@ -426,6 +434,7 @@ def material_requirement():
 # ===================================================================
 @bom_bp.route('/bom/create-po-from-requirement', methods=['POST'])
 @login_required
+@menu_required('bom')
 def create_po_from_requirement():
     contract_id = safe_int(request.form.get('contract_id'), 0)
     selected_items_json = request.form.get('selected_items', '[]')
