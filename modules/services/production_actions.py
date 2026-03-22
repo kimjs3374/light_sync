@@ -460,11 +460,17 @@ def get_site_list(db, today):
         items_count = 0
         delivery_date = None
 
+        item_summaries = []
         for c in proj.contracts:
             if c.delivery_due_date and (delivery_date is None or c.delivery_due_date < delivery_date):
                 delivery_date = c.delivery_due_date
             for item_obj in c.items:
                 items_count += 1
+                item_summaries.append({
+                    'category': item_obj.category or '-',
+                    'model_name': item_obj.model_name or '-',
+                    'quantity': int(item_obj.quantity or 0),
+                })
                 for p in (item_obj.production_processes or []):
                     total_proc += 1
                     if p.status == '진행중':
@@ -483,6 +489,7 @@ def get_site_list(db, today):
             'site_name': proj.temp_name or '-',
             'project_no': proj.project_no or '-',
             'items_count': items_count,
+            'item_summaries': item_summaries,
             'total_proc': total_proc,
             'working_proc': working_proc,
             'done_proc': done_proc,

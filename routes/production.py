@@ -2,7 +2,7 @@ import datetime
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, abort
 from sqlalchemy.orm import joinedload
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.contract_filters import active_contract_filter
 
 from modules.history_board import get_project_history_context
@@ -256,13 +256,10 @@ def production_main():
     site_id = safe_int(request.args.get('site'), 0) or None
 
     with get_db() as db:
-        sync_production_processes(db)
-        refresh_production_statuses(db)
-        db.commit()
-
         today = datetime.date.today()
 
         if not site_id:
+            # 목록 화면: 동기화 생략 (성능 최적화)
             site_list = get_site_list(db, today)
             return render_template(
                 'production.html',
@@ -272,7 +269,11 @@ def production_main():
                 today=today.strftime('%Y-%m-%d'),
             )
 
-        # 현장 선택됨
+        # 현장 선택됨 — 해당 현장만 동기화
+        sync_production_processes(db, project_id=site_id)
+        refresh_production_statuses(db, project_id=site_id)
+        db.commit()
+
         project = db.query(Project).get(site_id)
         if not project:
             flash('현장을 찾을 수 없습니다.', 'warning')
@@ -297,6 +298,7 @@ def production_main():
 
 @production_bp.route('/api/production/process/<int:process_id>/toggle', methods=['POST'])
 @login_required
+@menu_required('production')
 def api_process_toggle(process_id):
     """공정 ON/OFF 토글 (대기↔진행중)"""
     data = request.get_json() or {}
@@ -311,6 +313,7 @@ def api_process_toggle(process_id):
 
 @production_bp.route('/api/production/process/<int:process_id>/daily-log', methods=['POST'])
 @login_required
+@menu_required('production')
 def api_process_daily_log(process_id):
     """일일 수량 입력"""
     data = request.get_json() or {}
@@ -323,6 +326,7 @@ def api_process_daily_log(process_id):
 
 @production_bp.route('/api/production/process/<int:process_id>/complete', methods=['POST'])
 @login_required
+@menu_required('production')
 def api_process_complete(process_id):
     """공정 완료/완료해제"""
     data = request.get_json() or {}
@@ -336,6 +340,7 @@ def api_process_complete(process_id):
 
 @production_bp.route('/api/production/sync', methods=['POST'])
 @login_required
+@menu_required('production')
 def api_production_sync():
     """전체 공정 동기화"""
     with get_db() as db:

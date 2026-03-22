@@ -39,6 +39,11 @@
                     {% endif %}
                     {% endif %}
                 </div>
+                <div class="site-items mt-1">
+                    {% for it in s.item_summaries %}
+                    <span class="site-item-tag">{{ it.category }} · {{ it.model_name }} × {{ it.quantity }}</span>
+                    {% endfor %}
+                </div>
                 <div class="site-meta mt-1">
                     진행 {{ s.working_proc }} · 완료 {{ s.done_proc }}/{{ s.total_proc }}
                 </div>

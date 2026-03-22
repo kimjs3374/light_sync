@@ -27,7 +27,7 @@ def _base_process_template(item):
     spec = item.item_spec or {}
     processes = []
 
-    if category == '투광등기구':
+    if category in ('투광등기구', 'LED투광등기구'):
         if 'STA' in model_name:
             processes = [
                 {'name': '외함제작'},
@@ -63,7 +63,7 @@ def _base_process_template(item):
         if _is_integrated(item):
             insert_before_name(processes, '브라켓 조립', {'name': 'SMPS 일체형 조립'})
 
-    elif category in ('가로등기구', '보안등기구'):
+    elif category in ('가로등기구', '보안등기구', 'LED가로등기구', 'LED보안등기구'):
         processes = [
             {'name': '모듈 조립'},
             {'name': '모듈과 분배기 결선'},
@@ -73,7 +73,7 @@ def _base_process_template(item):
         if _is_integrated(item):
             insert_before_name(processes, '전선 연결', {'name': 'SMPS 일체형 조립'})
 
-    elif category == '스텐가로등주':
+    elif category in ('스텐가로등주', '스테인리스가로등주'):
         skip_models = {
             'MTPS-202-4', 'MTPS-202-5', 'MTPS-202-6',
             'MTPS-203-4', 'MTPS-203-5', 'MTPS-203-6',

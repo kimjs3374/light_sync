@@ -366,6 +366,8 @@
 .site-card .site-pct.done { color: #22c55e; }
 .site-card .site-pct.working { color: #f59e0b; }
 .site-card .site-pct.waiting { color: #94a3b8; }
+.site-items { display: flex; flex-wrap: wrap; gap: 4px; }
+.site-item-tag { font-size: .75rem; background: #f1f5f9; color: #334155; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
 .site-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
 
 /* Print */
