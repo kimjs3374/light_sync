@@ -1,0 +1,303 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .spec-card { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+    .spec-card-header { background: #f8fafc; border-bottom: 1px solid #e2e8f0; border-radius: 8px 8px 0 0; padding: .75rem 1rem; font-weight: 600; color: #1e293b; }
+    .field-row { display: flex; align-items: center; gap: .5rem; padding: .3rem 0; border-bottom: 1px solid #f1f5f9; }
+    .field-row:last-child { border-bottom: 0; }
+    .field-key { font-family: 'JetBrains Mono', monospace; font-size: .78rem; color: #64748b; background: #f1f5f9; padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
+    .field-label { font-size: .88rem; color: #334155; flex: 1; }
+    .field-type-badge { font-size: .72rem; padding: 1px 7px; border-radius: 10px; white-space: nowrap; background: #e0e7ff; color: #3730a3; }
+    .conditional-block { background: #fefce8; border: 1px solid #fde68a; border-radius: 6px; padding: .5rem .75rem; margin-top: .5rem; }
+    .conditional-block .cond-title { font-size: .78rem; color: #92400e; font-weight: 600; margin-bottom: .3rem; }
+    .btn-del { line-height: 1; padding: 2px 7px; font-size: .78rem; white-space: nowrap; }
+    .add-field-row { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: .75rem 1rem; border-radius: 0 0 8px 8px; }
+    .add-field-row .form-control, .add-field-row .form-select { font-size: .85rem; }
+    .options-input { display: none; }
+</style>
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Sales Spec Admin</div>
+            <h2>협의 항목 관리</h2>
+            <div class="hero-sub">품목별 필수 협의 항목을 추가·삭제합니다</div>
+        </div>
+        <div>
+            <a href="{{ url_for('sales.sales_list') }}" class="btn btn-sm btn-outline-secondary" style="white-space:nowrap;">← 협의관리 목록</a>
+        </div>
+    </div>
+</div>
+
+{# ── 저장 버튼 (상단 고정 툴바) ── #}
+<div class="d-flex justify-content-end mb-3 mg-fade" style="animation-delay:.05s;">
+    <button class="btn btn-primary fw-bold" id="btnSaveAll" style="white-space:nowrap;">저장</button>
+</div>
+
+{# ── 품목별 카드 컨테이너 ── #}
+<div class="row g-3 mg-fade" id="categoryContainer" style="animation-delay:.08s;">
+{% set all_categories = detail_item_options %}
+{% for cat in all_categories %}
+{% set cat_schema = schema.get(cat, {}) %}
+{% set required_fields = cat_schema.get('required', []) %}
+{% set cond_map = cat_schema.get('conditional_required', {}) %}
+<div class="col-md-6" data-cat-col="{{ cat }}">
+    <div class="spec-card" data-category="{{ cat }}">
+        <div class="spec-card-header d-flex justify-content-between align-items-center">
+            <span>{{ cat }}</span>
+            <span class="badge bg-secondary" id="cnt-{{ loop.index }}">{{ required_fields|length }}개</span>
+        </div>
+        <div class="px-3 pt-2 pb-1 field-list" id="fields-{{ loop.index }}">
+            {% if required_fields %}
+            {% for fkey in required_fields %}
+            {% set fmeta = meta.get(fkey, {}) %}
+            <div class="field-row" data-key="{{ fkey }}">
+                <span class="field-key">{{ fkey }}</span>
+                <span class="field-label">{{ fmeta.get('label', fkey) }}</span>
+                <span class="field-type-badge">{{ fmeta.get('type', 'text') }}</span>
+                {% if cond_map.get(fkey) %}
+                <span class="badge bg-warning text-dark" style="font-size:.7rem;white-space:nowrap;">조건부</span>
+                {% endif %}
+                <button class="btn btn-outline-danger btn-del" onclick="removeField(this)">×</button>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="text-muted" style="font-size:.85rem;padding:.4rem 0;" id="empty-{{ loop.index }}">항목 없음</div>
+            {% endif %}
+        </div>
+        {% if cond_map %}
+        <div class="px-3 pb-2">
+            {% for trigger_key, cond in cond_map.items() %}
+            <div class="conditional-block" data-trigger="{{ trigger_key }}" data-condition="{{ cond | tojson | e }}">
+                <div class="cond-title">조건부: {{ trigger_key }} = {{ cond.get('equals', '') }}</div>
+                {% for cf in cond.get('fields', []) %}
+                <div class="field-row field-row--sub" data-key="{{ cf }}" style="padding:.2rem 0;">
+                    <span class="field-key">{{ cf }}</span>
+                    <span class="field-label">{{ meta.get(cf, {}).get('label', cf) }}</span>
+                    <span class="field-type-badge">{{ meta.get(cf, {}).get('type', 'text') }}</span>
+                    <button class="btn btn-outline-danger btn-del" onclick="removeCondField(this)">×</button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {# ── 항목 추가 폼 ── #}
+        <div class="add-field-row">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-sm-4">
+                    <label class="form-label mb-1" style="font-size:.78rem;font-weight:600;">필드 키</label>
+                    <input type="text" class="form-control form-control-sm inp-key" placeholder="예) lens_angle">
+                </div>
+                <div class="col-12 col-sm-4">
+                    <label class="form-label mb-1" style="font-size:.78rem;font-weight:600;">라벨</label>
+                    <input type="text" class="form-control form-control-sm inp-label" placeholder="예) 렌즈각도">
+                </div>
+                <div class="col-6 col-sm-2">
+                    <label class="form-label mb-1" style="font-size:.78rem;font-weight:600;">타입</label>
+                    <select class="form-select form-select-sm inp-type">
+                        <option value="text">text</option>
+                        <option value="select">select</option>
+                        <option value="boolean">boolean</option>
+                        <option value="number">number</option>
+                        <option value="date">date</option>
+                    </select>
+                </div>
+                <div class="col-6 col-sm-2 d-flex align-items-end">
+                    <button class="btn btn-sm btn-primary w-100" style="white-space:nowrap;" onclick="addField(this)">추가</button>
+                </div>
+                <div class="col-12 options-input">
+                    <label class="form-label mb-1" style="font-size:.78rem;font-weight:600;">옵션 (쉼표 구분)</label>
+                    <input type="text" class="form-control form-control-sm inp-options" placeholder="예) 일체형, 분리형">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+</div>
+
+{# ── 토스트 ── #}
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999;">
+    <div id="saveToast" class="toast align-items-center text-white border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body fw-bold" id="toastMsg">저장 완료</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── 필드 메타 기본값 ──
+const DEFAULT_META = {
+    lens_angle:               { label: '렌즈각도',         type: 'text' },
+    spacing_distance:         { label: '이격거리',         type: 'text' },
+    body_type:                { label: '일체형/분리형',    type: 'select', options: ['일체형', '분리형'] },
+    has_stabilizer_box:       { label: '안정기 BOX 유무',  type: 'boolean' },
+    stabilizer_vendor_contact:{ label: '안정기 업체 연락처', type: 'text' },
+    stabilizer_address:       { label: '안정기 설치 주소', type: 'text' },
+    smps_shipment_schedule:   { label: 'SMPS 출하 일정',   type: 'date' },
+    is_integrated:            { label: '일체형 여부',      type: 'boolean' },
+};
+
+// ── 서버에서 넘어온 초기 meta ──
+const serverMeta = {{ meta | tojson }};
+function getMeta(key) {
+    return serverMeta[key] || DEFAULT_META[key] || { label: key, type: 'text' };
+}
+
+// ── select 타입 선택 시 옵션 입력란 표시 ──
+document.querySelectorAll('.inp-type').forEach(sel => {
+    sel.addEventListener('change', function() {
+        const optRow = this.closest('.add-field-row').querySelector('.options-input');
+        optRow.style.display = this.value === 'select' ? '' : 'none';
+    });
+});
+
+// ── 필수 필드 추가 ──
+function addField(btn) {
+    const card      = btn.closest('.spec-card');
+    const addRow    = btn.closest('.add-field-row');
+    const fieldList = card.querySelector('.field-list');
+    const key       = addRow.querySelector('.inp-key').value.trim();
+    const label     = addRow.querySelector('.inp-label').value.trim();
+    const type      = addRow.querySelector('.inp-type').value;
+    const optVal    = addRow.querySelector('.inp-options').value.trim();
+
+    if (!key) { showToast('필드 키를 입력하세요.', 'danger'); return; }
+
+    // 중복 체크
+    if (fieldList.querySelector(`[data-key="${key}"]`)) {
+        showToast(`'${key}' 이미 추가됨`, 'warning'); return;
+    }
+
+    // meta에 저장
+    serverMeta[key] = { label: label || key, type };
+    if (type === 'select' && optVal) {
+        serverMeta[key].options = optVal.split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    // 빈 안내문 제거
+    const emptyMsg = fieldList.querySelector('.text-muted');
+    if (emptyMsg) emptyMsg.remove();
+
+    // 행 추가
+    const div = document.createElement('div');
+    div.className = 'field-row';
+    div.dataset.key = key;
+    div.innerHTML = `
+        <span class="field-key">${escHtml(key)}</span>
+        <span class="field-label">${escHtml(label || key)}</span>
+        <span class="field-type-badge">${escHtml(type)}</span>
+        <button class="btn btn-outline-danger btn-del" onclick="removeField(this)">×</button>
+    `;
+    fieldList.appendChild(div);
+    updateCount(card);
+
+    // 입력란 초기화
+    addRow.querySelector('.inp-key').value = '';
+    addRow.querySelector('.inp-label').value = '';
+    addRow.querySelector('.inp-type').value = 'text';
+    addRow.querySelector('.inp-options').value = '';
+    addRow.querySelector('.options-input').style.display = 'none';
+}
+
+// ── 필수 필드 삭제 ──
+function removeField(btn) {
+    const row  = btn.closest('.field-row');
+    const card = row.closest('.spec-card');
+    const list = card.querySelector('.field-list');
+    row.remove();
+    if (!list.querySelector('.field-row')) {
+        const empty = document.createElement('div');
+        empty.className = 'text-muted';
+        empty.style.cssText = 'font-size:.85rem;padding:.4rem 0;';
+        empty.textContent = '항목 없음';
+        list.appendChild(empty);
+    }
+    updateCount(card);
+}
+
+// ── 조건부 필드 삭제 ──
+function removeCondField(btn) {
+    const row  = btn.closest('.field-row--sub');
+    const card = row.closest('.spec-card');
+    row.remove();
+    updateCount(card);
+}
+
+// ── 카운트 업데이트 ──
+function updateCount(card) {
+    const n   = card.querySelectorAll('.field-list .field-row').length;
+    const idx = [...document.querySelectorAll('.spec-card')].indexOf(card) + 1;
+    const badge = document.getElementById('cnt-' + idx);
+    if (badge) badge.textContent = n + '개';
+}
+
+// ── 저장 ──
+document.getElementById('btnSaveAll').addEventListener('click', saveAll);
+
+function saveAll() {
+    const schema = {};
+    const meta   = Object.assign({}, serverMeta);
+
+    document.querySelectorAll('.spec-card').forEach(card => {
+        const cat      = card.dataset.category;
+        const required = [];
+        card.querySelectorAll('.field-list .field-row').forEach(row => {
+            required.push(row.dataset.key);
+        });
+
+        const conditional_required = {};
+        card.querySelectorAll('.conditional-block').forEach(block => {
+            const trigger = block.dataset.trigger;
+            let cond = {};
+            try { cond = JSON.parse(block.dataset.condition || '{}'); } catch(e) {}
+            const fields = [];
+            block.querySelectorAll('.field-row--sub').forEach(r => fields.push(r.dataset.key));
+            cond.fields = fields;
+            if (trigger) conditional_required[trigger] = cond;
+        });
+
+        schema[cat] = { required };
+        if (Object.keys(conditional_required).length) {
+            schema[cat].conditional_required = conditional_required;
+        }
+    });
+
+    fetch('/sales_management/spec_schema/save', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+        },
+        body: JSON.stringify({ schema, meta })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            showToast('저장 완료', 'success');
+        } else {
+            showToast('저장 실패: ' + (data.error || '알 수 없는 오류'), 'danger');
+        }
+    })
+    .catch(() => showToast('네트워크 오류', 'danger'));
+}
+
+// ── 토스트 헬퍼 ──
+function showToast(msg, type) {
+    type = type || 'success';
+    const toast = document.getElementById('saveToast');
+    toast.className = `toast align-items-center text-white border-0 bg-${type}`;
+    document.getElementById('toastMsg').textContent = msg;
+    const bsToast = bootstrap.Toast.getOrCreateInstance(toast, { delay: 2500 });
+    bsToast.show();
+}
+
+// ── HTML 이스케이프 ──
+function escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+</script>
+{% endblock %}

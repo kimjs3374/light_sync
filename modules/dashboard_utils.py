@@ -5,7 +5,7 @@ from collections import defaultdict
 from flask import url_for
 from sqlalchemy.orm import joinedload
 
-from modules.models import Project, Contract
+from modules.models import Project, Contract, DRAWING_REQUIRED_ITEMS
 from modules.contract_filters import active_contract_filter
 from modules.priority_utils import (
     append_due_priority_reason,
@@ -98,6 +98,7 @@ def hot_project_count(items):
 def build_action_tabs(contracted_projects, deliveries, today):
     tabs = {
         'sales': [],
+        'fabrication': [],
         'material': [],
         'production': [],
         'delivery': [],
@@ -116,8 +117,11 @@ def build_action_tabs(contracted_projects, deliveries, today):
                 prod_status = (item.status_prod or '자재대기중').strip()
                 model_name = item.model_name or '-'
                 subtitle = f"{contract.contract_name} · {model_name}"
+                is_confirmed = (sales_status == '협의완료')
+                category = (item.category or contract.item_group or '').strip()
 
-                if sales_status != '협의완료':
+                # ── 영업탭: 협의 미완료 ──
+                if not is_confirmed:
                     chip_text = '생산 선행 위험' if prod_status in {'생산중', '생산완료'} else '협의 미완료'
                     chip_class = 'danger' if prod_status in {'생산중', '생산완료'} else ('warning' if dday is not None and dday <= 7 else 'primary')
                     tabs['sales'].append(
@@ -132,15 +136,47 @@ def build_action_tabs(contracted_projects, deliveries, today):
                             'badge_class': badge_class,
                             'chip_text': chip_text,
                             'chip_class': chip_class,
-                            'action_label': '영업 처리',
+                            'action_label': '협의 처리',
                             'action_url': url_for('sales.sales_detail', project_id=project.id),
                             'sort_priority': min(badge_priority, 0 if chip_class == 'danger' else 1 if chip_class == 'warning' else 2),
                             'sort_dday': dday if dday is not None else 99999,
                         }
                     )
 
+                # ── 가공탭: 도면 필요 품목 + 도면 미작성 ──
+                if is_confirmed and category in DRAWING_REQUIRED_ITEMS:
+                    has_drawing = bool(getattr(item, 'drawings', None) and len(item.drawings) > 0)
+                    if not has_drawing:
+                        fab_chip_class = 'danger' if dday is not None and dday <= 7 else 'warning'
+                        tabs['fabrication'].append(
+                            {
+                                'project_id': project.id,
+                                'project_name': project_name,
+                                'project_no': project.project_no,
+                                'title': project_name,
+                                'subtitle': subtitle,
+                                'meta': f"품목 {category}",
+                                'badge_text': badge_text,
+                                'badge_class': badge_class,
+                                'chip_text': '도면 미작성',
+                                'chip_class': fab_chip_class,
+                                'action_label': '도면 작업',
+                                'action_url': url_for('sales.sales_detail', project_id=project.id),
+                                'sort_priority': min(badge_priority, 0 if fab_chip_class == 'danger' else 1),
+                                'sort_dday': dday if dday is not None else 99999,
+                            }
+                        )
+
+                # ── 자재탭: 협의완료 우선, 미완료도 표시 ──
                 if admin_status != '입고완료':
-                    chip_class = 'danger' if dday is not None and dday <= 3 else ('warning' if dday is not None and dday <= 7 else 'primary')
+                    if is_confirmed:
+                        chip_class = 'danger' if dday is not None and dday <= 3 else ('warning' if dday is not None and dday <= 7 else 'primary')
+                        chip_text = admin_status
+                        mat_priority = min(badge_priority, 0 if chip_class == 'danger' else 1 if chip_class == 'warning' else 2)
+                    else:
+                        chip_class = 'secondary'
+                        chip_text = f'협의중 · {admin_status}'
+                        mat_priority = 3  # 협의 미완료는 뒤로
                     tabs['material'].append(
                         {
                             'project_id': project.id,
@@ -148,31 +184,40 @@ def build_action_tabs(contracted_projects, deliveries, today):
                             'project_no': project.project_no,
                             'title': project_name,
                             'subtitle': subtitle,
-                            'meta': f"자재상태 {admin_status}",
+                            'meta': f"자재상태 {admin_status}" + (' · 협의완료' if is_confirmed else ' · 협의중'),
                             'badge_text': badge_text,
                             'badge_class': badge_class,
-                            'chip_text': admin_status,
+                            'chip_text': chip_text,
                             'chip_class': chip_class,
                             'action_label': '자재 확인',
                             'action_url': url_for('material.material_detail', project_id=project.id),
-                            'sort_priority': min(badge_priority, 0 if chip_class == 'danger' else 1 if chip_class == 'warning' else 2),
+                            'sort_priority': mat_priority,
                             'sort_dday': dday if dday is not None else 99999,
                         }
                     )
 
+                # ── 생산탭: 협의완료 우선, 미완료도 표시 ──
                 if prod_status != '생산완료':
-                    if sales_status != '협의완료' and prod_status in {'생산중', '생산완료'}:
+                    if not is_confirmed and prod_status in {'생산중', '생산완료'}:
                         chip_text = '생산 선행 위험'
                         chip_class = 'danger'
-                    elif dday is not None and dday < 0:
+                        prod_priority = 0
+                    elif is_confirmed and dday is not None and dday < 0:
                         chip_text = '납기 초과'
                         chip_class = 'danger'
-                    elif dday is not None and dday <= 7:
+                        prod_priority = 0
+                    elif is_confirmed and dday is not None and dday <= 7:
                         chip_text = '납기 임박'
                         chip_class = 'warning'
-                    else:
+                        prod_priority = 1
+                    elif is_confirmed:
                         chip_text = prod_status
                         chip_class = 'primary'
+                        prod_priority = 2
+                    else:
+                        chip_text = f'협의중 · {prod_status}'
+                        chip_class = 'secondary'
+                        prod_priority = 3  # 협의 미완료는 뒤로
 
                     tabs['production'].append(
                         {
@@ -181,14 +226,14 @@ def build_action_tabs(contracted_projects, deliveries, today):
                             'project_no': project.project_no,
                             'title': project_name,
                             'subtitle': subtitle,
-                            'meta': f"생산상태 {prod_status}",
+                            'meta': f"생산상태 {prod_status}" + (' · 협의완료' if is_confirmed else ' · 협의중'),
                             'badge_text': badge_text,
                             'badge_class': badge_class,
                             'chip_text': chip_text,
                             'chip_class': chip_class,
                             'action_label': '생산 보기',
                             'action_url': url_for('production.production_detail', project_id=project.id),
-                            'sort_priority': min(badge_priority, 0 if chip_class == 'danger' else 1 if chip_class == 'warning' else 2),
+                            'sort_priority': min(badge_priority, prod_priority),
                             'sort_dday': dday if dday is not None else 99999,
                         }
                     )

@@ -1,4 +1,7 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+import json
+import os
+
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
 from modules.auth_decorators import login_required
 import datetime
 from sqlalchemy.orm import joinedload
@@ -13,6 +16,37 @@ from modules.models import (
     CONTRACT_ITEM_SPEC_SCHEMA, Drawing, DRAWING_TYPE_OPTIONS,
     SALES_STATUS_STEPS,
 )
+
+# ── 협의 스펙 스키마 JSON 오버라이드 ──
+_SPEC_SCHEMA_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'spec_schema.json')
+_SPEC_META_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'spec_meta.json')
+
+
+def _load_spec_schema():
+    """JSON 오버라이드가 있으면 사용, 없으면 constants 폴백."""
+    if os.path.isfile(_SPEC_SCHEMA_PATH):
+        with open(_SPEC_SCHEMA_PATH, encoding='utf-8') as f:
+            return json.load(f)
+    return CONTRACT_ITEM_SPEC_SCHEMA
+
+
+def _save_spec_schema(data):
+    os.makedirs(os.path.dirname(_SPEC_SCHEMA_PATH), exist_ok=True)
+    with open(_SPEC_SCHEMA_PATH, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _load_spec_meta():
+    if os.path.isfile(_SPEC_META_PATH):
+        with open(_SPEC_META_PATH, encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+
+def _save_spec_meta(data):
+    os.makedirs(os.path.dirname(_SPEC_META_PATH), exist_ok=True)
+    with open(_SPEC_META_PATH, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 from modules.history_board import get_project_history_context
 from modules.priority_utils import (
     append_due_priority_reason,
@@ -223,10 +257,46 @@ def sales_detail(project_id):
             history=history,
             history_counts=history_counts,
             detail_item_options=DETAIL_ITEM_OPTIONS,
-            contract_item_spec_schema=CONTRACT_ITEM_SPEC_SCHEMA,
+            contract_item_spec_schema=_load_spec_schema(),
             lighting_detail_items=LIGHTING_DETAIL_ITEMS,
             sales_status_steps=SALES_STATUS_STEPS,
             drawing_type_options=DRAWING_TYPE_OPTIONS,
             can_write_drawings=(session.get('role') == 'admin' or session.get('user_group') == '영업부'),
             now=datetime.datetime.now()
         )
+
+
+# ── 협의 스펙 항목 관리 ──────────────────────────────────
+@sales_bp.route('/sales_management/spec_schema', methods=['GET'])
+@login_required
+def spec_schema_admin():
+    if session.get('role') != 'admin' and session.get('user_group') != '영업부':
+        flash('영업부 또는 관리자만 접근 가능합니다.', 'warning')
+        return redirect(url_for('sales.sales_list'))
+
+    schema = _load_spec_schema()
+    meta = _load_spec_meta()
+    return render_template(
+        'sales_spec_admin.html',
+        schema=schema,
+        meta=meta,
+        detail_item_options=DETAIL_ITEM_OPTIONS,
+    )
+
+
+@sales_bp.route('/sales_management/spec_schema/save', methods=['POST'])
+@login_required
+def spec_schema_save():
+    if session.get('role') != 'admin' and session.get('user_group') != '영업부':
+        return jsonify({'ok': False, 'error': '권한 없음'}), 403
+
+    data = request.get_json(silent=True) or {}
+    schema = data.get('schema')
+    meta = data.get('meta')
+
+    if schema is not None:
+        _save_spec_schema(schema)
+    if meta is not None:
+        _save_spec_meta(meta)
+
+    return jsonify({'ok': True})

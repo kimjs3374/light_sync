@@ -9,6 +9,7 @@ from .constants import (
     PRIORITY_BADGE_STYLES,
     PROD_STATUS_STEPS,
     SALES_STATUS_STEPS,
+    DRAWING_REQUIRED_ITEMS,
 )
 from .helpers import BASE_DIR, DB_DIR, DB_PATH, normalize_detail_item
 from .entities import (
@@ -105,6 +106,7 @@ __all__ = [
     "CASE_STATUS_STEPS",
     "DRAWING_TYPE_OPTIONS",
     "DRAWING_CONVERT_STATUS",
+    "DRAWING_REQUIRED_ITEMS",
     "normalize_detail_item",
     "BASE_DIR",
     "DB_DIR",

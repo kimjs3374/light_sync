@@ -35,11 +35,15 @@
 <div class="page-hero mg-fade">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
         <div>
-            <div class="hero-eyebrow">Sales Management</div>
-            <h2>영업관리</h2>
-            <div class="hero-sub">영업 계약 현황과 납기 일정을 한눈에 관리합니다</div>
+            <div class="hero-eyebrow">Consultation Management</div>
+            <h2>협의관리</h2>
+            <div class="hero-sub">품목별 협의 현황과 납기 일정을 한눈에 관리합니다</div>
         </div>
-        <div class="d-flex flex-wrap gap-2"></div>
+        <div class="d-flex flex-wrap gap-2">
+            {% if session.get('user_group') == '영업부' or session.get('role') == 'admin' %}
+            <a href="{{ url_for('sales.spec_schema_admin') }}" class="btn btn-sm btn-outline-secondary" style="white-space:nowrap;">협의항목 관리</a>
+            {% endif %}
+        </div>
     </div>
 </div>
 

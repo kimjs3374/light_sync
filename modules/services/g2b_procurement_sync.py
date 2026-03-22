@@ -11,6 +11,8 @@ import logging
 import datetime
 import calendar
 import urllib.parse
+
+from sqlalchemy import text
 from collections import defaultdict
 
 import requests
@@ -423,9 +425,15 @@ def auto_create_contracts(db, since_date=None):
         contract_date = rep.cntrct_dlvr_req_date
         delivery_due_date = rep.dlvr_tmlmt_date
 
-        # 3) Project 채번 (YYYY-NNN)
-        count = db.query(Project).filter(Project.project_no.like(f"{year}-%")).count()
-        project_no = f"{year}-{(count + 1):03d}"
+        # 3) Project 채번 (G-YYYY-NNNN) — 설계번호(YYYY-NNN)와 분리
+        prefix = f'G-{year}-'
+        last = db.execute(text(
+            "SELECT project_no FROM light_sync.projects "
+            "WHERE project_no LIKE :prefix "
+            "ORDER BY project_no DESC LIMIT 1"
+        ), {'prefix': f'{prefix}%'}).scalar()
+        seq = int(last.split('-')[-1]) + 1 if last else 1
+        project_no = f"{prefix}{seq:04d}"
 
         new_project = Project(
             project_no=project_no,

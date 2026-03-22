@@ -154,7 +154,7 @@ def handle_update_sales_item(db, project, form, current_user, **ctx):
             project_id=project.id,
             user_name='시스템 🤖',
             content=(
-                f"[영업관리] {current_user}님이 협의내용 수정\n"
+                f"[협의관리] {current_user}님이 협의내용 수정\n"
                 f"대상: {item.category}/{item.model_name}({item.quantity})\n"
                 + "\n".join(changed_lines)
             ),
@@ -199,7 +199,7 @@ def handle_add_contact(db, project, form, current_user, **ctx):
         db,
         project_id=project.id,
         user_name='시스템 🤖',
-        content=f"[영업관리] {current_user}님이 담당자 추가: {name} ({category})",
+        content=f"[협의관리] {current_user}님이 담당자 추가: {name} ({category})",
         scope='sales'
     )
     return {'flash': ('담당자가 추가되었습니다.', 'success')}
@@ -225,7 +225,7 @@ def handle_update_contact(db, project, form, current_user, **ctx):
             db,
             project_id=project.id,
             user_name='시스템 🤖',
-            content=f"[영업관리] {current_user}님이 담당자 수정\n변경 전: {old_info}\n변경 후: {new_info}",
+            content=f"[협의관리] {current_user}님이 담당자 수정\n변경 전: {old_info}\n변경 후: {new_info}",
             scope='sales'
         )
     return {'flash': ('담당자 정보가 수정되었습니다.', 'success')}

@@ -7,11 +7,17 @@
 {% block content %}
 
 {% set action_tab_meta = [
-    {'key': 'sales', 'label': '영업', 'desc': '협의 미완료 / 선행 위험'},
-    {'key': 'material', 'label': '자재', 'desc': '발주 / 입고 확인 필요'},
-    {'key': 'production', 'label': '생산', 'desc': '납기 임박 / 생산 병목'},
-    {'key': 'delivery', 'label': '납품', 'desc': '담당 배정 / 완료사진 / 일정'}
+    {'key': 'sales', 'label': '영업', 'desc': '협의 미완료 / 선행 위험', 'group': '영업부'},
+    {'key': 'fabrication', 'label': '가공', 'desc': '도면 미작성 / 가공발주 필요', 'group': '영업부'},
+    {'key': 'material', 'label': '자재', 'desc': '협의완료 → 발주·입고 필요', 'group': '관리부'},
+    {'key': 'production', 'label': '생산', 'desc': '협의완료 → 생산 진행 필요', 'group': '생산부'},
+    {'key': 'delivery', 'label': '납품', 'desc': '담당 배정 / 완료사진 / 일정', 'group': '영업부'}
 ] %}
+
+{% set user_group = session.get('user_group', '') %}
+{% set default_tab = 'material' if user_group == '관리부'
+                     else 'production' if user_group == '생산부'
+                     else 'sales' %}
 
 <div class="cmd">
 
@@ -167,13 +173,14 @@
                     <div class="section-title">오늘의 할 일</div>
                     <div class="section-sub mb-3">부서별 우선순위 액션을 즉시 처리</div>
 
-                    <ul class="nav act-tabs" id="actionTabs" role="tablist">
+                    <ul class="nav act-tabs" id="actionTabs" role="tablist" style="gap:.15rem;">
                         {% for tab in action_tab_meta %}
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link {% if loop.first %}active{% endif %}" id="{{ tab.key }}-tab"
-                                    data-bs-toggle="tab" data-bs-target="#{{ tab.key }}-pane" type="button" role="tab">
+                            <button class="nav-link {% if tab.key == default_tab %}active{% endif %}" id="{{ tab.key }}-tab"
+                                    data-bs-toggle="tab" data-bs-target="#{{ tab.key }}-pane" type="button" role="tab"
+                                    style="font-size:.75rem;padding:.35rem .6rem;white-space:nowrap;">
                                 {{ tab.label }}
-                                <span class="tab-ct">{{ action_tabs[tab.key]|length }}</span>
+                                <span class="tab-ct">{{ action_tabs[tab.key]|length if action_tabs[tab.key] is defined else 0 }}</span>
                             </button>
                         </li>
                         {% endfor %}
@@ -181,9 +188,9 @@
 
                     <div class="tab-content pt-2">
                         {% for tab in action_tab_meta %}
-                        <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="{{ tab.key }}-pane" role="tabpanel">
+                        <div class="tab-pane fade {% if tab.key == default_tab %}show active{% endif %}" id="{{ tab.key }}-pane" role="tabpanel">
                             <div class="section-sub mb-2">{{ tab.desc }}</div>
-                            {% for item in action_tabs[tab.key] %}
+                            {% for item in action_tabs.get(tab.key, []) %}
                             <div class="act-item">
                                 <div style="min-width:0;flex:1;">
                                     <div class="d-flex align-items-center gap-2 flex-wrap">

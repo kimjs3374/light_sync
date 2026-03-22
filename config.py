@@ -18,7 +18,7 @@ MENU_REGISTRY = OrderedDict([
     # --- 영업부 ---
     ("project",        {"label": "설계관리",   "group": "영업부", "endpoint": "project.project_list"}),
     ("contract",       {"label": "계약관리",   "group": "영업부", "endpoint": "project.contract_list"}),
-    ("sales",          {"label": "영업관리",   "group": "영업부", "endpoint": "sales.sales_list"}),
+    ("sales",          {"label": "협의관리",   "group": "영업부", "endpoint": "sales.sales_list"}),
     ("quotation",      {"label": "견적관리",   "group": "영업부", "endpoint": "quotation.quotation_list"}),
     ("delivery",       {"label": "납품관리",   "group": "영업부", "endpoint": "delivery.delivery_management"}),
     # --- 관리부 ---

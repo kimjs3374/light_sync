@@ -10,7 +10,7 @@ from modules.db_context import get_db
 from modules.contract_filters import active_contract_filter, DONE_STATUSES
 from modules.utils import safe_int
 from modules.models import (
-    Project, User, HistoryLog, Contract, ContractItem,
+    Project, User, HistoryLog, Contract, ContractItem, Drawing,
     DashboardNotice, Delivery, MaterialOrder,
     PurchaseOrder, PurchaseOrderItem,
 )
@@ -101,7 +101,7 @@ def dashboard_view():
             .options(
                 joinedload(Project.materials),
                 joinedload(Project.priority_override),
-                joinedload(Project.contracts).joinedload(Contract.items),
+                joinedload(Project.contracts).joinedload(Contract.items).joinedload(ContractItem.drawings),
             )
             .order_by(Project.created_at.desc(), Project.id.desc())
             .all()
