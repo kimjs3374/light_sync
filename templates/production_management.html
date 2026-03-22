@@ -8,6 +8,14 @@
     .prod-list-board tbody td { border-top: 1px solid #eef2f7 !important; border-bottom: 1px solid #eef2f7 !important; }
     .prod-list-board .clickable-item-row { cursor: pointer; }
     .prod-list-board .clickable-item-row:hover { background: #f1f5f9; }
+    @media (max-width: 1199.98px) {
+        .prod-list-board > .table,
+        .prod-list-board .table {
+            min-width: 0 !important;
+            table-layout: auto !important;
+        }
+    }
+
     @media (max-width: 991.98px) {
         .prod-list-board > .table {
             min-width: 860px;
@@ -52,49 +60,54 @@
     <div class="col-md-2 col-6"><div class="card border-0 shadow-sm border-start border-4 border-success"><div class="card-body py-2"><small class="text-muted">생산완료</small><div class="fw-bold fs-5 text-success">{{ stats.done_items }}</div></div></div></div>
 </div>
 
-<form class="card border-0 shadow-sm mb-4" method="GET">
-    <div class="card-body row g-2 align-items-end">
-        <div class="col-md-5">
-            <label class="small fw-bold">검색</label>
-            <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/계약명/모델명">
-        </div>
-        <div class="col-md-2">
-            <label class="small fw-bold">생산상태</label>
-            <select class="form-select" name="status">
-                <option value="all" {% if filters.status=='all' %}selected{% endif %}>전체</option>
-                <option value="자재대기중" {% if filters.status=='자재대기중' %}selected{% endif %}>자재대기중</option>
-                <option value="생산대기중" {% if filters.status=='생산대기중' %}selected{% endif %}>생산대기중</option>
-                <option value="생산중" {% if filters.status=='생산중' %}selected{% endif %}>생산중</option>
-                <option value="생산완료" {% if filters.status=='생산완료' %}selected{% endif %}>생산완료</option>
-            </select>
-        </div>
-        <div class="col-md-2">
-            <label class="small fw-bold">납기</label>
-            <select class="form-select" name="due">
-                <option value="all" {% if filters.due=='all' %}selected{% endif %}>전체</option>
-                <option value="overdue" {% if filters.due=='overdue' %}selected{% endif %}>지연(D+)</option>
-                <option value="week" {% if filters.due=='week' %}selected{% endif %}>7일 이내</option>
-                <option value="twoweek" {% if filters.due=='twoweek' %}selected{% endif %}>14일 이내</option>
-            </select>
-        </div>
-        <div class="col-md-2">
-            <label class="small fw-bold">정렬</label>
-            <select class="form-select" name="sort">
-                <option value="due_asc" {% if filters.sort=='due_asc' %}selected{% endif %}>납기 빠른순</option>
-                <option value="due_desc" {% if filters.sort=='due_desc' %}selected{% endif %}>납기 늦은순</option>
-                <option value="created_desc" {% if filters.sort=='created_desc' %}selected{% endif %}>생성 최신순</option>
-            </select>
-        </div>
-        <div class="col-12 col-md-1 text-md-end mobile-actions">
-            <a href="{{ url_for('production.production_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
-        </div>
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <button class="btn btn-outline-secondary btn-sm w-100 mb-2 filter-collapse-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#filterBody">검색 필터 펼치기/접기</button>
+        <form class="collapse show filter-collapse-body" id="filterBody" method="GET">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-5">
+                    <label class="small fw-bold">검색</label>
+                    <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/계약명/모델명">
+                </div>
+                <div class="col-md-2">
+                    <label class="small fw-bold">생산상태</label>
+                    <select class="form-select" name="status">
+                        <option value="all" {% if filters.status=='all' %}selected{% endif %}>전체</option>
+                        <option value="자재대기중" {% if filters.status=='자재대기중' %}selected{% endif %}>자재대기중</option>
+                        <option value="생산대기중" {% if filters.status=='생산대기중' %}selected{% endif %}>생산대기중</option>
+                        <option value="생산중" {% if filters.status=='생산중' %}selected{% endif %}>생산중</option>
+                        <option value="생산완료" {% if filters.status=='생산완료' %}selected{% endif %}>생산완료</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="small fw-bold">납기</label>
+                    <select class="form-select" name="due">
+                        <option value="all" {% if filters.due=='all' %}selected{% endif %}>전체</option>
+                        <option value="overdue" {% if filters.due=='overdue' %}selected{% endif %}>지연(D+)</option>
+                        <option value="week" {% if filters.due=='week' %}selected{% endif %}>7일 이내</option>
+                        <option value="twoweek" {% if filters.due=='twoweek' %}selected{% endif %}>14일 이내</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="small fw-bold">정렬</label>
+                    <select class="form-select" name="sort">
+                        <option value="due_asc" {% if filters.sort=='due_asc' %}selected{% endif %}>납기 빠른순</option>
+                        <option value="due_desc" {% if filters.sort=='due_desc' %}selected{% endif %}>납기 늦은순</option>
+                        <option value="created_desc" {% if filters.sort=='created_desc' %}selected{% endif %}>생성 최신순</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-1 text-md-end mobile-actions">
+                    <a href="{{ url_for('production.production_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+                </div>
+            </div>
+        </form>
     </div>
-</form>
+</div>
 
 {% include 'components/priority_section.html' %}
 
 <div class="table-responsive prod-list-board">
-    <table class="table shadow-sm align-middle mobile-stack-table">
+    <table class="table shadow-sm align-middle no-stack-table tree-card-table">
         <thead class="text-center small">
             <tr>
                 <th style="width:70px;">트리</th>
@@ -141,7 +154,7 @@
                                     <span class="badge bg-light text-dark">{{ c._matched_items|length }}개 품목</span>
                                 </div>
                                 <div class="table-responsive">
-                                    <table class="table table-sm mb-0 text-center mobile-stack-table" style="font-size:.85rem; min-width:860px;">
+                                    <table class="table table-sm mb-0 text-center" style="font-size:.85rem; min-width:860px;">
                                         <thead class="table-light">
                                             <tr>
                                                 <th>품목군</th><th>모델명</th><th>수량</th><th>납품예정일</th><th>생산상태</th><th>공정 수</th><th>공정률</th>

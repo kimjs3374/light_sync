@@ -2,25 +2,31 @@
 
 {% block content %}
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-2">
-    <h3 class="m-0">[설계관리] {{ project.temp_name }} <small class="text-muted">({{ project.project_no }})</small></h3>
-    <div class="d-flex flex-wrap gap-2">
-        {% if not project.is_contracted and session.user_group != '생산부' %}
-            <form method="POST" action="{{ url_for('project.convert_to_contract', project_id=project.id) }}" class="d-inline">
+<div class="page-hero mg-fade mb-3">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Design Detail</div>
+            <h2>{{ project.temp_name }}</h2>
+            <div class="hero-sub">{{ project.project_no }}</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2" style="white-space:nowrap;">
+            {% if not project.is_contracted and session.user_group != '생산부' %}
+                <form method="POST" action="{{ url_for('project.convert_to_contract', project_id=project.id) }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-sm btn-hi" onclick="return confirm('실제 계약 리스트로 전환하시겠습니까?')">계약 전환</button>
+                </form>
+            {% endif %}
+            {% if session.user_group != '생산부' %}
+            <form method="POST" action="{{ url_for('project.project_delete_request', project_id=project.id) }}" class="d-inline" data-project-name="{{ project.temp_name }}" onsubmit="return submitDeleteRequest(this);">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <button type="submit" class="btn btn-sm btn-primary fw-bold" onclick="return confirm('실제 계약 리스트로 전환하시겠습니까?')">📋 계약 전환</button>
+                <input type="hidden" name="next" value="{{ url_for('project.project_list') }}">
+                <input type="hidden" name="delete_reason" value="">
+                <button type="submit" class="btn btn-sm btn-outline-light">삭제요청</button>
             </form>
-        {% endif %}
-        {% if session.user_group != '생산부' %}
-        <form method="POST" action="{{ url_for('project.project_delete_request', project_id=project.id) }}" class="d-inline" data-project-name="{{ project.temp_name }}" onsubmit="return submitDeleteRequest(this);">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <input type="hidden" name="next" value="{{ url_for('project.project_list') }}">
-            <input type="hidden" name="delete_reason" value="">
-            <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">🗑 현장 삭제요청</button>
-        </form>
-        {% endif %}
-        <button class="btn btn-sm btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#editProjectModal">⚙️ 전체 정보 수정</button>
-        <a href="{{ url_for('project.project_list') }}" class="btn btn-sm btn-secondary">목록</a>
+            {% endif %}
+            <button type="button" class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#editProjectModal">전체 정보 수정</button>
+            <a href="{{ url_for('project.project_list') }}" class="btn btn-outline-light btn-sm">목록</a>
+        </div>
     </div>
 </div>
 
@@ -106,18 +112,69 @@
         </div>
         {% if linked_illuminance_projects %}
         <div class="border-top pt-2 mt-1">
-            <small class="text-muted fw-bold d-block mb-1">연결된 조도검증 프로젝트</small>
             {% for lp in linked_illuminance_projects %}
-            <a href="{{ url_for('illuminance.detail', project_id=lp.id) }}" class="badge bg-info text-dark me-1 mb-1 text-decoration-none" style="white-space:nowrap;">
-                {{ lp.project_name }}
-                {% if lp.status == 'reported' %}
-                    <span class="badge bg-success ms-1" style="font-size:0.65rem;">완료</span>
-                {% elif lp.status == 'measured' %}
-                    <span class="badge bg-warning text-dark ms-1" style="font-size:0.65rem;">실측</span>
-                {% else %}
-                    <span class="badge bg-light text-dark ms-1" style="font-size:0.65rem;">설계</span>
+            <div class="mb-2">
+                <div class="d-flex align-items-center gap-1 mb-1">
+                    <a href="{{ url_for('illuminance.detail', project_id=lp.id) }}" class="badge bg-info text-dark text-decoration-none" style="white-space:nowrap;">
+                        {{ lp.project_name }}
+                        {% if lp.status == 'reported' %}
+                            <span class="badge bg-success ms-1" style="font-size:0.65rem;">완료</span>
+                        {% elif lp.status == 'measured' %}
+                            <span class="badge bg-warning text-dark ms-1" style="font-size:0.65rem;">실측</span>
+                        {% else %}
+                            <span class="badge bg-light text-dark ms-1" style="font-size:0.65rem;">설계</span>
+                        {% endif %}
+                    </a>
+                </div>
+                {% if lp.areas %}
+                <table class="table table-sm table-bordered align-middle mb-0" style="font-size:0.8rem;text-align:center;vertical-align:middle;">
+                    <thead>
+                        <tr style="background:#e8edf3;vertical-align:middle;">
+                            <th class="text-center align-middle" style="white-space:nowrap;font-size:0.82rem;">구역</th>
+                            <th class="text-center align-middle" style="white-space:nowrap;font-size:0.82rem;">Eav<br><span style="font-size:0.62rem;font-weight:normal;color:#777;">lx</span></th>
+                            <th class="text-center align-middle" style="white-space:nowrap;font-size:0.82rem;">Emin<br><span style="font-size:0.62rem;font-weight:normal;color:#777;">lx</span></th>
+                            <th class="text-center align-middle" style="white-space:nowrap;font-size:0.82rem;">Emax<br><span style="font-size:0.62rem;font-weight:normal;color:#777;">lx</span></th>
+                            <th class="text-center align-middle" style="white-space:nowrap;font-size:0.82rem;">Uo<br><span style="font-size:0.62rem;font-weight:normal;color:#777;">Emin/Eav</span></th>
+                            <th class="text-center align-middle" style="white-space:nowrap;font-size:0.82rem;">Ud<br><span style="font-size:0.62rem;font-weight:normal;color:#777;">Emin/Emax</span></th>
+                            <th class="text-center align-middle" style="white-space:nowrap;font-size:0.82rem;">설계기준</th>
+                            <th class="text-center align-middle" style="white-space:nowrap;font-size:0.82rem;">판정</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for area in lp.areas %}
+                        <tr>
+                            <td class="fw-semibold" style="white-space:nowrap;">{{ area.area_name }}</td>
+                            <td class="fw-bold">{{ '%.0f'|format(area.design_eav) if area.design_eav else '-' }}</td>
+                            <td style="color:#1565c0;font-weight:600;">{{ '%.0f'|format(area.design_emin) if area.design_emin else '-' }}</td>
+                            <td style="color:#c62828;font-weight:600;">{{ '%.0f'|format(area.design_emax) if area.design_emax else '-' }}</td>
+                            <td>{% if area.design_uo %}<span class="fw-semibold">{{ '%.2f'|format(area.design_uo) }}</span><br><span style="font-size:0.66rem;color:#aaa;">{{ '%.2f'|format(1/area.design_uo) }}</span>{% else %}-{% endif %}</td>
+                            <td>{% if area.design_ud %}<span class="fw-semibold">{{ '%.2f'|format(area.design_ud) }}</span><br><span style="font-size:0.66rem;color:#aaa;">{{ '%.2f'|format(1/area.design_ud) }}</span>{% else %}-{% endif %}</td>
+                            <td style="white-space:nowrap;font-size:0.7rem;color:#666;">
+                                {% if area.ks_eav_min %}Eav≥{{ '%.0f'|format(area.ks_eav_min) }}{% endif %}
+                                {% if area.ks_uo_min %}<br>Uo≥{{ '%.2f'|format(area.ks_uo_min) }}{% endif %}
+                                {% if area.ks_ud_min %}<br>Ud≥{{ '%.2f'|format(area.ks_ud_min) }}{% endif %}
+                                {% if not area.ks_eav_min and not area.ks_uo_min and not area.ks_ud_min %}-{% endif %}
+                            </td>
+                            <td style="white-space:nowrap;">
+                                {% set pass_eav = (not area.ks_eav_min) or (area.design_eav and area.design_eav >= area.ks_eav_min) %}
+                                {% set pass_uo = (not area.ks_uo_min) or (area.design_uo and area.design_uo >= area.ks_uo_min) %}
+                                {% set pass_ud = (not area.ks_ud_min) or (area.design_ud and area.design_ud >= area.ks_ud_min) %}
+                                {% if area.ks_eav_min or area.ks_uo_min or area.ks_ud_min %}
+                                    {% if pass_eav and pass_uo and pass_ud %}
+                                        <span class="badge bg-success" style="white-space:nowrap;">적합</span>
+                                    {% else %}
+                                        <span class="badge bg-danger" style="white-space:nowrap;">부적합</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
                 {% endif %}
-            </a>
+            </div>
             {% endfor %}
         </div>
         {% endif %}
@@ -133,7 +190,7 @@
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover align-middle mb-0">
+                    <table class="table table-sm table-hover align-middle mb-0 no-stack-table">
                         <thead class="table-light text-center">
                             <tr>
                                 <th style="width: 26%;">상세품목</th>

@@ -1,6 +1,7 @@
-{# 히스토리 상단 한줄 바 - 최근 로그 1건 + 전체 건수 + 클릭 시 패널 오픈 #}
+{# 히스토리 상단 한줄 바 - 최근 로그 1건 + 전체 건수 + 읽지않음 뱃지 + 클릭 시 패널 오픈 #}
 {% set _latest = history[0] if history else none %}
 {% set _total = history_counts.all|default(0) %}
+{% set _unread = history_counts.unread|default(0) %}
 <style>
     .history-summary-bar {
         background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
@@ -22,7 +23,7 @@
         .history-bar-latest { max-width: 200px; }
     }
 </style>
-<div class="history-summary-bar mb-3" id="historySummaryBar"
+<div class="history-summary-bar mb-3 {% if _unread > 0 %}history-bar-pulse{% endif %}" id="historySummaryBar"
      onclick="openHistoryFab()">
     <div class="d-flex align-items-center gap-2">
         <span class="badge bg-dark" style="white-space:nowrap;">히스토리</span>
@@ -34,7 +35,11 @@
         {% else %}
         <span class="text-muted small">기록 없음</span>
         {% endif %}
+        {% if _unread > 0 %}
+        <span class="badge bg-danger ms-auto" id="historyUnreadBadge" style="white-space:nowrap;">{{ _unread }}건 새글</span>
+        {% else %}
         <span class="badge bg-secondary ms-auto" style="white-space:nowrap;">{{ _total }}건</span>
+        {% endif %}
         <span class="badge bg-outline-dark border text-dark" style="white-space:nowrap; font-size:.72rem;">열기</span>
     </div>
 </div>

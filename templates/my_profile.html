@@ -1,0 +1,183 @@
+{% extends 'base.html' %}
+
+{% block head %}
+<style>
+.profile-wrap { max-width: 720px; margin: 0 auto; }
+.profile-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    border: 1px solid #e2e8f0;
+}
+.profile-card .card-header {
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    font-weight: 700;
+    font-size: .9rem;
+    padding: .75rem 1.25rem;
+    border-radius: 12px 12px 0 0;
+}
+.profile-card .card-body { padding: 1.25rem; }
+.profile-field {
+    display: flex;
+    align-items: center;
+    padding: .6rem 0;
+    border-bottom: 1px solid #f1f5f9;
+}
+.profile-field:last-child { border-bottom: none; }
+.profile-label {
+    width: 100px;
+    flex-shrink: 0;
+    font-size: .8rem;
+    font-weight: 600;
+    color: #64748b;
+}
+.profile-value {
+    flex: 1;
+    font-size: .88rem;
+    color: #1e293b;
+}
+.profile-value .form-control {
+    font-size: .85rem;
+    border-radius: 6px;
+    max-width: 300px;
+}
+.profile-readonly {
+    padding: 6px 0;
+    color: #475569;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="profile-wrap">
+
+    <div class="page-hero mg-fade mb-3">
+        <div class="hero-eyebrow">My Profile</div>
+        <h2>내 정보 관리</h2>
+        <div class="hero-sub">개인 정보 수정 및 비밀번호 변경</div>
+    </div>
+
+    {# ── 기본 정보 ── #}
+    <div class="profile-card mb-3">
+        <div class="card-header">기본 정보</div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('auth.update_profile') }}" id="profileForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="profile-field">
+                    <div class="profile-label">아이디</div>
+                    <div class="profile-value">
+                        <div class="profile-readonly">{{ user.username }}</div>
+                    </div>
+                </div>
+
+                <div class="profile-field">
+                    <div class="profile-label">소속 부서</div>
+                    <div class="profile-value">
+                        <div class="profile-readonly">
+                            <span class="badge bg-secondary" style="white-space:nowrap;font-size:.75rem">{{ user.user_group }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="profile-field">
+                    <div class="profile-label">직급</div>
+                    <div class="profile-value">
+                        <div class="profile-readonly">{{ user.position or '-' }}</div>
+                    </div>
+                </div>
+
+                <div class="profile-field">
+                    <div class="profile-label">이름</div>
+                    <div class="profile-value">
+                        <input type="text" name="full_name" class="form-control form-control-sm" value="{{ user.full_name or '' }}" required>
+                    </div>
+                </div>
+
+                <div class="profile-field">
+                    <div class="profile-label">연락처</div>
+                    <div class="profile-value">
+                        <input type="text" name="phone_number" class="form-control form-control-sm" value="{{ user.phone_number or '' }}" placeholder="010-0000-0000">
+                    </div>
+                </div>
+
+                <div class="profile-field">
+                    <div class="profile-label">이메일</div>
+                    <div class="profile-value">
+                        <input type="email" name="email" class="form-control form-control-sm" value="{{ user.email or '' }}" placeholder="example@mgnt.kr" required>
+                    </div>
+                </div>
+
+                <div class="text-end mt-3">
+                    <button type="submit" class="btn btn-primary btn-sm px-4" id="profileSaveBtn">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# ── 비밀번호 변경 ── #}
+    <div class="profile-card mb-3">
+        <div class="card-header">비밀번호 변경</div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('auth.change_password') }}" id="pwForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="profile-field">
+                    <div class="profile-label">현재 비밀번호</div>
+                    <div class="profile-value">
+                        <input type="password" name="current_password" class="form-control form-control-sm" required autocomplete="current-password">
+                    </div>
+                </div>
+
+                <div class="profile-field">
+                    <div class="profile-label">새 비밀번호</div>
+                    <div class="profile-value">
+                        <input type="password" name="new_password" class="form-control form-control-sm" required data-pw-rule id="profileNewPw">
+                    </div>
+                </div>
+
+                <div class="profile-field">
+                    <div class="profile-label">비밀번호 확인</div>
+                    <div class="profile-value">
+                        <input type="password" name="confirm_password" class="form-control form-control-sm" required data-pw-match="#profileNewPw" id="confirmPw">
+                        <div class="invalid-feedback">비밀번호가 일치하지 않습니다.</div>
+                    </div>
+                </div>
+
+                <div class="text-end mt-3">
+                    <button type="submit" class="btn btn-outline-dark btn-sm px-4">비밀번호 변경</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# ── 계정 정보 ── #}
+    <div class="profile-card mb-4">
+        <div class="card-header">계정 정보</div>
+        <div class="card-body">
+            <div class="profile-field">
+                <div class="profile-label">권한</div>
+                <div class="profile-value">
+                    <div class="profile-readonly">
+                        {% if user.role == 'admin' %}
+                            <span class="badge bg-primary" style="white-space:nowrap">관리자</span>
+                        {% else %}
+                            <span class="badge bg-secondary" style="white-space:nowrap">일반</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="profile-field">
+                <div class="profile-label">가입일</div>
+                <div class="profile-value">
+                    <div class="profile-readonly">{{ (user.created_at|string)[:10] if user.created_at else '-' }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/password-utils.js') }}"></script>
+{% endblock %}

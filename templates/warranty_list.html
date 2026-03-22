@@ -55,6 +55,9 @@
 .pager .page-item.active .page-link {
     background: var(--mg-primary); border-color: var(--mg-primary); color: #fff;
 }
+@media (max-width: 1199.98px) {
+    .wl-table { min-width: 0 !important; table-layout: auto !important; }
+}
 </style>
 {% endblock %}
 
@@ -109,7 +112,10 @@
 </div>
 
 {# ═══ 필터 바 ═══ #}
-<form class="filter-bar-wl mb-3 mg-fade" style="animation-delay:.08s" method="GET">
+<div class="filter-bar-wl mb-3 mg-fade" style="animation-delay:.08s">
+<button class="btn btn-outline-secondary btn-sm w-100 mb-2 filter-collapse-toggle d-xl-none" type="button" data-bs-toggle="collapse" data-bs-target="#filterBody">검색 필터 펼치기/접기</button>
+<div class="collapse show filter-collapse-body" id="filterBody">
+<form method="GET">
     <div class="row g-2 align-items-end">
         <div class="col-12 col-md-4 col-lg-3">
             <input type="text" name="q" class="form-control form-control-sm"
@@ -160,6 +166,8 @@
         </div>
     </div>
 </form>
+</div>
+</div>
 
 {# ═══ 보증 목록 테이블 ═══ #}
 <div class="card shadow-sm border-0 mg-fade warranty-board" style="animation-delay:.1s">

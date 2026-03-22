@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
-<div style="display:flex;flex-direction:column;height:calc(100vh - 60px);">
+<style>.main-content { padding:0 !important; overflow:hidden !important; }</style>
+<div style="display:flex;flex-direction:column;height:calc(100vh - 56px);overflow:hidden;">
 
   <div class="px-3 py-2 border-bottom bg-white d-flex align-items-center justify-content-between">
     <div class="d-flex align-items-center gap-2">
@@ -40,7 +41,11 @@
 .msg-user { align-self:flex-end; background:#4f46e5; color:#fff; border-radius:18px 18px 4px 18px; }
 .msg-bot  { align-self:flex-start; background:#fff; border:1px solid #e2e8f0; border-radius:18px 18px 18px 4px; }
 .msg-bot.claude { border-color:#d4a574; }
-.msg-base { max-width:80%; padding:10px 14px; font-size:0.875rem; white-space:pre-wrap; word-break:break-word; }
+.msg-base { max-width:80%; padding:10px 14px; font-size:0.875rem; white-space:pre-wrap; word-break:break-word; position:relative; }
+.msg-time { font-size:.65rem; color:#94a3b8; margin-top:2px; }
+.msg-user .msg-time { text-align:right; color:rgba(255,255,255,.6); }
+.date-divider { display:flex; align-items:center; gap:10px; margin:12px 0 4px; font-size:.72rem; color:#94a3b8; }
+.date-divider::before,.date-divider::after { content:''; flex:1; height:1px; background:#e2e8f0; }
 </style>
 
 <script>
@@ -96,15 +101,61 @@ function switchEngine() {
   engine = sw.checked ? 'claude' : 'groq';
   localStorage.setItem('chatEngine', engine);
   document.getElementById('chatBox').innerHTML = '';
+  _lastDateLabel = '';
   updateUI();
   loadHistory();
 }
 
-function appendMsg(text, role) {
+let _lastDateLabel = '';
+
+function _formatTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d)) return '';
+  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0') + ':' + d.getSeconds().toString().padStart(2,'0');
+}
+
+function _dateLabel(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d)) return '';
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = (today - target) / 86400000;
+  if (diff === 0) return '오늘';
+  if (diff === 1) return '어제';
+  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
+}
+
+function _insertDateDivider(ts) {
+  const label = _dateLabel(ts);
+  if (!label || label === _lastDateLabel) return;
+  _lastDateLabel = label;
   const box = document.getElementById('chatBox');
+  const div = document.createElement('div');
+  div.className = 'date-divider';
+  div.textContent = label;
+  box.appendChild(div);
+}
+
+function appendMsg(text, role, ts) {
+  const box = document.getElementById('chatBox');
+  // 날짜 구분선
+  if (ts) _insertDateDivider(ts);
   const d = document.createElement('div');
   d.className = `msg-base msg-${role}` + (role === 'bot' && engine === 'claude' ? ' claude' : '');
-  d.textContent = text;
+  const content = document.createElement('div');
+  content.textContent = text;
+  d.appendChild(content);
+  // 시간 표시
+  const timeStr = ts ? _formatTime(ts) : _formatTime(new Date().toISOString());
+  if (timeStr) {
+    const timeEl = document.createElement('div');
+    timeEl.className = 'msg-time';
+    timeEl.textContent = timeStr;
+    d.appendChild(timeEl);
+  }
   box.appendChild(d);
   box.scrollTop = box.scrollHeight;
   return d;
@@ -114,9 +165,10 @@ async function loadHistory() {
   const url = ENGINES[engine].historyUrl;
   if (!url) return;
   try {
+    _lastDateLabel = '';
     const res = await fetch(url);
     const msgs = await res.json();
-    msgs.forEach(m => appendMsg(m.content, m.role === 'user' ? 'user' : 'bot'));
+    msgs.forEach(m => appendMsg(m.content, m.role === 'user' ? 'user' : 'bot', m.ts || null));
   } catch {}
 }
 
@@ -196,6 +248,7 @@ async function clearChat() {
     body: JSON.stringify({text: '초기화'})
   });
   document.getElementById('chatBox').innerHTML = '';
+  _lastDateLabel = '';
 }
 
 // 초기화 — 저장된 엔진 복원

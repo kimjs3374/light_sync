@@ -9,6 +9,14 @@
     .material-list-board .clickable-item-row { cursor: pointer; }
     .material-list-board .clickable-item-row:hover { background: #f1f5f9; }
 
+    @media (max-width: 1199.98px) {
+        .material-list-board > .table,
+        .material-list-board .table {
+            min-width: 0 !important;
+            table-layout: auto !important;
+        }
+    }
+
     @media (max-width: 991.98px) {
         .material-list-board > .table {
             min-width: 860px;
@@ -51,54 +59,59 @@
     <div class="col-md-3 col-6"><div class="card border-0 shadow-sm border-start border-4 border-primary"><div class="card-body py-2"><small class="text-muted">조회 자재건</small><div class="fw-bold fs-5 text-primary">{{ stats.filtered_orders }}</div></div></div></div>
 </div>
 
-<form class="card border-0 shadow-sm mb-4" method="GET">
-    <div class="card-body row g-2 align-items-end">
-        <div class="col-md-5">
-            <label class="small fw-bold">검색</label>
-            <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/계약명/모델/자재명">
-        </div>
-        <div class="col-md-3">
-            <label class="small fw-bold">발주상태</label>
-            <select class="form-select" name="status">
-                <option value="all" {% if filters.status=='all' %}selected{% endif %}>전체</option>
-                <option value="발주대기" {% if filters.status=='발주대기' %}selected{% endif %}>발주대기</option>
-                <option value="발주완료" {% if filters.status=='발주완료' %}selected{% endif %}>발주완료</option>
-                <option value="입고완료" {% if filters.status=='입고완료' %}selected{% endif %}>입고완료</option>
-            </select>
-        </div>
-        <div class="col-md-2">
-            <label class="small fw-bold">외주여부</label>
-            <select class="form-select" name="outsource">
-                <option value="all" {% if filters.outsource=='all' %}selected{% endif %}>전체</option>
-                <option value="yes" {% if filters.outsource=='yes' %}selected{% endif %}>외주만</option>
-                <option value="no" {% if filters.outsource=='no' %}selected{% endif %}>일반만</option>
-            </select>
-        </div>
-        <div class="col-md-2">
-            <label class="small fw-bold">정렬</label>
-            <select class="form-select" name="sort">
-                <option value="due_asc" {% if filters.sort=='due_asc' %}selected{% endif %}>납기 빠른순</option>
-                <option value="due_desc" {% if filters.sort=='due_desc' %}selected{% endif %}>납기 늦은순</option>
-                <option value="created_desc" {% if filters.sort=='created_desc' %}selected{% endif %}>생성 최신순</option>
-            </select>
-        </div>
-        <div class="col-12 col-md-auto d-flex align-items-center justify-content-end gap-3 mobile-actions">
-            <label class="form-check-label small" style="white-space:nowrap">
-                <input type="checkbox" class="form-check-input" name="show_done" value="1"
-                       {{ 'checked' if filters.show_done == '1' }} onchange="this.form.submit()"> 완료건 포함
-            </label>
-            <div>
-                <a href="{{ url_for('material.material_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
-                <button class="btn btn-primary btn-sm fw-bold">검색</button>
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <button class="btn btn-outline-secondary btn-sm w-100 mb-2 filter-collapse-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#filterBody">검색 필터 펼치기/접기</button>
+        <form class="collapse show filter-collapse-body" id="filterBody" method="GET">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-5">
+                    <label class="small fw-bold">검색</label>
+                    <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/계약명/모델/자재명">
+                </div>
+                <div class="col-md-3">
+                    <label class="small fw-bold">발주상태</label>
+                    <select class="form-select" name="status">
+                        <option value="all" {% if filters.status=='all' %}selected{% endif %}>전체</option>
+                        <option value="발주대기" {% if filters.status=='발주대기' %}selected{% endif %}>발주대기</option>
+                        <option value="발주완료" {% if filters.status=='발주완료' %}selected{% endif %}>발주완료</option>
+                        <option value="입고완료" {% if filters.status=='입고완료' %}selected{% endif %}>입고완료</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="small fw-bold">외주여부</label>
+                    <select class="form-select" name="outsource">
+                        <option value="all" {% if filters.outsource=='all' %}selected{% endif %}>전체</option>
+                        <option value="yes" {% if filters.outsource=='yes' %}selected{% endif %}>외주만</option>
+                        <option value="no" {% if filters.outsource=='no' %}selected{% endif %}>일반만</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="small fw-bold">정렬</label>
+                    <select class="form-select" name="sort">
+                        <option value="due_asc" {% if filters.sort=='due_asc' %}selected{% endif %}>납기 빠른순</option>
+                        <option value="due_desc" {% if filters.sort=='due_desc' %}selected{% endif %}>납기 늦은순</option>
+                        <option value="created_desc" {% if filters.sort=='created_desc' %}selected{% endif %}>생성 최신순</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-auto d-flex align-items-center justify-content-end gap-3 mobile-actions">
+                    <label class="form-check-label small" style="white-space:nowrap">
+                        <input type="checkbox" class="form-check-input" name="show_done" value="1"
+                               {{ 'checked' if filters.show_done == '1' }} onchange="this.form.submit()"> 완료건 포함
+                    </label>
+                    <div>
+                        <a href="{{ url_for('material.material_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+                        <button class="btn btn-primary btn-sm fw-bold">검색</button>
+                    </div>
+                </div>
             </div>
-        </div>
+        </form>
     </div>
-</form>
+</div>
 
 {% include 'components/priority_section.html' %}
 
 <div class="table-responsive material-list-board">
-    <table class="table shadow-sm align-middle mobile-stack-table">
+    <table class="table shadow-sm align-middle no-stack-table tree-card-table">
         <thead class="text-center small">
             <tr>
                 <th style="width:70px;">트리</th>
@@ -157,7 +170,7 @@
                                         <span class="badge bg-light text-dark">{{ c._matched_items|length }}개 품목</span>
                                     </div>
                                     <div class="table-responsive">
-                                        <table class="table table-sm mb-0 text-center mobile-stack-table" style="font-size:.85rem; min-width:860px;">
+                                        <table class="table table-sm mb-0 text-center" style="font-size:.85rem; min-width:860px;">
                                             <thead class="table-light">
                                                 <tr>
                                                     <th>품목군</th><th>모델명</th><th>자재건수</th><th>발주대기</th><th>발주완료</th><th>입고완료</th><th>외주건</th>

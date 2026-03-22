@@ -2,7 +2,7 @@
 
 {% block content %}
 <style>
-    .project-list-board .table { table-layout: fixed; border-collapse: collapse; min-width: 1080px; }
+    .project-list-board .table { table-layout: fixed; border-collapse: collapse; }
     .project-list-board th, .project-list-board td {
         vertical-align: middle;
         padding-top: .62rem;
@@ -25,9 +25,11 @@
     .project-list-table .clickable-row:hover { background: #f8fafc !important; }
     .summary-wrap { max-height: none; overflow: visible; }
 
+    @media (max-width: 1199.98px) {
+        .project-list-board .table { min-width: 0; table-layout: auto; }
+    }
     @media (max-width: 991.98px) {
         .project-list-board .table {
-            min-width: 980px;
             font-size: .86rem;
         }
         .project-list-board th,
@@ -73,8 +75,11 @@
     <div class="col-md-3 col-6"><div class="card border-0 shadow-sm border-start border-4 border-dark"><div class="card-body py-2"><small class="text-muted">긴급건</small><div class="fw-bold fs-5">{{ stats.urgent }}</div></div></div></div>
 </div>
 
-<form class="card border-0 shadow-sm mb-4" method="GET">
-    <div class="card-body row g-2 align-items-end">
+<div class="card border-0 shadow-sm mb-4">
+<div class="card-body">
+<button class="btn btn-outline-secondary btn-sm w-100 mb-2 filter-collapse-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#filterBody">검색 필터 펼치기/접기</button>
+<form class="collapse show filter-collapse-body" id="filterBody" method="GET">
+    <div class="row g-2 align-items-end">
         <div class="col-md-3">
             <label class="small fw-bold">검색</label>
             <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/약칭">
@@ -111,6 +116,8 @@
         </div>
     </div>
 </form>
+</div>
+</div>
 
 {% include 'components/priority_section.html' %}
 

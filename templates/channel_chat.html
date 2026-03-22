@@ -27,19 +27,65 @@
 <style>
 .msg-user { align-self:flex-end; background:#4f46e5; color:#fff; border-radius:18px 18px 4px 18px; }
 .msg-bot  { align-self:flex-start; background:#fff; border:1px solid #e2e8f0; border-radius:18px 18px 18px 4px; }
-.msg-base { max-width:80%; padding:10px 14px; font-size:0.875rem; white-space:pre-wrap; word-break:break-word; }
+.msg-base { max-width:80%; padding:10px 14px; font-size:0.875rem; white-space:pre-wrap; word-break:break-word; position:relative; }
 .msg-bot .tool-badge { display:inline-block; background:#f0fdf4; color:#16a34a; font-size:.72rem; padding:1px 6px; border-radius:4px; margin-bottom:4px; }
+.msg-time { font-size:.65rem; color:#94a3b8; margin-top:2px; }
+.msg-user .msg-time { text-align:right; color:rgba(255,255,255,.6); }
+.date-divider { display:flex; align-items:center; gap:10px; margin:12px 0 4px; font-size:.72rem; color:#94a3b8; }
+.date-divider::before,.date-divider::after { content:''; flex:1; height:1px; background:#e2e8f0; }
 </style>
 
 <script>
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
 let busy = false;
+let _lastDateLabel = '';
 
-function appendMsg(text, role) {
+function _formatTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d)) return '';
+  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0') + ':' + d.getSeconds().toString().padStart(2,'0');
+}
+
+function _dateLabel(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d)) return '';
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = (today - target) / 86400000;
+  if (diff === 0) return '오늘';
+  if (diff === 1) return '어제';
+  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
+}
+
+function _insertDateDivider(ts) {
+  const label = _dateLabel(ts);
+  if (!label || label === _lastDateLabel) return;
+  _lastDateLabel = label;
   const box = document.getElementById('chatBox');
+  const div = document.createElement('div');
+  div.className = 'date-divider';
+  div.textContent = label;
+  box.appendChild(div);
+}
+
+function appendMsg(text, role, ts) {
+  const box = document.getElementById('chatBox');
+  if (ts) _insertDateDivider(ts);
   const d = document.createElement('div');
   d.className = `msg-base msg-${role}`;
-  d.textContent = text;
+  const content = document.createElement('div');
+  content.textContent = text;
+  d.appendChild(content);
+  const timeStr = ts ? _formatTime(ts) : _formatTime(new Date().toISOString());
+  if (timeStr) {
+    const timeEl = document.createElement('div');
+    timeEl.className = 'msg-time';
+    timeEl.textContent = timeStr;
+    d.appendChild(timeEl);
+  }
   box.appendChild(d);
   box.scrollTop = box.scrollHeight;
   return d;
@@ -78,7 +124,6 @@ async function sendMsg() {
   thinking.style.color = '#999';
 
   try {
-    // 1단계: send → 즉시 request_id 반환
     const res = await fetch('/channel-chat/send', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
@@ -101,7 +146,7 @@ async function sendMsg() {
       return;
     }
 
-    // 2단계: 폴링으로 응답 대기
+    // 폴링으로 응답 대기
     if (data.request_id) {
       setStatus(true, 'Claude 처리 중...');
       const reply = await pollReply(data.request_id, thinking);
@@ -123,7 +168,7 @@ async function sendMsg() {
 }
 
 async function pollReply(requestId, thinkingEl) {
-  const maxPolls = 20; // 최대 20회 × 10초 = 200초
+  const maxPolls = 20;
   for (let i = 0; i < maxPolls; i++) {
     try {
       const res = await fetch('/channel-chat/poll', {
@@ -142,7 +187,6 @@ async function pollReply(requestId, thinkingEl) {
       if (data.status === 'timeout') return data.reply;
       if (data.status === 'not_found') return '요청을 찾을 수 없습니다.';
 
-      // waiting — 경과 시간 표시
       if (data.elapsed != null) {
         thinkingEl.textContent = `Claude가 처리 중... (${data.elapsed}초)`;
       }
@@ -157,10 +201,11 @@ async function pollReply(requestId, thinkingEl) {
 // 시작: 히스토리 로드 + 상태확인
 (async () => {
   try {
+    _lastDateLabel = '';
     const res = await fetch('/channel-chat/history');
     const history = await res.json();
     if (history.length) {
-      history.forEach(m => appendMsg(m.content, m.role === 'user' ? 'user' : 'bot'));
+      history.forEach(m => appendMsg(m.content, m.role === 'user' ? 'user' : 'bot', m.ts || null));
     } else {
       appendMsg('Claude Channel 채팅입니다.\nClaude Code CLI + MCP 도구를 통해 ERP 데이터를 조회합니다.', 'bot');
     }

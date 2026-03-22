@@ -58,6 +58,20 @@
           <span id="gmUserSub" class="text-muted ms-2" style="font-size:.8rem"></span>
         </div>
       </div>
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <label class="small fw-bold text-muted">이름</label>
+          <input type="text" class="form-control form-control-sm" id="gmUserFullName" style="width:100px;font-size:.78rem" onchange="gmUpdateUserInfo()">
+        </div>
+        <div class="col-auto">
+          <label class="small fw-bold text-muted">연락처</label>
+          <input type="text" class="form-control form-control-sm" id="gmUserPhone" style="width:120px;font-size:.78rem" placeholder="010-0000-0000" onchange="gmUpdateUserInfo()">
+        </div>
+        <div class="col-auto">
+          <label class="small fw-bold text-muted">이메일</label>
+          <input type="email" class="form-control form-control-sm" id="gmUserEmail" style="width:160px;font-size:.78rem" placeholder="example@mgnt.kr" onchange="gmUpdateUserInfo()">
+        </div>
+      </div>
       <div class="row g-2 mb-3">
         <div class="col-auto">
           <label class="small fw-bold text-muted">직급</label>
@@ -128,7 +142,8 @@
         <button class="btn btn-sm btn-primary px-3" id="gmSaveBtn" onclick="gmSave()">저장</button>
       </div>
       <div class="row g-2">
-        {% for section_name in ['영업부','관리부','공유','생산부'] %}
+        {% set _perm_groups = menu_order_data.get('groups', ['영업부','관리부','공통메뉴','생산부','워크보드']) if menu_order_data is defined and menu_order_data else ['영업부','관리부','공통메뉴','생산부','워크보드'] %}
+        {% for section_name in _perm_groups %}
         {% set sec_menus = configurable_menus | selectattr('group','equalto',section_name) | list %}
         {% if sec_menus %}
         <div class="col-md-6 col-lg-4">
@@ -180,6 +195,7 @@ const GM_USERS = { {% for u in users %}{% if u.is_approved %}{{ u.id }}: {
   id: {{ u.id }}, username: "{{ u.username }}", fullname: "{{ u.full_name | e }}",
   group: "{{ u.user_group | e }}",
   position: "{{ u.position or '' }}",
+  phone: "{{ u.phone_number or '' }}", email: "{{ u.email or '' }}",
   role: "{{ u.role }}",
   is_active: {{ 'true' if u.is_active else 'false' }},
   can_manage_priority: {{ 'true' if u.can_manage_priority else 'false' }},
@@ -307,6 +323,9 @@ function gmSelectUser(userId) {
 
   document.getElementById('gmUserName').textContent = u.fullname;
   document.getElementById('gmUserSub').textContent = u.group + ' · ' + u.username;
+  document.getElementById('gmUserFullName').value = u.fullname;
+  document.getElementById('gmUserPhone').value = u.phone || '';
+  document.getElementById('gmUserEmail').value = u.email || '';
   document.getElementById('gmUserPosition').value = u.position;
 
   const roleBtn = document.getElementById('gmUserRoleBtn');
@@ -382,6 +401,24 @@ async function gmPostAction(url, body) {
     body: JSON.stringify(body)
   });
   return res;
+}
+
+async function gmUpdateUserInfo() {
+  const fn = document.getElementById('gmUserFullName').value.trim();
+  const ph = document.getElementById('gmUserPhone').value.trim();
+  const em = document.getElementById('gmUserEmail').value.trim();
+  if (!fn) return;
+  const res = await fetch(`/admin/update_user_info/${gmTarget}`, {
+    method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded','X-CSRFToken':GM_CSRF},
+    body: 'full_name=' + encodeURIComponent(fn) + '&phone_number=' + encodeURIComponent(ph) + '&email=' + encodeURIComponent(em)
+  });
+  if (res.ok) {
+    const u = GM_USERS[gmTarget];
+    u.fullname = fn; u.phone = ph; u.email = em;
+    document.getElementById('gmUserName').textContent = fn;
+    const row = document.querySelector(`.gm-user-item[data-uid="${gmTarget}"] div:first-child div:first-child`);
+    if (row) row.childNodes[0].textContent = fn + ' ';
+  }
 }
 
 async function gmUpdatePosition() {

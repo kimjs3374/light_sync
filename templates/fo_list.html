@@ -24,6 +24,9 @@
         #groupToggle { width:100%; }
         #groupToggle .btn { flex:1; }
     }
+    @media (max-width: 1199.98px) {
+        .main-content .table { min-width: 0 !important; table-layout: auto !important; }
+    }
 </style>
 
 <div class="page-hero mg-fade">
@@ -75,11 +78,13 @@
 
 {# ─── 검색/필터 ─── #}
 <div class="filter-bar mb-3">
+    <button class="btn btn-outline-secondary btn-sm w-100 mb-2 filter-collapse-toggle d-xl-none" type="button" data-bs-toggle="collapse" data-bs-target="#filterBody">검색 필터 펼치기/접기</button>
+    <div class="collapse show filter-collapse-body" id="filterBody">
     <form method="GET" class="row g-2 align-items-end">
         <div class="col-md-3 col-6">
             <input type="text" name="q" class="form-control form-control-sm" placeholder="발주번호, 업체명, 품목명 검색" value="{{ filters.q }}">
         </div>
-        <div class="col-md-2 col-3">
+        <div class="col-md-2 col-6">
             <select name="status" class="form-select form-select-sm">
                 <option value="">전체 상태</option>
                 {% for s in status_choices %}
@@ -87,7 +92,7 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-2 col-3">
+        <div class="col-md-2 col-6">
             <select name="type" class="form-select form-select-sm">
                 <option value="">전체 유형</option>
                 {% for t in type_choices %}
@@ -107,6 +112,7 @@
             </div>
         </div>
     </form>
+    </div>
 </div>
 
 {# ─── 목록 테이블 ─── #}

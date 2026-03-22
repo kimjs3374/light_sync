@@ -6,33 +6,32 @@
 
 {% block content %}
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
-    <h3 class="m-0 text-primary contract-detail-title">📋 [계약현장] {{ project.temp_name }} 
-        <span class="fs-5 text-muted">({{ project.project_no }})</span>
-        {% if project.is_urgent %}<span class="badge bg-danger ms-2" style="font-size: 0.5em; vertical-align: middle;">🚨 긴급</span>{% endif %}
-    </h3>
-    <div class="d-flex flex-wrap gap-2 contract-detail-header-actions">
-        {% if session.user_group != '생산부' %}
-        <form method="POST" action="{{ url_for('project.project_delete_request', project_id=project.id) }}" class="d-inline" data-project-name="{{ project.temp_name }}" onsubmit="return submitDeleteRequest(this);">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <input type="hidden" name="next" value="{{ url_for('project.contract_list') }}">
-            <input type="hidden" name="delete_reason" value="">
-            <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">🗑 현장 삭제요청</button>
-        </form>
-        {% endif %}
-        {% if session.user_group != '생산부' %}
-        <button class="btn btn-sm btn-outline-success fw-bold" data-bs-toggle="modal" data-bs-target="#mergeDesignModal">🔗 설계현장 연결</button>
-        {% endif %}
-        <button class="btn btn-sm btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#editProjectModal">⚙️ 전체 정보 수정</button>
-        <a href="{{ url_for('project.contract_list') }}" class="btn btn-sm btn-secondary">목록으로</a>
+<div class="page-hero mg-fade mb-3">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Contract Detail</div>
+            <h2>{{ project.temp_name }}
+                {% if project.is_urgent %}<span class="badge bg-danger ms-2" style="font-size: 0.5em; vertical-align: middle;">긴급</span>{% endif %}
+            </h2>
+            <div class="hero-sub">{{ project.project_no }} · {{ project.site_address or '주소 미입력' }} · 약칭 {{ project.short_name or '없음' }}</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 contract-detail-header-actions" style="white-space:nowrap;">
+            {% if session.user_group != '생산부' %}
+            <form method="POST" action="{{ url_for('project.project_delete_request', project_id=project.id) }}" class="d-inline" data-project-name="{{ project.temp_name }}" onsubmit="return submitDeleteRequest(this);">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="next" value="{{ url_for('project.contract_list') }}">
+                <input type="hidden" name="delete_reason" value="">
+                <button type="submit" class="btn btn-sm btn-outline-light">삭제요청</button>
+            </form>
+            {% endif %}
+            {% if session.user_group != '생산부' %}
+            <button type="button" class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#mergeDesignModal">설계현장 연결</button>
+            {% endif %}
+            <button type="button" class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#editProjectModal">전체 정보 수정</button>
+            <a href="{{ url_for('project.contract_list') }}" class="btn btn-outline-light btn-sm">목록으로</a>
+        </div>
     </div>
 </div>
-
-<p class="text-muted mb-3 contract-detail-meta">
-    <strong>현장주소:</strong> {{ project.site_address or '미입력' }} |
-    <strong>납품주소:</strong> {{ project.shipping_address or '미입력' }} |
-    <strong>약칭:</strong> {{ project.short_name or '없음' }}
-</p>
 
 {# 히스토리 한줄 바 #}
 {% set history_panel_target = '#contractHistoryOffcanvas' %}
@@ -259,7 +258,7 @@
 
             <div class="card-body bg-light p-2">
                 <div class="table-responsive">
-                <table class="table table-sm table-bordered align-middle mb-2 bg-white contract-item-table mobile-stack-table">
+                <table class="table table-sm table-bordered align-middle mb-2 bg-white contract-item-table no-stack-table">
                     <thead class="table-light text-center">
                         <tr>
                             <th>상세품목</th><th>모델명</th><th>수량</th><th>바코드</th><th style="white-space:nowrap;">현황</th><th style="white-space:nowrap;"></th>

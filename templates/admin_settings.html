@@ -44,6 +44,9 @@
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="ops-tab" data-bs-toggle="tab" data-bs-target="#opsPane" type="button" role="tab">운영설정</button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="menuorder-tab" data-bs-toggle="tab" data-bs-target="#menuOrderPane" type="button" role="tab">메뉴관리</button>
+    </li>
     {% if is_superadmin %}
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="g2bsync-tab" data-bs-toggle="tab" data-bs-target="#g2bSyncPane" type="button" role="tab">G2B 계약동기화</button>
@@ -315,6 +318,56 @@
         </div>
     </div>
     {% endif %}{# admin only reset pane #}
+    <!-- 메뉴관리 탭 -->
+    <div class="tab-pane fade p-3" id="menuOrderPane" role="tabpanel">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+                <h5 class="mb-1" style="font-size:1rem;font-weight:700">메뉴 순서 관리</h5>
+                <small class="text-muted">그룹과 메뉴를 드래그하여 순서를 변경합니다</small>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-secondary btn-sm" onclick="moReset()">초기화</button>
+                <button class="btn btn-primary btn-sm px-3" onclick="moSave()">순서 저장</button>
+            </div>
+        </div>
+        <div id="moGroupList" class="d-flex flex-column gap-2">
+        {% set menu_order = menu_order_data or {} %}
+        {% set group_order = menu_order.get('groups', ['영업부','관리부','공통메뉴','생산부','워크보드']) if menu_order else ['영업부','관리부','공통메뉴','생산부','워크보드'] %}
+        {% for gname in group_order %}
+            {% set gicon = (sidebar_group_icons or {}).get(gname, '📁') %}
+            {% set g_menus = configurable_menus | selectattr('group','equalto',gname) | list %}
+            {% if g_menus %}
+            <div class="mo-group card border shadow-sm" data-group="{{ gname }}" draggable="true">
+                <div class="card-header py-2 bg-light d-flex align-items-center gap-2" style="cursor:grab">
+                    <span class="mo-drag-handle" style="color:#94a3b8;font-size:.9rem">⠿</span>
+                    <span>{{ gicon }}</span>
+                    <span class="fw-semibold" style="font-size:.85rem">{{ gname }}</span>
+                    <span class="badge bg-secondary ms-auto" style="font-size:.65rem">{{ g_menus|length }}개</span>
+                </div>
+                <div class="card-body py-2 px-3 mo-menu-list">
+                    {% set ordered_keys = menu_order.get(gname, []) if menu_order else [] %}
+                    {% set ordered_menus = [] %}
+                    {% for k in ordered_keys %}
+                        {% for m in g_menus if m.key == k %}
+                            {% if ordered_menus.append(m) %}{% endif %}
+                        {% endfor %}
+                    {% endfor %}
+                    {% for m in g_menus if m not in ordered_menus %}
+                        {% if ordered_menus.append(m) %}{% endif %}
+                    {% endfor %}
+                    {% for m in ordered_menus %}
+                    <div class="mo-menu-item d-flex align-items-center gap-2 py-1 px-2 rounded" data-key="{{ m.key }}" draggable="true" style="cursor:grab;font-size:.82rem">
+                        <span class="mo-drag-handle" style="color:#cbd5e1;font-size:.75rem">⠿</span>
+                        <span>{{ m.label }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        {% endfor %}
+        </div>
+    </div>
+
 </div>{# /tab-content #}
 
 <!-- 비밀번호 초기화용 hidden form -->
@@ -416,4 +469,120 @@ function runG2bSync() {
 }
 </script>
 <script src="{{ url_for('static', filename='js/admin_settings.js') }}"></script>
+<script>
+/* ═══ 메뉴 순서 관리 (드래그앤드롭 — 그룹 간 이동 지원) ═══ */
+(function(){
+    var groupList = document.getElementById('moGroupList');
+    if (!groupList) return;
+
+    var dragEl = null;
+    var dragType = null;
+
+    groupList.addEventListener('dragstart', function(e) {
+        var menu = e.target.closest('.mo-menu-item');
+        var group = e.target.closest('.mo-group');
+        if (menu) {
+            dragEl = menu; dragType = 'menu';
+            menu.style.opacity = '.4';
+            e.dataTransfer.effectAllowed = 'move';
+            e.stopPropagation();
+        } else if (group) {
+            dragEl = group; dragType = 'group';
+            group.style.opacity = '.4';
+            e.dataTransfer.effectAllowed = 'move';
+        }
+    });
+
+    groupList.addEventListener('dragend', function() {
+        if (dragEl) dragEl.style.opacity = '1';
+        document.querySelectorAll('.mo-drag-over').forEach(function(el) { el.classList.remove('mo-drag-over'); });
+        dragEl = null; dragType = null;
+        moUpdateCounts();
+    });
+
+    groupList.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        document.querySelectorAll('.mo-drag-over').forEach(function(el) { el.classList.remove('mo-drag-over'); });
+        if (dragType === 'group') {
+            var t = e.target.closest('.mo-group');
+            if (t && t !== dragEl) t.classList.add('mo-drag-over');
+        } else if (dragType === 'menu') {
+            var t = e.target.closest('.mo-menu-item');
+            if (t && t !== dragEl) { t.classList.add('mo-drag-over'); return; }
+            // 빈 그룹 영역에 드롭 허용
+            var ml = e.target.closest('.mo-menu-list');
+            if (ml) ml.classList.add('mo-drag-over');
+        }
+    });
+
+    groupList.addEventListener('drop', function(e) {
+        e.preventDefault();
+        if (!dragEl) return;
+        if (dragType === 'group') {
+            var t = e.target.closest('.mo-group');
+            if (t && t !== dragEl) {
+                var r = t.getBoundingClientRect();
+                if ((e.clientY - r.top) > r.height / 2) t.parentNode.insertBefore(dragEl, t.nextSibling);
+                else t.parentNode.insertBefore(dragEl, t);
+            }
+        } else if (dragType === 'menu') {
+            var t = e.target.closest('.mo-menu-item');
+            if (t && t !== dragEl) {
+                var list = t.closest('.mo-menu-list');
+                var r = t.getBoundingClientRect();
+                if ((e.clientY - r.top) > r.height / 2) list.insertBefore(dragEl, t.nextSibling);
+                else list.insertBefore(dragEl, t);
+            } else {
+                // 그룹 영역에 직접 드롭 (빈 곳 또는 그룹 헤더)
+                var ml = e.target.closest('.mo-menu-list');
+                if (ml && ml !== dragEl.parentNode) {
+                    ml.appendChild(dragEl);
+                }
+            }
+        }
+    });
+
+    function moUpdateCounts() {
+        document.querySelectorAll('.mo-group').forEach(function(g) {
+            var cnt = g.querySelectorAll('.mo-menu-item').length;
+            var badge = g.querySelector('.badge');
+            if (badge) badge.textContent = cnt + '개';
+        });
+    }
+})();
+
+function moSave() {
+    var groups = document.querySelectorAll('.mo-group');
+    var data = { groups: [] };
+    groups.forEach(function(g) {
+        var gname = g.getAttribute('data-group');
+        data.groups.push(gname);
+        var keys = [];
+        g.querySelectorAll('.mo-menu-item').forEach(function(m) {
+            keys.push(m.getAttribute('data-key'));
+        });
+        data[gname] = keys;
+    });
+    fetch('/admin/api/menu_order', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.ok) { location.reload(); }
+        else { alert('저장 실패: ' + (d.error || '')); }
+    }).catch(function() { alert('저장 중 오류 발생'); });
+}
+
+function moReset() {
+    if (!confirm('메뉴 순서를 기본값으로 초기화하시겠습니까?')) return;
+    fetch('/admin/api/menu_order', {
+        method: 'DELETE'
+    }).then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.ok) { location.reload(); }
+    }).catch(function() { alert('초기화 오류'); });
+}
+</script>
 {% endblock %}

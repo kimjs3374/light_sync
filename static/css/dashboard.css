@@ -521,6 +521,24 @@
     .cmd-hero { padding: 1rem; border-radius: .75rem; }
     .cmd-hero h1 { font-size: 1.15rem; }
     .wf-board { grid-template-columns: 1fr; }
-    .cal-weekday { display: none; }
+    .cal-weekday { font-size: .55rem; }
+    .cal-cell { min-height: 36px; }
+    .cal-day { font-size: .65rem; }
     .tl-feed { max-height: none; }
+    /* 티커 버튼 wrap */
+    .ticker-actions { flex-wrap: wrap; gap: .3rem; }
+    .ticker-actions .btn { flex: 1 1 auto; font-size: .72rem; padding: .25rem .4rem; }
+    /* KPI 칩 */
+    .kpi-chip { font-size: .65rem; padding: .15rem .4rem; }
+    /* 탭 수평 스크롤 */
+    .act-tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+    .act-tabs::-webkit-scrollbar { display: none; }
+    .act-tabs .nav-link { flex-shrink: 0; font-size: .78rem; }
+}
+@media (max-width: 575.98px) {
+    .cmd-hero h1 { font-size: 1rem; }
+    .cmd-hero .hero-sub { font-size: .7rem; }
+    .wf-node { padding: .5rem .65rem; }
+    .wf-count { font-size: 1rem; }
+    .wf-label { font-size: .6rem; }
 }

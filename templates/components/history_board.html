@@ -40,6 +40,7 @@
 
 <form class="mb-2 history-ajax-form" data-project-id="{{ project.id if project else '' }}"
       data-default-scope="{{ history_default_filter or 'common' }}"
+      data-board-id="{{ hb_id }}"
       data-fallback-url="{% if history_post_url %}{{ history_post_url }}{% endif %}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="action" value="{{ history_post_action or 'add_chat' }}">
@@ -95,6 +96,9 @@
                     {% endif %}
                     <div class="text-end mt-1">
                         <button type="button" class="btn btn-xs btn-outline-secondary" onclick="toggleReplyForm('reply_form_{{ log.id }}')">답글</button>
+                        {% if kind == 'comment' or kind == 'reply' %}
+                        <button type="button" class="btn btn-xs btn-outline-danger history-delete-btn" data-log-id="{{ log.id }}">삭제</button>
+                        {% endif %}
                     </div>
                     <form id="reply_form_{{ log.id }}" class="mt-1 d-none history-ajax-form"
                           data-project-id="{{ project.id if project else '' }}"
@@ -193,6 +197,47 @@
 
     applyHistoryFilter(defaultFilter);
 
+    // ─── 공용: AJAX 후 보드 교체 ───
+    const _boardId = root.id;
+    function _replaceBoard(data) {
+        if (!data.ok || !data.html) { alert(data.error || '처리 실패'); return; }
+        const tmp = document.createElement('div');
+        tmp.innerHTML = data.html;
+        const newBoard = tmp.querySelector('.history-board-component');
+        if (newBoard) {
+            root.dataset.initialized = '0';
+            root.innerHTML = newBoard.innerHTML;
+            const script = tmp.querySelector('script');
+            if (script) { eval(script.textContent); }
+        }
+        const barBadge = document.querySelector('#historySummaryBar .badge.bg-secondary');
+        if (barBadge && data.total != null) barBadge.textContent = data.total + '건';
+    }
+
+    // AJAX 코멘트 삭제
+    root.querySelectorAll('.history-delete-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('이 코멘트를 삭제할까요?')) return;
+            const logId = btn.dataset.logId;
+            const projectId = root.querySelector('.history-ajax-form')?.dataset?.projectId;
+            if (!projectId) return;
+            btn.disabled = true;
+            try {
+                const fd = new FormData();
+                fd.append('log_id', logId);
+                fd.append('default_scope', '{{ history_default_filter or "common" }}');
+                fd.append('board_id', _boardId);
+                const resp = await fetch(`/api/history/${projectId}/delete`, { method: 'POST', body: fd });
+                _replaceBoard(await resp.json());
+            } catch (err) {
+                console.error('history delete error', err);
+                alert('삭제 중 오류가 발생했습니다.');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    });
+
     // AJAX 코멘트/답글 제출 — 페이지 새로고침 없이 보드만 갱신
     root.querySelectorAll('.history-ajax-form').forEach(form => {
         form.addEventListener('submit', async (e) => {
@@ -208,30 +253,11 @@
             try {
                 const fd = new FormData(form);
                 fd.set('default_scope', form.dataset.defaultScope || 'common');
+                fd.set('board_id', _boardId);
                 const resp = await fetch(`/api/history/${projectId}/add`, {
                     method: 'POST', body: fd
                 });
-                const data = await resp.json();
-                if (data.ok && data.html) {
-                    // 보드 컨텐츠 교체
-                    const tmp = document.createElement('div');
-                    tmp.innerHTML = data.html;
-                    const newBoard = tmp.querySelector('.history-board-component');
-                    if (newBoard) {
-                        root.dataset.initialized = '0';
-                        root.innerHTML = newBoard.innerHTML;
-                        // 스크립트 재실행을 위해 이벤트 재바인딩
-                        const script = tmp.querySelector('script');
-                        if (script) { eval(script.textContent); }
-                    }
-                    // 한줄 바 건수 업데이트
-                    const barBadge = document.querySelector('#historySummaryBar .badge.bg-secondary');
-                    if (barBadge && data.total != null) {
-                        barBadge.textContent = data.total + '건';
-                    }
-                } else {
-                    alert(data.error || '등록 실패');
-                }
+                _replaceBoard(await resp.json());
             } catch (err) {
                 console.error('history ajax error', err);
                 form.submit(); // AJAX 실패 시 일반 제출 fallback

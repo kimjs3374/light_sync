@@ -126,12 +126,28 @@
             <small id="erpFixtureInfo" class="text-muted"></small>
           </div>
 
-          <!-- KS 기준 -->
+          <!-- 설계기준 Eav -->
           <div class="col-md-4">
-            <label class="form-label fw-semibold" for="fieldKsStandard">KS 기준 (lx)</label>
-            <input type="number" class="form-control" id="fieldKsStandard" name="ks_standard"
+            <label class="form-label fw-semibold" for="fieldKsEav">설계기준 Eav (lx)</label>
+            <input type="number" class="form-control" id="fieldKsEav" name="ks_eav_min"
                    placeholder="예) 300" min="0"
-                   value="{{ form_data.ks_standard if form_data else '' }}">
+                   value="{{ form_data.ks_eav_min if form_data else '' }}">
+          </div>
+
+          <!-- 설계기준 Uo -->
+          <div class="col-md-4">
+            <label class="form-label fw-semibold" for="fieldKsUo">설계기준 Uo</label>
+            <input type="number" class="form-control" id="fieldKsUo" name="ks_uo_min"
+                   placeholder="예) 0.5" min="0" max="1" step="0.01"
+                   value="{{ form_data.ks_uo_min if form_data else '' }}">
+          </div>
+
+          <!-- 설계기준 Ud -->
+          <div class="col-md-4">
+            <label class="form-label fw-semibold" for="fieldKsUd">설계기준 Ud</label>
+            <input type="number" class="form-control" id="fieldKsUd" name="ks_ud_min"
+                   placeholder="예) 0.4" min="0" max="1" step="0.01"
+                   value="{{ form_data.ks_ud_min if form_data else '' }}">
           </div>
 
           <!-- 설치높이 -->
