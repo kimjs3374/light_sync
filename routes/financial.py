@@ -310,14 +310,19 @@ def tax_invoice_list():
         partial_contract_count = db.query(func.count(Contract.id)).filter(
             Contract.payment_status == '부분입금'
         ).scalar() or 0
+        exception_contract_count = db.query(func.count(Contract.id)).filter(
+            Contract.payment_status == '예외'
+        ).scalar() or 0
 
-        # 미청구/부분입금 계약 목록
+        # 미청구/부분입금/예외 계약 목록
         unpaid_contracts = []
         unpaid_sort = request.args.get('sort', 'due_asc')
         unpaid_due = request.args.get('due', 'all')
-        if match_filter in ('unmatched', 'partial'):
+        if match_filter in ('unmatched', 'partial', 'exception'):
             if match_filter == 'partial':
                 target_statuses = ['부분입금']
+            elif match_filter == 'exception':
+                target_statuses = ['예외']
             else:
                 target_statuses = ['미청구']
             unpaid_q = db.query(Contract).options(
@@ -363,6 +368,7 @@ def tax_invoice_list():
             match_filter=match_filter,
             unpaid_contract_count=unpaid_contract_count,
             partial_contract_count=partial_contract_count,
+            exception_contract_count=exception_contract_count,
             unpaid_contracts=unpaid_contracts,
             unpaid_sort=unpaid_sort,
             unpaid_due=unpaid_due,
@@ -758,6 +764,42 @@ def exclude_contract():
         db.commit()
 
     return jsonify({'ok': True, 'message': f'{msg_name} → {reason} 예외처리 완료'})
+
+
+@financial_bp.route('/financial/api/restore-exception', methods=['POST'])
+@login_required
+@menu_required('financial')
+def restore_exception():
+    """예외 계약을 해제하고 수금상태를 재계산"""
+    from modules.services.warranty_auto import recalc_contract_payment_status
+
+    data = request.get_json() or {}
+    contract_id = safe_int(data.get('contract_id'))
+    if not contract_id:
+        return jsonify({'ok': False, 'error': '계약 ID 없음'}), 400
+
+    with get_db() as db:
+        contract = db.query(Contract).get(contract_id)
+        if not contract:
+            return jsonify({'ok': False, 'error': '계약 없음'}), 404
+
+        if contract.payment_status != '예외':
+            return jsonify({'ok': False, 'error': '예외 상태가 아닙니다'}), 400
+
+        # 임시로 미청구로 변경 후 재계산 (recalc가 예외 상태는 건드리지 않으므로)
+        contract.payment_status = '미청구'
+        new_status = recalc_contract_payment_status(db, contract)
+
+        msg_name = (contract.contract_name or '')[:40]
+
+        if contract.project_id:
+            proj = db.query(Project).get(contract.project_id)
+            if proj:
+                proj.site_memo = (proj.site_memo or '') + f'\n[예외해제] 예외→{new_status}'
+
+        db.commit()
+
+    return jsonify({'ok': True, 'message': f'{msg_name} → 예외 해제 ({new_status})'})
 
 
 # ===================================================================

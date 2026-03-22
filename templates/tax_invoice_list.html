@@ -42,21 +42,28 @@
         </a>
     </li>
     <li class="nav-item">
+        <a class="nav-link {{ 'active' if match_filter == 'exception' }}" href="?match=exception">
+            예외 {% if exception_contract_count %}<span class="badge bg-dark badge-sm">{{ exception_contract_count }}</span>{% endif %}
+        </a>
+    </li>
+    <li class="nav-item">
         <a class="nav-link {{ 'active' if match_filter == 'all' }}" href="?match=all">전체</a>
     </li>
 </ul>
 
-{% if match_filter in ('unmatched', 'partial') %}
-{# ====== 미청구 계약 정렬 ====== #}
+{% if match_filter in ('unmatched', 'partial', 'exception') %}
+{# ====== 계약 목록 정렬/필터 ====== #}
 <form class="d-flex align-items-center gap-2 mb-3 flex-wrap" method="GET">
     <input type="hidden" name="match" value="{{ match_filter }}">
     <small class="text-muted fw-bold" style="white-space:nowrap">{{ unpaid_contracts|length }}건</small>
+    {% if match_filter != 'exception' %}
     <select name="due" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
         <option value="all" {{ 'selected' if unpaid_due == 'all' }}>전체</option>
         <option value="overdue" {{ 'selected' if unpaid_due == 'overdue' }}>납기경과</option>
         <option value="month" {{ 'selected' if unpaid_due == 'month' }}>30일 이내</option>
         <option value="future" {{ 'selected' if unpaid_due == 'future' }}>납기 미도래</option>
     </select>
+    {% endif %}
     <select name="sort" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
         <option value="due_asc" {{ 'selected' if unpaid_sort == 'due_asc' }}>납기 오래된순</option>
         <option value="due_desc" {{ 'selected' if unpaid_sort == 'due_desc' }}>납기 최신순</option>
@@ -111,16 +118,26 @@
                             {% endif %}
                         </td>
                         <td style="white-space:nowrap">
-                            <span class="badge {{ 'bg-warning text-dark' if c.payment_status == '부분입금' else 'bg-secondary' }} badge-sm">{{ c.payment_status }}</span>
-                            {% if c.is_excluded %}
+                            {% if c.payment_status == '예외' %}
                                 <span class="badge bg-dark badge-sm">예외</span>
+                            {% elif c.payment_status == '부분입금' %}
+                                <span class="badge bg-warning text-dark badge-sm">부분입금</span>
+                            {% else %}
+                                <span class="badge bg-secondary badge-sm">{{ c.payment_status }}</span>
                             {% endif %}
                         </td>
                         <td style="white-space:nowrap">
-                            <button type="button" class="btn btn-xs btn-outline-primary" style="white-space:nowrap"
-                                onclick="openMatchModal({{ c.id }})">
-                                세금계산서 찾기
-                            </button>
+                            {% if match_filter == 'exception' %}
+                                <button type="button" class="btn btn-xs btn-outline-danger" style="white-space:nowrap"
+                                    onclick="restoreException({{ c.id }}, '{{ (c.contract_name or '')[:30]|e }}')">
+                                    예외 해제
+                                </button>
+                            {% else %}
+                                <button type="button" class="btn btn-xs btn-outline-primary" style="white-space:nowrap"
+                                    onclick="openMatchModal({{ c.id }})">
+                                    세금계산서 찾기
+                                </button>
+                            {% endif %}
                         </td>
                     </tr>
                 {% else %}
@@ -481,6 +498,24 @@ function refreshModal() {
     document.getElementById('matchRecommend').innerHTML = '<div class="text-center text-muted py-2">갱신 중...</div>';
     document.getElementById('matchSearchResults').innerHTML = '';
     loadModalData();
+}
+
+function restoreException(contractId, name) {
+    if (!confirm(`"${name}" 예외를 해제하시겠습니까?\n수금상태가 재계산됩니다.`)) return;
+    fetch('/financial/api/restore-exception', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: JSON.stringify({contract_id: contractId})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            location.reload();
+        } else {
+            alert('실패: ' + (data.error || ''));
+        }
+    })
+    .catch(e => alert('오류: ' + e.message));
 }
 </script>
 

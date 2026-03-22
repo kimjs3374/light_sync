@@ -152,7 +152,10 @@ def recalc_contract_payment_status(db, contract, latest_issue_date=None):
         TaxInvoice.contract_id == contract.id,
     ).scalar() or 0
 
-    if g2b_amt > 0 and invoiced_total >= g2b_amt:
+    # 다량구매할인율 허용 (나라장터 0.5%~2% 할인 적용 시 세금계산서 < G2B)
+    discount_threshold = g2b_amt * 0.97  # 최대 3% 할인까지 허용
+
+    if g2b_amt > 0 and invoiced_total >= discount_threshold:
         contract.payment_status = '입금완료'
         if latest_issue_date:
             contract.payment_date = latest_issue_date
