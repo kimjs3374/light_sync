@@ -51,6 +51,11 @@ def fmt_dt(iso_str):
 
 def load_post(db_path, post_id):
     with get_conn(db_path) as conn:
+        table_exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='posts'"
+        ).fetchone()
+        if not table_exists:
+            return None
         cur = conn.execute('SELECT * FROM posts WHERE id=?', (post_id,))
         row = cur.fetchone()
     if not row:
@@ -87,6 +92,13 @@ def list_posts(db_path, page, q, author):
     where_sql = ('WHERE ' + ' AND '.join(wheres)) if wheres else ''
 
     with get_conn(db_path) as conn:
+        # 테이블 존재 여부 확인
+        table_exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='posts'"
+        ).fetchone()
+        if not table_exists:
+            return [], 0, []
+
         authors_raw = [
             r[0].decode('utf-8') if isinstance(r[0], bytes) else r[0]
             for r in conn.execute('SELECT DISTINCT author FROM posts ORDER BY author').fetchall()
