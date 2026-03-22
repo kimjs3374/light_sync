@@ -112,7 +112,6 @@
     ({{ tower.project.project_no }})
     · <span class="mono">{{ tower.rows }}×{{ tower.cols }}={{ tower.rows * tower.cols }}등</span>
     {% if tower.model_name %}· {{ tower.model_name }}{% endif %}
-    {% if tower.watt %} {{ tower.watt }}W{% endif %}
   </div>
   {% if siblings %}
   <div class="sibling-tabs">
@@ -194,15 +193,9 @@
         <input type="text" name="model_name" class="form-control form-control-sm" value="{{ tower.model_name or '' }}">
       </div>
     </div>
-    <div class="row mb-2">
-      <div class="col-3">
-        <label class="form-label">와트(W)</label>
-        <input type="number" name="watt" class="form-control form-control-sm" value="{{ tower.watt or '' }}">
-      </div>
-      <div class="col-9">
-        <label class="form-label">비고</label>
-        <input type="text" name="note" class="form-control form-control-sm" value="{{ tower.note or '' }}">
-      </div>
+    <div class="mb-2">
+      <label class="form-label">비고</label>
+      <input type="text" name="note" class="form-control form-control-sm" value="{{ tower.note or '' }}">
     </div>
     <div class="d-flex gap-2 mt-2">
       <button type="submit" class="btn btn-xs btn-primary"><i class="bi bi-pencil"></i> 수정</button>

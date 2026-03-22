@@ -63,18 +63,32 @@
 </style>
 
 <!-- 히어로 -->
-<div class="page-hero mg-fade">
-  <span class="hero-eyebrow is-amber"><i class="bi bi-lightbulb-fill"></i> LIGHTING LAYOUT</span>
-  <h2>조명배치도</h2>
-  <p class="hero-sub">현장별 타워 투광등 넘버링 + 렌즈각도 관리</p>
-  <div class="hero-actions">
+<div class="page-hero mg-fade" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
+  <div>
+    <span class="hero-eyebrow is-amber"><i class="bi bi-lightbulb-fill"></i> LIGHTING LAYOUT</span>
+    <h2>조명배치도</h2>
+    <p class="hero-sub">현장별 타워 투광등 넘버링 + 렌즈각도 관리</p>
+  </div>
+  <div style="display:flex;gap:.35rem;flex-wrap:wrap;align-items:center;">
     <a href="{{ url_for('lighting_layout.add_tower') }}" class="btn btn-hi btn-sm">
       <i class="bi bi-plus-lg"></i> 타워 추가
     </a>
     <a href="{{ url_for('lighting_layout.lens_config') }}" class="btn btn-sm">
       <i class="bi bi-sliders"></i> 렌즈관리
     </a>
+    <a href="{{ url_for('lighting_layout.excel_template') }}" class="btn btn-sm">
+      <i class="bi bi-download"></i> 템플릿
+    </a>
+    <button type="button" class="btn btn-sm" onclick="document.getElementById('import-file').click()">
+      <i class="bi bi-upload"></i> 임포트
+    </button>
   </div>
+  <form id="import-form" method="POST" action="{{ url_for('lighting_layout.import_excel') }}"
+        enctype="multipart/form-data" style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" id="import-file" name="file" accept=".xlsx,.xls"
+           onchange="if(this.files.length) this.closest('form').submit();">
+  </form>
 </div>
 
 <!-- KPI -->
@@ -99,10 +113,19 @@
         {{ info.project.name or info.project.temp_name or '(미정)' }}
         <span class="site-no">{{ info.project.project_no }}</span>
       </h3>
-      <a href="{{ url_for('lighting_layout.add_tower', project_id=pid) }}"
-         class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;">
-        <i class="bi bi-plus"></i> 타워추가
-      </a>
+      <div class="d-flex gap-1">
+        <a href="{{ url_for('lighting_layout.add_tower', project_id=pid) }}"
+           class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;">
+          <i class="bi bi-plus"></i> 타워추가
+        </a>
+        <form method="POST" action="{{ url_for('lighting_layout.delete_site', project_id=pid) }}" style="margin:0;"
+              onsubmit="return confirm('현장 [{{ (info.project.name or info.project.temp_name or '')|e }}]의 타워 {{ info.towers|length }}개를 모두 삭제하시겠습니까?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-xs btn-outline-danger" style="white-space:nowrap;">
+            <i class="bi bi-trash"></i> 현장삭제
+          </button>
+        </form>
+      </div>
     </div>
     <div class="site-card-body">
       {% for t in info.towers %}

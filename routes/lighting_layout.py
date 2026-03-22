@@ -2,9 +2,12 @@
 routes/lighting_layout.py — 조명배치도 (타워별 투광등 넘버링 + 렌즈각도)
 Blueprint: lighting_layout_bp  prefix: /lighting-layout
 """
+import io
 import json
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, session, flash, jsonify)
+                   url_for, session, flash, jsonify, send_file)
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from modules.models.entities import Project, TowerLayout, TowerLayoutPosition, LensAngleConfig
@@ -285,6 +288,31 @@ def delete_tower(tower_id):
 
 
 # ──────────────────────────────────────────────────────────────
+# 현장 전체 삭제 (해당 프로젝트의 모든 타워 삭제)
+# ──────────────────────────────────────────────────────────────
+@lighting_layout_bp.route('/site/<int:project_id>/delete', methods=['POST'])
+@login_required
+@menu_required('lighting_layout')
+def delete_site(project_id):
+    with get_db() as db:
+        towers = db.query(TowerLayout).filter_by(project_id=project_id).all()
+        if not towers:
+            flash('삭제할 타워가 없습니다.', 'danger')
+            return redirect(url_for('lighting_layout.layout_list'))
+
+        count = len(towers)
+        for t in towers:
+            db.delete(t)
+        append_history_log(db, project_id=project_id,
+                           user_name=session.get('full_name', '사용자'),
+                           content=f"조명배치도 현장 전체 삭제: 타워 {count}개",
+                           scope='design')
+        db.commit()
+        flash(f'타워 {count}개가 삭제되었습니다.', 'success')
+        return redirect(url_for('lighting_layout.layout_list'))
+
+
+# ──────────────────────────────────────────────────────────────
 # 렌즈관리 (모델별 각도 설정)
 # ──────────────────────────────────────────────────────────────
 @lighting_layout_bp.route('/lens-config')
@@ -315,3 +343,183 @@ def lens_config_save():
 
         db.commit()
         return jsonify({'ok': True, 'msg': f'{len(data["items"])}개 모델 저장 완료'})
+
+
+# ──────────────────────────────────────────────────────────────
+# 엑셀 템플릿 다운로드
+# ──────────────────────────────────────────────────────────────
+@lighting_layout_bp.route('/excel-template')
+@login_required
+def excel_template():
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '조명배치도'
+
+    # 스타일
+    header_font = Font(bold=True, size=11, color='FFFFFF')
+    header_fill = PatternFill('solid', fgColor='0F172A')
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+    center = Alignment(horizontal='center', vertical='center')
+
+    # 헤더
+    headers = ['현장번호', '현장명', '타워이름', '모델명', '행', '열', '번호', '렌즈각도']
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center
+        cell.border = thin_border
+
+    # 텍스트 서식 (날짜 자동변환 방지)
+    text_cols = [1, 4, 8]  # 현장번호, 모델명, 렌즈각도
+    for col_idx in text_cols:
+        for row_idx in range(1, 100):
+            ws.cell(row=row_idx, column=col_idx).number_format = '@'
+
+    # 예시 데이터
+    examples = [
+        ['2026-013', '울산공항 계류장', 'T1', 'STA-600', 2, 5, 1, '20'],
+        ['2026-013', '울산공항 계류장', 'T1', 'STA-600', 2, 5, 2, '35'],
+        ['2026-013', '울산공항 계류장', 'T1', 'STA-600', 2, 5, 3, '20'],
+        ['2026-013', '울산공항 계류장', 'T2', 'STA-600', 2, 3, 1, '55'],
+        ['2026-013', '울산공항 계류장', 'T2', 'STA-600', 2, 3, 2, '35'],
+    ]
+    example_font = Font(color='94A3B8', italic=True)
+    for r, row_data in enumerate(examples, 2):
+        for c, val in enumerate(row_data, 1):
+            cell = ws.cell(row=r, column=c, value=val)
+            cell.font = example_font
+            cell.border = thin_border
+            cell.alignment = center
+
+    # 안내 시트
+    ws2 = wb.create_sheet('안내')
+    guide = [
+        ['컬럼', '설명', '필수'],
+        ['현장번호', '설계번호 (예: 2026-013). project_no와 매칭', '필수'],
+        ['현장명', '참고용 (매칭에 사용안함)', ''],
+        ['타워이름', '타워 구분 (예: T1, T2)', '필수'],
+        ['모델명', '투광등 모델명 (렌즈관리 매칭용)', ''],
+        ['행', '타워 행 수', '필수'],
+        ['열', '타워 열 수', '필수'],
+        ['번호', '좌상단→우측 순번 (1~행×열)', '필수'],
+        ['렌즈각도', '렌즈각도 값 (예: 20, 35, 광각)', ''],
+    ]
+    for r, row_data in enumerate(guide, 1):
+        for c, val in enumerate(row_data, 1):
+            cell = ws2.cell(row=r, column=c, value=val)
+            if r == 1:
+                cell.font = Font(bold=True)
+
+    # 컬럼 너비
+    ws.column_dimensions['A'].width = 14
+    ws.column_dimensions['B'].width = 20
+    ws.column_dimensions['C'].width = 10
+    ws.column_dimensions['D'].width = 14
+    ws.column_dimensions['E'].width = 6
+    ws.column_dimensions['F'].width = 6
+    ws.column_dimensions['G'].width = 6
+    ws.column_dimensions['H'].width = 12
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    from urllib.parse import quote
+    response = send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    fname = '조명배치도_템플릿.xlsx'
+    response.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(fname)}"
+    return response
+
+
+# ──────────────────────────────────────────────────────────────
+# 엑셀 임포트
+# ──────────────────────────────────────────────────────────────
+@lighting_layout_bp.route('/import', methods=['POST'])
+@login_required
+@menu_required('lighting_layout')
+def import_excel():
+    file = request.files.get('file')
+    if not file or not file.filename.endswith(('.xlsx', '.xls')):
+        flash('엑셀 파일(.xlsx)을 선택해주세요.', 'danger')
+        return redirect(url_for('lighting_layout.layout_list'))
+
+    try:
+        wb = openpyxl.load_workbook(file, data_only=True)
+        ws = wb.active
+
+        with get_db() as db:
+            # 현장번호 → project_id 매핑 캐시
+            project_cache = {}
+            # 타워 캐시: (project_id, tower_name) → TowerLayout
+            tower_cache = {}
+
+            created_towers = 0
+            updated_positions = 0
+
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if not row or not row[0]:
+                    continue
+                project_no = str(row[0]).strip()
+                tower_name = str(row[2] or '').strip()
+                model_name = str(row[3] or '').strip() or None
+                rows_val = int(row[4] or 2)
+                cols_val = int(row[5] or 3)
+                pos_no = int(row[6] or 0)
+                lens_angle = str(row[7] or '').strip() or None
+
+                if not project_no or not tower_name or pos_no < 1:
+                    continue
+
+                # 현장 찾기
+                if project_no not in project_cache:
+                    proj = db.query(Project).filter(Project.project_no == project_no).first()
+                    project_cache[project_no] = proj.id if proj else None
+                pid = project_cache[project_no]
+                if not pid:
+                    continue
+
+                # 타워 찾거나 생성
+                tkey = (pid, tower_name)
+                if tkey not in tower_cache:
+                    tower = db.query(TowerLayout).filter_by(
+                        project_id=pid, tower_name=tower_name).first()
+                    if not tower:
+                        tower = TowerLayout(
+                            project_id=pid, tower_name=tower_name,
+                            rows=rows_val, cols=cols_val,
+                            model_name=model_name,
+                            created_by=session.get('full_name', '사용자'))
+                        db.add(tower)
+                        db.flush()
+                        # 위치 자동 생성
+                        no = 1
+                        for r in range(rows_val):
+                            for c in range(cols_val):
+                                db.add(TowerLayoutPosition(
+                                    tower_layout_id=tower.id,
+                                    position_no=no, row_idx=r, col_idx=c))
+                                no += 1
+                        db.flush()
+                        created_towers += 1
+                    tower_cache[tkey] = tower
+
+                tower = tower_cache[tkey]
+
+                # 해당 번호 위치에 렌즈각도 입력
+                if lens_angle:
+                    pos = db.query(TowerLayoutPosition).filter_by(
+                        tower_layout_id=tower.id, position_no=pos_no).first()
+                    if pos:
+                        pos.lens_angle = lens_angle
+                        updated_positions += 1
+
+            db.commit()
+            flash(f'임포트 완료: 타워 {created_towers}개 생성, 렌즈각도 {updated_positions}건 입력', 'success')
+
+    except Exception as e:
+        flash(f'임포트 실패: {str(e)}', 'danger')
+
+    return redirect(url_for('lighting_layout.layout_list'))
