@@ -22,7 +22,7 @@
     white-space: nowrap; background: #f8fafc;
 }
 .wl-table td {
-    vertical-align: middle; white-space: nowrap;
+    vertical-align: middle;
     font-size: .82rem; padding: 7px 10px;
     border-bottom: 1px solid #e2e8f0;
 }
@@ -33,7 +33,6 @@
 }
 .wl-table .site-link {
     font-weight: 700; color: var(--mg-ink); text-decoration: none;
-    display: block;
 }
 .wl-table .site-link:hover { color: var(--mg-primary); }
 
@@ -148,6 +147,13 @@
                 {% endfor %}
             </select>
         </div>
+        <div class="col-6 col-md-2">
+            <select name="has_case" class="form-select form-select-sm">
+                <option value="all" {% if filters.has_case == 'all' %}selected{% endif %}>A/S 이력 전체</option>
+                <option value="yes" {% if filters.has_case == 'yes' %}selected{% endif %}>A/S 있음</option>
+                <option value="no" {% if filters.has_case == 'no' %}selected{% endif %}>A/S 없음</option>
+            </select>
+        </div>
         <div class="col-auto">
             <button type="submit" class="btn btn-primary btn-sm fw-bold">검색</button>
             <a href="{{ url_for('warranty.warranty_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
@@ -157,67 +163,78 @@
 
 {# ═══ 보증 목록 테이블 ═══ #}
 <div class="card shadow-sm border-0 mg-fade warranty-board" style="animation-delay:.1s">
-    <div class="table-responsive">
-        <table class="table table-sm table-hover wl-table mb-0">
-            <thead>
-                <tr>
-                    <th>계약명</th>
-                    <th style="width:100px;">품목</th>
-                    <th style="width:100px;">보증유형</th>
-                    <th style="width:110px;">보증시작</th>
-                    <th style="width:110px;">보증만료</th>
-                    <th style="width:80px;">D-day</th>
-                    <th style="width:70px;">A/S건</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for w in warranties %}
-                {% set dday = (w.warranty_end - today).days if w.warranty_end else none %}
-                <tr data-href="{{ url_for('warranty.case_create') }}?warranty_id={{ w.id }}">
-                    <td>
-                        <a href="{{ url_for('warranty.case_create') }}?warranty_id={{ w.id }}" class="site-link">
-                            {{ w.contract_name|default('-') }}
-                        </a>
-                    </td>
-                    <td>{{ w.item_group|default('-') }}</td>
-                    <td>
-                        <span class="badge {% if w.warranty_type == '우수제품' %}bg-primary{% elif w.warranty_type == '혁신제품' %}bg-success{% else %}bg-secondary{% endif %}" style="font-size:.68rem;white-space:nowrap;">{{ w.warranty_type|default('일반') }}</span>
-                    </td>
-                    <td class="font-mono" style="color:var(--mg-muted);">{{ w.warranty_start or '-' }}</td>
-                    <td class="font-mono" style="color:var(--mg-muted);">{{ w.warranty_end or '-' }}</td>
-                    <td>
-                        {% if dday is not none %}
-                            {% if dday < 0 %}
-                                <span class="dday-badge dday-expired">만료</span>
-                            {% elif dday <= 10 %}
-                                <span class="dday-badge dday-critical">D-{{ dday }}</span>
-                            {% elif dday <= 30 %}
-                                <span class="dday-badge dday-warn">D-{{ dday }}</span>
-                            {% else %}
-                                <span class="dday-badge dday-ok">D-{{ dday }}</span>
-                            {% endif %}
-                        {% else %}-{% endif %}
-                    </td>
-                    <td>
-                        {% if warranty_case_counts.get(w.id, 0) > 0 %}
-                        <span class="badge bg-danger" style="font-size:.68rem;white-space:nowrap;">{{ warranty_case_counts[w.id] }}건</span>
+    <table class="table table-sm table-hover wl-table mb-0 mobile-stack-table" style="font-size:0.82rem;table-layout:fixed;">
+        <colgroup>
+            <col style="min-width:0">        {# 계약명 — 남은 공간 차지 #}
+            <col style="width:70px">         {# 품목 #}
+            <col style="width:100px">        {# 모델명 #}
+            <col style="width:80px">         {# 보증유형 #}
+            <col style="width:96px">         {# 보증시작 #}
+            <col style="width:96px">         {# 보증만료 #}
+            <col style="width:68px">         {# D-day #}
+            <col style="width:58px">         {# A/S건 #}
+        </colgroup>
+        <thead>
+            <tr>
+                <th>계약명</th>
+                <th>품목</th>
+                <th>모델명</th>
+                <th>보증유형</th>
+                <th style="white-space:nowrap;">보증시작</th>
+                <th style="white-space:nowrap;">보증만료</th>
+                <th>D-day</th>
+                <th>A/S건</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for w in warranties %}
+            {% set dday = (w.warranty_end - today).days if w.warranty_end else none %}
+            <tr data-href="{{ url_for('warranty.case_create') }}?warranty_id={{ w.id }}" style="cursor:pointer;">
+                <td>
+                    <a href="{{ url_for('warranty.case_create') }}?warranty_id={{ w.id }}" class="site-link">
+                        {{ w.contract_name|default('-') }}
+                    </a>
+                </td>
+                <td>{{ w.item_group|default('-') }}</td>
+                <td>{{ w.model_name|default('-') }}</td>
+                <td>
+                    <span class="badge {% if w.warranty_type == '우수제품' %}bg-primary{% elif w.warranty_type == '혁신제품' %}bg-success{% else %}bg-secondary{% endif %}" style="font-size:.68rem;white-space:nowrap;">{{ w.warranty_type|default('일반') }}</span>
+                </td>
+                <td class="font-mono" style="color:var(--mg-muted);white-space:nowrap;">{{ w.warranty_start or '-' }}</td>
+                <td class="font-mono" style="color:var(--mg-muted);white-space:nowrap;">{{ w.warranty_end or '-' }}</td>
+                <td style="white-space:nowrap;">
+                    {% if dday is not none %}
+                        {% if dday < 0 %}
+                            <span class="dday-badge dday-expired">만료</span>
+                        {% elif dday <= 10 %}
+                            <span class="dday-badge dday-critical">D-{{ dday }}</span>
+                        {% elif dday <= 30 %}
+                            <span class="dday-badge dday-warn">D-{{ dday }}</span>
                         {% else %}
-                        <span class="text-muted">-</span>
+                            <span class="dday-badge dday-ok">D-{{ dday }}</span>
                         {% endif %}
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="8" class="text-center py-5 text-muted" style="font-size:.88rem;">등록된 보증 정보가 없습니다.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+                    {% else %}-{% endif %}
+                </td>
+                <td style="white-space:nowrap;">
+                    {% if warranty_case_counts.get(w.id, 0) > 0 %}
+                    <span class="badge bg-danger" style="font-size:.68rem;white-space:nowrap;">{{ warranty_case_counts[w.id] }}건</span>
+                    {% else %}
+                    <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="8" class="text-center py-5 text-muted" style="font-size:.88rem;">등록된 보증 정보가 없습니다.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </div>
 
 {# ═══ 페이지네이션 ═══ #}
 {% include 'components/pagination.html' %}
+<div style="height:80px;"></div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {

@@ -33,7 +33,7 @@ MENU_REGISTRY = OrderedDict([
     # --- 공유 (여러 부서 공통) ---
     ("procurement",    {"label": "조달내역",   "group": "공유",   "endpoint": "procurement.procurement_list"}),
     ("procurement_summary", {"label": "납품집계", "group": "공유",   "endpoint": "procurement.procurement_summary"}),
-    ("warranty",       {"label": "하자관리",   "group": "공유",   "endpoint": "warranty.warranty_list"}),
+    ("warranty",       {"label": "하자관리",   "group": "공유",   "endpoint": "warranty.dashboard"}),
     ("photos",         {"label": "사진관리",   "group": "공유",   "endpoint": "photos.photo_list"}),
     ("drawing",        {"label": "도면관리",   "group": "공유",   "endpoint": "drawing.drawings_index"}),
     ("illuminance",    {"label": "조도검증",   "group": "영업부", "endpoint": "illuminance.index"}),
@@ -60,11 +60,12 @@ GROUP_ICONS = {
 }
 
 # 부서별 기본 메뉴 (GroupPermission 초기값 세팅용)
+# 형식: "menu_key:r" (읽기전용) / "menu_key:rw" (읽기+쓰기) / "menu_key" (레거시=rw)
 DEFAULT_GROUP_MENUS = {
-    "영업부": "project,contract,sales,quotation,delivery,illuminance,procurement,procurement_summary,warranty",
-    "관리부": "item,material,vendor,purchase_order,receiving,bom,financial,inventory,certification,procurement,procurement_summary,warranty",
-    "생산부": "production,warranty",
-    "임원진": "project,contract,sales,quotation,delivery,item,material,vendor,purchase_order,receiving,bom,financial,inventory,procurement,procurement_summary,warranty,production",
+    "영업부": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,illuminance:rw,item:r,material:r,bom:r,inventory:r,procurement:rw,procurement_summary:r,warranty:rw,photos:rw,drawing:rw,production:r",
+    "관리부": "project:r,contract:r,delivery:r,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,certification:rw,procurement:r,procurement_summary:r,warranty:rw,photos:rw,drawing:r,production:r",
+    "생산부": "contract:r,sales:r,delivery:r,material:r,inventory:r,warranty:rw,photos:rw,drawing:r,production:rw",
+    "임원진": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,illuminance:rw,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,procurement:rw,procurement_summary:rw,warranty:rw,photos:rw,drawing:rw,production:rw,certification:rw",
 }
 
 

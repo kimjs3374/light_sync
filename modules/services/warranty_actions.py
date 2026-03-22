@@ -23,10 +23,11 @@ def handle_warranty_action(db, case, action, form, session_data):
             ))
 
     elif action == 'update_detail':
+        symptom = form.get('symptom', '').strip()
+        if symptom:
+            case.symptom = symptom
         case.cause_analysis = form.get('cause_analysis', '').strip()
         case.action_taken = form.get('action_taken', '').strip()
-        case.replaced_parts = form.get('replaced_parts', '').strip()
-        case.assigned_to = form.get('assigned_to', '').strip()
         db.add(WarrantyCaseLog(
             case_id=case.id, log_type='note',
             content='처리 내역 업데이트',
@@ -35,9 +36,21 @@ def handle_warranty_action(db, case, action, form, session_data):
 
     elif action == 'add_note':
         content = form.get('note_content', '').strip()
+        new_status = form.get('new_status', '').strip()
         if content:
+            log_type = 'note'
+            old_status = None
+            if new_status and new_status != case.status:
+                old_status = case.status
+                case.status = new_status
+                log_type = 'status_change'
+                if new_status == '현장확인':
+                    case.site_visit_date = parse_date(form.get('site_visit_date')) or datetime.date.today()
+                elif new_status == '완료':
+                    case.completed_date = parse_date(form.get('completed_date')) or datetime.date.today()
             db.add(WarrantyCaseLog(
-                case_id=case.id, log_type='note',
+                case_id=case.id, log_type=log_type,
+                old_status=old_status, new_status=new_status or None,
                 content=content,
                 created_by=user_name,
             ))

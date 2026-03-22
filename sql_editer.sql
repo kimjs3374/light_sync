@@ -1,4 +1,10 @@
 -- ══════════════════════════════════════════════
+-- 예외처리 사유 컬럼 (2026-03-21)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.contracts ADD COLUMN IF NOT EXISTS exclude_reason VARCHAR(50);
+ALTER TABLE light_sync.contracts ADD COLUMN IF NOT EXISTS exclude_note VARCHAR(200);
+
+-- ══════════════════════════════════════════════
 -- A/S 관리 시스템 전면 재설계 (2026-03-21)
 -- ══════════════════════════════════════════════
 
@@ -456,3 +462,36 @@ CREATE TABLE IF NOT EXISTS light_sync.chatbot_history (
     messages_json TEXT NOT NULL DEFAULT '[]',
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- ===================================================================
+-- RW 권한 분리 + 금액 가시성 제어 (2026-03-22)
+-- ===================================================================
+ALTER TABLE light_sync.group_permissions ADD COLUMN IF NOT EXISTS hide_financial BOOLEAN DEFAULT FALSE;
+ALTER TABLE light_sync.users ADD COLUMN IF NOT EXISTS hide_financial_override BOOLEAN;
+
+-- 부서별 R/RW 권한 + 금액 숨김 설정 (2026-03-22)
+UPDATE light_sync.group_permissions SET
+  allowed_menus = 'project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,illuminance:rw,item:r,material:r,bom:r,inventory:r,procurement:rw,procurement_summary:r,warranty:rw,photos:rw,drawing:rw,production:r',
+  hide_financial = TRUE
+WHERE group_name = '영업부';
+
+UPDATE light_sync.group_permissions SET
+  allowed_menus = 'project:r,contract:r,delivery:r,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,certification:rw,procurement:r,procurement_summary:r,warranty:rw,photos:rw,drawing:r,production:r',
+  hide_financial = TRUE
+WHERE group_name = '관리부';
+
+UPDATE light_sync.group_permissions SET
+  allowed_menus = 'contract:r,sales:r,delivery:r,material:r,inventory:r,warranty:rw,photos:rw,drawing:r,production:rw',
+  hide_financial = TRUE
+WHERE group_name = '생산부';
+
+UPDATE light_sync.group_permissions SET
+  allowed_menus = 'project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,illuminance:rw,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,procurement:rw,procurement_summary:rw,warranty:rw,photos:rw,drawing:rw,production:rw,certification:rw',
+  hide_financial = FALSE
+WHERE group_name = '임원진';
+
+-- ===================================================================
+-- warranty_cases: warranty_id, project_id NULL 허용 (수기입력 지원) (2026-03-22)
+-- ===================================================================
+ALTER TABLE light_sync.warranty_cases ALTER COLUMN warranty_id DROP NOT NULL;
+ALTER TABLE light_sync.warranty_cases ALTER COLUMN project_id DROP NOT NULL;

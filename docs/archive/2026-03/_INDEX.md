@@ -30,6 +30,7 @@
 | photo-management | 현장 사진 독립 갤러리 (모바일 카메라+드래그앤드롭+ZIP다운로드+계약별필터) | 91% | 2026-03-20 | 3 |
 | illuminance-verification | Relux PDF 파싱 + 조도 격자 히트맵 + KS 판정 + 비교 리포트 | 95% | 2026-03-20 | 4 |
 | receiving-expected | 입고예정 v2 (MaterialOrder→PurchaseOrderItem 전환, 검수 제거, 디자인 통일) | N/A | 2026-03-20 | 3 |
+| warranty-redesign | A/S 관리 전면 재설계 (대시보드+목록+접수+상세+as.db 133건 마이그레이션+보증 자동화) | 95% | 2026-03-22 | 3 |
 | illuminance-design-integration | 조도검증-설계관리 통합 연동 (양방향+PDF원스톱+파서개선+자유입력+다중기구) | 95% | 2026-03-21 | 4 |
 | code-simplify-split | 전체 코드 간소화 및 스플릿 (4Phase: CSS/JS추출+MCP분할+엔티티분할+Route서비스분리) | 100% | 2026-03-21 | 4 |
 | drawing-management | 도면관리 고도화 (SPA 갤러리+PDF 미리보기+DWG 업/다운+버전관리+선택삭제) | ~93% | 2026-03-21 | 1 |

@@ -71,12 +71,16 @@ def _ensure_postgres_schema():
 def init_db():
     _ensure_postgres_schema()
 
+    # 테이블 생성: 먼저 일괄 시도, 실패 시 개별 생성
     try:
         Base.metadata.create_all(bind=engine)
-    except (OperationalError, ProgrammingError) as e:
-        # "already exists" 또는 새 모델의 FK 참조 시 기존 테이블 컬럼 불일치 → 무시 후 ALTER TABLE에서 처리
-        if 'already exists' not in str(e).lower() and 'does not exist' not in str(e).lower():
-            raise
+    except (OperationalError, ProgrammingError):
+        # FK 참조 문제 등으로 일괄 생성 실패 시 테이블별 개별 생성
+        for table in Base.metadata.sorted_tables:
+            try:
+                table.create(engine, checkfirst=True)
+            except (OperationalError, ProgrammingError):
+                pass  # 이미 존재하거나 FK 문제 → ALTER TABLE에서 처리
     # PostgreSQL 컬럼 추가 마이그레이션 (안전: IF NOT EXISTS 패턴)
     if _is_postgres_engine():
         with engine.begin() as conn:
@@ -280,6 +284,60 @@ def init_db():
                 ))
             except Exception:
                 pass
+
+            # warranties: 비정규화 필드 추가 (v2026-03-21, A/S 재설계)
+            for col, col_type in [
+                ('contract_name', 'VARCHAR(200)'),
+                ('item_group', 'VARCHAR(50)'),
+                ('model_name', 'VARCHAR(200)'),
+                ('quantity', 'INTEGER'),
+                ('site_address', 'VARCHAR(500)'),
+                ('customer_contact', 'VARCHAR(200)'),
+                ('customer_phone', 'VARCHAR(50)'),
+            ]:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE {quote_ident(DB_SCHEMA)}.warranties "
+                        f"ADD COLUMN {col} {col_type}"
+                    ))
+                except Exception:
+                    pass
+
+            # warranty_cases: 유상/무상 + 고객 + 부품 + 물류 + 비정규화 (v2026-03-21)
+            for col, col_type in [
+                ('is_chargeable', 'BOOLEAN DEFAULT FALSE'),
+                ('charge_amount', 'INTEGER DEFAULT 0'),
+                ('charge_status', 'VARCHAR(20)'),
+                ('request_channel', 'VARCHAR(30)'),
+                ('customer_name', 'VARCHAR(100)'),
+                ('customer_phone', 'VARCHAR(50)'),
+                ('parts_json', 'TEXT'),
+                ('shipping_method', 'VARCHAR(30)'),
+                ('shipping_tracking', 'VARCHAR(100)'),
+                ('shipping_date', 'DATE'),
+                ('contract_name', 'VARCHAR(200)'),
+                ('item_group', 'VARCHAR(50)'),
+                ('model_name', 'VARCHAR(200)'),
+            ]:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE {quote_ident(DB_SCHEMA)}.warranty_cases "
+                        f"ADD COLUMN {col} {col_type}"
+                    ))
+                except Exception:
+                    pass
+
+            # 인덱스 추가
+            for idx_sql in [
+                f"CREATE INDEX IF NOT EXISTS idx_warranty_end ON {quote_ident(DB_SCHEMA)}.warranties(warranty_end)",
+                f"CREATE INDEX IF NOT EXISTS idx_warranty_type ON {quote_ident(DB_SCHEMA)}.warranties(warranty_type)",
+                f"CREATE INDEX IF NOT EXISTS idx_case_status ON {quote_ident(DB_SCHEMA)}.warranty_cases(status)",
+                f"CREATE INDEX IF NOT EXISTS idx_case_reported ON {quote_ident(DB_SCHEMA)}.warranty_cases(reported_date DESC)",
+            ]:
+                try:
+                    conn.execute(text(idx_sql))
+                except Exception:
+                    pass
 
     # SQLite: illuminance_projects.erp_project_id 컬럼 추가 (create_all 이후 실행)
     if not _is_postgres_engine():

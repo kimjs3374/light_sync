@@ -93,6 +93,7 @@
         </div>
     </div>
     <div class="col-md-4">
+        {% if not hide_financial %}
         <div class="card amount-card shadow-sm">
             <div class="card-header"><strong>금액 요약</strong></div>
             <div class="card-body">
@@ -109,7 +110,10 @@
                     <strong class="amount-val">{{ fmt_money((po.total_amount or 0) + (po.tax_amount or 0)) }}원</strong>
                 </div>
             </div>
-            <div class="card-footer bg-white py-2 px-3">
+        </div>
+        {% endif %}
+        <div class="card shadow-sm {% if not hide_financial %}mt-2{% endif %}">
+            <div class="card-body py-2 px-3">
                 <form method="POST" action="{{ url_for('purchase_order.po_change_status', po_id=po.id) }}" class="d-flex gap-2">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <select name="status" class="form-select form-select-sm" style="border-radius:6px;">
@@ -166,7 +170,7 @@
             <table class="table table-sm mb-0 items-table" style="table-layout:fixed;">
                 <colgroup>
                     <col style="width:36px"><col><col style="width:65px"><col style="width:65px"><col style="width:70px"><col style="width:40px">
-                    <col style="width:85px"><col style="width:95px"><col style="width:12%"><col style="width:12%">
+                    {% if not hide_financial %}<col style="width:85px"><col style="width:95px">{% endif %}<col style="width:12%"><col style="width:12%">
                 </colgroup>
                 <thead>
                     <tr style="background:#f8fafc;">
@@ -176,8 +180,8 @@
                         <th class="text-end">가용</th>
                         <th class="text-end">수량</th>
                         <th>단위</th>
-                        <th class="text-end">단가</th>
-                        <th class="text-end">금액</th>
+                        {% if not hide_financial %}<th class="text-end">단가</th>
+                        <th class="text-end">금액</th>{% endif %}
                         <th>BOM</th>
                         <th>비고</th>
                     </tr>
@@ -197,8 +201,8 @@
                         <td class="text-end {{ 'text-danger fw-bold' if avail != '-' and avail <= 0 else 'text-success fw-bold' if avail != '-' else '' }}">{{ avail }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.quantity or 0) }}</td>
                         <td>{{ item.unit or '' }}</td>
-                        <td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
-                        <td class="text-end fw-bold" style="color:#0f172a;">{{ "{:,.0f}".format(item.amount or 0) }}</td>
+                        {% if not hide_financial %}<td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
+                        <td class="text-end fw-bold" style="color:#0f172a;">{{ "{:,.0f}".format(item.amount or 0) }}</td>{% endif %}
                         <td class="small">
                             {% if item.bom_item_id and item.bom_item %}
                             <span class="badge" style="background:#dbeafe;color:#1e40af;font-size:.68rem;">BOM</span>
@@ -208,7 +212,7 @@
                         <td class="text-muted small" style="overflow:hidden;text-overflow:ellipsis;">{{ item.note or '' }}</td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="10" class="text-center text-muted py-4">품목이 없습니다.</td></tr>
+                    <tr><td colspan="{% if hide_financial %}8{% else %}10{% endif %}" class="text-center text-muted py-4">품목이 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

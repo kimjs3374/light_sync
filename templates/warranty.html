@@ -1,0 +1,271 @@
+{% extends 'base.html' %}
+{% block head %}
+<style>
+/* ── A/S 대시보드 전용 스타일 ── */
+.stat-card-as {
+    border: none; border-radius: var(--mg-radius);
+    transition: transform .15s, box-shadow .15s;
+    cursor: default;
+}
+.stat-card-as:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(15,23,42,.1) !important; }
+.stat-num-as { font-size: 1.9rem; font-weight: 800; line-height: 1.1; font-family: var(--mg-mono); }
+.stat-label-as { font-size: .75rem; color: var(--mg-muted); margin-top: 3px; }
+.stat-delta { font-size: .72rem; font-weight: 600; }
+
+/* 상태 배지 */
+.badge-접수     { background:#eff6ff; color:#2563eb; }
+.badge-현장확인 { background:#f0fdf4; color:#16a34a; }
+.badge-부품준비 { background:#fffbeb; color:#d97706; }
+.badge-수리교체 { background:#fff7ed; color:#ea580c; }
+.badge-완료     { background:#f0fdf4; color:#059669; }
+.badge-보류     { background:#f1f5f9; color:#64748b; }
+
+/* 진행중 케이스 카드 */
+.as-case-card {
+    border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius);
+    padding: .75rem 1rem;
+    transition: background .12s, box-shadow .12s;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+}
+.as-case-card:hover {
+    background: #eef2ff;
+    box-shadow: inset 3px 0 0 var(--mg-primary);
+    color: inherit;
+    text-decoration: none;
+}
+
+/* 불량 통계 바 */
+.defect-bar-track {
+    height: 6px; background: #e2e8f0; border-radius: 99px; overflow: hidden;
+}
+.defect-bar-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, var(--mg-primary), #60a5fa);
+    transition: width .4s cubic-bezier(.4,0,.2,1);
+}
+
+/* D-day 배지 */
+.dday-badge {
+    display: inline-block; font-size: .7rem; font-weight: 700;
+    padding: 2px 7px; border-radius: 6px; white-space: nowrap;
+    font-family: var(--mg-mono);
+}
+.dday-critical { background: #fef2f2; color: #dc2626; }
+.dday-warn     { background: #fffbeb; color: #d97706; }
+.dday-ok       { background: #f0fdf4; color: #16a34a; }
+
+/* 타임라인 */
+.status-flow {
+    display: flex; gap: 0; align-items: center; flex-wrap: wrap;
+}
+.status-flow-item {
+    display: flex; align-items: center; gap: 4px;
+    font-size: .72rem; font-weight: 600; color: var(--mg-muted);
+    white-space: nowrap;
+}
+.status-flow-item.active { color: var(--mg-primary); }
+.status-flow-dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #e2e8f0; display: flex; align-items: center; justify-content: center;
+    font-size: .6rem; font-weight: 700; flex-shrink: 0;
+}
+.status-flow-item.active .status-flow-dot { background: var(--mg-primary); color: #fff; }
+.status-flow-item.done .status-flow-dot   { background: #16a34a; color: #fff; }
+.status-flow-arrow { color: #cbd5e1; font-size: .7rem; margin: 0 2px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ═══ HERO ═══ #}
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Warranty &amp; After-Service</div>
+            <h2>A/S 관리</h2>
+            <div class="hero-sub">보증 현황 · 하자 접수 · 처리 추적</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('warranty.warranty_list') }}" class="btn btn-sm">보증 목록</a>
+            <a href="{{ url_for('warranty.case_create') }}" class="btn btn-sm btn-hi">+ A/S 접수</a>
+        </div>
+    </div>
+</div>
+
+{# ═══ KPI 통계 카드 4칸 ═══ #}
+<div class="row g-3 mb-4 mg-fade" style="animation-delay:.05s">
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-as shadow-sm text-center py-3 px-2">
+            <div class="stat-num-as" style="color:#0f172a;">{{ '{:,}'.format(total) }}</div>
+            <div class="stat-label-as">전체 보증</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-as shadow-sm text-center py-3 px-2" style="border-left:3px solid #2563eb;">
+            <div class="stat-num-as" style="color:#2563eb;">{{ '{:,}'.format(active) }}</div>
+            <div class="stat-label-as">진행중</div>
+            <div class="stat-delta text-primary mt-1">보증기간 내</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-as shadow-sm text-center py-3 px-2" style="border-left:3px solid #f59e0b;">
+            <div class="stat-num-as" style="color:#f59e0b;">{{ expiring_count }}</div>
+            <div class="stat-label-as">만료 임박</div>
+            <div class="stat-delta" style="color:#f59e0b;">30일 이내</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-as shadow-sm text-center py-3 px-2" style="border-left:3px solid #dc2626;">
+            <div class="stat-num-as" style="color:#dc2626;">{{ case_active }}</div>
+            <div class="stat-label-as">처리중 A/S</div>
+            <div class="stat-delta text-danger">미완료 케이스</div>
+        </div>
+    </div>
+</div>
+
+{# ═══ MAIN 2-COLUMN ═══ #}
+<div class="row g-3">
+    {# ── 좌: 만료 임박 + 진행중 케이스 ── #}
+    <div class="col-12 col-xl-8">
+
+        {# 만료 임박 보증 #}
+        <div class="card shadow-sm border-0 mb-3 mg-fade" style="animation-delay:.1s">
+            <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center py-2">
+                <span>⚠️ 만료 임박 보증
+                    <span class="badge bg-warning text-dark ms-2" style="font-size:.7rem;white-space:nowrap;">30일 이내 {{ expiring_count }}건</span>
+                </span>
+                <a href="{{ url_for('warranty.warranty_list') }}?filter=expiring" class="btn btn-xs btn-outline-secondary">전체보기</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>계약명</th>
+                            <th>품목</th>
+                            <th>보증유형</th>
+                            <th>만료일</th>
+                            <th>D-day</th>
+                            <th>A/S건</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for w in expiring_list %}
+                        {% set dday = (w.warranty_end - today).days if w.warranty_end else 0 %}
+                        <tr>
+                            <td><a href="{{ url_for('warranty.warranty_list') }}?q={{ w.contract_name|default('')|urlencode }}" style="color:var(--mg-ink);font-weight:600;text-decoration:none;">{{ w.contract_name|default('-') }}</a></td>
+                            <td>{{ w.item_group|default('-') }}</td>
+                            <td>
+                                <span class="badge {% if w.warranty_type == '우수제품' %}bg-primary{% elif w.warranty_type == '혁신제품' %}bg-success{% else %}bg-secondary{% endif %}" style="font-size:.68rem;white-space:nowrap;">{{ w.warranty_type|default('일반') }}</span>
+                            </td>
+                            <td class="font-mono">{{ w.warranty_end }}</td>
+                            <td>
+                                <span class="dday-badge {% if dday <= 10 %}dday-critical{% elif dday <= 20 %}dday-warn{% else %}dday-ok{% endif %}">D-{{ dday }}</span>
+                            </td>
+                            <td>
+                                {% if exp_case_counts.get(w.id, 0) > 0 %}
+                                <span class="badge bg-danger" style="font-size:.68rem;white-space:nowrap;">{{ exp_case_counts[w.id] }}건</span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {# 진행중 A/S 케이스 #}
+        <div class="card shadow-sm border-0 mg-fade" style="animation-delay:.15s">
+            <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center py-2">
+                <span>🔧 진행중 A/S 케이스</span>
+                <a href="{{ url_for('warranty.warranty_list') }}?status=open" class="btn btn-xs btn-outline-primary">전체 목록</a>
+            </div>
+            <div class="card-body p-2">
+                <div class="d-flex flex-column gap-2">
+                    {% for case in active_cases %}
+                    {% set elapsed = (today - case.reported_date).days if case.reported_date else 0 %}
+                    <a href="{{ url_for('warranty.case_detail', case_id=case.id) }}" class="as-case-card">
+                        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <span class="font-mono" style="font-size:.72rem;color:var(--mg-muted);white-space:nowrap;">{{ case.case_no }}</span>
+                                <span class="fw-bold" style="font-size:.88rem;white-space:nowrap;">{{ case.contract_name or case.manual_site_name or '-' }}</span>
+                                <span class="badge {% if case.is_chargeable %}bg-danger{% else %}bg-primary{% endif %}" style="font-size:.65rem;white-space:nowrap;">{% if case.is_chargeable %}유상{% else %}무상{% endif %}</span>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                                <span class="badge badge-{{ case.status }}" style="font-size:.7rem;padding:3px 8px;border-radius:6px;white-space:nowrap;">{{ case.status }}</span>
+                                <span class="dday-badge {% if elapsed >= 14 %}dday-critical{% elif elapsed >= 7 %}dday-warn{% else %}dday-ok{% endif %}">{{ elapsed }}일 경과</span>
+                            </div>
+                        </div>
+                        <div class="mt-1 text-muted" style="font-size:.8rem;">{{ case.symptom|default('')|truncate(80) }}</div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    {# ── 우: 상태별 현황 + 품목별 불량 ── #}
+    <div class="col-12 col-xl-4">
+
+        {# 케이스 상태별 현황 #}
+        <div class="card shadow-sm border-0 mb-3 mg-fade" style="animation-delay:.1s">
+            <div class="card-header bg-white fw-bold py-2">케이스 상태 현황</div>
+            <div class="card-body py-2 px-3">
+                {% for st in [
+                    {'label':'접수','count':8,'color':'#2563eb','cls':'bg-primary'},
+                    {'label':'현장확인','count':11,'color':'#16a34a','cls':'bg-success'},
+                    {'label':'부품준비','count':7,'color':'#d97706','cls':'bg-warning text-dark'},
+                    {'label':'수리교체','count':6,'color':'#ea580c','cls':'bg-orange'},
+                    {'label':'완료','count':103,'color':'#059669','cls':'bg-success'},
+                    {'label':'보류','count':5,'color':'#64748b','cls':'bg-secondary'}
+                ] %}
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="badge badge-{{ st.label }}" style="font-size:.75rem;padding:4px 10px;border-radius:6px;white-space:nowrap;min-width:70px;text-align:center;">{{ st.label }}</span>
+                    <div class="flex-grow-1 mx-2">
+                        <div class="defect-bar-track">
+                            <div class="defect-bar-fill" style="width:{{ (st.count / 140 * 100)|int }}%;background:{{ st.color }};"></div>
+                        </div>
+                    </div>
+                    <span class="font-mono fw-bold" style="font-size:.82rem;color:{{ st.color }};min-width:30px;text-align:right;white-space:nowrap;">{{ st.count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        {# 품목별 불량 통계 #}
+        <div class="card shadow-sm border-0 mg-fade" style="animation-delay:.15s">
+            <div class="card-header bg-white fw-bold py-2">품목별 불량 현황</div>
+            <div class="card-body py-2 px-3">
+                {% set ns = namespace(max_count=1) %}
+                {% for item_group, defect_type, cnt in defect_stats %}
+                    {% if cnt > ns.max_count %}{% set ns.max_count = cnt %}{% endif %}
+                {% endfor %}
+                {% for item_group, defect_type, cnt in defect_stats %}
+                {% set defect_label = defect_type %}
+                {% for code, label in defect_types %}{% if code == defect_type %}{% set defect_label = label %}{% endif %}{% endfor %}
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span style="font-size:.82rem;font-weight:600;">{{ item_group|default('-') }}</span>
+                        <span class="font-mono" style="font-size:.78rem;color:var(--mg-muted);white-space:nowrap;">{{ defect_label }} {{ cnt }}건</span>
+                    </div>
+                    <div class="defect-bar-track">
+                        <div class="defect-bar-fill" style="width:{{ (cnt / ns.max_count * 100)|int }}%;"></div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-3" style="font-size:.85rem;">데이터 없음</div>
+                {% endfor %}
+                <a href="{{ url_for('warranty.warranty_list') }}" class="btn btn-xs btn-outline-secondary w-100 mt-1">불량 분석 전체 보기</a>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

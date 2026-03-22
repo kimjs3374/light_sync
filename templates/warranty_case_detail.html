@@ -1,0 +1,659 @@
+{% extends 'base.html' %}
+{% block head %}
+<style>
+/* ── A/S 케이스 상세 전용 ── */
+
+/* 6단계 프로그레스바 */
+.case-progress {
+    display: flex; align-items: center; gap: 0;
+    background: rgba(255,255,255,.07);
+    border-radius: .5rem; padding: .5rem .75rem;
+    flex-wrap: nowrap; overflow-x: auto;
+}
+.case-progress::-webkit-scrollbar { height: 3px; }
+.case-progress::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 99px; }
+
+.cp-step {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    min-width: 64px; flex-shrink: 0;
+}
+.cp-dot {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.06);
+    display: flex; align-items: center; justify-content: center;
+    font-size: .68rem; font-weight: 700; color: rgba(255,255,255,.4);
+    position: relative; flex-shrink: 0;
+}
+.cp-step.done   .cp-dot { background: #16a34a; border-color: #16a34a; color: #fff; }
+.cp-step.active .cp-dot { background: var(--mg-primary); border-color: #60a5fa; color: #fff; box-shadow: 0 0 0 4px rgba(37,99,235,.25); }
+.cp-label { font-size: .62rem; font-weight: 600; color: rgba(255,255,255,.4); white-space: nowrap; }
+.cp-step.done   .cp-label { color: #86efac; }
+.cp-step.active .cp-label { color: #93c5fd; }
+.cp-line { flex: 1; height: 2px; background: rgba(255,255,255,.12); min-width: 16px; max-width: 40px; }
+.cp-step.done ~ .cp-line,
+.cp-step.active ~ .cp-line { background: rgba(255,255,255,.12); }
+
+/* 유상/무상 대형 배지 */
+.paid-hero-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: .3rem .9rem; border-radius: .5rem; font-weight: 800;
+    font-size: .95rem; white-space: nowrap;
+}
+.paid-hero-badge.free { background: rgba(37,99,235,.15); color: #93c5fd; border: 1px solid rgba(37,99,235,.3); }
+.paid-hero-badge.paid { background: rgba(220,38,38,.15); color: #fca5a5; border: 1px solid rgba(220,38,38,.3); }
+
+/* 상세 카드 내 키-밸류 */
+.detail-kv { margin-bottom: .6rem; }
+.detail-kv .kv-label {
+    font-size: .72rem; font-weight: 700; color: var(--mg-muted);
+    text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px;
+}
+.detail-kv .kv-value { font-size: .9rem; font-weight: 500; color: var(--mg-ink); }
+.detail-kv .kv-value.mono { font-family: var(--mg-mono); }
+
+/* 상태 변경 버튼 그룹 */
+.status-btn-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.status-btn {
+    font-size: .78rem; font-weight: 600; padding: .3rem .8rem;
+    border-radius: .45rem; border: 1.5px solid transparent;
+    cursor: pointer; white-space: nowrap; transition: all .12s;
+}
+.status-btn-접수     { background:#eff6ff; color:#2563eb; border-color:#bfdbfe; }
+.status-btn-현장확인 { background:#f0fdf4; color:#16a34a; border-color:#bbf7d0; }
+.status-btn-부품준비 { background:#fffbeb; color:#d97706; border-color:#fde68a; }
+.status-btn-수리교체 { background:#fff7ed; color:#ea580c; border-color:#fed7aa; }
+.status-btn-완료     { background:#f0fdf4; color:#059669; border-color:#6ee7b7; }
+.status-btn-보류     { background:#f1f5f9; color:#64748b; border-color:#cbd5e1; }
+.status-btn.current  { box-shadow: 0 0 0 3px rgba(37,99,235,.15); font-weight: 800; }
+
+/* 타임라인 */
+.timeline { position: relative; padding-left: 24px; }
+.timeline::before {
+    content: ''; position: absolute; left: 8px; top: 4px; bottom: 4px;
+    width: 2px; background: #e2e8f0; border-radius: 99px;
+}
+.tl-item { position: relative; margin-bottom: 1rem; }
+.tl-dot {
+    position: absolute; left: -20px; top: 4px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--mg-primary); border: 2px solid #fff;
+    box-shadow: 0 0 0 2px #e2e8f0;
+}
+.tl-dot.tl-done { background: #16a34a; }
+.tl-dot.tl-warn { background: #f59e0b; }
+.tl-dot.tl-muted { background: #94a3b8; }
+.tl-time { font-size: .7rem; color: var(--mg-muted); font-family: var(--mg-mono); white-space: nowrap; }
+.tl-body { font-size: .85rem; line-height: 1.5; }
+.tl-author { font-weight: 700; font-size: .8rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ═══ HERO + 프로그레스 ═══ #}
+{% set steps = status_steps %}
+{% set current_status = case.status|default('접수') %}
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-start gap-3 mb-3">
+        <div>
+            <div class="hero-eyebrow">A/S Case Detail</div>
+            <h2 class="mb-1">
+                <span class="font-mono" style="font-size:1rem;opacity:.6;">{{ case.case_no }}</span>
+                &nbsp;{{ case.contract_name or case.manual_site_name or '-' }}
+            </h2>
+            <div class="d-flex flex-wrap gap-2 align-items-center mt-1">
+                <span class="paid-hero-badge {% if case.is_chargeable %}paid{% else %}free{% endif %}">
+                    {% if case.is_chargeable %}유상 A/S{% else %}무상 A/S{% endif %}
+                </span>
+                <span class="hero-sub" style="margin:0;">
+                    접수일: <b style="color:#e2e8f0;">{{ case.reported_date|default('-') }}</b>
+                </span>
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 flex-shrink-0">
+            <a href="{{ url_for('warranty.warranty_list') }}" class="btn btn-sm">목록</a>
+            <a href="{{ url_for('warranty.dashboard') }}" class="btn btn-sm">대시보드</a>
+            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteCaseModal">삭제</button>
+        </div>
+    </div>
+
+    {# 6단계 프로그레스바 #}
+    <div class="case-progress">
+        {% for step in steps %}
+        {% if step == current_status %}
+        <div class="cp-step active">
+            <div class="cp-dot">&#10003;</div>
+            <div class="cp-label">{{ step }}</div>
+        </div>
+        {% elif current_status in steps and loop.index0 < steps.index(current_status) %}
+        <div class="cp-step done">
+            <div class="cp-dot">&#10003;</div>
+            <div class="cp-label">{{ step }}</div>
+        </div>
+        {% else %}
+        <div class="cp-step">
+            <div class="cp-dot">{{ loop.index }}</div>
+            <div class="cp-label">{{ step }}</div>
+        </div>
+        {% endif %}
+        {% if not loop.last %}<div class="cp-line"></div>{% endif %}
+        {% endfor %}
+    </div>
+</div>
+
+{# ═══ MAIN 2-COLUMN ═══ #}
+<div class="row g-3">
+
+    {# ── 좌: 기본정보 카드 ── #}
+    <div class="col-12 col-lg-7">
+
+        {# 현장 / 제품 기본 정보 #}
+        <div class="card shadow-sm border-0 mb-3 mg-fade" style="animation-delay:.08s">
+            <div class="card-header bg-white fw-bold py-2 d-flex justify-content-between align-items-center">
+                <span>기본 정보</span>
+            </div>
+            <div class="card-body py-3 px-3">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">계약명</div>
+                            <div class="kv-value fw-bold">{{ case.contract_name or case.manual_site_name or '-' }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">품목</div>
+                            <div class="kv-value">{{ case.item_group|default('-') }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">모델</div>
+                            <div class="kv-value mono">{{ case.model_name|default('-') }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">보증기간</div>
+                            <div class="kv-value mono" style="font-size:.82rem;">
+                                {% if case.warranty %}
+                                    {{ case.warranty.warranty_start|default('-') }} ~ {{ case.warranty.warranty_end|default('-') }}
+                                {% else %}-{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">하자유형</div>
+                            <div class="kv-value">
+                                <span class="badge bg-warning text-dark" style="font-size:.75rem;white-space:nowrap;">
+                                    {% for code, label in defect_types %}{% if code == case.defect_type %}{{ label }}{% endif %}{% endfor %}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">접수 경로</div>
+                            <div class="kv-value">{{ case.request_channel|default('-') }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# 증상 / 원인 / 조치 #}
+        <div class="card shadow-sm border-0 mb-3 mg-fade" style="animation-delay:.1s">
+            <div class="card-header bg-white fw-bold py-2 d-flex justify-content-between align-items-center">
+                <span>증상 / 원인 / 조치</span>
+                <button class="btn btn-xs btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editCaseModal">수정</button>
+            </div>
+            <div class="card-body py-3 px-3">
+                <div class="detail-kv mb-3">
+                    <div class="kv-label">증상 (접수 시 기재)</div>
+                    <div class="kv-value" style="white-space:pre-wrap;">{{ case.symptom|default('-') }}</div>
+                </div>
+                <div class="detail-kv mb-3">
+                    <div class="kv-label">원인 분석</div>
+                    <div class="kv-value" style="white-space:pre-wrap;">{{ case.cause_analysis|default('-') }}</div>
+                </div>
+                <div class="detail-kv">
+                    <div class="kv-label">조치 내용</div>
+                    <div class="kv-value" style="white-space:pre-wrap;">{{ case.action_taken|default('-') }}</div>
+                </div>
+            </div>
+        </div>
+
+        {# 타임라인 로그 #}
+        <div class="card shadow-sm border-0 mg-fade" style="animation-delay:.15s">
+            <div class="card-header bg-white fw-bold py-2 d-flex justify-content-between align-items-center">
+                <span>처리 이력</span>
+                <button class="btn btn-xs btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#addLogModal">+ 로그 추가</button>
+            </div>
+            <div class="card-body py-3 px-3">
+                <div class="timeline">
+                    {% for log in logs %}
+                    <div class="tl-item">
+                        <div class="tl-dot {% if log.log_type == 'status_change' %}tl-done{% elif log.log_type == 'note' %}tl-muted{% endif %}"></div>
+                        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-1">
+                            <span class="tl-author">{{ log.created_by|default('-') }}</span>
+                            <span class="tl-time">{{ log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else '-' }}</span>
+                        </div>
+                        <div class="tl-body">{{ log.content|default('-') }}</div>
+                        {% if log.new_status %}
+                        <div class="mt-1">
+                            <span class="badge bg-light text-dark border" style="font-size:.68rem;white-space:nowrap;">상태: {{ log.new_status }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-3" style="font-size:.85rem;">처리 이력이 없습니다.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    {# ── 우: 상태변경 + 물류 + 비용 ── #}
+    <div class="col-12 col-lg-5">
+
+        {# 상태 변경 #}
+        <div class="card shadow-sm border-0 mb-3 mg-fade" style="animation-delay:.08s">
+            <div class="card-header bg-white fw-bold py-2">상태 변경</div>
+            <div class="card-body py-2 px-3">
+                <p class="text-muted mb-2" style="font-size:.78rem;">현재 상태를 클릭하여 변경합니다.</p>
+                <form method="POST" action="{{ url_for('warranty.case_detail', case_id=case.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="update_status">
+                    <input type="hidden" name="new_status" id="hiddenNewStatus" value="">
+                    <div class="status-btn-group mb-3">
+                        {% for st in status_steps %}
+                        <button type="button"
+                                class="status-btn status-btn-{{ st }} {% if st == current_status %}current{% endif %}"
+                                onclick="document.getElementById('hiddenNewStatus').value='{{ st }}'; this.closest('.status-btn-group').querySelectorAll('.status-btn').forEach(b=>b.classList.remove('current')); this.classList.add('current');">
+                            {{ st }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label" style="font-size:.78rem;font-weight:600;">변경 사유 <span class="text-danger">*</span></label>
+                        <textarea name="status_memo" class="form-control form-control-sm" rows="2" placeholder="처리 내용 메모..." required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm w-100 fw-bold">상태 저장</button>
+                </form>
+            </div>
+        </div>
+
+        {# 담당자 / 방문 일정 #}
+        <div class="card shadow-sm border-0 mb-3 mg-fade" style="animation-delay:.1s">
+            <div class="card-header bg-white fw-bold py-2 d-flex justify-content-between align-items-center">
+                <span>담당자 / 일정</span>
+                <button class="btn btn-xs btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editAssignModal">수정</button>
+            </div>
+            <div class="card-body py-2 px-3">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">담당자</div>
+                            <div class="kv-value fw-bold">{{ case.assigned_to|default('-') }}</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">현장 방문일</div>
+                            <div class="kv-value mono">{{ case.site_visit_date|default('-') }}</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">고객 연락처</div>
+                            <div class="kv-value mono">{{ case.customer_phone|default('-') }}</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">완료일</div>
+                            <div class="kv-value mono">{{ case.completed_date|default('-') }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# 부품 / 물류 정보 #}
+        <div class="card shadow-sm border-0 mb-3 mg-fade" style="animation-delay:.12s">
+            <div class="card-header bg-white fw-bold py-2 d-flex justify-content-between align-items-center">
+                <span>교체 부품 / 발송</span>
+                <button class="btn btn-xs btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editPartsModal">수정</button>
+            </div>
+            <div class="card-body p-2">
+                {% set ns = namespace(parts_total=0) %}
+                {% if parts %}
+                <div class="table-responsive">
+                    <table class="table table-sm mb-1" style="font-size:.8rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>부품명</th>
+                                <th class="text-end">수량</th>
+                                <th class="text-end">단가</th>
+                                <th class="text-end">소계</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in parts %}
+                            {% set p_qty = p.qty|default(0)|int %}
+                            {% set p_price = (p.unit_price|default(p.price|default(0)))|int %}
+                            {% set ns.parts_total = ns.parts_total + p_qty * p_price %}
+                            <tr>
+                                <td>{{ p.name|default('-') }}</td>
+                                <td class="text-end font-mono">{{ p_qty }}</td>
+                                <td class="text-end font-mono">{{ '{:,}'.format(p_price) }}</td>
+                                <td class="text-end font-mono fw-bold">{{ '{:,}'.format(p_qty * p_price) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-2" style="font-size:.82rem;">등록된 부품 없음</div>
+                {% endif %}
+                <div class="d-flex justify-content-between align-items-center px-1 py-1 border-top">
+                    <span style="font-size:.78rem;color:var(--mg-muted);">발송: {{ case.shipping_method|default('-') }}</span>
+                    <span class="fw-bold font-mono" style="font-size:.85rem;">합계: {{ '{:,}'.format(ns.parts_total) }}원</span>
+                </div>
+            </div>
+        </div>
+
+        {# 비용 정산 #}
+        <div class="card shadow-sm border-0 mg-fade" style="animation-delay:.14s">
+            <div class="card-header bg-white fw-bold py-2 d-flex justify-content-between align-items-center">
+                <span>비용 정산</span>
+                <button class="btn btn-xs btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editCostModal">수정</button>
+            </div>
+            <div class="card-body py-2 px-3">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">유상/무상</div>
+                            <div class="kv-value">
+                                {% if case.is_chargeable %}
+                                <span class="badge bg-danger" style="font-size:.72rem;white-space:nowrap;">유상 (보증 만료)</span>
+                                {% else %}
+                                <span class="badge bg-primary" style="font-size:.72rem;white-space:nowrap;">무상 (보증기간 내)</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">청구 금액 (부품 합계)</div>
+                            <div class="kv-value mono fw-bold">{{ '{:,}'.format(ns.parts_total) }}원</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">청구 상태</div>
+                            <div class="kv-value">{{ case.charge_status|default('-') }}</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="detail-kv">
+                            <div class="kv-label">교체 부품</div>
+                            <div class="kv-value">{{ case.replaced_parts|default('-') }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{# ═══ 로그 추가 모달 ═══ #}
+<div class="modal fade" id="addLogModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url_for('warranty.case_detail', case_id=case.id) }}" class="modal-content">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="add_note">
+            <div class="modal-header py-2">
+                <h6 class="modal-title fw-bold">처리 이력 추가</h6>
+                <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">처리 내용 <span class="text-danger">*</span></label>
+                    <textarea name="note_content" class="form-control form-control-sm" rows="4" required
+                              placeholder="현장 방문 결과, 부품 발송, 수리 완료 등의 내용을 입력하세요."></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">상태 변경 (선택)</label>
+                    <select name="new_status" class="form-select form-select-sm">
+                        <option value="">현재 상태 유지</option>
+                        {% for st in status_steps %}
+                        <option value="{{ st }}">{{ st }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-primary btn-sm fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ═══ 기본정보 수정 모달 ═══ #}
+<div class="modal fade" id="editCaseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url_for('warranty.case_detail', case_id=case.id) }}" class="modal-content">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="update_detail">
+            <div class="modal-header py-2">
+                <h6 class="modal-title fw-bold">증상 / 원인 / 조치 수정</h6>
+                <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">증상</label>
+                    <textarea name="symptom" class="form-control form-control-sm" rows="3">{{ case.symptom|default('') }}</textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">원인 분석</label>
+                    <textarea name="cause_analysis" class="form-control form-control-sm" rows="3">{{ case.cause_analysis|default('') }}</textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">조치 내용</label>
+                    <textarea name="action_taken" class="form-control form-control-sm" rows="3">{{ case.action_taken|default('') }}</textarea>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-primary btn-sm fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ═══ 담당자/일정 수정 모달 ═══ #}
+<div class="modal fade" id="editAssignModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url_for('warranty.case_detail', case_id=case.id) }}" class="modal-content">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="update_assign">
+            <div class="modal-header py-2">
+                <h6 class="modal-title fw-bold">담당자 / 일정 수정</h6>
+                <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">담당자</label>
+                    <input type="text" name="assigned_to" class="form-control form-control-sm" value="{{ case.assigned_to|default('') }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">현장 방문일</label>
+                    <input type="date" name="site_visit_date" class="form-control form-control-sm" value="{{ case.site_visit_date|default('') }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">고객 연락처</label>
+                    <input type="tel" name="customer_phone" class="form-control form-control-sm" value="{{ case.customer_phone|default('') }}" placeholder="010-0000-0000">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">완료일</label>
+                    <input type="date" name="completed_date" class="form-control form-control-sm" value="{{ case.completed_date|default('') }}">
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-primary btn-sm fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ═══ 부품/발송 수정 모달 ═══ #}
+<div class="modal fade" id="editPartsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url_for('warranty.case_detail', case_id=case.id) }}" class="modal-content">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="update_parts_shipping">
+            <div class="modal-header py-2">
+                <h6 class="modal-title fw-bold">교체 부품 / 발송 수정</h6>
+                <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label fw-bold" style="font-size:.82rem;">교체 부품</label>
+                <div class="d-flex gap-1 mb-1" style="font-size:.72rem;color:var(--mg-muted);font-weight:600;">
+                    <span style="flex:3">부품명</span>
+                    <span style="flex:1">수량</span>
+                    <span style="flex:1.5">단가(원)</span>
+                    <span style="width:28px"></span>
+                </div>
+                <div id="modalPartsRows" class="mb-3">
+                </div>
+                <button type="button" class="btn btn-xs btn-outline-secondary mb-3" onclick="addModalPartRow()">+ 부품 추가</button>
+                <hr>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">발송 방법</label>
+                    <input type="text" name="shipping_method" class="form-control form-control-sm" value="{{ case.shipping_method|default('') }}" placeholder="택배, 직접배송 등">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">송장 번호</label>
+                    <input type="text" name="shipping_tracking" class="form-control form-control-sm" value="{{ case.shipping_tracking|default('') }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">발송일</label>
+                    <input type="date" name="shipping_date" class="form-control form-control-sm" value="{{ case.shipping_date|default('') }}">
+                </div>
+                <input type="hidden" name="parts_json" id="modalPartsJson" value="">
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-primary btn-sm fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ═══ 비용 정산 수정 모달 ═══ #}
+<div class="modal fade" id="editCostModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url_for('warranty.case_detail', case_id=case.id) }}" class="modal-content">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="update_charge">
+            <div class="modal-header py-2">
+                <h6 class="modal-title fw-bold">비용 정산 수정</h6>
+                <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="alert alert-light py-2 px-3 small mb-0">
+                        <strong>유상/무상:</strong> 보증기간 기준 자동 판별<br>
+                        <strong>청구 금액:</strong> 교체 부품 합계 자동 계산
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:.82rem;">청구 상태</label>
+                    <select name="charge_status" class="form-select form-select-sm">
+                        <option value="">-</option>
+                        {% for opt in ['미청구', '청구완료', '입금완료'] %}
+                        <option value="{{ opt }}" {% if case.charge_status == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button type="submit" class="btn btn-primary btn-sm fw-bold">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# 삭제 모달 #}
+<div class="modal fade" id="deleteCaseModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <div class="modal-header" style="background:#fef2f2;">
+                <h6 class="modal-title fw-bold text-danger">케이스 삭제</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-1">{{ case.case_no }} 케이스를 삭제하시겠습니까?</p>
+                <p class="text-danger small mb-0">이력 로그도 함께 삭제됩니다.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <form method="POST" action="{{ url_for('warranty.case_detail', case_id=case.id) }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="delete_case">
+                    <button type="submit" class="btn btn-danger btn-sm">삭제</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function formatPrice(el) {
+    var v = el.value.replace(/[^0-9]/g, '');
+    el.value = v ? Number(v).toLocaleString() : '';
+}
+var _existParts = {{ parts|tojson }};
+function addModalPartRow(name, qty, price) {
+    var c = document.getElementById('modalPartsRows');
+    var d = document.createElement('div');
+    d.className = 'd-flex gap-1 mb-1 align-items-center';
+    var fmtPrice = price ? Number(price).toLocaleString() : '';
+    d.innerHTML = '<input type="text" class="form-control form-control-sm mp-name" placeholder="부품명" value="' + (name||'') + '" style="flex:3">'
+        + '<input type="number" class="form-control form-control-sm mp-qty" placeholder="수량" value="' + (qty||1) + '" min="1" style="flex:1">'
+        + '<input type="text" class="form-control form-control-sm mp-price text-end" placeholder="0" value="' + fmtPrice + '" style="flex:1.5" oninput="formatPrice(this)">'
+        + '<button type="button" class="btn btn-xs text-danger" onclick="this.parentElement.remove()" style="font-size:1.2rem">&times;</button>';
+    c.appendChild(d);
+}
+document.getElementById('editPartsModal').addEventListener('show.bs.modal', function() {
+    var c = document.getElementById('modalPartsRows');
+    c.innerHTML = '';
+    if (_existParts && _existParts.length) {
+        _existParts.forEach(function(p) { addModalPartRow(p.name, p.qty, p.unit_price||0); });
+    } else {
+        addModalPartRow();
+    }
+});
+document.querySelector('#editPartsModal form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var rows = document.querySelectorAll('#modalPartsRows > div');
+    var parts = [];
+    rows.forEach(function(r) {
+        var name = r.querySelector('.mp-name').value.trim();
+        if (name) parts.push({name: name, qty: parseInt(r.querySelector('.mp-qty').value)||1, unit_price: parseInt(r.querySelector('.mp-price').value.replace(/,/g,''))||0});
+    });
+    document.getElementById('modalPartsJson').value = JSON.stringify(parts);
+    this.submit();
+});
+</script>
+
+{% endblock %}

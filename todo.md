@@ -35,6 +35,9 @@
 - [x] 견적관리 기능 추가 (견적서 CRUD + PDF 생성 + quotation blueprint)
 - [x] 전 템플릿 MAGNATECH Design System 통합 (page-hero, 인쇄 스타일, 테이블 overflow:visible)
 
+## 2026-03-22
+- [x] A/S 관리 전면 재설계 — Warranty/WarrantyCase 모델 재설계, 대시보드+목록+접수+상세 4페이지, as.db 133건 마이그레이션(134케이스+285로그), 보증 1,208건 백필, 유상/무상 자동판별, 부품합계 자동계산 (PDCA 95%)
+
 ## 2026-03-21
 - [x] 전체 코드 간소화 및 스플릿 — 4Phase 리팩토링 (CSS/JS 추출 14+16파일, MCP registry 2170→43줄, entities 11개 분할, Route 서비스 분리) Match Rate 100%, PDCA 완료
 - [x] 발주서 삭제 모달 버그 수정 — deleteModal이 `{% if status=='작성중' %}` 조건 안에 있어 다른 상태에서 미렌더링, 조건 밖으로 이동

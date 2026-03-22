@@ -34,9 +34,12 @@ class Contract(Base):
     g2b_contract_no = Column(String(30), nullable=True)  # G2B 계약납품요구번호 (매칭 연동)
 
     # 대금 관련 필드 (매그나텍 PHASE 8)
-    payment_status = Column(String(20), default='미청구')       # 미청구/청구완료/입금완료
+    payment_status = Column(String(20), default='미청구')       # 미청구/부분입금/입금완료/변경완료/취소
     invoice_date = Column(Date, nullable=True)                   # 세금계산서 발행일
     payment_date = Column(Date, nullable=True)                   # 대금 입금확인일
+    is_excluded = Column(Boolean, default=False)                 # 예외처리 여부 (관리화면 숨김)
+    exclude_reason = Column(String(50), nullable=True)           # 예외 사유
+    exclude_note = Column(String(200), nullable=True)            # 예외 메모
 
     project = relationship("Project", back_populates="contracts")
     # 💡 계약별 품목 (1계약 : N품목)

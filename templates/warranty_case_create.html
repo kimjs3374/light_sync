@@ -1,0 +1,465 @@
+{% extends 'base.html' %}
+{% block head %}
+<style>
+/* ── A/S 접수 페이지 전용 ── */
+.step-indicator {
+    display: flex; align-items: center; gap: 0;
+    margin-bottom: 1.5rem;
+}
+.step-item {
+    display: flex; align-items: center; gap: 6px;
+    font-size: .78rem; font-weight: 600; color: var(--mg-muted);
+    white-space: nowrap;
+}
+.step-item.active { color: var(--mg-primary); }
+.step-item.done   { color: #16a34a; }
+.step-dot {
+    width: 26px; height: 26px; border-radius: 50%; border: 2px solid #e2e8f0;
+    background: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: .72rem; font-weight: 700; flex-shrink: 0;
+}
+.step-item.active .step-dot { border-color: var(--mg-primary); color: var(--mg-primary); background: #eff6ff; }
+.step-item.done   .step-dot { border-color: #16a34a; background: #16a34a; color: #fff; }
+.step-line { flex: 1; height: 2px; background: #e2e8f0; min-width: 20px; max-width: 60px; }
+
+/* 계약 검색 */
+.search-result-row { cursor: pointer; transition: background .1s; }
+.search-result-row:hover { background: #eef2ff !important; }
+.search-result-row.selected { background: #eff6ff !important; box-shadow: inset 3px 0 0 var(--mg-primary); }
+
+/* 자동완성 */
+.autocomplete-wrapper { position: relative; }
+.autocomplete-list {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+    background: #fff; border: 1px solid var(--mg-border);
+    border-radius: 0 0 var(--mg-radius) var(--mg-radius);
+    box-shadow: var(--mg-shadow); max-height: 200px; overflow-y: auto;
+}
+.autocomplete-list .ac-item {
+    padding: 7px 12px; font-size: .85rem; cursor: pointer;
+    border-bottom: 1px solid #f1f5f9;
+}
+.autocomplete-list .ac-item:hover { background: #eef2ff; }
+.autocomplete-list .ac-item:last-child { border-bottom: none; }
+
+/* 선택된 계약 정보 배너 */
+.selected-contract-banner {
+    background: #eff6ff; border: 1px solid #bfdbfe;
+    border-radius: var(--mg-radius); padding: .75rem 1rem;
+    display: none;
+}
+.selected-contract-banner.show { display: block; }
+
+/* 유상/무상 큰 배지 */
+.paid-type-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 16px; border-radius: 8px; font-weight: 700;
+    font-size: .88rem; white-space: nowrap;
+}
+.paid-type-badge.free  { background: #eff6ff; color: #2563eb; border: 1.5px solid #bfdbfe; }
+.paid-type-badge.paid  { background: #fef2f2; color: #dc2626; border: 1.5px solid #fecaca; }
+
+/* 부품 행 추가 */
+.parts-table th { font-size: .72rem; color: var(--mg-muted); text-transform: uppercase; letter-spacing: .03em; }
+.parts-table td { vertical-align: middle; padding: 5px 6px; }
+.parts-table td input { font-size: .82rem; }
+.btn-remove-row { padding: 2px 7px; font-size: .75rem; }
+
+/* 섹션 구분 */
+.form-section-title {
+    font-size: .72rem; font-weight: 700; color: var(--mg-subtle);
+    text-transform: uppercase; letter-spacing: .06em;
+    margin-bottom: .6rem;
+    padding-bottom: .4rem;
+    border-bottom: 1px solid var(--mg-border);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ═══ HERO ═══ #}
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">After-Service Registration</div>
+            <h2>A/S 접수</h2>
+            <div class="hero-sub">하자 발생 현장을 검색하고 케이스를 등록합니다</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('warranty.warranty_list') }}" class="btn btn-sm">보증 목록</a>
+            <a href="{{ url_for('warranty.dashboard') }}" class="btn btn-sm">대시보드</a>
+        </div>
+    </div>
+</div>
+
+{# 단계 표시기 #}
+<div class="step-indicator mg-fade" style="animation-delay:.05s">
+    <div class="step-item done" id="step1">
+        <div class="step-dot">1</div>
+        <span>현장 검색</span>
+    </div>
+    <div class="step-line"></div>
+    <div class="step-item active" id="step2">
+        <div class="step-dot">2</div>
+        <span>A/S 정보 입력</span>
+    </div>
+    <div class="step-line"></div>
+    <div class="step-item" id="step3">
+        <div class="step-dot">3</div>
+        <span>부품 / 발송</span>
+    </div>
+    <div class="step-line"></div>
+    <div class="step-item" id="step4">
+        <div class="step-dot">4</div>
+        <span>접수 완료</span>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('warranty.case_create') }}" id="caseCreateForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="input_mode" id="input_mode_field" value="{% if preselect %}warranty{% else %}manual{% endif %}">
+    <input type="hidden" name="warranty_id" id="selectedWarrantyId" value="{% if preselect %}{{ preselect.id }}{% endif %}">
+    <input type="hidden" name="contract_id" id="selectedContractId" value="{% if preselect %}{{ preselect.contract_id }}{% endif %}">
+
+    <div class="row g-3">
+        {# ── 좌: 계약 검색 + 기본정보 ── #}
+        <div class="col-12 col-lg-7">
+
+            {# 1. 보증 정보 (preselect 있으면 바로 표시, 없으면 검색) #}
+            <div class="card shadow-sm border-0 mb-3 mg-fade" style="animation-delay:.08s">
+                <div class="card-header bg-white fw-bold py-2">1. 보증 / 계약 정보</div>
+                <div class="card-body">
+
+                    {% if preselect %}
+                    {# 보증 목록에서 클릭해서 들어온 경우: 보증정보 바로 표시 #}
+                    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                        <div>
+                            <div class="fw-bold mb-1" style="font-size:.95rem;">{{ preselect.contract_name|default('-') }}</div>
+                            <div class="d-flex flex-wrap gap-2 align-items-center">
+                                <span class="badge bg-secondary" style="font-size:.72rem;white-space:nowrap;">{{ preselect.item_group|default('') }}</span>
+                                <span class="badge bg-light text-dark border" style="font-size:.72rem;white-space:nowrap;">{{ preselect.model_name|default('') }}</span>
+                                <span class="paid-type-badge {% if preselect_expired %}paid{% else %}free{% endif %}">{% if preselect_expired %}유상 A/S (보증 만료){% else %}무상 A/S (보증기간 내){% endif %}</span>
+                            </div>
+                            <div class="mt-2" style="font-size:.78rem;color:var(--mg-muted);">
+                                보증기간: <b style="color:var(--mg-ink);">{{ preselect.warranty_start }} ~ {{ preselect.warranty_end }}</b>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    {# 직접 접수: 현장 검색 + 수기입력 #}
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" style="font-size:.82rem;">현장 검색</label>
+                        <div class="input-group">
+                            <input type="text" id="siteSearch" class="form-control form-control-sm" placeholder="계약명, 모델명으로 검색..." autocomplete="off">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="searchSite()">검색</button>
+                        </div>
+                        <div id="siteResults" style="display:none;" class="mt-2">
+                            <table class="table table-sm table-hover mb-0" style="font-size:.82rem;">
+                                <thead class="table-light"><tr><th>계약명</th><th>품목</th><th>모델</th><th>보증</th></tr></thead>
+                                <tbody id="siteResultsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="selectedSiteBanner" style="display:none;" class="alert alert-info py-2 px-3 mb-3 small">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong id="selSiteName"></strong>
+                                <span class="badge bg-secondary ms-1" id="selSiteItem"></span>
+                                <span class="badge bg-light text-dark border ms-1" id="selSiteModel"></span>
+                                <span id="selSitePaid" class="ms-1"></span>
+                            </div>
+                            <button type="button" class="btn btn-xs btn-outline-secondary" onclick="clearSiteSelection()">취소</button>
+                        </div>
+                    </div>
+                    <hr class="my-2">
+                    <small class="text-muted fw-bold">또는 수기입력</small>
+                    <div class="row g-3 mt-1">
+                        <div class="col-12">
+                            <label class="form-label fw-bold" style="font-size:.82rem;">계약명 / 현장명</label>
+                            <input type="text" name="manual_contract_name" id="manualContractName" class="form-control form-control-sm" placeholder="계약명 또는 현장명 입력">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" style="font-size:.82rem;">모델명</label>
+                            <input type="text" name="manual_model_name" id="manualModelName" class="form-control form-control-sm" placeholder="모델명">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" style="font-size:.82rem;">납품일</label>
+                            <input type="date" name="manual_delivery_date" class="form-control form-control-sm">
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# 기존 A/S 이력 #}
+            {% if existing_cases %}
+            <div class="card shadow-sm border-0 mb-3 mg-fade" style="animation-delay:.09s">
+                <div class="card-header bg-white fw-bold py-2 d-flex justify-content-between">
+                    <span>A/S 이력 ({{ existing_cases|length }}건)</span>
+                </div>
+                <div class="card-body px-3 py-2">
+                    <table class="table table-sm table-hover mb-0" style="font-size:.82rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>케이스</th>
+                                <th>접수일</th>
+                                <th>증상</th>
+                                <th>상태</th>
+                                <th>유상/무상</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in existing_cases %}
+                            <tr style="cursor:pointer;" onclick="location.href='{{ url_for('warranty.case_detail', case_id=c.id) }}'">
+                                <td style="white-space:nowrap;">{{ c.case_no }}</td>
+                                <td style="white-space:nowrap;">{{ c.reported_date or '-' }}</td>
+                                <td>{{ (c.symptom or '-')[:50] }}</td>
+                                <td><span class="badge {% if c.status == '완료' %}bg-success{% elif c.status == '보류' %}bg-secondary{% else %}bg-warning text-dark{% endif %}" style="font-size:.68rem;white-space:nowrap;">{{ c.status }}</span></td>
+                                <td><span class="badge {% if c.is_chargeable %}bg-danger{% else %}bg-primary{% endif %}" style="font-size:.68rem;white-space:nowrap;">{% if c.is_chargeable %}유상{% else %}무상{% endif %}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+            {# 2. A/S 정보 입력 #}
+            <div class="card shadow-sm border-0 mb-3 mg-fade" style="animation-delay:.12s">
+                <div class="card-header bg-white fw-bold py-2">2. 하자 / 증상 정보</div>
+                <div class="card-body">
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" style="font-size:.82rem;">하자유형 <span class="text-danger">*</span></label>
+                            <select name="defect_type" class="form-select form-select-sm" required>
+                                <option value="">선택하세요</option>
+                                {% for code, label in defect_types|default([
+                                    ('소등','소등 (점등 불량)'),
+                                    ('점멸','점멸 / 깜빡임'),
+                                    ('컨버터','컨버터 고장'),
+                                    ('렌즈','렌즈 파손 / 변색'),
+                                    ('방열','방열 불량'),
+                                    ('누수','누수 / 습기'),
+                                    ('기구','기구 변형 / 파손'),
+                                    ('기타','기타')
+                                ]) %}
+                                <option value="{{ code }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" style="font-size:.82rem;">접수 경로</label>
+                            <select name="request_channel" class="form-select form-select-sm">
+                                <option value="전화">전화</option>
+                                <option value="이메일">이메일</option>
+                                <option value="현장방문">현장방문</option>
+                                <option value="카카오">카카오워크</option>
+                                <option value="기타">기타</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" style="font-size:.82rem;">증상 상세 <span class="text-danger">*</span></label>
+                        <textarea name="symptom" class="form-control form-control-sm" rows="3"
+                                  placeholder="발생 위치, 현상, 수량 등을 구체적으로 입력하세요" required></textarea>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" style="font-size:.82rem;">접수일 <span class="text-danger">*</span></label>
+                            <input type="date" name="reported_date" class="form-control form-control-sm"
+                                   value="{{ today }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" style="font-size:.82rem;">신고자</label>
+                            <input type="text" name="reported_by" class="form-control form-control-sm"
+                                   placeholder="신고자명">
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" style="font-size:.82rem;">고객명</label>
+                            <input type="text" name="customer_name" class="form-control form-control-sm"
+                                   placeholder="고객명">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" style="font-size:.82rem;">고객 연락처</label>
+                            <input type="tel" name="customer_phone" class="form-control form-control-sm"
+                                   placeholder="010-0000-0000">
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+
+        {# ── 우: 부품 + 담당자 배정 ── #}
+        <div class="col-12 col-lg-5">
+
+            {# 3. 교체 부품 #}
+            <div class="card shadow-sm border-0 mb-3 mg-fade" style="animation-delay:.1s">
+                <div class="card-header bg-white fw-bold py-2 d-flex justify-content-between align-items-center">
+                    <span>3. 교체 부품 (선택)</span>
+                    <button type="button" class="btn btn-xs btn-outline-primary" onclick="addPartRow()">+ 행 추가</button>
+                </div>
+                <div class="card-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-sm parts-table mb-0" id="partsTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:40%">부품명</th>
+                                    <th style="width:18%">수량</th>
+                                    <th style="width:28%">단가 (원)</th>
+                                    <th style="width:14%"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="partsBody">
+                                {# 기본 1행 #}
+                                <tr class="part-row">
+                                    <td><input type="text" name="part_name[]" class="form-control form-control-sm" placeholder="부품명"></td>
+                                    <td><input type="number" name="part_qty[]" class="form-control form-control-sm" value="1" min="1"></td>
+                                    <td><input type="number" name="part_price[]" class="form-control form-control-sm" placeholder="0"></td>
+                                    <td><button type="button" class="btn btn-outline-danger btn-remove-row" onclick="removePartRow(this)">삭제</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            {# 4. 발송 방법 + 담당자 배정 #}
+            <div class="card shadow-sm border-0 mb-3 mg-fade" style="animation-delay:.12s">
+                <div class="card-header bg-white fw-bold py-2">4. 처리 계획</div>
+                <div class="card-body">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" style="font-size:.82rem;">담당자 배정</label>
+                        <select name="assigned_to" class="form-select form-select-sm">
+                            <option value="">미배정</option>
+                            {% for u in users|default([
+                                {'id':1,'name':'홍길동','pos':'대리'},
+                                {'id':2,'name':'김철수','pos':'과장'},
+                                {'id':3,'name':'이영희','pos':'사원'}
+                            ]) %}
+                            <option value="{{ u.id }}">{{ u.name }} {{ u.pos }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" style="font-size:.82rem;">현장 방문 예정일</label>
+                        <input type="date" name="scheduled_date" class="form-control form-control-sm">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" style="font-size:.82rem;">부품 발송 방법</label>
+                        <select name="shipping_method" class="form-select form-select-sm">
+                            <option value="">선택 (해당시)</option>
+                            <option value="직납">직접 납품</option>
+                            <option value="택배">택배 발송</option>
+                            <option value="용달">용달</option>
+                            <option value="기타">기타</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="form-label fw-bold" style="font-size:.82rem;">유상/무상 구분</label>
+                        <div class="d-flex gap-2">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="is_paid" id="radioPaid0" value="0" checked onchange="updatePaidBadge(false)">
+                                <label class="form-check-label fw-bold" for="radioPaid0" style="color:#2563eb;">무상</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="is_paid" id="radioPaid1" value="1" onchange="updatePaidBadge(true)">
+                                <label class="form-check-label fw-bold" for="radioPaid1" style="color:#dc2626;">유상</label>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            {# 제출 버튼 #}
+            <div class="d-flex gap-2 mg-fade" style="animation-delay:.15s">
+                <button type="submit" form="caseCreateForm" class="btn btn-primary fw-bold flex-grow-1">A/S 접수 등록</button>
+                <a href="{{ url_for('warranty.dashboard') }}" class="btn btn-outline-secondary">취소</a>
+            </div>
+
+        </div>
+    </div>
+</form>
+
+<script>
+// ── 현장 검색 ──
+function searchSite() {
+    var q = document.getElementById('siteSearch').value.trim();
+    if (!q || q.length < 2) return;
+    fetch('/warranty/api/contract-search?q=' + encodeURIComponent(q))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var tbody = document.getElementById('siteResultsBody');
+            var area = document.getElementById('siteResults');
+            if (!data.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-2">검색 결과 없음</td></tr>';
+            } else {
+                tbody.innerHTML = data.map(function(item, idx) {
+                    var expired = item.is_expired;
+                    return '<tr style="cursor:pointer" onclick="selectSite(' + idx + ')">'
+                        + '<td style="font-weight:600;">' + (item.contract_name || '-') + '</td>'
+                        + '<td>' + (item.item_group || '-') + '</td>'
+                        + '<td>' + (item.model_name || '-') + '</td>'
+                        + '<td><span class="badge ' + (expired ? 'bg-secondary' : 'bg-success') + '" style="font-size:.66rem;white-space:nowrap;">' + (expired ? '만료' : '진행중') + '</span></td>'
+                        + '</tr>';
+                }).join('');
+            }
+            area.style.display = 'block';
+            window._siteData = data;
+        });
+}
+document.getElementById('siteSearch') && document.getElementById('siteSearch').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); searchSite(); }
+});
+function selectSite(idx) {
+    var item = window._siteData[idx];
+    document.getElementById('selectedWarrantyId').value = item.warranty_id || '';
+    document.getElementById('selSiteName').textContent = item.contract_name || '-';
+    document.getElementById('selSiteItem').textContent = item.item_group || '';
+    document.getElementById('selSiteModel').textContent = item.model_name || '';
+    document.getElementById('selSitePaid').innerHTML = item.is_expired
+        ? '<span class="badge bg-danger" style="font-size:.68rem;">유상</span>'
+        : '<span class="badge bg-primary" style="font-size:.68rem;">무상</span>';
+    document.getElementById('selectedSiteBanner').style.display = 'block';
+    document.getElementById('siteResults').style.display = 'none';
+    document.getElementById('manualContractName').value = '';
+    document.getElementById('manualModelName').value = '';
+    document.getElementById('input_mode_field').value = 'warranty';
+}
+function clearSiteSelection() {
+    document.getElementById('selectedWarrantyId').value = '';
+    document.getElementById('selectedSiteBanner').style.display = 'none';
+    document.getElementById('input_mode_field').value = 'manual';
+}
+
+// ── 부품 행 추가/삭제 ──
+function addPartRow() {
+    var tbody = document.getElementById('partsBody');
+    var tr = document.createElement('tr');
+    tr.className = 'part-row';
+    tr.innerHTML = '<td><input type="text" name="part_name[]" class="form-control form-control-sm" placeholder="부품명"></td>'
+        + '<td><input type="number" name="part_qty[]" class="form-control form-control-sm" value="1" min="1"></td>'
+        + '<td><input type="number" name="part_price[]" class="form-control form-control-sm" placeholder="0"></td>'
+        + '<td><button type="button" class="btn btn-outline-danger btn-remove-row" onclick="removePartRow(this)">삭제</button></td>';
+    tbody.appendChild(tr);
+}
+
+function removePartRow(btn) {
+    var tbody = document.getElementById('partsBody');
+    if (tbody.querySelectorAll('.part-row').length <= 1) return;
+    btn.closest('tr').remove();
+}
+</script>
+{% endblock %}

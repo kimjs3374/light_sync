@@ -8,6 +8,7 @@ from sqlalchemy.orm import joinedload
 from modules.auth_decorators import login_required
 from modules.db_context import get_db
 from modules.utils import safe_int, parse_date
+from modules.pagination import make_pagination, pagination_query
 from modules.pagination import make_pagination
 from modules.models import (
     Project, Contract, Warranty, WarrantyCase, WarrantyCaseLog,
@@ -156,6 +157,17 @@ def warranty_list():
                 | (Warranty.model_name.ilike(like))
             )
 
+        # A/S 이력 필터 (DB 단계에서 적용)
+        has_case = request.args.get('has_case', 'all')
+        if has_case == 'yes':
+            query = query.filter(Warranty.id.in_(
+                db.query(WarrantyCase.warranty_id).filter(WarrantyCase.warranty_id.isnot(None)).distinct()
+            ))
+        elif has_case == 'no':
+            query = query.filter(~Warranty.id.in_(
+                db.query(WarrantyCase.warranty_id).filter(WarrantyCase.warranty_id.isnot(None)).distinct()
+            ))
+
         total_count = query.count()
         warranties = (
             query.order_by(Warranty.warranty_end.asc())
@@ -214,6 +226,8 @@ def warranty_list():
         for wid, cnt in case_rows:
             warranty_case_counts[wid] = cnt
 
+        filters['has_case'] = has_case
+
         return render_template(
             'warranty_list.html',
             warranties=warranties,
@@ -233,6 +247,8 @@ def warranty_list():
             search=search,
             item_groups=sorted(item_groups),
             warranty_case_counts=warranty_case_counts,
+            pagination=make_pagination(page, per_page, total_count),
+            pagination_query=pagination_query,
         )
 
 
@@ -344,10 +360,18 @@ def case_create():
         if preselect and preselect.warranty_end:
             preselect_expired = preselect.warranty_end < datetime.date.today()
 
+        # 기존 A/S 이력
+        existing_cases = []
+        if preselect:
+            existing_cases = db.query(WarrantyCase).filter(
+                WarrantyCase.warranty_id == preselect.id
+            ).order_by(WarrantyCase.reported_date.desc()).all()
+
         return render_template(
             'warranty_case_create.html',
             defect_types=defect_types,
             preselect=preselect,
+            existing_cases=existing_cases,
             preselect_expired=preselect_expired,
             projects=projects,
             today=datetime.date.today().isoformat(),
@@ -391,7 +415,18 @@ def case_detail(case_id):
                 # 메모 추가
                 handle_warranty_action(db, case, action, request.form, session_data)
 
-            elif action == 'update_parts':
+            elif action == 'update_assign':
+                case.assigned_to = request.form.get('assigned_to', '').strip() or None
+                case.site_visit_date = parse_date(request.form.get('site_visit_date'))
+                case.customer_phone = request.form.get('customer_phone', '').strip() or None
+                case.completed_date = parse_date(request.form.get('completed_date'))
+                db.add(WarrantyCaseLog(
+                    case_id=case.id, log_type='note',
+                    content=f'담당자/일정 업데이트 (담당:{case.assigned_to or "-"})',
+                    created_by=user_name,
+                ))
+
+            elif action in ('update_parts', 'update_parts_shipping'):
                 # 부품 정보 업데이트
                 parts_data = request.form.get('parts_json', '[]').strip()
                 try:
@@ -402,15 +437,22 @@ def case_detail(case_id):
                 case.replaced_parts = ', '.join(
                     p.get('name', '') for p in parts if p.get('name')
                 )
+                # 부품 합계 → 청구금액 자동 갱신
+                case.charge_amount = sum(p.get('qty', 0) * p.get('unit_price', 0) for p in parts)
+                # 물류 정보도 함께 업데이트
+                if action == 'update_parts_shipping':
+                    case.shipping_method = request.form.get('shipping_method', '').strip() or None
+                    case.shipping_tracking = request.form.get('shipping_tracking', '').strip() or None
+                    case.shipping_date = parse_date(request.form.get('shipping_date'))
+
                 db.add(WarrantyCaseLog(
                     case_id=case.id,
                     log_type='note',
-                    content='교체 부품 정보 업데이트',
+                    content=f'부품/발송 정보 업데이트 ({case.replaced_parts or "-"})',
                     created_by=user_name,
                 ))
 
             elif action == 'update_shipping':
-                # 물류 정보 업데이트
                 case.shipping_method = request.form.get('shipping_method', '').strip() or None
                 case.shipping_tracking = request.form.get('shipping_tracking', '').strip() or None
                 case.shipping_date = parse_date(request.form.get('shipping_date'))
@@ -422,10 +464,14 @@ def case_detail(case_id):
                 ))
 
             elif action == 'update_charge':
-                # 비용 정보 업데이트
-                case.is_chargeable = request.form.get('is_chargeable') in ('on', '1', 'true')
-                case.charge_amount = safe_int(request.form.get('charge_amount'))
+                # 청구 상태만 수동, 유상/무상+금액은 자동
                 case.charge_status = request.form.get('charge_status', '').strip() or None
+                # 부품 합계 자동 계산
+                try:
+                    parts_list = json.loads(case.parts_json or '[]')
+                    case.charge_amount = sum(p.get('qty', 0) * p.get('unit_price', 0) for p in parts_list)
+                except Exception:
+                    pass
                 db.add(WarrantyCaseLog(
                     case_id=case.id,
                     log_type='note',
@@ -434,8 +480,14 @@ def case_detail(case_id):
                     created_by=user_name,
                 ))
 
+            elif action == 'delete_case':
+                db.query(WarrantyCaseLog).filter(WarrantyCaseLog.case_id == case.id).delete()
+                db.delete(case)
+                db.commit()
+                flash(f'{case.case_no} 케이스가 삭제되었습니다.', 'success')
+                return redirect(url_for('warranty.dashboard'))
+
             else:
-                # 기타 action 은 warranty_actions 에 위임
                 handle_warranty_action(db, case, action, request.form, session_data)
 
             db.commit()
