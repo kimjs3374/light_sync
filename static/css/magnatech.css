@@ -200,7 +200,7 @@ html.sb-collapsed .sidebar-brand-full { justify-content: center; }
 }
 .sidebar-toggle-btn:hover { background: #334155; color: white; }
 
-.main-content { margin-left: 250px; padding: 30px; min-width: 0; }
+.main-content { margin-left: 250px; padding: 30px; padding-bottom: 80px; min-width: 0; }
 
 /* 초기 로드 시 즉시 적용 (html 클래스 기반, 깜빡임 제거) */
 html.sb-collapsed .sidebar { width: 60px; }
