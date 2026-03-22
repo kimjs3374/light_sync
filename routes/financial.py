@@ -24,6 +24,7 @@ from modules.models import (
 )
 from modules.services.warranty_auto import auto_create_warranty
 from difflib import SequenceMatcher
+from modules.activity import log_activity
 
 logger = logging.getLogger(__name__)
 
@@ -411,6 +412,7 @@ def tax_invoice_import():
 
         with get_db() as db:
             result = import_and_match(db, records)
+            log_activity(db, '매출수금', 'import', f'세금계산서 임포트 {result["imported"]}건', ref_type='TaxInvoice')
             db.commit()
 
         flash(
@@ -494,6 +496,8 @@ def tax_invoice_match(invoice_id):
                 # 금액 비교 후 수금상태 재계산
                 from modules.services.warranty_auto import recalc_contract_payment_status
                 status = recalc_contract_payment_status(db, contract, inv.issue_date)
+                log_activity(db, '매출수금', 'match', f'세금계산서 수동매칭 ({contract.contract_name or ""})',
+                             ref_type='TaxInvoice', ref_id=inv.id)
                 db.commit()
                 flash(f'계약 매칭 완료. ({status})', 'success')
             else:
@@ -722,6 +726,7 @@ def quick_match():
 
         msg = _do_match_invoice(db, inv, contract)
         status = contract.payment_status
+        log_activity(db, '매출수금', 'match', f'세금계산서 매칭 ({msg})', ref_type='TaxInvoice', ref_id=inv.id)
         db.commit()
 
     return jsonify({'ok': True, 'message': f'{msg} 매칭 완료 ({status})'})
@@ -761,6 +766,7 @@ def exclude_contract():
             if proj:
                 proj.site_memo = (proj.site_memo or '') + f'\n[예외처리] {reason}: {old_status}→예외' + (f' — {note}' if note else '')
 
+        log_activity(db, '매출수금', 'exclude', f'{msg_name} 예외처리 ({reason})', ref_type='Contract', ref_id=contract.id)
         db.commit()
 
     return jsonify({'ok': True, 'message': f'{msg_name} → {reason} 예외처리 완료'})
@@ -797,6 +803,7 @@ def restore_exception():
             if proj:
                 proj.site_memo = (proj.site_memo or '') + f'\n[예외해제] 예외→{new_status}'
 
+        log_activity(db, '매출수금', 'restore', f'{msg_name} 예외 해제 ({new_status})', ref_type='Contract', ref_id=contract.id)
         db.commit()
 
     return jsonify({'ok': True, 'message': f'{msg_name} → 예외 해제 ({new_status})'})
@@ -880,6 +887,7 @@ def match_by_approval():
 
         msg = _do_match_invoice(db, inv, contract)
         status = contract.payment_status
+        log_activity(db, '매출수금', 'match', f'승인번호 매칭 ({approval_no})', ref_type='TaxInvoice', ref_id=inv.id)
         db.commit()
 
     return jsonify({
@@ -900,6 +908,7 @@ def tax_invoice_delete(invoice_id):
         if not inv:
             abort(404)
         contract_id = inv.contract_id
+        log_activity(db, '매출수금', 'delete', '세금계산서 삭제', ref_type='TaxInvoice', ref_id=inv.id)
         db.delete(inv)
         db.flush()
         # 연관 계약 수금상태 재계산

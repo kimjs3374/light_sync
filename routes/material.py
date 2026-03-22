@@ -22,6 +22,7 @@ from modules.priority_utils import (
     sort_priority_entries,
 )
 from modules.production_logic import refresh_production_statuses
+from modules.activity import log_activity
 from modules.services.material_actions import (
     handle_sync_material_orders,
     handle_update_material_order,
@@ -370,6 +371,7 @@ def material_management():
                     scope='material',
                     kind='system'
                 )
+            log_activity(db, '자재관리', 'sync', '자재 자동생성/동기화 실행', ref_type='MaterialOrder')
             db.commit()
             flash('자재 자동생성/동기화가 완료되었습니다.', 'success')
             return redirect(url_for('material.material_management'))
@@ -546,6 +548,8 @@ def material_detail(project_id):
                 }
                 result = handler(db, p, request.form, current_user, **ctx)
 
+                log_activity(db, '자재관리', 'status_change', f'{p.temp_name or p.project_no} 자재 {action}',
+                             ref_type='MaterialOrder', project_id=p.id)
                 db.commit()
 
                 if result.get('flash'):
@@ -563,7 +567,8 @@ def material_detail(project_id):
             db,
             project_id=project_id,
             default_scope='material',
-            limit=300
+            limit=300,
+            user_id=session.get('user_id'),
         )
 
         return render_template(

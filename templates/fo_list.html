@@ -1,0 +1,305 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    .stat-card-fo { border: none; border-radius: 12px; transition: transform .15s; }
+    .stat-card-fo:hover { transform: translateY(-2px); }
+    .stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
+    .stat-label { font-size: .78rem; color: #64748b; margin-top: 2px; }
+    .fo-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; white-space: nowrap; text-transform: uppercase; letter-spacing: .03em; background: #f8fafc; position: sticky; top: 0; z-index: 1; }
+    .fo-table td { vertical-align: middle; white-space: nowrap; font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+    .fo-table tbody tr { cursor: pointer; transition: background .12s, box-shadow .12s; }
+    .fo-table tbody tr:hover { background: #eef2ff; box-shadow: inset 3px 0 0 #2563eb; }
+    .fo-no-link { font-weight: 700; color: #0f172a; text-decoration: none; font-family: var(--mg-mono); font-size: .82rem; }
+    .fo-no-link:hover { color: #3b82f6; }
+    .badge-status { font-size: .72rem; padding: 3px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
+    .filter-bar { background: #f8fafc; border-radius: 10px; padding: 10px 14px; }
+    #groupToggle .btn { font-size:.75rem; padding:3px 8px; white-space:nowrap; }
+    #groupToggle .btn.active { background:var(--mg-primary); border-color:var(--mg-primary); color:#fff; }
+    #groupToggle .btn:not(.active) { color:var(--mg-muted); }
+    .fo-table tbody tr[data-group-header]:hover td { background:linear-gradient(135deg,#e8f0fe,#dbeafe) !important; }
+    .fo-table tbody tr[data-group-header] { cursor:pointer; }
+    @media (max-width: 767.98px) {
+        .stat-num { font-size: 1.4rem; }
+        .stat-cards-row .col { min-width: 0; }
+        #groupToggle { width:100%; }
+        #groupToggle .btn { flex:1; }
+    }
+</style>
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Fabrication Orders</div>
+            <h2>가공발주 관리</h2>
+            <div class="hero-sub">외주 가공업체 발주, 도면 관리, 납품 추적을 관리합니다</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('processing_order.fo_create') }}" class="btn btn-primary btn-sm">+ 신규 가공발주</a>
+        </div>
+    </div>
+</div>
+
+{# ─── 통계 카드 ─── #}
+<div class="row g-3 mb-4 stat-cards-row mg-fade" style="animation-delay:.05s">
+    <div class="col-4 col-md-2">
+        <div class="card stat-card-fo shadow-sm text-center py-3">
+            <div class="stat-num" style="color:#0f172a;">{{ stats.total }}</div>
+            <div class="stat-label">전체</div>
+        </div>
+    </div>
+    <div class="col-4 col-md-2">
+        <div class="card stat-card-fo shadow-sm text-center py-3" style="border-left:3px solid #f59e0b;">
+            <div class="stat-num" style="color:#f59e0b;">{{ stats.draft }}</div>
+            <div class="stat-label">작성중</div>
+        </div>
+    </div>
+    <div class="col-4 col-md-2">
+        <div class="card stat-card-fo shadow-sm text-center py-3" style="border-left:3px solid #3b82f6;">
+            <div class="stat-num" style="color:#3b82f6;">{{ stats.ordered }}</div>
+            <div class="stat-label">발주완료</div>
+        </div>
+    </div>
+    <div class="col-4 col-md-2">
+        <div class="card stat-card-fo shadow-sm text-center py-3" style="border-left:3px solid #a855f7;">
+            <div class="stat-num" style="color:#a855f7;">{{ stats.processing }}</div>
+            <div class="stat-label">가공중</div>
+        </div>
+    </div>
+    <div class="col-4 col-md-2">
+        <div class="card stat-card-fo shadow-sm text-center py-3" style="border-left:3px solid #22c55e;">
+            <div class="stat-num" style="color:#22c55e;">{{ stats.done }}</div>
+            <div class="stat-label">입고완료</div>
+        </div>
+    </div>
+</div>
+
+{# ─── 검색/필터 ─── #}
+<div class="filter-bar mb-3">
+    <form method="GET" class="row g-2 align-items-end">
+        <div class="col-md-3 col-6">
+            <input type="text" name="q" class="form-control form-control-sm" placeholder="발주번호, 업체명, 품목명 검색" value="{{ filters.q }}">
+        </div>
+        <div class="col-md-2 col-3">
+            <select name="status" class="form-select form-select-sm">
+                <option value="">전체 상태</option>
+                {% for s in status_choices %}
+                <option value="{{ s }}" {{ 'selected' if filters.status == s }}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2 col-3">
+            <select name="type" class="form-select form-select-sm">
+                <option value="">전체 유형</option>
+                {% for t in type_choices %}
+                <option value="{{ t }}" {{ 'selected' if filters.type == t }}>{{ t }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm">검색</button>
+            <a href="{{ url_for('processing_order.fo_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+        </div>
+        <div class="col-auto ms-auto">
+            <div class="btn-group btn-group-sm" id="groupToggle" role="group">
+                <button type="button" class="btn btn-outline-secondary active" data-mode="site">현장별</button>
+                <button type="button" class="btn btn-outline-secondary" data-mode="vendor">업체별</button>
+                <button type="button" class="btn btn-outline-secondary" data-mode="date">날짜순</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+{# ─── 목록 테이블 ─── #}
+<div class="card border-0 shadow-sm" style="border-radius:12px;overflow:hidden;">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 fo-table">
+                <thead>
+                    <tr style="background:#f8fafc;">
+                        <th class="ps-3" style="width:110px">발주번호</th>
+                        <th style="width:85px">발주일</th>
+                        <th>현장</th>
+                        <th style="width:120px">가공업체</th>
+                        <th style="width:70px">유형</th>
+                        <th style="width:70px">상태</th>
+                        {% if not hide_financial %}<th style="width:100px" class="text-end">합계</th>{% endif %}
+                        <th style="width:85px">납기</th>
+                        <th style="width:36px" class="text-center">📎</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fo in orders %}
+                    {% set earliest_delivery = namespace(date=None) %}
+                    {% for item in fo.items if not item.in_confirmed and item.delivery_date %}
+                        {% if not earliest_delivery.date or item.delivery_date < earliest_delivery.date %}
+                            {% set earliest_delivery.date = item.delivery_date %}
+                        {% endif %}
+                    {% endfor %}
+                    <tr onclick="location.href='{{ url_for('processing_order.fo_detail', fo_id=fo.id) }}'"
+                        data-vendor-name="{{ fo.vendor.name if fo.vendor else '-' }}"
+                        data-site-name="{{ fo.project.temp_name if fo.project else (fo.contract.contract_name if fo.contract else '-') }}"
+                        data-amount="{{ (fo.total_amount or 0) + (fo.tax_amount or 0) }}"
+                        data-date="{{ fo.fo_date.strftime('%Y-%m-%d') if fo.fo_date else '' }}">
+                        <td class="ps-3"><a href="{{ url_for('processing_order.fo_detail', fo_id=fo.id) }}" class="fo-no-link">{{ fo.fo_no }}</a></td>
+                        <td>{{ fo.fo_date.strftime('%Y-%m-%d') if fo.fo_date else '-' }}</td>
+                        <td><strong>{{ fo.project.temp_name if fo.project else (fo.contract.contract_name if fo.contract else '-') }}</strong></td>
+                        <td class="text-truncate" style="max-width:120px;">{{ fo.vendor.name if fo.vendor else '-' }}</td>
+                        <td>
+                            {% if fo.processing_type == '사급가공' %}
+                                <span class="badge-status" style="background:#fef3c7;color:#92400e;">사급</span>
+                            {% else %}
+                                <span class="badge-status" style="background:#e0e7ff;color:#3730a3;">외주</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if fo.status == '작성중' %}
+                                <span class="badge-status" style="background:#fef3c7;color:#92400e;">{{ fo.status }}</span>
+                            {% elif fo.status == '발주완료' %}
+                                <span class="badge-status" style="background:#dbeafe;color:#1e40af;">{{ fo.status }}</span>
+                            {% elif fo.status == '가공중' %}
+                                <span class="badge-status" style="background:#f3e8ff;color:#6b21a8;">{{ fo.status }}</span>
+                            {% elif fo.status == '입고완료' %}
+                                <span class="badge-status" style="background:#dcfce7;color:#166534;">{{ fo.status }}</span>
+                            {% else %}
+                                <span class="badge-status" style="background:#f1f5f9;color:#64748b;">{{ fo.status }}</span>
+                            {% endif %}
+                        </td>
+                        {% if not hide_financial %}<td class="text-end fw-bold" style="color:#0f172a;">{{ fmt_money((fo.total_amount or 0) + (fo.tax_amount or 0)) }}</td>{% endif %}
+                        <td>
+                            {% if earliest_delivery.date %}
+                                {% set bd_text, bd_cls, bd_suffix = delivery_badge(earliest_delivery.date) %}
+                                {% if bd_cls %}
+                                    <span class="badge {{ bd_cls }}" style="font-size:.68rem;">{{ earliest_delivery.date.strftime('%Y-%m-%d') }} {{ bd_suffix }}</span>
+                                {% else %}
+                                    <small class="text-muted">{{ earliest_delivery.date.strftime('%Y-%m-%d') }}</small>
+                                {% endif %}
+                            {% else %}
+                                <small class="text-muted">-</small>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if fo.files|length > 0 %}
+                                <span class="badge rounded-pill" style="background:#e0e7ff;color:#3730a3;font-size:.68rem;">{{ fo.files|length }}</span>
+                            {% else %}
+                                <small class="text-muted">-</small>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="{% if hide_financial %}8{% else %}9{% endif %}" class="text-center text-muted py-4">가공발주가 없습니다.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ─── 페이지네이션 ─── #}
+{% if pagination.total_pages > 1 %}
+<nav class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center">
+        {% if pagination.has_prev %}
+        <li class="page-item"><a class="page-link" href="?page={{ pagination.prev_page }}&q={{ filters.q }}&status={{ filters.status }}&type={{ filters.type }}">이전</a></li>
+        {% endif %}
+        {% if pagination.show_first %}
+        <li class="page-item"><a class="page-link" href="?page=1&q={{ filters.q }}&status={{ filters.status }}&type={{ filters.type }}">1</a></li>
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+        {% for p in pagination.page_range %}
+        <li class="page-item {{ 'active' if p == pagination.page }}"><a class="page-link" href="?page={{ p }}&q={{ filters.q }}&status={{ filters.status }}&type={{ filters.type }}">{{ p }}</a></li>
+        {% endfor %}
+        {% if pagination.show_last %}
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        <li class="page-item"><a class="page-link" href="?page={{ pagination.total_pages }}&q={{ filters.q }}&status={{ filters.status }}&type={{ filters.type }}">{{ pagination.total_pages }}</a></li>
+        {% endif %}
+        {% if pagination.has_next %}
+        <li class="page-item"><a class="page-link" href="?page={{ pagination.next_page }}&q={{ filters.q }}&status={{ filters.status }}&type={{ filters.type }}">다음</a></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+<script>
+(function(){
+    var COL_COUNT = {{ 8 if hide_financial else 9 }};
+    var STORAGE_KEY = 'fo_list_group_mode';
+    var tbody = document.querySelector('.fo-table tbody');
+    if (!tbody) return;
+    var originalRows = Array.from(tbody.querySelectorAll('tr:not([colspan])'));
+    if (originalRows.length === 0) return;
+
+    var rowMeta = originalRows.map(function(tr) {
+        return { tr: tr, vendorName: tr.getAttribute('data-vendor-name') || '-', siteName: tr.getAttribute('data-site-name') || '-', total: parseFloat(tr.getAttribute('data-amount') || 0) };
+    });
+
+    function removeGroupHeaders() { tbody.querySelectorAll('[data-group-header]').forEach(function(h) { h.remove(); }); }
+
+    function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    function buildGroupHeader(label, icon, count, total) {
+        var tr = document.createElement('tr');
+        tr.setAttribute('data-group-header', '');
+        tr.dataset.collapsed = 'false';
+        tr.style.cssText = 'cursor:pointer;user-select:none;';
+        {% if hide_financial %}var fmt = '';{% else %}var fmt = total > 0 ? total.toLocaleString() + '원' : '-';{% endif %}
+        tr.innerHTML = '<td colspan="' + COL_COUNT + '" style="background:linear-gradient(135deg,#f1f5f9,#e8f0fe);border-top:2px solid var(--mg-primary);border-bottom:1px solid #bfdbfe;padding:6px 12px;">'
+            + '<div class="d-flex align-items-center justify-content-between">'
+            + '<div class="d-flex align-items-center gap-2">'
+            + '<span style="display:inline-block;transition:transform .2s;font-size:.7rem;" class="fo-chev">▼</span>'
+            + '<span style="font-size:.75rem;">' + icon + '</span>'
+            + '<strong style="font-size:.82rem;color:var(--mg-primary);">' + escHtml(label) + '</strong>'
+            + '<span class="badge rounded-pill" style="background:#dbeafe;color:#1e40af;font-size:.68rem;padding:2px 7px;white-space:nowrap;">' + count + '건</span></div>'
+            + '<span class="fw-bold" style="font-size:.82rem;color:#0f172a;">' + fmt + '</span></div></td>';
+        return tr;
+    }
+
+    function renderGroupedBy(key, icon) {
+        removeGroupHeaders();
+        var groups = [], seen = {};
+        rowMeta.forEach(function(m) {
+            var name = m[key] || '-';
+            if (!seen[name]) { seen[name] = { name: name, rows: [], total: 0 }; groups.push(seen[name]); }
+            seen[name].rows.push(m);
+            seen[name].total += m.total;
+        });
+        tbody.innerHTML = '';
+        groups.forEach(function(g) {
+            var header = buildGroupHeader(g.name, icon, g.rows.length, g.total);
+            tbody.appendChild(header);
+            g.rows.forEach(function(m) { tbody.appendChild(m.tr); m.tr.style.display = ''; });
+            header.addEventListener('click', function() {
+                var collapsed = header.dataset.collapsed === 'true';
+                var chev = header.querySelector('.fo-chev');
+                g.rows.forEach(function(m) { m.tr.style.display = collapsed ? '' : 'none'; });
+                header.dataset.collapsed = collapsed ? 'false' : 'true';
+                if (chev) chev.style.transform = collapsed ? '' : 'rotate(-90deg)';
+            });
+        });
+    }
+
+    function renderFlat() { removeGroupHeaders(); originalRows.forEach(function(tr) { tbody.appendChild(tr); tr.style.display = ''; }); }
+
+    function applyMode(mode) {
+        if (mode === 'site') renderGroupedBy('siteName', '📋');
+        else if (mode === 'vendor') renderGroupedBy('vendorName', '🏭');
+        else renderFlat();
+    }
+
+    var btns = document.querySelectorAll('#groupToggle button');
+    btns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            btns.forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            var mode = btn.getAttribute('data-mode');
+            localStorage.setItem(STORAGE_KEY, mode);
+            applyMode(mode);
+        });
+    });
+
+    var saved = localStorage.getItem(STORAGE_KEY) || 'site';
+    btns.forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-mode') === saved); });
+    applyMode(saved);
+})();
+</script>
+<script>window.__pageTimeline = [];</script>
+{% endblock %}

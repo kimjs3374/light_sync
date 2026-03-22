@@ -48,6 +48,7 @@ def _save_spec_meta(data):
     with open(_SPEC_META_PATH, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 from modules.history_board import get_project_history_context
+from modules.activity import log_activity
 from modules.priority_utils import (
     append_due_priority_reason,
     append_manual_priority_reason,
@@ -242,6 +243,8 @@ def sales_detail(project_id):
                 for f in result.get('flashes', []):
                     flash(*f)
 
+            log_activity(db, '협의관리', 'status_change', f'{project.temp_name or project.project_no} 협의 {action}',
+                         ref_type='Project', ref_id=project.id, project_id=project.id)
             db.commit()
             return redirect(url_for('sales.sales_detail', project_id=project_id))
 
@@ -249,7 +252,8 @@ def sales_detail(project_id):
             db,
             project_id=project_id,
             default_scope='sales',
-            limit=500
+            limit=500,
+            user_id=session.get('user_id'),
         )
 
         return render_template(

@@ -37,6 +37,7 @@ from modules.services.production_actions import (
     handle_process_complete,
 )
 from modules.production_display_utils import build_display_cards, build_material_ticker, build_billboard_items, build_schedule_data, fetch_weather
+from modules.activity import log_activity
 
 production_bp = Blueprint('production', __name__)
 
@@ -155,6 +156,7 @@ def production_management():
                     scope='production',
                     kind='system'
                 )
+            log_activity(db, '생산관리', 'sync', '생산공정 자동생성/동기화 실행', ref_type='ProductionProcess')
             db.commit()
             flash('생산공정 자동생성/동기화가 완료되었습니다.', 'success')
             return redirect(url_for('production.production_management'))
@@ -236,6 +238,7 @@ def production_detail(project_id):
             project_id=project_id,
             default_scope='production',
             limit=300,
+            user_id=session.get('user_id'),
         )
 
         return render_template(

@@ -32,6 +32,8 @@ from .entities import (
     DRAWING_TYPE_OPTIONS,
     GroupPermission,
     HistoryLog,
+    HistoryReadMark,
+    ActivityLog,
     Notification,
     Material,
     MaterialOrder,
@@ -85,6 +87,11 @@ from .entities import (
     IlluminanceMeasured,
     Certification,
     CERT_TYPE_CHOICES,
+    FO_STATUS_CHOICES,
+    FO_TYPE_CHOICES,
+    ProcessingOrder,
+    ProcessingOrderItem,
+    ProcessingOrderFile,
 )
 from .db import SessionLocal, engine, init_db
 
@@ -126,6 +133,8 @@ __all__ = [
     "ProductionDailyLog",
     "SportsModule",
     "HistoryLog",
+    "HistoryReadMark",
+    "ActivityLog",
     "DashboardNotice",
     "DashboardSetting",
     "Drawing",
@@ -177,4 +186,9 @@ __all__ = [
     "IlluminanceMeasured",
     "Certification",
     "CERT_TYPE_CHOICES",
+    "FO_STATUS_CHOICES",
+    "FO_TYPE_CHOICES",
+    "ProcessingOrder",
+    "ProcessingOrderItem",
+    "ProcessingOrderFile",
 ]

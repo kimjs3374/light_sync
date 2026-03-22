@@ -32,6 +32,7 @@ class User(Base):
     can_approve_delete = Column(Boolean, default=False)
     is_approved = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
+    must_change_password = Column(Boolean, default=False)  # 비밀번호 초기화 후 강제 변경
     deactivated_at = Column(DateTime, nullable=True)
     deactivated_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)

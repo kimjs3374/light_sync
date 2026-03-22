@@ -15,6 +15,7 @@ from modules.models import (
     DEFECT_TYPES, CASE_STATUS_STEPS,
 )
 from modules.services.warranty_actions import handle_warranty_action
+from modules.activity import log_activity
 
 warranty_bp = Blueprint("warranty", __name__)
 
@@ -335,6 +336,8 @@ def case_create():
                         + (f' — {"유상" if case.is_chargeable else "무상"}' ),
                 created_by=user_name,
             ))
+            log_activity(db, 'AS관리', 'create', f'{case_no} AS 케이스 등록', ref_type='WarrantyCase', ref_id=case.id,
+                         project_id=case.project_id)
             db.commit()
             flash(f'AS 케이스 {case_no} 가 등록되었습니다.', 'success')
             return redirect(url_for('warranty.case_detail', case_id=case.id))
@@ -483,6 +486,7 @@ def case_detail(case_id):
                 ))
 
             elif action == 'delete_case':
+                log_activity(db, 'AS관리', 'delete', f'{case.case_no} AS 케이스 삭제', ref_type='WarrantyCase')
                 db.query(WarrantyCaseLog).filter(WarrantyCaseLog.case_id == case.id).delete()
                 db.delete(case)
                 db.commit()
@@ -492,6 +496,8 @@ def case_detail(case_id):
             else:
                 handle_warranty_action(db, case, action, request.form, session_data)
 
+            log_activity(db, 'AS관리', 'update', f'{case.case_no} AS 케이스 {action}',
+                         ref_type='WarrantyCase', ref_id=case.id, project_id=case.project_id)
             db.commit()
             flash('처리되었습니다.', 'success')
             return redirect(url_for('warranty.case_detail', case_id=case_id))
@@ -603,6 +609,8 @@ def warranty_register(contract_id):
             warranty.model_name = request.form.get('model_name', '').strip() or warranty.model_name
             warranty.quantity = safe_int(request.form.get('quantity')) or warranty.quantity
 
+            log_activity(db, 'AS관리', 'update', f'{warranty.contract_name or ""} 보증 정보 저장',
+                         ref_type='Warranty', ref_id=warranty.id, project_id=warranty.project_id)
             db.commit()
             flash('보증 정보가 저장되었습니다.', 'success')
             return redirect(url_for('warranty.warranty_register', contract_id=contract_id))

@@ -9,6 +9,7 @@ from modules.utils import safe_int
 from modules.pagination import make_pagination
 
 from modules.history_board import append_history_log, get_project_history_context
+from modules.activity import log_activity
 from modules.db_context import get_db
 from modules.contract_filters import active_contract_filter
 from modules.models import Project, Contract, User, Delivery, DeliveryPhoto
@@ -271,6 +272,8 @@ def delivery_detail(project_id):
                 }
                 result = handler(db, project, request.form, current_user, **ctx)
 
+                log_activity(db, '납품관리', action or 'update', f'{project.temp_name or project.project_no} 납품 {action}',
+                             ref_type='Delivery', project_id=project.id)
                 db.commit()
 
                 if result.get('flash'):
@@ -324,6 +327,7 @@ def delivery_detail(project_id):
             project_id=project_id,
             default_scope="delivery",
             limit=300,
+            user_id=session.get('user_id'),
         )
 
         return render_template(

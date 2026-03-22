@@ -17,6 +17,7 @@ from modules.models import (
     normalize_detail_item,
 )
 from modules.history_board import append_history_log, get_project_history_context
+from modules.activity import log_activity
 from modules.production_logic import (
     sync_production_processes,
     refresh_production_statuses,
@@ -578,6 +579,8 @@ def handle_process_toggle(db, process_id, is_active, off_reason, current_user):
         content=f"{current_user} 공정토글: {item.model_name}/{p.process_name} → {p.status}" + (f" ({off_reason})" if not is_active else ""),
         scope='production', kind='system',
     )
+    log_activity(db, '생산관리', 'toggle', f'{p.process_name} {p.status}',
+                 ref_type='ProductionProcess', ref_id=p.id, project_id=p.project_id)
     db.commit()
 
     return {
@@ -628,6 +631,8 @@ def handle_process_daily_log(db, process_id, daily_qty_raw, current_user):
             content=f"{current_user} 수량입력: {item.model_name}/{p.process_name} +{actual_qty}개 (누적 {p.progress_qty}/{item_qty})",
             scope='production', kind='system',
         )
+        log_activity(db, '생산관리', 'daily_log', f'{p.process_name} 수량입력 {actual_qty}',
+                     ref_type='ProductionProcess', ref_id=p.id, project_id=p.project_id)
         db.commit()
 
     today_total = db.query(func.coalesce(func.sum(ProductionDailyLog.daily_qty), 0)).filter(
@@ -668,6 +673,8 @@ def handle_process_complete(db, process_id, complete, current_user):
         content=f"{current_user} 공정{'완료' if complete else '완료해제'}: {item.model_name}/{p.process_name}",
         scope='production', kind='system',
     )
+    log_activity(db, '생산관리', 'complete', f'{p.process_name} {"완료" if complete else "완료해제"}',
+                 ref_type='ProductionProcess', ref_id=p.id, project_id=p.project_id)
     db.commit()
 
     return {

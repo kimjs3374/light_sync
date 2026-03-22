@@ -118,7 +118,14 @@
         }
 
         closeDropdown();
-        currentInput.focus();
+        // 다음 입력 필드로 포커스 이동
+        var allInputs = Array.from(currentInput.closest('form').querySelectorAll('input:not([type=hidden]),select,textarea'));
+        var idx = allInputs.indexOf(currentInput);
+        if (idx >= 0 && idx < allInputs.length - 1) {
+            allInputs[idx + 1].focus();
+        } else {
+            currentInput.blur();
+        }
 
         // 커스텀 이벤트 발생 (발주서 등에서 담당자재 로드용)
         currentInput.dispatchEvent(new CustomEvent('vendorSelected', {

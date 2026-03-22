@@ -1,9 +1,10 @@
 import os
 import logging
 import warnings
+from collections import OrderedDict
 warnings.filterwarnings("ignore", message="urllib3.*doesn't match a supported version")
 from logging.handlers import RotatingFileHandler
-from flask import Flask, redirect, url_for, request, session, render_template
+from flask import Flask, redirect, url_for, request, session, render_template, send_from_directory
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -44,6 +45,7 @@ from routes.asboard import asboard_bp
 from routes.channel_chat import channel_chat_bp
 from routes.certification import cert_bp
 from routes.lighting_layout import lighting_layout_bp
+from routes.processing_order import processing_order_bp
 from modules.pagination import pagination_query
 
 # =====================================================================
@@ -152,6 +154,16 @@ def refresh_session_permissions():
         session['_perm_checked'] = time.time()
 
 
+# 비밀번호 초기화 후 강제 변경
+@app.before_request
+def check_must_change_password():
+    if not session.get('must_change_password'):
+        return
+    allowed = {'auth.force_change_password', 'auth.logout', 'static'}
+    if request.endpoint not in allowed:
+        return redirect(url_for('auth.force_change_password'))
+
+
 # =====================================================================
 # 운영 도메인 강제 리다이렉트
 # =====================================================================
@@ -220,6 +232,12 @@ app.register_blueprint(asboard_bp)
 app.register_blueprint(channel_chat_bp)
 app.register_blueprint(cert_bp)
 app.register_blueprint(lighting_layout_bp)
+app.register_blueprint(processing_order_bp)
+
+# 워크보드 아카이브 첨부파일 서빙
+@app.route('/static-archive/<path:filename>')
+def serve_archive_file(filename):
+    return send_from_directory('storage/archive', filename)
 
 # NAS 동기화 API는 외부(NAS cron)에서 호출하므로 CSRF 면제
 csrf.exempt(api_bp)
@@ -244,7 +262,8 @@ def inject_sidebar_menus():
     is_executive = session.get('user_group') == '임원진'
     allowed = set(session.get('allowed_menus', []))
 
-    menu_groups = {}
+    # 사용자가 접근 가능한 메뉴 풀 생성 (key → menu dict)
+    all_menus = {}
     for key, info in MENU_REGISTRY.items():
         if key in COMMON_MENU_KEYS:
             continue
@@ -252,11 +271,51 @@ def inject_sidebar_menus():
             continue
         always_show = info.get("always_show", False)
         if always_show or is_admin or is_executive or key in allowed:
-            menu_groups.setdefault(info["group"], []).append({
+            try:
+                menu_url = url_for(info["endpoint"])
+            except Exception:
+                continue
+            all_menus[key] = {
                 "key": key,
                 "label": info["label"],
-                "url": url_for(info["endpoint"]),
-            })
+                "url": menu_url,
+                "orig_group": info["group"],
+            }
+
+    # 메뉴 순서 + 그룹 이동 적용 (DB 저장값)
+    import json as _json
+    from modules.db_context import get_db
+    from modules.models import DashboardSetting
+    _order = None
+    try:
+        with get_db() as db:
+            _mo = db.query(DashboardSetting).filter(DashboardSetting.setting_key == 'menu_order').first()
+            if _mo:
+                _order = _json.loads(_mo.setting_value)
+    except Exception:
+        pass
+
+    menu_groups = OrderedDict()
+    if _order and 'groups' in _order:
+        placed = set()
+        for gname in _order['groups']:
+            keys_in_group = _order.get(gname, [])
+            group_menus = []
+            for k in keys_in_group:
+                if k in all_menus and k not in placed:
+                    group_menus.append(all_menus[k])
+                    placed.add(k)
+            if group_menus:
+                menu_groups[gname] = group_menus
+        # 순서에 없는 잔여 메뉴 → 원래 그룹에 추가
+        for key, m in all_menus.items():
+            if key not in placed:
+                g = m["orig_group"]
+                menu_groups.setdefault(g, []).append(m)
+    else:
+        # DB 순서 없으면 MENU_REGISTRY 기본 순서
+        for key, m in all_menus.items():
+            menu_groups.setdefault(m["orig_group"], []).append(m)
 
     writable = set(session.get('writable_menus', []))
     hide_financial = session.get('hide_financial', False)

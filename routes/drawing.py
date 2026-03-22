@@ -17,6 +17,7 @@ from modules.models import (
     DRAWING_TYPE_OPTIONS,
 )
 from modules.history_board import append_history_log
+from modules.activity import log_activity
 from modules.storage_adapter import upload_bytes, download_bytes, delete_object, is_storage_enabled
 
 drawing_bp = Blueprint('drawing', __name__)
@@ -170,16 +171,21 @@ def api_delete_drawing(drawing_id):
             drawing_title = drawing.title
             versions = db.query(DrawingVersion).filter_by(drawing_id=drawing_id).all()
 
+            from modules.models import ProcessingOrderFile
             for v in versions:
                 file_path = v.pdf_path or v.dwg_path
                 if file_path and is_storage_enabled():
-                    delete_object(file_path)
+                    # 가공발주 파일이 같은 경로를 쓰면 Storage 삭제 스킵
+                    fo_ref = db.query(ProcessingOrderFile).filter_by(file_path=file_path).first()
+                    if not fo_ref:
+                        delete_object(file_path)
                 db.delete(v)
 
             db.delete(drawing)
             append_history_log(db, project_id=project_id, user_name='시스템 🤖',
                                content=f"{session.get('full_name') or '사용자'}님이 도면 삭제: {drawing_title} (버전 {len(versions)}개)",
                                scope='design', kind='system')
+            log_activity(db, '도면관리', 'delete', f'{drawing_title} 도면 삭제', ref_type='Drawing', project_id=project_id)
             db.commit()
             return jsonify({'ok': True})
         except Exception:
@@ -208,7 +214,10 @@ def api_delete_version(version_id):
             file_rel_path = version.pdf_path or version.dwg_path
 
             if file_rel_path and is_storage_enabled():
-                delete_object(file_rel_path)
+                from modules.models import ProcessingOrderFile
+                fo_ref = db.query(ProcessingOrderFile).filter_by(file_path=file_rel_path).first()
+                if not fo_ref:
+                    delete_object(file_rel_path)
 
             db.delete(version)
             db.flush()
@@ -245,6 +254,7 @@ def api_delete_version(version_id):
                 scope='design',
                 kind='system',
             )
+            log_activity(db, '도면관리', 'delete', f'{drawing_title} v{deleted_version_no} 도면 버전 삭제', ref_type='Drawing', project_id=project_id)
             db.commit()
             return jsonify({'ok': True, 'drawing_deleted': drawing_deleted})
 
@@ -354,6 +364,8 @@ def api_upload_drawing(project_id):
             )
             append_history_log(db, project_id=project_id, user_name='시스템 🤖',
                                content=log_content, scope='design', kind='system')
+            log_activity(db, '도면관리', 'upload', f'{drawing.title} 도면 업로드 v{version_no}',
+                         ref_type='Drawing', ref_id=drawing.id, project_id=project_id)
             db.commit()
 
             all_versions = (
@@ -486,6 +498,8 @@ def upload_drawing(project_id):
             )
             append_history_log(db, project_id=project_id, user_name='시스템 🤖',
                                content=log_content, scope='design', kind='system')
+            log_activity(db, '도면관리', 'upload', f'{drawing.title} 도면 업로드 v{version_no}',
+                         ref_type='Drawing', ref_id=drawing.id, project_id=project_id)
             db.commit()
             flash(f'PDF 업로드 완료 (v{version_no}).', 'success')
             return redirect(url_for('drawing.drawings_index', project_id=project_id))

@@ -29,6 +29,7 @@ from modules.models import (
 from modules.services.inventory_utils import (
     record_stock_movement, confirm_audit, calc_turnover_rate,
 )
+from modules.activity import log_activity
 from modules.services.inventory_actions import (
     fmt_money,
     get_dashboard_data, get_bom_stock_data, search_bom_headers,
@@ -155,6 +156,7 @@ def audit_create():
                 target_category=(request.form.get('target_category') or '').strip(),
                 auditor_id=session.get('user_id'),
             )
+            log_activity(db, '재고관리', 'audit', f'재고 실사 생성 {audit.audit_no} ({count}개 품목)', ref_type='StockAudit', ref_id=audit.id)
             flash(f'실사 {audit.audit_no}이 생성되었습니다. ({count}개 품목)', 'success')
             return redirect(url_for('inventory.audit_detail', audit_id=audit.id))
 
@@ -214,6 +216,7 @@ def audit_confirm(audit_id):
 
         confirmed_by = session.get('full_name', '사용자')
         count = confirm_audit(db, audit_id, confirmed_by)
+        log_activity(db, '재고관리', 'audit', f'재고 실사 확정 {audit.audit_no} ({count}건 조정)', ref_type='StockAudit', ref_id=audit.id)
         db.commit()
 
         if count > 0:
@@ -238,6 +241,7 @@ def audit_delete(audit_id):
             return redirect(url_for('inventory.audit_detail', audit_id=audit_id))
 
         db.query(StockAuditItem).filter(StockAuditItem.audit_id == audit_id).delete()
+        log_activity(db, '재고관리', 'delete', f'재고 실사 삭제 {audit.audit_no}', ref_type='StockAudit')
         db.delete(audit)
         db.commit()
         flash(f'실사 {audit.audit_no}이 삭제되었습니다.', 'success')
@@ -421,6 +425,7 @@ def item_adjust(item_id):
             note=f'수동조정: {adjust_reason}',
             created_by=user_name,
         )
+        log_activity(db, '재고관리', 'movement', f'{item.item_name} 수동조정 {adjust_qty:+g}', ref_type='StockMovement', ref_id=item.id)
         db.commit()
         flash(f'[{item.item_name}] 재고가 {adjust_qty:+g} 조정되었습니다.', 'success')
 
@@ -443,6 +448,7 @@ def item_safety_stock(item_id):
         except (ValueError, TypeError):
             item.safety_stock = 0
 
+        log_activity(db, '재고관리', 'update', f'{item.item_name} 안전재고 설정 {item.safety_stock}', ref_type='Item', ref_id=item.id)
         db.commit()
         flash(f'[{item.item_name}] 안전재고가 {item.safety_stock}으로 설정되었습니다.', 'success')
 

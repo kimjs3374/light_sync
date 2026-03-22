@@ -17,6 +17,8 @@ from sqlalchemy.orm import relationship
 from .base import Base
 
 PO_STATUS_CHOICES = ['작성중', '발송완료', '입고대기', '입고완료', '취소']
+FO_STATUS_CHOICES = ['작성중', '발주완료', '가공중', '입고완료', '취소']
+FO_TYPE_CHOICES = ['사급가공', '외주가공']
 
 
 class Vendor(Base):
@@ -150,3 +152,78 @@ class EmailHistory(Base):
     po_id = Column(Integer, ForeignKey('purchase_orders.id'), nullable=True)
     po_ref = Column(String(50), nullable=True)    # iCUBE 발주번호 참조 (PO2603000015 등)
     created_at = Column(DateTime, default=datetime.datetime.now)
+
+
+# ── 가공발주 ──────────────────────────────────────────────────
+
+class ProcessingOrder(Base):
+    """가공발주서 (외주 가공업체 발주)"""
+    __tablename__ = 'processing_orders'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fo_no = Column(String(20), unique=True, nullable=False)       # FO2026-001
+    fo_date = Column(Date, nullable=False)
+    vendor_id = Column(Integer, ForeignKey('vendors.id'), nullable=False)
+    processing_type = Column(String(20), default='외주가공')       # 사급가공 / 외주가공
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)
+    contract_id = Column(Integer, ForeignKey('contracts.id'), nullable=True)
+    assigned_to = Column(Integer, ForeignKey('users.id'), nullable=True)
+    status = Column(String(20), default='작성중')
+    total_amount = Column(Float, default=0)
+    tax_amount = Column(Float, default=0)
+    note = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+    history_log = Column(Text, nullable=True)
+
+    vendor = relationship("Vendor")
+    project = relationship("Project", foreign_keys=[project_id])
+    contract = relationship("Contract", foreign_keys=[contract_id])
+    assignee = relationship("User", foreign_keys=[assigned_to])
+    items = relationship("ProcessingOrderItem", back_populates="processing_order",
+                         cascade="all, delete-orphan", order_by="ProcessingOrderItem.id")
+    files = relationship("ProcessingOrderFile", back_populates="processing_order",
+                         cascade="all, delete-orphan")
+
+
+class ProcessingOrderItem(Base):
+    """가공발주 품목"""
+    __tablename__ = 'processing_order_items'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fo_id = Column(Integer, ForeignKey('processing_orders.id', ondelete='CASCADE'), nullable=False)
+    item_id = Column(Integer, ForeignKey('items.id'), nullable=True)
+    item_name = Column(String(300), nullable=False)
+    item_spec = Column(String(500), nullable=True)
+    quantity = Column(Float, default=0)
+    unit_price = Column(Float, default=0)
+    amount = Column(Float, default=0)
+    unit = Column(String(50), nullable=True)
+    delivery_date = Column(Date, nullable=True)
+    in_confirmed = Column(Boolean, default=False)
+    in_confirmed_at = Column(DateTime, nullable=True)
+    bom_item_id = Column(Integer, ForeignKey('bom_items.id'), nullable=True)
+    material_order_id = Column(Integer, ForeignKey('material_orders.id'), nullable=True)
+    processing_note = Column(Text, nullable=True)
+    note = Column(Text, nullable=True)
+
+    processing_order = relationship("ProcessingOrder", back_populates="items")
+    bom_item = relationship("BomItem", foreign_keys=[bom_item_id])
+    material_order = relationship("MaterialOrder", foreign_keys=[material_order_id])
+
+
+class ProcessingOrderFile(Base):
+    """가공발주 첨부파일 (DWG 등)"""
+    __tablename__ = 'processing_order_files'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fo_id = Column(Integer, ForeignKey('processing_orders.id', ondelete='CASCADE'), nullable=False)
+    file_name = Column(String(500), nullable=False)
+    file_path = Column(String(1000), nullable=False)
+    file_size = Column(Integer, default=0)
+    file_type = Column(String(20), nullable=True)
+    uploaded_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    uploaded_at = Column(DateTime, default=datetime.datetime.now)
+
+    processing_order = relationship("ProcessingOrder", back_populates="files")

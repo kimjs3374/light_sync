@@ -26,6 +26,7 @@ from modules.models import (
 )
 from sqlalchemy.orm import joinedload
 from modules.services.inventory_utils import record_stock_movement
+from modules.activity import log_activity
 
 logger = logging.getLogger(__name__)
 
@@ -464,6 +465,7 @@ def receiving_create():
             if po_id:
                 _update_po_status_on_receiving(db, po_id)
 
+            log_activity(db, '입고관리', 'create', f'{rcv.rcv_no} 입고 등록 ({vendor.name})', ref_type='Receiving', ref_id=rcv.id)
             db.commit()
 
             # 알림 메시지
@@ -541,6 +543,8 @@ def receiving_delete(rcv_id):
             abort(404)
 
         po_id = rcv.po_id
+        rcv_no = rcv.rcv_no
+        log_activity(db, '입고관리', 'delete', f'{rcv_no} 입고 삭제', ref_type='Receiving')
         db.delete(rcv)
         db.flush()
 
@@ -704,6 +708,7 @@ def api_confirm_expected(poi_id):
                     scope='material',
                     kind='system'
                 )
+        log_activity(db, '입고관리', 'confirm', f'{poi.item_name} 입고확인', ref_type='Receiving')
         db.commit()
     return jsonify({'ok': True})
 
@@ -754,6 +759,7 @@ def api_update_expected_date(poi_id):
                 scope='material',
                 kind='system'
             )
+        log_activity(db, '입고관리', 'update', f'{poi.item_name} 입고예정일 변경 → {date_str or "미정"}', ref_type='Receiving')
         db.commit()
 
         today = _dt.date.today()

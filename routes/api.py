@@ -11,12 +11,13 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_wtf.csrf import CSRFProtect
 
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload
 
 from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from flask import render_template, session
 
-from modules.history_board import append_history_log, get_project_history_context
+from modules.history_board import append_history_log, get_project_history_context, mark_history_read
 from modules.models import Project, ProductCatalog, G2bProcurement, HistoryLog
 from modules.services.g2b_procurement_sync import sync_daily, sync_bulk
 
@@ -705,57 +706,143 @@ def sync_g2b_contracts():
 
 @api_bp.route('/history/<int:project_id>/add', methods=['POST'])
 @login_required
-@menu_required('project')
 def history_add_comment(project_id):
     """코멘트/답글 등록 (AJAX) → 히스토리 HTML 조각 반환"""
-    db = get_db()
-    project = db.query(Project).get(project_id)
-    if not project:
-        return jsonify({'ok': False, 'error': '현장 없음'}), 404
+    with get_db() as db:
+        project = db.query(Project).get(project_id)
+        if not project:
+            return jsonify({'ok': False, 'error': '현장 없음'}), 404
 
-    action = request.form.get('action', 'add_chat')
-    user_name = session.get('full_name', '사용자')
+        action = request.form.get('action', 'add_chat')
+        user_name = session.get('full_name', '사용자')
 
-    if action == 'add_chat':
-        msg = (request.form.get('chat_message') or '').strip()
-        if not msg:
-            return jsonify({'ok': False, 'error': '내용을 입력하세요'}), 400
-        append_history_log(db, project_id=project.id, user_name=user_name,
-                           content=msg, scope='common', kind='comment')
-    elif action == 'add_history_reply':
-        msg = (request.form.get('reply_message') or '').strip()
-        parent_id = request.form.get('parent_log_id', type=int)
-        if not msg or not parent_id:
-            return jsonify({'ok': False, 'error': '내용을 입력하세요'}), 400
-        parent = db.query(HistoryLog).get(parent_id)
-        origin = (parent.content or '')[:200] if parent else ''
-        append_history_log(db, project_id=project.id, user_name=user_name,
-                           content=msg, scope='common', kind='reply',
-                           parent_log_id=parent_id,
-                           root_log_id=parent.root_log_id or parent_id if parent else parent_id,
-                           origin_snapshot=origin)
-    else:
-        return jsonify({'ok': False, 'error': f'알 수 없는 action: {action}'}), 400
+        if action == 'add_chat':
+            msg = (request.form.get('chat_message') or '').strip()
+            if not msg:
+                return jsonify({'ok': False, 'error': '내용을 입력하세요'}), 400
+            append_history_log(db, project_id=project.id, user_name=user_name,
+                               content=msg, scope='common', kind='comment')
+        elif action == 'add_history_reply':
+            msg = (request.form.get('reply_message') or '').strip()
+            parent_id = request.form.get('parent_log_id', type=int)
+            if not msg or not parent_id:
+                return jsonify({'ok': False, 'error': '내용을 입력하세요'}), 400
+            parent = db.query(HistoryLog).get(parent_id)
+            origin = (parent.content or '')[:200] if parent else ''
+            append_history_log(db, project_id=project.id, user_name=user_name,
+                               content=msg, scope='common', kind='reply',
+                               parent_log_id=parent_id,
+                               root_log_id=parent.root_log_id or parent_id if parent else parent_id,
+                               origin_snapshot=origin)
+        else:
+            return jsonify({'ok': False, 'error': f'알 수 없는 action: {action}'}), 400
 
-    db.commit()
-    return _render_history_fragment(db, project_id, request.form.get('default_scope', 'common'))
+        db.commit()
+        board_id = request.form.get('board_id') or 'history-board'
+        return _render_history_fragment(db, project_id, request.form.get('default_scope', 'common'), board_id)
+
+
+@api_bp.route('/history/<int:project_id>/delete', methods=['POST'])
+@login_required
+def history_delete_comment(project_id):
+    """코멘트/답글 삭제 (AJAX) — 본인 작성 or admin만 허용"""
+    with get_db() as db:
+        log_id = request.form.get('log_id', type=int)
+        if not log_id:
+            return jsonify({'ok': False, 'error': '삭제 대상 없음'}), 400
+
+        log = db.query(HistoryLog).get(log_id)
+        if not log or log.project_id != project_id:
+            return jsonify({'ok': False, 'error': '로그를 찾을 수 없음'}), 404
+
+        user_name = session.get('full_name', '')
+        is_admin = session.get('role') == 'admin'
+        if not is_admin and log.user_name != user_name:
+            return jsonify({'ok': False, 'error': '본인 작성 코멘트만 삭제할 수 있습니다'}), 403
+
+        # 대댓글도 함께 삭제
+        db.query(HistoryLog).filter(HistoryLog.root_log_id == log_id).delete()
+        db.delete(log)
+        db.commit()
+
+        board_id = request.form.get('board_id') or 'history-board'
+        return _render_history_fragment(db, project_id, request.form.get('default_scope', 'common'), board_id)
 
 
 @api_bp.route('/history/<int:project_id>/fragment')
 @login_required
 def history_fragment(project_id):
     """히스토리 HTML 조각만 반환 (AJAX 갱신용)"""
-    db = get_db()
-    default_scope = request.args.get('default_scope', 'common')
-    return _render_history_fragment(db, project_id, default_scope)
+    with get_db() as db:
+        default_scope = request.args.get('default_scope', 'common')
+        board_id = request.args.get('board_id') or 'history-board'
+        return _render_history_fragment(db, project_id, default_scope, board_id)
 
 
-def _render_history_fragment(db, project_id, default_scope='common'):
-    history, history_counts = get_project_history_context(db, project_id, default_scope=default_scope)
+@api_bp.route('/history/<int:project_id>/mark-read', methods=['POST'])
+@login_required
+def history_mark_read(project_id):
+    """히스토리 읽음 처리 (offcanvas 열릴 때 호출)"""
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'ok': False}), 401
+    with get_db() as db:
+        mark_history_read(db, user_id, project_id)
+    return jsonify({'ok': True})
+
+
+@api_bp.route('/api/timeline/live')
+@login_required
+def timeline_live():
+    """전사 실시간 타임라인 — ActivityLog + HistoryLog 통합 최신 30건"""
+    with get_db() as db:
+        from modules.models import HistoryLog, ActivityLog, Project
+        items = []
+
+        # ActivityLog (전사 활동)
+        activities = db.query(ActivityLog).order_by(ActivityLog.created_at.desc()).limit(20).all()
+        for a in activities:
+            items.append({
+                'time': a.created_at.strftime('%m/%d %H:%M') if a.created_at else '',
+                'user': a.user_name or '',
+                'text': a.summary or '',
+                'site': a.ref_label or '',
+                'scope': a.module or 'common',
+                'ts': a.created_at.timestamp() if a.created_at else 0,
+            })
+
+        # HistoryLog (현장 활동) — 최근 20건
+        logs = db.query(HistoryLog).options(
+            joinedload(HistoryLog.project)
+        ).filter(HistoryLog.log_kind == 'system').order_by(HistoryLog.created_at.desc()).limit(20).all()
+        for log in logs:
+            items.append({
+                'time': log.created_at.strftime('%m/%d %H:%M') if log.created_at else '',
+                'user': log.user_name or '',
+                'text': log.content or '',
+                'site': log.project.temp_name if log.project else '',
+                'scope': log.log_scope or 'common',
+                'ts': log.created_at.timestamp() if log.created_at else 0,
+            })
+
+        # 시간순 정렬 후 30건
+        items.sort(key=lambda x: x.get('ts', 0), reverse=True)
+        for i in items:
+            i.pop('ts', None)
+        return jsonify(items[:30])
+
+
+def _render_history_fragment(db, project_id, default_scope='common', board_id='history-board'):
+    project = db.query(Project).get(project_id)
+    user_id = session.get('user_id')
+    history, history_counts = get_project_history_context(
+        db, project_id, default_scope=default_scope, user_id=user_id)
     html = render_template('components/history_board.html',
+                           project=project,
                            history=history, history_counts=history_counts,
-                           history_board_id='ajax-history-board',
+                           history_board_id=board_id,
                            history_post_action='add_chat',
                            history_default_filter='all')
     return jsonify({'ok': True, 'html': html,
-                    'total': history_counts.get('all', 0)})
+                    'total': history_counts.get('all', 0),
+                    'unread': history_counts.get('unread', 0)})

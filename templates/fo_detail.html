@@ -1,0 +1,536 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    .info-card { border: none; border-radius: 12px; overflow: hidden; }
+    .info-card .card-header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 2px solid #e2e8f0; padding: 12px 20px; }
+    .info-label { font-size: .75rem; color: #94a3b8; font-weight: 600; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .3px; }
+    .info-value { font-size: .92rem; font-weight: 500; color: #0f172a; }
+    .amount-card { border: none; border-radius: 12px; overflow: hidden; }
+    .amount-card .card-header { background: #0f172a; color: #fff; padding: 10px 20px; }
+    .amount-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; }
+    .amount-row.total { border-top: 2px solid #e2e8f0; padding-top: 12px; margin-top: 4px; }
+    .amount-row.total .amount-val { font-size: 1.3rem; color: #3b82f6; }
+    .items-table th { font-size: .78rem; color: #64748b; font-weight: 600; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+    .items-table td { vertical-align: middle; font-size: .85rem; }
+    .badge-status-lg { font-size: .82rem; padding: 5px 12px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
+    .action-btn { border-radius: 8px; font-weight: 600; font-size: .82rem; }
+    .file-drop-zone { border: 2px dashed var(--mg-border); border-radius: var(--mg-radius); padding: 24px; text-align: center; color: var(--mg-muted); transition: all .2s; cursor: pointer; }
+    .file-drop-zone:hover, .file-drop-zone.drag-over { border-color: var(--mg-primary); background: #eff6ff; color: var(--mg-primary); }
+    .file-item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--mg-border); font-size: .85rem; }
+    .file-item:last-child { border-bottom: none; }
+    .file-icon { font-size: 1.2rem; }
+    .type-radio label { font-size:.85rem; font-weight:500; cursor:pointer; display:flex; align-items:center; gap:4px; }
+    @media (max-width: 767.98px) { .amount-row.total .amount-val { font-size: 1.1rem; } }
+</style>
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Fabrication Order Detail</div>
+            <h2>{{ fo.fo_no }}
+                {% if fo.status == '작성중' %}
+                    <span class="badge-status-lg" style="background:#fef3c7;color:#92400e;">{{ fo.status }}</span>
+                {% elif fo.status == '발주완료' %}
+                    <span class="badge-status-lg" style="background:#dbeafe;color:#1e40af;">{{ fo.status }}</span>
+                {% elif fo.status == '가공중' %}
+                    <span class="badge-status-lg" style="background:#f3e8ff;color:#6b21a8;">{{ fo.status }}</span>
+                {% elif fo.status == '입고완료' %}
+                    <span class="badge-status-lg" style="background:#dcfce7;color:#166534;">{{ fo.status }}</span>
+                {% elif fo.status == '취소' %}
+                    <span class="badge-status-lg" style="background:#f1f5f9;color:#64748b;">{{ fo.status }}</span>
+                {% endif %}
+            </h2>
+            <div class="hero-sub">{{ fo.fo_no }} | {{ fo.vendor.name if fo.vendor else '-' }} | {{ fo.fo_date.strftime('%Y-%m-%d') if fo.fo_date else '' }} | {{ fo.processing_type }}</div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap" style="white-space:nowrap;">
+            <a href="{{ url_for('processing_order.fo_list') }}" class="btn btn-outline-light btn-sm action-btn">목록</a>
+            <button type="button" class="btn btn-outline-light btn-sm action-btn" data-bs-toggle="modal" data-bs-target="#deleteModal">삭제</button>
+        </div>
+    </div>
+</div>
+
+{# ─── 정보 + 금액 ─── #}
+<div class="row g-3 mb-4">
+    <div class="col-md-8">
+        <div class="card info-card shadow-sm">
+            <div class="card-header"><strong>가공발주 정보</strong></div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">발주번호</div>
+                        <div class="info-value" style="font-family:monospace;">{{ fo.fo_no }}</div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">발주일</div>
+                        <div class="info-value">{{ fo.fo_date.strftime('%Y-%m-%d') if fo.fo_date else '-' }}</div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">가공업체</div>
+                        <div class="info-value">
+                            {% if fo.vendor %}
+                            <a href="{{ url_for('vendor.vendor_detail', tr_cd=fo.vendor.icube_tr_cd or fo.vendor.id) }}" class="text-decoration-none">{{ fo.vendor.name }}</a>
+                            {% else %}-{% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">가공유형</div>
+                        <div class="info-value">
+                            {% if fo.processing_type == '사급가공' %}
+                                <span class="badge" style="background:#fef3c7;color:#92400e;font-size:.78rem;">사급가공</span>
+                            {% else %}
+                                <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:.78rem;">외주가공</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">담당자</div>
+                        <div class="info-value">{{ fo.assignee.full_name if fo.assignee else '-' }}</div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">현장/계약</div>
+                        <div class="info-value">{{ fo.contract.contract_name if fo.contract else (fo.project.name if fo.project else '-') }}</div>
+                    </div>
+                    {% if fo.note %}
+                    <div class="col-12">
+                        <div class="info-label">비고</div>
+                        <div class="info-value">{{ fo.note }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        {% if not hide_financial %}
+        <div class="card amount-card shadow-sm">
+            <div class="card-header"><strong>금액 요약</strong></div>
+            <div class="card-body">
+                <div class="amount-row">
+                    <span class="text-muted" style="font-size:.85rem;">공급가액</span>
+                    <strong>{{ fmt_money(fo.total_amount) }}원</strong>
+                </div>
+                <div class="amount-row">
+                    <span class="text-muted" style="font-size:.85rem;">부가세 (10%)</span>
+                    <span>{{ fmt_money(fo.tax_amount) }}원</span>
+                </div>
+                <div class="amount-row total">
+                    <strong style="font-size:1rem;">합계</strong>
+                    <strong class="amount-val">{{ fmt_money((fo.total_amount or 0) + (fo.tax_amount or 0)) }}원</strong>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        <div class="card shadow-sm {% if not hide_financial %}mt-2{% endif %}">
+            <div class="card-body py-2 px-3">
+                <form method="POST" action="{{ url_for('processing_order.fo_change_status', fo_id=fo.id) }}" class="d-flex gap-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <select name="status" class="form-select form-select-sm" style="border-radius:6px;">
+                        {% for s in status_choices %}
+                        <option value="{{ s }}" {{ 'selected' if fo.status == s }}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-outline-primary btn-sm action-btn" style="white-space:nowrap;">변경</button>
+                </form>
+            </div>
+        </div>
+        <div class="d-grid gap-2 mt-2">
+            {% if fo.vendor and fo.vendor.email %}
+            <button type="button" class="btn btn-success w-100 action-btn" id="emailPreviewBtn">
+                이메일 발송 ({{ fo.vendor.email }})
+            </button>
+            {% elif fo.vendor %}
+            <div class="alert alert-warning mb-0 py-2 small" style="border-radius:8px;">가공업체 이메일 미등록</div>
+            {% endif %}
+            {% if fo.contract_id %}
+            <form method="POST" action="{{ url_for('processing_order.fo_sync_production', fo_id=fo.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-outline-info w-100 action-btn">생산관리 연동</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# ─── 품목 테이블 ─── #}
+<div class="card info-card shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <strong>가공 품목</strong>
+            <span class="badge bg-primary ms-1" style="font-size:.72rem;">{{ fo.items|length }}건</span>
+        </div>
+        {% if fo.status == '작성중' %}
+        <button type="button" class="btn btn-sm btn-outline-primary action-btn" data-bs-toggle="modal" data-bs-target="#editModal">수정</button>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 items-table">
+                <thead>
+                    <tr style="background:#f8fafc;">
+                        <th class="ps-3" style="width:36px">No</th>
+                        <th style="max-width:200px">품명/규격</th>
+                        <th class="text-end" style="width:65px">수량</th>
+                        <th style="width:40px">단위</th>
+                        {% if not hide_financial %}<th class="text-end" style="width:85px">단가</th>
+                        <th class="text-end" style="width:95px">금액</th>{% endif %}
+                        <th style="width:90px">납기</th>
+                        <th style="width:110px">가공메모</th>
+                        <th style="width:75px">입고</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in fo.items %}
+                    <tr>
+                        <td class="text-muted ps-3">{{ loop.index }}</td>
+                        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_name }}{{ ' / ' ~ item.item_spec if item.item_spec else '' }}">
+                            <strong>{{ item.item_name }}</strong>
+                            {% if item.item_spec %}<br><small class="text-muted">{{ item.item_spec }}</small>{% endif %}
+                        </td>
+                        <td class="text-end">{{ "{:,.0f}".format(item.quantity or 0) }}</td>
+                        <td>{{ item.unit or '' }}</td>
+                        {% if not hide_financial %}
+                        <td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
+                        <td class="text-end fw-bold" style="color:#0f172a;">{{ "{:,.0f}".format(item.amount or 0) }}</td>
+                        {% endif %}
+                        <td>
+                            {% if item.delivery_date %}
+                                {% if item.in_confirmed %}
+                                    <span class="text-success" style="text-decoration:line-through;">{{ item.delivery_date.strftime('%Y-%m-%d') }}</span> <small class="text-success">✓</small>
+                                {% else %}
+                                    {% set bd_text, bd_cls, bd_suffix = delivery_badge(item.delivery_date) %}
+                                    {% if bd_cls %}
+                                        <span class="badge {{ bd_cls }}" style="font-size:.68rem;">{{ item.delivery_date.strftime('%Y-%m-%d') }}</span>
+                                    {% else %}
+                                        <small>{{ item.delivery_date.strftime('%Y-%m-%d') }}</small>
+                                    {% endif %}
+                                {% endif %}
+                            {% else %}
+                                <small class="text-muted">-</small>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted small" style="max-width:110px;overflow:hidden;text-overflow:ellipsis;">{{ item.processing_note or '' }}</td>
+                        <td class="confirm-cell" data-item-id="{{ item.id }}">
+                            {% if item.in_confirmed %}
+                                <span class="text-success fw-bold">✓ {{ item.in_confirmed_at.strftime('%m/%d') if item.in_confirmed_at else '' }}</span>
+                            {% else %}
+                                <button class="btn btn-success btn-xs confirm-btn" style="white-space:nowrap;" data-item-id="{{ item.id }}">입고확인</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="{% if hide_financial %}7{% else %}9{% endif %}" class="text-center text-muted py-4">품목이 없습니다.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ─── 첨부 파일 ─── #}
+<div class="card info-card shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <strong>도면/파일</strong>
+            <span class="badge bg-secondary ms-1" style="font-size:.72rem;" id="fileCount">{{ fo.files|length }}건</span>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-primary action-btn" onclick="document.getElementById('fileInput').click();">+ 파일 업로드</button>
+    </div>
+    <div class="card-body">
+        <input type="file" id="fileInput" multiple accept=".dwg,.dxf,.pdf,.jpg,.jpeg,.png,.zip" style="display:none">
+        <div id="fileList">
+            {% for f in fo.files %}
+            <div class="file-item" data-file-id="{{ f.id }}">
+                <span class="file-icon">{% if f.file_type in ('dwg','dxf') %}📐{% elif f.file_type == 'pdf' %}📄{% elif f.file_type in ('jpg','jpeg','png') %}🖼️{% else %}📦{% endif %}</span>
+                <div class="flex-grow-1">
+                    <strong>{{ f.file_name }}</strong>
+                    <small class="text-muted ms-2">{{ "%.1f"|format(f.file_size / 1024 / 1024) }}MB</small>
+                    <small class="text-muted ms-2">{{ f.uploaded_at.strftime('%m/%d %H:%M') if f.uploaded_at else '' }}</small>
+                </div>
+                <a href="{{ url_for('processing_order.fo_download_file', fo_id=fo.id, fid=f.id) }}" class="btn btn-outline-primary btn-xs action-btn" style="white-space:nowrap;">다운로드</a>
+                <button class="btn btn-outline-danger btn-xs action-btn delete-file-btn" data-file-id="{{ f.id }}" style="white-space:nowrap;">삭제</button>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="file-drop-zone mt-3" id="dropZone">
+            📎 파일을 드래그하거나 클릭하여 업로드
+            <br><small>DWG, DXF, PDF, JPG, PNG, ZIP (최대 50MB)</small>
+        </div>
+    </div>
+</div>
+
+{# ─── 변경 이력 ─── #}
+{% if history %}
+<div class="card info-card shadow-sm mb-4">
+    <div class="card-header">
+        <strong>변경 이력</strong>
+        <span class="badge bg-secondary ms-1" style="font-size:.72rem;">{{ history|length }}건</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead><tr style="background:#f8fafc;"><th class="ps-3" style="width:140px">시간</th><th style="width:100px">사용자</th><th>내용</th></tr></thead>
+                <tbody>
+                    {% for log in history|reverse %}
+                    <tr>
+                        <td class="ps-3 text-muted" style="font-size:.82rem;">{{ log.time }}</td>
+                        <td style="font-size:.82rem;">{{ log.user }}</td>
+                        <td style="font-size:.82rem;">{{ log.text }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ─── 수정 모달 ─── #}
+{% if fo.status == '작성중' %}
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <form method="POST" action="{{ url_for('processing_order.fo_edit', fo_id=fo.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="contract_id" value="{{ fo.contract_id or '' }}">
+                <div class="modal-header" style="background:#f8fafc;">
+                    <h6 class="modal-title fw-bold">가공발주 수정</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small">발주일</label>
+                            <input type="date" name="fo_date" class="form-control form-control-sm" value="{{ fo.fo_date.strftime('%Y-%m-%d') if fo.fo_date else '' }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small">가공유형</label>
+                            <div class="d-flex gap-3 pt-1">
+                                <label class="type-radio"><input type="radio" name="processing_type" value="외주가공" {{ 'checked' if fo.processing_type == '외주가공' }}> 외주가공</label>
+                                <label class="type-radio"><input type="radio" name="processing_type" value="사급가공" {{ 'checked' if fo.processing_type == '사급가공' }}> 사급가공</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">비고</label>
+                            <input type="text" name="note" class="form-control form-control-sm" value="{{ fo.note or '' }}">
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong class="small">가공 품목</strong>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="editAddItemBtn">+ 추가</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm" id="editItemsTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>품명</th><th style="width:100px">규격</th><th style="width:70px">수량</th>
+                                    <th style="width:50px">단위</th><th style="width:90px">단가</th>
+                                    <th style="width:95px">납기일</th><th style="width:90px">가공메모</th><th style="width:40px"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="editItemsBody">
+                                {% for item in fo.items %}
+                                <tr>
+                                    <td><input type="hidden" name="item_id[]" value="{{ item.item_id or '' }}"><input type="text" name="item_name[]" class="form-control form-control-sm" value="{{ item.item_name }}" required></td>
+                                    <td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="{{ item.item_spec or '' }}"></td>
+                                    <td><input type="number" name="quantity[]" class="form-control form-control-sm text-end" value="{{ item.quantity }}" min="0" step="any"></td>
+                                    <td><input type="text" name="unit[]" class="form-control form-control-sm" value="{{ item.unit or '' }}"></td>
+                                    <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end" value="{{ item.unit_price }}" min="0" step="any"></td>
+                                    <td><input type="date" name="delivery_date[]" class="form-control form-control-sm" value="{{ item.delivery_date.strftime('%Y-%m-%d') if item.delivery_date else '' }}"></td>
+                                    <td><input type="text" name="processing_note[]" class="form-control form-control-sm" value="{{ item.processing_note or '' }}"></td>
+                                    <input type="hidden" name="item_note[]" value="{{ item.note or '' }}">
+                                    <td><button type="button" class="btn btn-sm text-danger edit-remove-btn" style="font-size:1.1rem;">&times;</button></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer" style="background:#f8fafc;">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary btn-sm">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<script>
+(function() {
+    document.getElementById('editAddItemBtn').addEventListener('click', function() {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td><input type="hidden" name="item_id[]" value=""><input type="text" name="item_name[]" class="form-control form-control-sm" required></td>'
+            + '<td><input type="text" name="item_spec[]" class="form-control form-control-sm"></td>'
+            + '<td><input type="number" name="quantity[]" class="form-control form-control-sm text-end" min="0" step="any"></td>'
+            + '<td><input type="text" name="unit[]" class="form-control form-control-sm"></td>'
+            + '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end" min="0" step="any"></td>'
+            + '<td><input type="date" name="delivery_date[]" class="form-control form-control-sm"></td>'
+            + '<td><input type="text" name="processing_note[]" class="form-control form-control-sm"></td>'
+            + '<input type="hidden" name="item_note[]" value="">'
+            + '<td><button type="button" class="btn btn-sm text-danger edit-remove-btn" style="font-size:1.1rem;">&times;</button></td>';
+        document.getElementById('editItemsBody').appendChild(tr);
+    });
+    document.getElementById('editItemsBody').addEventListener('click', function(e) {
+        if (e.target.classList.contains('edit-remove-btn')) e.target.closest('tr').remove();
+    });
+})();
+</script>
+{% endif %}
+
+{# ─── 이메일 미리보기/발송 모달 ─── #}
+<div class="modal fade" id="emailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <form method="POST" action="{{ url_for('processing_order.fo_send_email', fo_id=fo.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="modal-header" style="background:#f0fdf4;">
+                    <h6 class="modal-title fw-bold" style="color:#166534;">이메일 미리보기</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">수신자</label>
+                            <input type="email" name="email_to" id="emailTo" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">업체명</label>
+                            <input type="text" id="emailVendor" class="form-control form-control-sm bg-light" readonly disabled>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">제목</label>
+                        <input type="text" name="email_subject" id="emailSubject" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">본문 <small class="text-muted fw-normal">(수정 가능)</small></label>
+                        <textarea name="email_body" id="emailBody" class="form-control" rows="14" style="font-size:.85rem;font-family:var(--mg-mono);line-height:1.6;" required></textarea>
+                    </div>
+                    <div id="emailFiles"></div>
+                </div>
+                <div class="modal-footer" style="background:#f8fafc;">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-success btn-sm fw-bold" onclick="return confirm('이메일을 발송하시겠습니까?');">발송</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# ─── 삭제 모달 ─── #}
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <div class="modal-header" style="background:#fef2f2;">
+                <h6 class="modal-title fw-bold text-danger">가공발주 삭제</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-1">가공발주 <strong>{{ fo.fo_no }}</strong>를 삭제하시겠습니까?</p>
+                <p class="text-danger small mb-0">첨부파일도 함께 삭제됩니다.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <form method="POST" action="{{ url_for('processing_order.fo_delete', fo_id=fo.id) }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-danger btn-sm">삭제</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    var foId = {{ fo.id }};
+
+    // ── 이메일 미리보기 ──
+    var emailBtn = document.getElementById('emailPreviewBtn');
+    if (emailBtn) {
+        emailBtn.addEventListener('click', function() {
+            fetch('/processing-order/' + foId + '/email-preview')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    document.getElementById('emailTo').value = d.to;
+                    document.getElementById('emailVendor').value = d.vendor_name;
+                    document.getElementById('emailSubject').value = d.subject;
+                    document.getElementById('emailBody').value = d.body;
+                    var filesHtml = '';
+                    if (d.files && d.files.length) {
+                        filesHtml = '<div class="small text-muted mb-1">📎 첨부파일 (' + d.files.length + '건)</div>';
+                        d.files.forEach(function(f) { filesHtml += '<span class="badge bg-light text-dark me-1" style="font-size:.78rem;">' + f + '</span>'; });
+                    }
+                    document.getElementById('emailFiles').innerHTML = filesHtml;
+                    new bootstrap.Modal(document.getElementById('emailModal')).show();
+                });
+        });
+    }
+
+    // ── 입고 확인 (AJAX) ──
+    document.querySelectorAll('.confirm-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            var itemId = this.dataset.itemId;
+            var cell = this.closest('.confirm-cell');
+            fetch('/processing-order/' + foId + '/confirm-item/' + itemId, {
+                method: 'POST',
+                headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/json'},
+            }).then(function(r) { return r.json(); }).then(function(d) {
+                if (d.ok) {
+                    if (d.confirmed) {
+                        cell.innerHTML = '<span class="text-success fw-bold">✓ ' + d.confirmed_at + '</span>';
+                    } else {
+                        cell.innerHTML = '<button class="btn btn-success btn-xs confirm-btn" style="white-space:nowrap;" data-item-id="' + itemId + '">입고확인</button>';
+                    }
+                    if (d.fo_status === '입고완료') location.reload();
+                }
+            });
+        });
+    });
+
+    // ── 파일 업로드 ──
+    var fileInput = document.getElementById('fileInput');
+    var dropZone = document.getElementById('dropZone');
+
+    dropZone.addEventListener('click', function() { fileInput.click(); });
+    dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('drag-over'); });
+    dropZone.addEventListener('drop', function(e) { e.preventDefault(); dropZone.classList.remove('drag-over'); uploadFiles(e.dataTransfer.files); });
+    fileInput.addEventListener('change', function() { if (this.files.length) uploadFiles(this.files); });
+
+    function uploadFiles(files) {
+        var fd = new FormData();
+        for (var i = 0; i < files.length; i++) fd.append('files', files[i]);
+        dropZone.innerHTML = '⏳ 업로드 중...';
+        fetch('/processing-order/' + foId + '/upload', {
+            method: 'POST', headers: {'X-CSRFToken': csrfToken}, body: fd,
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            location.reload();
+        }).catch(function() {
+            dropZone.innerHTML = '❌ 업로드 실패';
+            setTimeout(function() { dropZone.innerHTML = '📎 파일을 드래그하거나 클릭하여 업로드<br><small>DWG, DXF, PDF, JPG, PNG, ZIP (최대 50MB)</small>'; }, 2000);
+        });
+    }
+
+    // ── 파일 삭제 ──
+    document.querySelectorAll('.delete-file-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (!confirm('이 파일을 삭제하시겠습니까?')) return;
+            var fileId = this.dataset.fileId;
+            var item = this.closest('.file-item');
+            fetch('/processing-order/' + foId + '/file/' + fileId + '/delete', {
+                method: 'POST', headers: {'X-CSRFToken': csrfToken},
+            }).then(function(r) { return r.json(); }).then(function(d) {
+                if (d.ok) {
+                    item.remove();
+                    var cnt = document.querySelectorAll('.file-item').length;
+                    document.getElementById('fileCount').textContent = cnt + '건';
+                }
+            });
+        });
+    });
+})();
+
+// 타임라인 데이터 주입
+window.__pageTimeline = {{ history|reverse|list|tojson }};
+</script>
+{% endblock %}

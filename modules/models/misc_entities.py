@@ -55,6 +55,33 @@ class HistoryLog(Base):
     parent = relationship("HistoryLog", remote_side=[id], foreign_keys=[parent_log_id], backref="replies")
 
 
+class HistoryReadMark(Base):
+    """사용자별 프로젝트 히스토리 마지막 읽은 시점"""
+    __tablename__ = 'history_read_marks'
+    __table_args__ = (UniqueConstraint('user_id', 'project_id', name='uq_history_read_user_project'),)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    last_read_at = Column(DateTime, nullable=False, default=datetime.datetime.now)
+
+
+class ActivityLog(Base):
+    """전사 통합 활동 로그 (실시간 타임라인용)"""
+    __tablename__ = 'activity_logs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    module = Column(String(30), nullable=False)         # processing_order, purchase_order, material, production, inventory, etc.
+    action = Column(String(30), nullable=False)         # create, update, delete, status_change, upload, email, confirm
+    summary = Column(String(500), nullable=False)       # 한 줄 요약
+    detail = Column(Text, nullable=True)                # 상세 내용 (JSON 등)
+    ref_type = Column(String(30), nullable=True)        # 참조 엔티티 타입 (ProcessingOrder, PurchaseOrder, etc.)
+    ref_id = Column(Integer, nullable=True)             # 참조 엔티티 ID
+    ref_label = Column(String(100), nullable=True)      # 참조 라벨 (FO2026-001, PO2026-001 등)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    user_name = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+
 class DashboardNotice(Base):
     __tablename__ = 'dashboard_notices'
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -72,7 +99,7 @@ class DashboardSetting(Base):
     __tablename__ = 'dashboard_settings'
     id = Column(Integer, primary_key=True, autoincrement=True)
     setting_key = Column(String(100), unique=True, nullable=False)
-    setting_value = Column(String(200), nullable=False)
+    setting_value = Column(Text, nullable=False)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
@@ -383,6 +410,7 @@ class IlluminanceArea(Base):
     design_grid         = Column(Text)   # JSON 2D array
     ks_eav_min          = Column(Float)
     ks_uo_min           = Column(Float)
+    ks_ud_min           = Column(Float)
     fixtures            = Column(Text)   # JSON: [{"type":"LED투광등","watt":400,"qty":4}]
     created_at          = Column(DateTime, default=datetime.datetime.now)
     project             = relationship('IlluminanceProject', back_populates='areas')

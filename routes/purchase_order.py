@@ -26,6 +26,7 @@ from modules.models import (
     User, Contract, ContractItem, Project, MaterialOrder,
     BomItem, BomHeader,
 )
+from modules.activity import log_activity
 
 logger = logging.getLogger(__name__)
 
@@ -276,8 +277,8 @@ def po_create():
                     continue
 
                 spec = (item_specs[i] if i < len(item_specs) else '').strip()
-                qty = float(item_qtys[i]) if i < len(item_qtys) and item_qtys[i] else 0
-                price = float(item_prices[i]) if i < len(item_prices) and item_prices[i] else 0
+                qty = float((item_qtys[i] or '0').replace(',', '')) if i < len(item_qtys) else 0
+                price = float((item_prices[i] or '0').replace(',', '')) if i < len(item_prices) else 0
                 unit = (item_units[i] if i < len(item_units) else '').strip()
                 item_note = (item_notes[i] if i < len(item_notes) else '').strip()
                 linked_item_id = safe_int(item_ids[i] if i < len(item_ids) else '', 0) or None
@@ -299,6 +300,8 @@ def po_create():
 
             po.total_amount = total_amount
             po.tax_amount = round(total_amount * 0.1)
+            log_activity(db, '발주관리', 'create', f'{po.po_no} 발주서 등록 ({po.vendor.name if po.vendor else ""})',
+                         ref_type='PurchaseOrder', ref_id=po.id, ref_label=po.po_no, project_id=po.project_id)
             db.commit()
 
             flash(f'발주서 {po.po_no}가 생성되었습니다.', 'success')
@@ -381,8 +384,8 @@ def po_edit(po_id):
                 continue
 
             spec = (item_specs[i] if i < len(item_specs) else '').strip()
-            qty = float(item_qtys[i]) if i < len(item_qtys) and item_qtys[i] else 0
-            price = float(item_prices[i]) if i < len(item_prices) and item_prices[i] else 0
+            qty = float((item_qtys[i] or '0').replace(',', '')) if i < len(item_qtys) else 0
+            price = float((item_prices[i] or '0').replace(',', '')) if i < len(item_prices) else 0
             unit = (item_units[i] if i < len(item_units) else '').strip()
             item_note = (item_notes[i] if i < len(item_notes) else '').strip()
             linked_item_id = safe_int(item_ids[i] if i < len(item_ids) else '', 0) or None
@@ -428,6 +431,8 @@ def po_delete(po_id):
             flash(f'입고({linked_rcv.rcv_no})가 연결되어 삭제할 수 없습니다. 입고를 먼저 삭제해주세요.', 'warning')
             return redirect(url_for('purchase_order.po_detail', po_id=po_id))
 
+        po_no = po.po_no
+        log_activity(db, '발주관리', 'delete', f'{po_no} 발주서 삭제', ref_type='PurchaseOrder', ref_label=po_no)
         db.delete(po)
         db.commit()
         flash('발주서가 삭제되었습니다.', 'success')
@@ -609,6 +614,8 @@ def po_send_email(po_id):
             if po.contract_id:
                 _sync_po_to_material_orders(db, po)
 
+            log_activity(db, '발주관리', 'email', f'{po.po_no} 이메일 발송 → {vendor.email}',
+                         ref_type='PurchaseOrder', ref_id=po.id, ref_label=po.po_no, project_id=po.project_id)
             flash(f'이메일 발송 완료: {vendor.email} ({result["message"]})', 'success')
         else:
             flash(f'이메일 발송 실패: {result["message"]}', 'danger')
@@ -872,6 +879,7 @@ def api_contract_search():
         ).options(joinedload(Contract.project)).order_by(desc(Contract.id)).limit(15).all()
         return jsonify([{
             'id': c.id,
+            'project_id': c.project_id,
             'site_name': c.project.temp_name if c.project else '',
             'contract_name': c.contract_name,
             'item_group': c.item_group or '',

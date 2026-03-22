@@ -1,4 +1,101 @@
 -- ══════════════════════════════════════════════
+-- 비밀번호 강제변경 플래그 (2026-03-23)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
+
+-- ══════════════════════════════════════════════
+-- 히스토리 읽음 표시 테이블 (2026-03-22)
+-- ══════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS light_sync.history_read_marks (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES light_sync.users(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL REFERENCES light_sync.projects(id) ON DELETE CASCADE,
+    last_read_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_history_read_user_project UNIQUE (user_id, project_id)
+);
+
+-- ══════════════════════════════════════════════
+-- 조도검증 구역 설계기준 Ud 컬럼 추가 (2026-03-22)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.illuminance_areas ADD COLUMN IF NOT EXISTS ks_ud_min FLOAT;
+
+-- ══════════════════════════════════════════════
+-- 챗봇 질문 패턴 학습 테이블 (2026-03-22)
+-- ══════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS light_sync.mcp_query_patterns (
+    id SERIAL PRIMARY KEY,
+    question TEXT NOT NULL,
+    tool_name VARCHAR(100) NOT NULL,
+    tool_args JSONB DEFAULT '{}',
+    success BOOLEAN DEFAULT TRUE,
+    hit_count INTEGER DEFAULT 1,
+    last_used_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mcp_qp_tool ON light_sync.mcp_query_patterns(tool_name);
+CREATE INDEX IF NOT EXISTS idx_mcp_qp_hit ON light_sync.mcp_query_patterns(hit_count DESC);
+
+-- ══════════════════════════════════════════════
+-- 가공발주 테이블 3개 생성 (2026-03-22)
+-- ══════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS light_sync.processing_orders (
+    id SERIAL PRIMARY KEY,
+    fo_no VARCHAR(20) UNIQUE NOT NULL,
+    fo_date DATE NOT NULL,
+    vendor_id INTEGER NOT NULL REFERENCES light_sync.vendors(id),
+    processing_type VARCHAR(20) DEFAULT '외주가공',
+    project_id INTEGER REFERENCES light_sync.projects(id),
+    contract_id INTEGER REFERENCES light_sync.contracts(id),
+    assigned_to INTEGER REFERENCES light_sync.users(id),
+    status VARCHAR(20) DEFAULT '작성중',
+    total_amount FLOAT DEFAULT 0,
+    tax_amount FLOAT DEFAULT 0,
+    note TEXT,
+    created_by INTEGER REFERENCES light_sync.users(id),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    history_log TEXT
+);
+
+CREATE TABLE IF NOT EXISTS light_sync.processing_order_items (
+    id SERIAL PRIMARY KEY,
+    fo_id INTEGER NOT NULL REFERENCES light_sync.processing_orders(id) ON DELETE CASCADE,
+    item_id INTEGER REFERENCES light_sync.items(id),
+    item_name VARCHAR(300) NOT NULL,
+    item_spec VARCHAR(500),
+    quantity FLOAT DEFAULT 0,
+    unit_price FLOAT DEFAULT 0,
+    amount FLOAT DEFAULT 0,
+    unit VARCHAR(50),
+    delivery_date DATE,
+    in_confirmed BOOLEAN DEFAULT FALSE,
+    in_confirmed_at TIMESTAMP,
+    bom_item_id INTEGER REFERENCES light_sync.bom_items(id),
+    material_order_id INTEGER REFERENCES light_sync.material_orders(id),
+    processing_note TEXT,
+    note TEXT
+);
+
+CREATE TABLE IF NOT EXISTS light_sync.processing_order_files (
+    id SERIAL PRIMARY KEY,
+    fo_id INTEGER NOT NULL REFERENCES light_sync.processing_orders(id) ON DELETE CASCADE,
+    file_name VARCHAR(500) NOT NULL,
+    file_path VARCHAR(1000) NOT NULL,
+    file_size INTEGER DEFAULT 0,
+    file_type VARCHAR(20),
+    uploaded_by INTEGER REFERENCES light_sync.users(id),
+    uploaded_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ══════════════════════════════════════════════
+-- dashboard_settings.setting_value String(200) → Text 변경 (2026-03-22)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.dashboard_settings ALTER COLUMN setting_value TYPE text;
+
+-- ══════════════════════════════════════════════
 -- 조명배치도 테이블 생성 (2026-03-22)
 -- ══════════════════════════════════════════════
 
@@ -563,3 +660,13 @@ WHERE group_name = '임원진';
 -- ===================================================================
 ALTER TABLE light_sync.warranty_cases ALTER COLUMN warranty_id DROP NOT NULL;
 ALTER TABLE light_sync.warranty_cases ALTER COLUMN project_id DROP NOT NULL;
+
+-- ===================================================================
+-- 워크보드 아카이브 카카오워크 스타일 리디자인 (2026-03-23)
+-- content_json: ProseMirror 구조, attachments_json: 첨부파일 배열
+-- ===================================================================
+ALTER TABLE light_sync.archive_posts ADD COLUMN IF NOT EXISTS content_json JSONB;
+ALTER TABLE light_sync.archive_posts ADD COLUMN IF NOT EXISTS attachments_json JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE light_sync.archive_posts ADD COLUMN IF NOT EXISTS contract_no VARCHAR(50);
+ALTER TABLE light_sync.archive_comments ADD COLUMN IF NOT EXISTS content_json JSONB;
+ALTER TABLE light_sync.archive_comments ADD COLUMN IF NOT EXISTS attachments_json JSONB DEFAULT '[]'::jsonb;

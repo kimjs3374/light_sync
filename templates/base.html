@@ -43,7 +43,7 @@
             </a>
             <div class="d-flex justify-content-center gap-0 mt-2">
                 <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-danger" style="font-size:.85rem;padding:4px 16px;">로그아웃</a>
-                <a href="#" class="btn btn-sm btn-outline-light" style="font-size:.85rem;padding:4px 16px;" data-bs-toggle="modal" data-bs-target="#changePasswordModal">비번변경</a>
+                <a href="{{ url_for('auth.my_profile') }}" class="btn btn-sm btn-outline-light" style="font-size:.85rem;padding:4px 16px;">내정보</a>
             </div>
         </div>
         <hr class="sidebar-label" style="border-color: #334155; margin: 4px 15px 8px;">
@@ -119,8 +119,23 @@
         {% endif %}
         </div>{# /sidebar-menu-scroll #}
 
-        {# === 토글 버튼 (하단 고정) === #}
-        <div class="sidebar-toggle-area">
+        {# === 하단 퀵 액션 + 토글 (고정) === #}
+        <div class="sidebar-bottom-area">
+            <div class="sidebar-quick-actions">
+                <a href="#" class="sidebar-quick-btn" onclick="event.preventDefault();openHistoryFab()" title="히스토리보드">
+                    <span class="sidebar-icon">📋</span>
+                    <span class="sidebar-label">히스토리</span>
+                    {% set _sb_unread = history_counts.unread|default(0) if history_counts is defined else 0 %}
+                    {% if _sb_unread > 0 %}
+                    <span class="sq-badge" id="sidebarHistoryBadge" style="background:#ef4444;">{{ _sb_unread }}</span>
+                    {% endif %}
+                </a>
+                <a href="#" class="sidebar-quick-btn" onclick="event.preventDefault();openChatbotPanel()" title="매그니 챗봇">
+                    <span class="sidebar-icon">💬</span>
+                    <span class="sidebar-label">매그니</span>
+                    <span class="sq-badge d-none" id="fabBadge">0</span>
+                </a>
+            </div>
             <button id="sidebarToggleBtn" class="sidebar-toggle-btn" title="사이드바 접기/펼치기">
                 <span class="toggle-icon">◀</span>
                 <span class="toggle-label sidebar-label">접기</span>
@@ -130,6 +145,20 @@
 
     {# 플라이아웃 팝업 (접힘 상태 호버용, body 직속) #}
     <div class="sidebar-flyout-popup" id="flyoutPopup"></div>
+
+    <div class="page-sticky-bar" id="pageStickyBar">
+        <div class="sticky-left">
+            <span class="sticky-title" id="stickyTitle"></span>
+        </div>
+        <div class="sticky-center">
+            <span class="sticky-date" id="stickyDate"></span>
+            <span class="sticky-clock" id="stickyClock"></span>
+            <span class="sticky-divider">|</span>
+            <span class="sticky-weather" id="stickyWeather"></span>
+            <span class="sticky-forecast" id="stickyForecast"></span>
+        </div>
+        <div class="sticky-kpi" id="stickyKpi"></div>
+    </div>
 
     <div class="main-content">
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -146,13 +175,8 @@
         {% block content %}{% endblock %}
     </div>
 
-    {# === 전역 FAB (히스토리 보드) — /production/display 제외 === #}
+    {# === 챗봇/히스토리 패널 — /production/display 제외 === #}
     {% if request.path != '/production/display' %}
-    <button type="button" class="history-fab" id="globalFab"
-            onclick="openChatbotPanel()" title="매그니">
-        💬
-        <span class="fab-badge d-none" id="fabBadge"></span>
-    </button>
 
     <!-- 챗봇 슬라이드 패널 -->
     <div id="chatbotPanel">
@@ -186,15 +210,131 @@
         </div>
     </div>
     <div id="chatbotBackdrop" onclick="closeChatbotPanel()"></div>
+
+    {# === 타임라인 패널 (히스토리보드 없는 페이지용) === #}
+    <div id="timelinePanel" style="display:none;position:fixed;top:0;right:0;width:380px;height:100vh;background:#fff;box-shadow:-4px 0 20px rgba(0,0,0,.12);z-index:1060;overflow:hidden;transition:transform .25s;transform:translateX(100%);">
+        <div style="background:#0f172a;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+            <strong style="font-size:.9rem;">타임라인</strong>
+            <button onclick="closeTimelinePanel()" style="background:transparent;border:none;color:#fff;font-size:1.2rem;cursor:pointer;">&times;</button>
+        </div>
+        <div style="display:flex;border-bottom:2px solid #e2e8f0;">
+            <button class="tl-tab active" data-tab="page" style="flex:1;padding:8px;font-size:.78rem;font-weight:600;border:none;background:#f8fafc;color:#2563eb;cursor:pointer;border-bottom:2px solid #2563eb;margin-bottom:-2px;">이 페이지</button>
+            <button class="tl-tab" data-tab="live" style="flex:1;padding:8px;font-size:.78rem;font-weight:600;border:none;background:#fff;color:#64748b;cursor:pointer;">실시간</button>
+        </div>
+        <div id="tlPageContent" style="height:calc(50vh - 50px);overflow-y:auto;padding:0;"></div>
+        <div style="border-top:2px solid #e2e8f0;background:#f8fafc;padding:6px 12px;">
+            <small class="fw-bold" style="color:#64748b;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;">전사 실시간 활동</small>
+        </div>
+        <div id="tlLiveContent" style="height:calc(50vh - 50px);overflow-y:auto;padding:0;"></div>
+    </div>
+    <div id="timelineBackdrop" onclick="closeTimelinePanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:1055;"></div>
+
     {% endif %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-    /* 히스토리 offcanvas 열기 — history_summary_bar.html에서 호출 */
+    /* 히스토리 offcanvas 토글 — 열려있으면 닫고, 닫혀있으면 열기 */
     function openHistoryFab() {
         var el = document.querySelector('[id$="HistoryOffcanvas"]');
-        if (el) new bootstrap.Offcanvas(el).show();
+        if (el) {
+            var instance = bootstrap.Offcanvas.getInstance(el);
+            if (instance) { instance.toggle(); } else { new bootstrap.Offcanvas(el).show(); }
+            var form = document.querySelector('.history-ajax-form');
+            var projectId = form && form.dataset.projectId;
+            if (projectId) {
+                fetch('/api/history/' + projectId + '/mark-read', { method: 'POST' })
+                    .then(function() {
+                        var ub = document.getElementById('historyUnreadBadge'); if (ub) ub.remove();
+                        var sb = document.getElementById('sidebarHistoryBadge'); if (sb) { sb.style.background = ''; sb.style.display = 'none'; }
+                        var bar = document.getElementById('historySummaryBar'); if (bar) bar.classList.remove('history-bar-pulse');
+                    }).catch(function(){});
+            }
+        } else {
+            openTimelinePanel();
+        }
     }
+
+    /* 타임라인 패널 (히스토리보드 없는 페이지용) */
+    var _tlOpen = false;
+    var _tlInterval = null;
+
+    function openTimelinePanel() {
+        var panel = document.getElementById('timelinePanel');
+        var backdrop = document.getElementById('timelineBackdrop');
+        if (!panel) return;
+        if (_tlOpen) { closeTimelinePanel(); return; }
+        panel.style.display = 'block'; backdrop.style.display = 'block';
+        requestAnimationFrame(function() {
+            if (window.innerWidth <= 767.98) {
+                panel.style.transform = 'translateY(0)';
+            } else {
+                panel.style.transform = 'translateX(0)';
+            }
+        });
+        _tlOpen = true;
+        loadPageTimeline();
+        loadLiveTimeline();
+        _tlInterval = setInterval(loadLiveTimeline, 15000);
+    }
+
+    function closeTimelinePanel() {
+        var panel = document.getElementById('timelinePanel');
+        var backdrop = document.getElementById('timelineBackdrop');
+        if (panel) {
+            panel.style.transform = window.innerWidth <= 767.98
+                ? 'translateY(100%)' : 'translateX(100%)';
+        }
+        if (backdrop) backdrop.style.display = 'none';
+        setTimeout(function() { if (panel) panel.style.display = 'none'; }, 250);
+        _tlOpen = false;
+        if (_tlInterval) { clearInterval(_tlInterval); _tlInterval = null; }
+    }
+
+    function _tlItemHtml(item, showSite) {
+        var icon = '📝';
+        if (item.scope === 'design') icon = '📐';
+        else if (item.scope === 'sales') icon = '💼';
+        else if (item.scope === 'contract') icon = '📋';
+        else if (item.scope === 'drawing') icon = '🖼️';
+        var site = showSite && item.site ? '<span style="background:#dbeafe;color:#1e40af;font-size:.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;">' + item.site + '</span>' : '';
+        return '<div style="display:flex;gap:10px;padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:.82rem;align-items:flex-start;">'
+            + '<div style="flex-shrink:0;width:24px;text-align:center;padding-top:1px;">' + icon + '</div>'
+            + '<div style="flex:1;min-width:0;">'
+            + '<div style="color:#0f172a;">' + (item.text || '') + site + '</div>'
+            + '<div style="color:#94a3b8;font-size:.72rem;margin-top:2px;">' + (item.user || '') + ' · ' + (item.time || '') + '</div>'
+            + '</div></div>';
+    }
+
+    function loadPageTimeline() {
+        var box = document.getElementById('tlPageContent');
+        if (!box) return;
+        var pageData = window.__pageTimeline || [];
+        if (pageData.length === 0) {
+            box.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:40px 0;font-size:.85rem;">이 페이지의 변경 이력이 없습니다</div>';
+        } else {
+            box.innerHTML = pageData.map(function(i) { return _tlItemHtml(i, false); }).join('');
+        }
+    }
+
+    function loadLiveTimeline() {
+        var box = document.getElementById('tlLiveContent');
+        if (!box) return;
+        fetch('/api/timeline/live').then(function(r) { return r.json(); }).then(function(items) {
+            if (!items.length) { box.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:40px 0;font-size:.85rem;">최근 활동 없음</div>'; return; }
+            box.innerHTML = items.map(function(i) { return _tlItemHtml(i, true); }).join('');
+        }).catch(function() {});
+    }
+
+    /* 탭 전환 */
+    document.addEventListener('click', function(e) {
+        if (!e.target.classList.contains('tl-tab')) return;
+        document.querySelectorAll('.tl-tab').forEach(function(t) { t.classList.remove('active'); t.style.color='#64748b'; t.style.borderBottom='none'; t.style.background='#fff'; });
+        e.target.classList.add('active'); e.target.style.color='#2563eb'; e.target.style.borderBottom='2px solid #2563eb'; e.target.style.background='#f8fafc';
+        var tab = e.target.dataset.tab;
+        document.getElementById('tlPageContent').style.display = tab === 'page' ? '' : 'none';
+        document.getElementById('tlLiveContent').style.display = tab === 'live' ? '' : 'none';
+        document.querySelector('#timelinePanel > div:nth-child(4)').style.display = tab === 'live' ? 'none' : '';
+    });
     </script>
     <script src="{{ url_for('static', filename='js/csrf-inject.js') }}"></script>
     {% if request.path != '/production/display' %}
@@ -203,6 +343,7 @@
     <script src="{{ url_for('static', filename='js/mobile-table.js') }}"></script>
     {% include 'components/change_password_modal.html' %}
     <script src="{{ url_for('static', filename='js/notification-badge.js') }}"></script>
+    <script>window.__activeMenuKey = {{ (g.active_menu_key or '')|tojson }};</script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 {% include 'components/catalog_autocomplete.html' %}
 {% include 'components/vendor_autocomplete.html' %}
