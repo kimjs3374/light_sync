@@ -58,19 +58,12 @@
             <div class="sidebar-sub open" id="favSub"></div>
         </div>
 
-        {# === 공통: 현황 === #}
-        <div class="sidebar-group">
-            <div class="sidebar-group-header" data-group-id="common">
-                <span class="sidebar-icon">📊</span>
-                <span class="sidebar-label">현황</span>
-            </div>
-            <div class="sidebar-sub" id="menu-grp-common">
-                <a href="{{ url_for('overview.project_overview') }}" data-menu-key="overview" data-menu-label="종합현황">
-                    <span class="sidebar-label">종합현황</span>
-                    <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
-                </a>
-            </div>
-        </div>
+        {# === 공통: 종합현황 (직접 링크) === #}
+        <a href="{{ url_for('overview.project_overview') }}" data-menu-key="overview" data-menu-label="종합현황">
+            <span class="sidebar-icon">📊</span>
+            <span class="sidebar-label">종합현황</span>
+            <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
+        </a>
 
         {# === 공통: 업무보고 === #}
         <div class="sidebar-group">

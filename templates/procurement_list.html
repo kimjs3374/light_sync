@@ -150,7 +150,7 @@
             <col style="width:46px">      {# 품목 #}
             {% if not hide_financial %}<col style="width:110px">     {# 금액 #}{% endif %}
             <col style="width:88px">      {# 납기 #}
-            <col style="width:150px">     {# 수금 (뱃지+예외 버튼 여유 확보) #}
+            {% if not hide_financial %}<col style="width:150px">     {# 수금 (뱃지+예외 버튼 여유 확보) #}{% endif %}
         </colgroup>
         <thead class="table-light" style="white-space:nowrap">
             <tr>
@@ -161,7 +161,7 @@
                 <th class="text-center">품목</th>
                 {% if not hide_financial %}<th class="text-end">금액</th>{% endif %}
                 <th>납기</th>
-                <th>수금</th>
+                {% if not hide_financial %}<th>수금</th>{% endif %}
             </tr>
         </thead>
         <tbody>
@@ -188,6 +188,7 @@
                 </td>
                 {% if not hide_financial %}<td class="text-end fw-bold" style="white-space:nowrap">{{ "{:,}".format(c.total_amt) }}원</td>{% endif %}
                 <td style="white-space:nowrap"><small>{{ c.dlvr_date.strftime('%Y-%m-%d') if c.dlvr_date else '-' }}</small></td>
+                {% if not hide_financial %}
                 <td style="white-space:nowrap" onclick="event.stopPropagation()">
                     {% if c.linked %}
                         {% set ps = c.linked.payment_status %}
@@ -206,10 +207,11 @@
                         -
                     {% endif %}
                 </td>
+                {% endif %}
             </tr>
             {# --- 품목 상세 (접히는 행) --- #}
             <tr class="collapse" id="detail-{{ loop.index }}">
-                <td colspan="{% if hide_financial %}7{% else %}8{% endif %}" class="p-0">
+                <td colspan="{% if hide_financial %}6{% else %}8{% endif %}" class="p-0">
                     <div class="bg-light p-3" style="font-size:0.82rem;">
                         <div class="mb-2">
                             <strong>계약번호:</strong> {{ c.req_no }}

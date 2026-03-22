@@ -90,6 +90,68 @@ def make_session_permanent():
     session.permanent = True
 
 
+# 세션 권한 실시간 갱신 (관리자가 권한 변경 시 재로그인 없이 반영)
+@app.before_request
+def refresh_session_permissions():
+    user_id = session.get('user_id')
+    if not user_id or request.endpoint in ('auth.login', 'auth.logout', 'static'):
+        return
+    # 매 요청마다 하면 부하 → 30초 캐시
+    import time
+    last_check = session.get('_perm_checked', 0)
+    if time.time() - last_check < 30:
+        return
+    from modules.db_context import get_db
+    from modules.models import User, GroupPermission, UserPriorityPermission
+    with get_db() as db:
+        user = db.get(User, user_id)
+        if not user or not user.is_approved or user.is_active is False:
+            session.clear()
+            return
+        group_data = db.query(GroupPermission).filter(
+            GroupPermission.group_name == user.user_group
+        ).first()
+        if user.role == 'admin':
+            allowed_menus = [k for k in MENU_REGISTRY if k not in COMMON_MENU_KEYS]
+            writable_menus = list(allowed_menus)
+            hide_financial = False
+        else:
+            perm_map = {}
+            if group_data and group_data.allowed_menus:
+                for entry in group_data.allowed_menus.split(","):
+                    entry = entry.strip()
+                    if not entry:
+                        continue
+                    if ':' in entry:
+                        key, perm = entry.rsplit(':', 1)
+                    else:
+                        key, perm = entry, 'rw'
+                    perm_map[key] = perm
+            if user.extra_menus:
+                for entry in user.extra_menus.split(","):
+                    entry = entry.strip()
+                    if not entry:
+                        continue
+                    if ':' in entry:
+                        key, perm = entry.rsplit(':', 1)
+                    else:
+                        key, perm = entry, 'rw'
+                    perm_map[key] = perm
+            allowed_menus = list(perm_map.keys())
+            writable_menus = [k for k, v in perm_map.items() if v == 'rw']
+            hide_financial = bool(group_data and getattr(group_data, 'hide_financial', False))
+            if hasattr(user, 'hide_financial_override') and user.hide_financial_override is not None:
+                hide_financial = user.hide_financial_override
+        session['allowed_menus'] = allowed_menus
+        session['writable_menus'] = writable_menus
+        session['hide_financial'] = hide_financial
+        session['role'] = user.role
+        session['user_group'] = user.user_group
+        session['position'] = user.position or ''
+        session['can_approve_delete'] = bool(user.role == 'admin' or user.can_approve_delete)
+        session['_perm_checked'] = time.time()
+
+
 # =====================================================================
 # 운영 도메인 강제 리다이렉트
 # =====================================================================
