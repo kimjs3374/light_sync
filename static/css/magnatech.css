@@ -141,33 +141,43 @@ h1,h2,h3,h4,h5,h6 { font-weight: 800; letter-spacing: -.02em; }
     min-height: 0;
 }
 .sidebar a {
-    color: #cbd5e1; text-decoration: none;
-    padding: 8px 16px; display: flex; align-items: center;
-    border-radius: 5px; margin: 1px 10px; white-space: nowrap;
-    gap: 8px;
+    color: #cbd5e1; text-decoration: none; font-size: .82rem;
+    padding: 6px 14px; display: flex; align-items: center;
+    border-radius: 5px; margin: 1px 8px; white-space: nowrap;
+    gap: 6px;
 }
 .sidebar a:hover { background-color: #1e293b; color: white; }
-.sidebar-brand { display: flex; align-items: center; justify-content: center; }
-.sidebar-brand:hover { opacity: 0.8; transition: 0.3s; }
+.sidebar-brand { display: flex; align-items: center; justify-content: center; padding: 4px 16px !important; margin-bottom: 8px !important; }
+.sidebar-brand:hover { opacity: 0.85; transition: 0.2s; }
+.sidebar-brand-full { display: flex; align-items: center; gap: 10px; }
+.brand-logo { font-size: 1.6rem; line-height: 1; }
+.brand-text { line-height: 1.2; }
+.brand-company { font-size: .6rem; font-weight: 700; letter-spacing: .12em; color: #60a5fa; text-transform: uppercase; }
+.brand-app { font-size: .95rem; font-weight: 700; color: #fff; }
+.brand-erp { font-size: .6rem; font-weight: 600; color: #94a3b8; vertical-align: middle; margin-left: 2px; }
+html.sb-collapsed .sidebar-brand-full .brand-text { display: none; }
+html.sb-collapsed .sidebar-brand-full { justify-content: center; }
+.sidebar.collapsed .sidebar-brand-full .brand-text { display: none; }
+.sidebar.collapsed .sidebar-brand-full { justify-content: center; }
 
 /* 아이콘 / 라벨 */
-.sidebar-icon { font-size: 1.15rem; min-width: 26px; text-align: center; flex-shrink: 0; }
-.sidebar-icon-only { display: none; font-size: 1.3rem; text-align: center; padding: 10px 0; }
+.sidebar-icon { font-size: 1rem; min-width: 22px; text-align: center; flex-shrink: 0; }
+/* sidebar-icon-only 제거됨 — brand-logo가 접힌 상태에서 대체 */
 .sidebar-label { transition: opacity 0.15s ease; }
 
 /* 그룹 */
-.sidebar-group { margin: 1px 0; position: relative; }
+.sidebar-group { margin: 0; position: relative; }
 .sidebar-group-header {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 16px; cursor: pointer; color: #cbd5e1;
-    border-radius: 5px; margin: 1px 10px;
+    display: flex; align-items: center; gap: 6px; font-size: .82rem;
+    padding: 6px 14px; cursor: pointer; color: #cbd5e1;
+    border-radius: 5px; margin: 1px 8px;
     user-select: none;
 }
 .sidebar-group-header:hover { background-color: #1e293b; color: white; }
 .sidebar-group-header.open { color: #60a5fa; }
 .sidebar-sub { display: none; }
 .sidebar-sub.open { display: block; }
-.sidebar-sub a { padding-left: 46px !important; }
+.sidebar-sub a { padding-left: 40px !important; }
 
 /* 즐겨찾기 별표 */
 .fav-toggle {
@@ -195,9 +205,10 @@ h1,h2,h3,h4,h5,h6 { font-weight: 800; letter-spacing: -.02em; }
 /* 초기 로드 시 즉시 적용 (html 클래스 기반, 깜빡임 제거) */
 html.sb-collapsed .sidebar { width: 60px; }
 html.sb-collapsed .sidebar .sidebar-label { display: none !important; }
-html.sb-collapsed .sidebar .sidebar-icon-only { display: block; }
+/* sidebar-icon-only 제거됨 */
 html.sb-collapsed .sidebar .sidebar-user { display: none !important; }
 html.sb-collapsed .sidebar .sidebar-brand h4 { display: none; }
+html.sb-collapsed .sidebar .sidebar-brand-full .brand-text { display: none; }
 html.sb-collapsed .sidebar .sidebar-sub { display: none !important; }
 html.sb-collapsed .sidebar .fav-toggle { display: none !important; }
 html.sb-collapsed .sidebar a { justify-content: center; padding: 8px 0; margin: 1px 5px; }
@@ -211,7 +222,7 @@ html.sb-collapsed .main-content { margin-left: 60px; }
 /* === 접힘 상태 === */
 .sidebar.collapsed { width: 60px; }
 .sidebar.collapsed .sidebar-label { display: none !important; }
-.sidebar.collapsed .sidebar-icon-only { display: block; }
+/* sidebar-icon-only 제거됨 */
 .sidebar.collapsed .sidebar-user { display: none !important; }
 .sidebar.collapsed .sidebar-brand h4 { display: none; }
 .sidebar.collapsed .sidebar-brand { padding: 4px; }
@@ -299,7 +310,7 @@ html.sb-collapsed .main-content { margin-left: 60px; }
     /* 모바일에서 collapsed 무시 */
     .sidebar.collapsed { width: 250px !important; }
     .sidebar.collapsed .sidebar-label { display: unset !important; }
-    .sidebar.collapsed .sidebar-icon-only { display: none !important; }
+    /* sidebar-icon-only 제거됨 */
     .sidebar.collapsed .sidebar-sub { display: revert !important; }
     .sidebar.collapsed .sidebar-sub:not(.open) { display: none !important; }
     .sidebar.collapsed .sidebar-user { display: block !important; }

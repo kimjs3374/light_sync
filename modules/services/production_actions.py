@@ -263,7 +263,7 @@ def build_process_card(p, item, project, contract, today, today_logs):
         'project_id': project.id,
         'site_name': project.temp_name or '-',
         'project_no': project.project_no or '-',
-        'delivery_date': delivery_date.strftime('%m/%d') if delivery_date else None,
+        'delivery_date': delivery_date.strftime('%Y/%m/%d') if delivery_date else None,
         'dday': dday,
         'materials_ready': mat_ready,
         'can_start': can_go,
@@ -494,7 +494,7 @@ def get_site_list(db, today):
             'working_proc': working_proc,
             'done_proc': done_proc,
             'pct': pct,
-            'delivery_date': delivery_date.strftime('%m/%d') if delivery_date else None,
+            'delivery_date': delivery_date.strftime('%Y/%m/%d') if delivery_date else None,
             'dday': dday,
             'status': '완료' if pct >= 100 else ('진행중' if working_proc > 0 else '대기'),
         })

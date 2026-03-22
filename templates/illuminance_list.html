@@ -1,0 +1,474 @@
+{% extends 'base.html' %}
+{% block title %}조도설계 검증 목록{% endblock %}
+
+{% block content %}
+<style>
+  /* ── 조도설계 검증 목록 전용 ─────────────────────────────── */
+  .cmd-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #0f172a 100%);
+    border-radius: 1rem;
+    padding: 1.4rem 1.8rem;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+  .cmd-hero::before {
+    content: '';
+    position: absolute;
+    top: -60%; right: -5%;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(59,130,246,.1) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  .cmd-hero::after {
+    content: '';
+    position: absolute;
+    bottom: -40%; left: 10%;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(16,185,129,.06) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  .cmd-hero .eyebrow {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .18rem .55rem; border-radius: 999px;
+    background: rgba(59,130,246,.15); color: #60a5fa;
+    font-size: .62rem; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase;
+  }
+  .cmd-hero h1 {
+    color: #f8fafc; font-size: 1.45rem; font-weight: 800;
+    letter-spacing: -.03em; margin: .4rem 0 .2rem;
+  }
+  .cmd-hero .sub { color: #94a3b8; font-size: .8rem; }
+  .cmd-hero .nav-row {
+    display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .8rem;
+  }
+  .cmd-hero .nav-row .btn {
+    background: rgba(255,255,255,.06); color: #cbd5e1;
+    border: 1px solid rgba(255,255,255,.1);
+    font-size: .75rem; font-weight: 600;
+    padding: .3rem .65rem; border-radius: .5rem;
+    transition: all .2s; white-space: nowrap; text-decoration: none;
+  }
+  .cmd-hero .nav-row .btn:hover { background: rgba(255,255,255,.14); color: #fff; }
+  .cmd-hero .nav-row .btn-hi {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: #fff; border-color: transparent;
+  }
+  .cmd-hero .nav-row .btn-hi:hover { box-shadow: 0 4px 16px rgba(37,99,235,.3); }
+
+  /* KPI chips */
+  .kpi-row {
+    display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .7rem;
+  }
+  .kpi-chip {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .25rem .6rem; border-radius: .5rem;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08);
+    color: #cbd5e1; font-size: .73rem; font-weight: 600; white-space: nowrap;
+  }
+  .kpi-chip b { font-family: var(--mg-mono); color: #f8fafc; font-weight: 700; }
+  .kpi-chip.ok b { color: #4ade80; }
+  .kpi-chip.warn b { color: #fbbf24; }
+  .kpi-chip.blue b { color: #93c5fd; }
+
+  /* 필터 탭 */
+  .ilv-filter-tabs {
+    display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: 1rem;
+  }
+  .ilv-filter-tab {
+    padding: .3rem .75rem; border-radius: 999px;
+    font-size: .78rem; font-weight: 600; cursor: pointer;
+    border: 1.5px solid var(--mg-border);
+    background: var(--mg-surface); color: var(--mg-muted);
+    transition: all .15s; white-space: nowrap;
+  }
+  .ilv-filter-tab:hover { border-color: var(--mg-primary); color: var(--mg-primary); }
+  .ilv-filter-tab.active {
+    background: var(--mg-primary); border-color: var(--mg-primary);
+    color: #fff;
+  }
+  .ilv-filter-tab .cnt {
+    display: inline-block; margin-left: .3rem;
+    background: rgba(0,0,0,.12); border-radius: 999px;
+    padding: 0 .4rem; font-size: .68rem; font-weight: 700; white-space: nowrap;
+  }
+  .ilv-filter-tab.active .cnt { background: rgba(255,255,255,.25); }
+
+  /* 프로젝트 카드 */
+  .ilv-project-card {
+    border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius);
+    background: var(--mg-surface);
+    box-shadow: var(--mg-shadow);
+    overflow: hidden;
+    transition: transform .15s, box-shadow .15s;
+    cursor: pointer;
+    text-decoration: none;
+    display: block;
+    color: inherit;
+  }
+  .ilv-project-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(15,23,42,.1);
+    color: inherit;
+    text-decoration: none;
+  }
+  .ilv-project-card .card-accent {
+    height: 3px;
+    background: linear-gradient(90deg, var(--mg-primary), #7c3aed);
+  }
+  .ilv-project-card.status-registered .card-accent { background: #94a3b8; }
+  .ilv-project-card.status-measured .card-accent { background: linear-gradient(90deg, #2563eb, #0ea5e9); }
+  .ilv-project-card.status-analyzed .card-accent { background: linear-gradient(90deg, #16a34a, #059669); }
+
+  .ilv-project-card .card-body {
+    padding: .9rem 1rem;
+  }
+  .ilv-project-name {
+    font-size: .95rem; font-weight: 800;
+    color: var(--mg-ink); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .ilv-project-meta {
+    font-size: .75rem; color: var(--mg-muted);
+    margin-top: .15rem; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .ilv-project-cond {
+    font-size: .72rem; color: var(--mg-subtle);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-top: .1rem;
+  }
+  .ilv-project-stats {
+    display: flex; flex-wrap: wrap; gap: .35rem;
+    margin-top: .65rem; padding-top: .65rem;
+    border-top: 1px solid var(--mg-border);
+  }
+  .ilv-stat-mini {
+    display: flex; flex-direction: column; align-items: center;
+    min-width: 56px; padding: .3rem .5rem;
+    background: var(--mg-bg); border-radius: .4rem;
+    border: 1px solid var(--mg-border);
+  }
+  .ilv-stat-mini .lbl {
+    font-size: .58rem; font-weight: 600; color: var(--mg-subtle);
+    text-transform: uppercase; letter-spacing: .04em; white-space: nowrap;
+  }
+  .ilv-stat-mini .val {
+    font-size: .85rem; font-weight: 800;
+    font-family: var(--mg-mono); color: var(--mg-ink);
+    white-space: nowrap;
+  }
+  .ilv-stat-mini .unit {
+    font-size: .55rem; color: var(--mg-subtle); white-space: nowrap;
+  }
+
+  /* 빈 상태 */
+  .ilv-empty {
+    text-align: center; padding: 4rem 2rem;
+    color: var(--mg-muted);
+  }
+  .ilv-empty .icon { font-size: 3rem; margin-bottom: .75rem; }
+  .ilv-empty p { font-size: .88rem; margin: 0; }
+
+  /* 검색 */
+  .ilv-search-wrap {
+    position: relative; max-width: 300px;
+  }
+  .ilv-search-wrap input {
+    padding-left: 2rem;
+  }
+  .ilv-search-wrap .search-icon {
+    position: absolute; left: .6rem; top: 50%;
+    transform: translateY(-50%);
+    color: var(--mg-subtle); font-size: .85rem; pointer-events: none;
+  }
+</style>
+
+<!-- ─── 히어로 헤더 ──────────────────────────────────────── -->
+<div class="cmd-hero">
+  <div class="eyebrow">Illuminance Verification</div>
+  <h1>조도설계 검증</h1>
+  <div class="sub">현장별 설계값 등록 · 실측 입력 · 분석 비교</div>
+
+  <div class="kpi-row">
+    <span class="kpi-chip"><b class="blue">{{ projects | length if projects else 0 }}</b> 전체</span>
+    <span class="kpi-chip"><b>{{ projects | selectattr('status','eq','registered') | list | length if projects else 0 }}</b> 설계등록</span>
+    <span class="kpi-chip warn"><b>{{ projects | selectattr('status','eq','measured') | list | length if projects else 0 }}</b> 실측완료</span>
+    <span class="kpi-chip ok"><b>{{ projects | selectattr('status','eq','analyzed') | list | length if projects else 0 }}</b> 분석완료</span>
+  </div>
+
+  <div class="nav-row">
+    <a href="{{ url_for('illuminance.new') }}" class="btn btn-hi">+ 새 현장 등록</a>
+    <a href="{{ url_for('illuminance.index') }}" class="btn">목록 새로고침</a>
+  </div>
+</div>
+
+<!-- ─── 필터 + 검색 ───────────────────────────────────────── -->
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+  <div class="ilv-filter-tabs" id="filterTabs">
+    <div class="ilv-filter-tab active" data-filter="all">
+      전체 <span class="cnt" id="cntAll">0</span>
+    </div>
+    <div class="ilv-filter-tab" data-filter="registered">
+      설계등록 <span class="cnt" id="cntRegistered">0</span>
+    </div>
+    <div class="ilv-filter-tab" data-filter="measured">
+      실측완료 <span class="cnt" id="cntMeasured">0</span>
+    </div>
+    <div class="ilv-filter-tab" data-filter="analyzed">
+      분석완료 <span class="cnt" id="cntAnalyzed">0</span>
+    </div>
+  </div>
+  <div class="ilv-search-wrap">
+    <span class="search-icon">&#128269;</span>
+    <input type="text" class="form-control form-control-sm" id="searchInput"
+           placeholder="현장명 검색..." oninput="filterCards()">
+  </div>
+</div>
+
+<!-- ─── 카드 그리드 ────────────────────────────────────────── -->
+<div class="row g-3" id="cardGrid">
+  {% if projects %}
+    {% for p in projects %}
+    {% set first_area = p.areas[0] if p.areas else none %}
+    <div class="col-md-6 col-lg-4 ilv-card-item"
+         data-status="{{ p.status }}"
+         data-name="{{ p.project_name | lower }}">
+      <form id="delForm{{ p.id }}" method="POST"
+            action="{{ url_for('illuminance.delete_project', project_id=p.id) }}" style="display:none">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      </form>
+      <div style="position:relative">
+      <button class="btn btn-xs btn-outline-danger py-0 px-1"
+              style="position:absolute;top:.5rem;right:.5rem;z-index:3;font-size:.65rem;line-height:1.6;white-space:nowrap"
+              onclick="event.preventDefault();event.stopPropagation();if(confirm('&quot;{{ p.project_name | e }}&quot; 삭제할까요?'))document.getElementById('delForm{{ p.id }}').submit()">삭제</button>
+      <a class="ilv-project-card status-{{ p.status }}"
+         href="{{ url_for('illuminance.detail', project_id=p.id) }}"
+         style="padding-top:2rem">
+        <div class="card-accent"></div>
+        <div class="card-body">
+
+          <!-- 이름 + 상태 -->
+          <div class="d-flex align-items-start justify-content-between gap-2">
+            <div class="ilv-project-name" title="{{ p.project_name }}">{{ p.project_name }}</div>
+            {% if p.status == 'design' %}
+              <span class="badge bg-secondary flex-shrink-0" style="white-space:nowrap">설계등록</span>
+            {% elif p.status == 'measured' %}
+              <span class="badge bg-warning text-dark flex-shrink-0" style="white-space:nowrap">실측완료</span>
+            {% elif p.status == 'reported' %}
+              <span class="badge bg-success flex-shrink-0" style="white-space:nowrap">보고완료</span>
+            {% else %}
+              <span class="badge bg-light text-dark flex-shrink-0" style="white-space:nowrap">{{ p.status }}</span>
+            {% endif %}
+          </div>
+
+          <!-- ERP 현장 연동 표시 -->
+          {% if p.erp_project %}
+          <div style="font-size:.68rem;color:#3b82f6;margin-bottom:.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            🔗 {{ p.erp_project.temp_name }}
+          </div>
+          {% endif %}
+
+          <!-- 메타 -->
+          <div class="ilv-project-meta">
+            {{ p.customer or '발주처 미지정' }}
+            {% if p.install_date %}
+              &nbsp;·&nbsp; {{ p.install_date }}
+            {% endif %}
+          </div>
+
+          <!-- 설치조건 (첫 번째 구역 기준) -->
+          <div class="ilv-project-cond">
+            {% if first_area %}
+              높이 {{ first_area.installation_height or '?' }}m
+              &nbsp;·&nbsp; {{ first_area.lamp_watt or '?' }}W×{{ first_area.lamp_qty or '?' }}EA
+            {% endif %}
+            &nbsp;·&nbsp; {{ p.areas | length }}개 구역
+          </div>
+
+          <!-- 통계 (첫 번째 구역의 최신 실측 or 설계값) -->
+          {% if first_area %}
+            {% set latest = first_area.latest_measurement %}
+            {% if latest %}
+            <div class="ilv-project-stats">
+              <div class="ilv-stat-mini">
+                <span class="lbl">실측Eav</span>
+                <span class="val">{{ latest.measured_eav | int if latest.measured_eav else '—' }}</span>
+                <span class="unit">lx</span>
+              </div>
+              <div class="ilv-stat-mini">
+                <span class="lbl">Uo</span>
+                <span class="val">{{ '%.2f' % latest.measured_uo if latest.measured_uo else '—' }}</span>
+                <span class="unit">Emin/Eav</span>
+              </div>
+              {% if latest.ks_pass %}
+              <div class="ilv-stat-mini">
+                <span class="lbl">KS</span>
+                <span class="val" style="color:{% if latest.ks_pass == 'PASS' %}var(--mg-success,#16a34a){% elif latest.ks_pass == 'FAIL' %}var(--mg-danger,#dc2626){% else %}#d97706{% endif %}">
+                  {{ latest.ks_pass }}
+                </span>
+              </div>
+              {% endif %}
+            </div>
+            {% elif first_area.design_eav %}
+            <div class="ilv-project-stats">
+              <div class="ilv-stat-mini" style="flex:1">
+                <span class="lbl">설계 Eav</span>
+                <span class="val">{{ first_area.design_eav | int }}</span>
+                <span class="unit">lx</span>
+              </div>
+              <div class="ilv-stat-mini" style="flex:1">
+                <span class="lbl">설계 Uo</span>
+                <span class="val">{{ '%.2f' % first_area.design_uo if first_area.design_uo else '—' }}</span>
+              </div>
+            </div>
+            {% endif %}
+          {% endif %}
+
+        </div>
+      </a>
+      </div><!-- /position:relative -->
+    </div>
+    {% endfor %}
+  {% else %}
+    <!-- 데이터 없을 때 샘플 카드 (개발용) -->
+    <div class="col-md-6 col-lg-4 ilv-card-item" data-status="registered" data-name="삼성전자 기흥캠퍼스">
+      <a class="ilv-project-card status-registered" href="#">
+        <div class="card-accent"></div>
+        <div class="card-body">
+          <div class="d-flex align-items-start justify-content-between gap-2">
+            <div class="ilv-project-name">삼성전자 기흥캠퍼스</div>
+            <span class="badge bg-secondary flex-shrink-0" style="white-space:nowrap">설계등록</span>
+          </div>
+          <div class="ilv-project-meta">삼성전자 &nbsp;·&nbsp; 2026-04-10</div>
+          <div class="ilv-project-cond">높이 12m &nbsp;·&nbsp; 800W×12EA &nbsp;·&nbsp; 3개 구역</div>
+          <div class="ilv-project-stats">
+            <div class="ilv-stat-mini" style="flex:1">
+              <span class="lbl">설계 Eav</span>
+              <span class="val">612</span>
+              <span class="unit">lx (설계)</span>
+            </div>
+            <div class="ilv-stat-mini" style="flex:1">
+              <span class="lbl">설계 Uo</span>
+              <span class="val">0.68</span>
+              <span class="unit">설계값</span>
+            </div>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-md-6 col-lg-4 ilv-card-item" data-status="measured" data-name="현대자동차 울산공장">
+      <a class="ilv-project-card status-measured" href="#">
+        <div class="card-accent"></div>
+        <div class="card-body">
+          <div class="d-flex align-items-start justify-content-between gap-2">
+            <div class="ilv-project-name">현대자동차 울산공장</div>
+            <span class="badge bg-warning text-dark flex-shrink-0" style="white-space:nowrap">실측완료</span>
+          </div>
+          <div class="ilv-project-meta">현대자동차 &nbsp;·&nbsp; 2026-03-20</div>
+          <div class="ilv-project-cond">높이 14m &nbsp;·&nbsp; 1000W×20EA &nbsp;·&nbsp; 2개 구역</div>
+          <div class="ilv-project-stats">
+            <div class="ilv-stat-mini">
+              <span class="lbl">Eav</span>
+              <span class="val">548</span>
+              <span class="unit">lx</span>
+            </div>
+            <div class="ilv-stat-mini">
+              <span class="lbl">Uo</span>
+              <span class="val">0.72</span>
+              <span class="unit">Emin/Eav</span>
+            </div>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-md-6 col-lg-4 ilv-card-item" data-status="analyzed" data-name="LG화학 대전연구소">
+      <a class="ilv-project-card status-analyzed" href="#">
+        <div class="card-accent"></div>
+        <div class="card-body">
+          <div class="d-flex align-items-start justify-content-between gap-2">
+            <div class="ilv-project-name">LG화학 대전연구소</div>
+            <span class="badge bg-success flex-shrink-0" style="white-space:nowrap">분석완료</span>
+          </div>
+          <div class="ilv-project-meta">LG화학 &nbsp;·&nbsp; 2026-02-15</div>
+          <div class="ilv-project-cond">높이 10m &nbsp;·&nbsp; 600W×8EA &nbsp;·&nbsp; 1개 구역</div>
+          <div class="ilv-project-stats">
+            <div class="ilv-stat-mini">
+              <span class="lbl">Eav</span>
+              <span class="val">490</span>
+              <span class="unit">lx</span>
+            </div>
+            <div class="ilv-stat-mini">
+              <span class="lbl">Uo</span>
+              <span class="val">0.75</span>
+              <span class="unit">Emin/Eav</span>
+            </div>
+            <div class="ilv-stat-mini">
+              <span class="lbl">KS기준</span>
+              <span class="val" style="color:var(--mg-success)">달성</span>
+              <span class="unit">300 lx</span>
+            </div>
+          </div>
+        </div>
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+<!-- 빈 상태 (필터 결과 없음) -->
+<div class="ilv-empty" id="emptyState" style="display:none">
+  <div class="icon">&#128202;</div>
+  <p>조건에 맞는 현장이 없습니다.</p>
+</div>
+
+<script>
+(function() {
+  // 탭 카운트 업데이트
+  function updateCounts() {
+    const items = document.querySelectorAll('.ilv-card-item');
+    const cnt = { all: 0, registered: 0, measured: 0, analyzed: 0 };
+    items.forEach(item => {
+      cnt.all++;
+      const s = item.dataset.status;
+      if (cnt[s] !== undefined) cnt[s]++;
+    });
+    document.getElementById('cntAll').textContent = cnt.all;
+    document.getElementById('cntRegistered').textContent = cnt.registered;
+    document.getElementById('cntMeasured').textContent = cnt.measured;
+    document.getElementById('cntAnalyzed').textContent = cnt.analyzed;
+  }
+
+  // 필터 탭 클릭
+  document.getElementById('filterTabs').addEventListener('click', function(e) {
+    const tab = e.target.closest('.ilv-filter-tab');
+    if (!tab) return;
+    document.querySelectorAll('.ilv-filter-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    window._ilvFilter = tab.dataset.filter;
+    filterCards();
+  });
+
+  window.filterCards = function() {
+    const filter = window._ilvFilter || 'all';
+    const q = (document.getElementById('searchInput').value || '').toLowerCase();
+    let visible = 0;
+    document.querySelectorAll('.ilv-card-item').forEach(item => {
+      const matchStatus = filter === 'all' || item.dataset.status === filter;
+      const matchSearch = !q || item.dataset.name.includes(q);
+      const show = matchStatus && matchSearch;
+      item.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    document.getElementById('emptyState').style.display = visible === 0 ? '' : 'none';
+  };
+
+  window._ilvFilter = 'all';
+  updateCounts();
+  filterCards();
+})();
+</script>
+{% endblock %}

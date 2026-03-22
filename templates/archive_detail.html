@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block title %}{{ post.author }} — {{ board_label }} 상세{% endblock %}
+{% block content %}
+
+<div class="mb-3">
+  <a href="{{ url_for(list_endpoint) }}" class="btn btn-sm btn-outline-secondary">← {{ board_label }} 목록</a>
+</div>
+
+<!-- 본문 카드 -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header d-flex align-items-center gap-2 py-2 flex-wrap">
+    {% if post.is_notice %}
+    <span class="badge bg-warning text-dark" style="white-space:nowrap">공지</span>
+    {% endif %}
+    <span class="fw-semibold">{{ post.author }}</span>
+    <span class="text-muted small">{{ post.created_fmt }}</span>
+    {% if post.updated_fmt and post.updated_fmt != post.created_fmt %}
+    <span class="text-muted small">(수정: {{ post.updated_fmt }})</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <pre class="mb-0" style="white-space:pre-wrap;font-family:inherit;font-size:.92rem;line-height:1.7">{{ post.body }}</pre>
+  </div>
+  {% if post.attachments %}
+  <div class="card-footer py-2">
+    <div class="text-muted small mb-1">첨부파일 {{ post.attachments|length }}개 (카카오워크 로그인 필요)</div>
+    <div class="d-flex flex-wrap gap-2">
+    {% for att in post.attachments %}
+      <a href="{{ att.url }}" target="_blank" rel="noopener"
+         class="btn btn-outline-secondary d-flex align-items-center gap-1"
+         style="font-size:.8rem;padding:.25rem .5rem;white-space:nowrap">
+        {% if att.file_type == 'img' %}🖼️{% else %}📎{% endif %}
+        {{ att.file_name }}
+      </a>
+    {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- 댓글 -->
+{% if post.comments %}
+<h6 class="text-muted mb-2">댓글 {{ post.comments|length }}개</h6>
+<div class="list-group list-group-flush shadow-sm rounded">
+{% for c in post.comments %}
+<div class="list-group-item py-3">
+  <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+    <span class="fw-semibold small">{{ c.author }}</span>
+    <span class="text-muted small">{{ c.created_fmt }}</span>
+    {% if c.attachments %}
+    <span class="badge bg-light text-secondary border" style="white-space:nowrap">첨부 {{ c.attachments|length }}</span>
+    {% endif %}
+  </div>
+  <pre style="white-space:pre-wrap;font-family:inherit;font-size:.88rem;line-height:1.6;margin:0">{{ c.body }}</pre>
+  {% if c.attachments %}
+  <div class="d-flex flex-wrap gap-2 mt-2">
+    {% for att in c.attachments %}
+    <a href="{{ att.url }}" target="_blank" rel="noopener"
+       class="btn btn-outline-secondary d-flex align-items-center gap-1"
+       style="font-size:.78rem;padding:.2rem .5rem;white-space:nowrap">
+      {% if att.file_type == 'img' %}🖼️{% else %}📎{% endif %}
+      {{ att.file_name }}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

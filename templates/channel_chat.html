@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+{% block content %}
+<div style="display:flex;flex-direction:column;height:calc(100vh - 60px);">
+
+  <div class="px-3 py-2 border-bottom bg-white d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center gap-2">
+      <span class="fw-semibold">고사양 매그니</span>
+      <span class="badge bg-info text-white" style="white-space:nowrap;font-size:.7rem">Channel</span>
+      <span id="statusDot" class="rounded-circle d-inline-block" style="width:8px;height:8px;background:#94a3b8"></span>
+      <span id="statusText" class="text-muted" style="font-size:.75rem">연결 확인 중</span>
+    </div>
+    <div class="d-flex gap-1">
+      <button class="btn btn-xs btn-outline-secondary" onclick="checkStatus()">상태확인</button>
+    </div>
+  </div>
+
+  <div id="chatBox" style="flex:1;overflow-y:auto;padding:20px;background:#f5f6f8;display:flex;flex-direction:column;gap:10px;"></div>
+
+  <div class="d-flex border-top bg-white p-2 gap-2">
+    <input id="chatInput" type="text" class="form-control"
+      placeholder="ERP 데이터를 Claude에게 질문하세요 (예: 이번달 매출, 재고 부족 품목)"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}">
+    <button class="btn btn-primary px-4" onclick="sendMsg()" id="sendBtn">전송</button>
+  </div>
+</div>
+
+<style>
+.msg-user { align-self:flex-end; background:#4f46e5; color:#fff; border-radius:18px 18px 4px 18px; }
+.msg-bot  { align-self:flex-start; background:#fff; border:1px solid #e2e8f0; border-radius:18px 18px 18px 4px; }
+.msg-base { max-width:80%; padding:10px 14px; font-size:0.875rem; white-space:pre-wrap; word-break:break-word; }
+.msg-bot .tool-badge { display:inline-block; background:#f0fdf4; color:#16a34a; font-size:.72rem; padding:1px 6px; border-radius:4px; margin-bottom:4px; }
+</style>
+
+<script>
+const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+let busy = false;
+
+function appendMsg(text, role) {
+  const box = document.getElementById('chatBox');
+  const d = document.createElement('div');
+  d.className = `msg-base msg-${role}`;
+  d.textContent = text;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+  return d;
+}
+
+function setStatus(ok, text) {
+  document.getElementById('statusDot').style.background = ok ? '#16a34a' : '#dc2626';
+  document.getElementById('statusText').textContent = text;
+}
+
+async function checkStatus() {
+  try {
+    const res = await fetch('/channel-chat/health');
+    const data = await res.json();
+    if (data.alive) {
+      setStatus(true, 'Claude 연결됨');
+    } else {
+      setStatus(false, 'Channel 서버 미연결');
+    }
+  } catch {
+    setStatus(false, '연결 실패');
+  }
+}
+
+async function sendMsg() {
+  if (busy) return;
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  appendMsg(text, 'user');
+
+  busy = true;
+  document.getElementById('sendBtn').disabled = true;
+  const thinking = appendMsg('Claude가 처리 중...', 'bot');
+  thinking.style.color = '#999';
+
+  try {
+    // 1단계: send → 즉시 request_id 반환
+    const res = await fetch('/channel-chat/send', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+      body: JSON.stringify({text})
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      thinking.remove();
+      appendMsg(data.error, 'bot');
+      if (res.status === 502) setStatus(false, 'Channel 서버 미연결');
+      return;
+    }
+
+    // 즉시 reply가 온 경우 (초기화 등)
+    if (data.reply) {
+      thinking.remove();
+      appendMsg(data.reply, 'bot');
+      setStatus(true, 'Claude 연결됨');
+      return;
+    }
+
+    // 2단계: 폴링으로 응답 대기
+    if (data.request_id) {
+      setStatus(true, 'Claude 처리 중...');
+      const reply = await pollReply(data.request_id, thinking);
+      thinking.remove();
+      if (reply) {
+        appendMsg(reply, 'bot');
+        setStatus(true, 'Claude 연결됨');
+      }
+    }
+  } catch (e) {
+    thinking.remove();
+    console.error('[sendMsg] error:', e);
+    appendMsg('네트워크 오류: ' + e.message, 'bot');
+  } finally {
+    busy = false;
+    document.getElementById('sendBtn').disabled = false;
+    input.focus();
+  }
+}
+
+async function pollReply(requestId, thinkingEl) {
+  const maxPolls = 20; // 최대 20회 × 10초 = 200초
+  for (let i = 0; i < maxPolls; i++) {
+    try {
+      const res = await fetch('/channel-chat/poll', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+        body: JSON.stringify({request_id: requestId})
+      });
+      if (!res.ok && res.status !== 404) {
+        console.error('[poll] HTTP', res.status, await res.text().catch(()=>''));
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      const data = await res.json();
+
+      if (data.status === 'done') return data.reply;
+      if (data.status === 'timeout') return data.reply;
+      if (data.status === 'not_found') return '요청을 찾을 수 없습니다.';
+
+      // waiting — 경과 시간 표시
+      if (data.elapsed != null) {
+        thinkingEl.textContent = `Claude가 처리 중... (${data.elapsed}초)`;
+      }
+    } catch (e) {
+      console.error('[poll] error:', e);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  return '응답 시간이 초과되었습니다.';
+}
+
+// 시작: 히스토리 로드 + 상태확인
+(async () => {
+  try {
+    const res = await fetch('/channel-chat/history');
+    const history = await res.json();
+    if (history.length) {
+      history.forEach(m => appendMsg(m.content, m.role === 'user' ? 'user' : 'bot'));
+    } else {
+      appendMsg('Claude Channel 채팅입니다.\nClaude Code CLI + MCP 도구를 통해 ERP 데이터를 조회합니다.', 'bot');
+    }
+  } catch {
+    appendMsg('Claude Channel 채팅입니다.\nClaude Code CLI + MCP 도구를 통해 ERP 데이터를 조회합니다.', 'bot');
+  }
+  checkStatus();
+})();
+</script>
+{% endblock %}

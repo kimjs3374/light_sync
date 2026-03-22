@@ -35,7 +35,9 @@
     <div class="kpi-row">
         <span class="kpi-chip">진행 현장 <b>{{ kpi.contracted_count }}</b></span>
         <span class="kpi-chip {% if kpi.urgent_delivery_count > 0 %}hot{% endif %}">납품 임박 <b>{{ kpi.urgent_delivery_count }}</b></span>
-        <span class="kpi-chip {% if kpi.waiting_delay_site_count > 0 %}warn{% endif %}">대기/지연 <b>{{ kpi.waiting_delay_site_count }}</b></span>
+        <span class="kpi-chip {% if kpi.prod_waiting_site_count > 0 %}warn{% endif %}">생산대기 <b>{{ kpi.prod_waiting_site_count }}</b></span>
+        <span class="kpi-chip {% if kpi.material_pending_site_count > 0 %}warn{% endif %}">자재대기 <b>{{ kpi.material_pending_site_count }}</b></span>
+        <span class="kpi-chip {% if kpi.overdue_site_count > 0 %}hot{% endif %}">납기지연 <b>{{ kpi.overdue_site_count }}</b></span>
         <span class="kpi-chip {% if kpi.as_issue_count > 0 %}hot{% endif %}">미해결 이슈 <b>{{ kpi.as_issue_count }}</b></span>
         <span class="kpi-chip">승인 대기 <b>{{ kpi.pending_users }}</b></span>
     </div>

@@ -7,7 +7,7 @@
 @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.5; } }
 @keyframes slideIn { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
-@keyframes tickerScroll { 0% { transform:translateX(100%); } 100% { transform:translateX(-100%); } }
+@keyframes tickerScroll { 0%,15% { transform:translateX(0); } 85%,100% { transform:translateX(var(--ticker-shift, -50%)); } }
 .a-in { animation: fadeUp .5s cubic-bezier(.4,0,.2,1) both; }
 
 /* ─── Hero ─── */

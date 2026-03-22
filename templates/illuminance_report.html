@@ -1,0 +1,454 @@
+{% extends 'base.html' %}
+{% block title %}{{ project.project_name }} — 조도검증 리포트{% endblock %}
+
+{% block content %}
+<style>
+/* ── 표지 히어로 ──────────────────────────────────────── */
+.rpt-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #0f172a 100%);
+  border-radius: var(--mg-radius);
+  padding: 1.5rem 2rem 1.8rem;
+  position: relative; overflow: hidden; margin-bottom: 1.2rem;
+}
+.rpt-hero::before {
+  content: ''; position: absolute; top: -60%; right: -5%;
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(59,130,246,.1) 0%, transparent 65%);
+  pointer-events: none;
+}
+.rpt-hero .eyebrow {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .18rem .55rem; border-radius: 999px;
+  background: rgba(59,130,246,.15); color: #60a5fa;
+  font-size: .62rem; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase;
+}
+.rpt-hero h1 { color: #f8fafc; font-size: 1.5rem; font-weight: 800; margin: .4rem 0 .2rem; }
+.rpt-hero .sub { color: #94a3b8; font-size: .82rem; }
+.rpt-hero .meta-row {
+  display: flex; flex-wrap: wrap; gap: .4rem 1.8rem;
+  margin-top: 1rem; padding-top: .9rem;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+.rpt-hero .meta-item { display: flex; flex-direction: column; gap: .1rem; }
+.rpt-hero .meta-label {
+  font-family: var(--mg-mono); font-size: .55rem; letter-spacing: .1em;
+  text-transform: uppercase; color: #64748b;
+}
+.rpt-hero .meta-val {
+  font-family: var(--mg-mono); font-size: .78rem; color: #cbd5e1;
+}
+.rpt-hero .ks-tag {
+  position: absolute; top: 1rem; right: 1.2rem;
+  font-family: var(--mg-mono); font-size: .58rem; letter-spacing: .12em;
+  color: rgba(96,165,250,.5); font-weight: 700;
+}
+
+/* ── 액션바 ──────────────────────────────────────────── */
+.rpt-bar {
+  display: flex; align-items: center; gap: .5rem; margin-bottom: 1.2rem;
+}
+
+/* ── 종합 요약 카드 ───────────────────────────────────── */
+.summary-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: .75rem; margin-bottom: 1.5rem;
+}
+.s-card {
+  background: var(--mg-surface); border: 1px solid var(--mg-border);
+  border-radius: var(--mg-radius); padding: .9rem 1rem;
+  display: flex; flex-direction: column; gap: .25rem;
+  box-shadow: var(--mg-shadow);
+}
+.s-card .s-label {
+  font-size: .62rem; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--mg-muted);
+}
+.s-card .s-val {
+  font-family: var(--mg-mono); font-size: 1.4rem; font-weight: 700;
+  color: var(--mg-ink); line-height: 1;
+}
+.s-card .s-val.pass { color: var(--mg-success); }
+.s-card .s-val.fail { color: var(--mg-danger); }
+.s-card .s-val.warn { color: var(--mg-warning); }
+
+/* ── 구역 카드 ───────────────────────────────────────── */
+.rpt-area {
+  background: var(--mg-surface); border: 1px solid var(--mg-border);
+  border-radius: var(--mg-radius); overflow: hidden;
+  box-shadow: var(--mg-shadow); margin-bottom: .9rem;
+}
+.rpt-area.is-pass    { border-left: 3px solid var(--mg-success); }
+.rpt-area.is-fail    { border-left: 3px solid var(--mg-danger); }
+.rpt-area.is-warning { border-left: 3px solid var(--mg-warning); }
+.rpt-area.is-na      { border-left: 3px solid var(--mg-border); }
+
+.rpt-area-head {
+  display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+  padding: .75rem 1.1rem;
+  background: var(--mg-bg);
+  border-bottom: 1px solid var(--mg-border);
+}
+.area-idx {
+  font-family: var(--mg-mono); font-size: .6rem; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--mg-muted);
+}
+.area-nm { font-size: .92rem; font-weight: 700; color: var(--mg-ink); flex: 1; min-width: 0; }
+.ks-pill {
+  font-family: var(--mg-mono); font-size: .62rem; font-weight: 700;
+  letter-spacing: .06em; padding: .2rem .65rem; border-radius: 999px;
+  white-space: nowrap;
+}
+.ks-pass    { background: rgba(22,163,74,.1);  color: #16a34a; }
+.ks-fail    { background: rgba(220,38,38,.1);  color: #dc2626; }
+.ks-warning { background: rgba(217,119,6,.1);  color: #d97706; }
+.ks-na      { background: rgba(100,116,139,.1); color: var(--mg-muted); }
+
+.rpt-area-body { padding: 1rem 1.1rem; }
+
+/* ── 설비 칩 ─────────────────────────────────────────── */
+.info-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .75rem; }
+.info-chip {
+  font-family: var(--mg-mono); font-size: .65rem;
+  padding: .15rem .5rem; border-radius: .3rem;
+  background: #f1f5f9; color: var(--mg-muted);
+  border: 1px solid var(--mg-border); white-space: nowrap;
+}
+
+/* ── 실측 메타 ──────────────────────────────────────── */
+.measure-meta {
+  font-family: var(--mg-mono); font-size: .68rem; color: var(--mg-muted);
+  padding: .4rem .7rem; border-radius: .4rem;
+  background: #eff6ff; border: 1px solid #bfdbfe;
+  margin-bottom: .75rem;
+}
+
+/* ── 수치 테이블 ─────────────────────────────────────── */
+.ilv-tbl { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.ilv-tbl thead th {
+  padding: .4rem .7rem; text-align: left;
+  font-size: .65rem; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--mg-muted); font-weight: 600;
+  border-bottom: 1px solid var(--mg-border);
+  background: var(--mg-bg); white-space: nowrap;
+}
+.ilv-tbl tbody td {
+  padding: .5rem .7rem; border-bottom: 1px solid var(--mg-border);
+  color: var(--mg-ink); vertical-align: middle;
+  font-family: var(--mg-mono); font-size: .75rem;
+}
+.ilv-tbl tbody tr:last-child td { border-bottom: none; }
+.ilv-tbl .t-label { font-family: var(--mg-font); color: var(--mg-ink); font-size: .78rem; }
+.ilv-tbl .t-design { color: #1d4ed8; }
+.ilv-tbl .t-ok   { color: var(--mg-success); font-weight: 700; }
+.ilv-tbl .t-bad  { color: var(--mg-danger);  font-weight: 700; }
+.ilv-tbl .t-na   { color: var(--mg-subtle); }
+
+/* ── 달성률 바 ──────────────────────────────────────── */
+.ach-wrap { display: flex; align-items: center; gap: .5rem; }
+.ach-bar-bg {
+  flex: 1; height: 5px; background: var(--mg-border);
+  border-radius: 999px; min-width: 40px;
+}
+.ach-bar-fg { height: 100%; border-radius: 999px; transition: width .4s; }
+.ach-bar-ok  { background: var(--mg-success); }
+.ach-bar-bad { background: var(--mg-danger); }
+.ach-num { font-family: var(--mg-mono); font-size: .72rem; min-width: 3.5rem; text-align: right; white-space: nowrap; }
+
+/* ── 격자 섹션 ──────────────────────────────────────── */
+.grid-section { display: flex; gap: 2rem; flex-wrap: wrap; margin-top: .9rem; }
+.grid-block { display: flex; flex-direction: column; gap: .4rem; }
+.grid-block-label {
+  font-family: var(--mg-mono); font-size: .6rem; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--mg-muted);
+}
+.grid-canvas { display: inline-grid; gap: 2px; }
+.grid-canvas .gc {
+  width: 24px; height: 24px; border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mg-mono); font-size: .44rem; font-weight: 700;
+  line-height: 1; overflow: hidden;
+}
+
+/* ── 인쇄 ──────────────────────────────────────────── */
+@media print {
+  .no-print { display: none !important; }
+  .rpt-hero {
+    background: #0f172a !important;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .rpt-area { page-break-inside: avoid; }
+}
+</style>
+
+{% set pass_count     = areas_data | selectattr('latest') | selectattr('latest.ks_pass', 'equalto', 'PASS') | list | length %}
+{% set fail_count     = areas_data | selectattr('latest') | selectattr('latest.ks_pass', 'equalto', 'FAIL') | list | length %}
+{% set warn_count     = areas_data | selectattr('latest') | selectattr('latest.ks_pass', 'equalto', 'WARNING') | list | length %}
+{% set measured_count = areas_data | selectattr('latest') | list | length %}
+{% set total_count    = areas_data | length %}
+
+<div class="container-fluid px-3 py-3">
+
+  <!-- 액션바 -->
+  <div class="rpt-bar no-print">
+    <a href="{{ url_for('illuminance.detail', project_id=project.id) }}"
+       class="btn btn-sm btn-outline-secondary">← 구역 목록</a>
+    <button onclick="window.print()" class="btn btn-sm btn-outline-primary ms-auto">인쇄 / PDF</button>
+  </div>
+
+  <!-- 표지 히어로 -->
+  <div class="rpt-hero">
+    <span class="ks-tag">KS C 7658</span>
+    <div class="eyebrow">💡 조도설계 검증 리포트</div>
+    <h1>{{ project.project_name }}</h1>
+    <div class="sub">
+      {{ project.customer or '' }}
+      {% if project.customer and project.location %} · {% endif %}
+      {{ project.location or '' }}
+    </div>
+    <div class="meta-row">
+      {% if project.facility_type %}
+      <div class="meta-item">
+        <span class="meta-label">시설 종류</span>
+        <span class="meta-val">{{ project.facility_type }}</span>
+      </div>
+      {% endif %}
+      {% if project.install_date %}
+      <div class="meta-item">
+        <span class="meta-label">설치일</span>
+        <span class="meta-val">{{ project.install_date }}</span>
+      </div>
+      {% endif %}
+      <div class="meta-item">
+        <span class="meta-label">총 구역</span>
+        <span class="meta-val">{{ total_count }} zones</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">작성일</span>
+        <span class="meta-val">{{ project.created_at.strftime('%Y-%m-%d') if project.created_at else '—' }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 종합 요약 -->
+  <div class="summary-grid">
+    <div class="s-card">
+      <span class="s-label">전체 구역</span>
+      <span class="s-val">{{ total_count }}</span>
+    </div>
+    <div class="s-card">
+      <span class="s-label">실측 완료</span>
+      <span class="s-val">{{ measured_count }}</span>
+    </div>
+    <div class="s-card">
+      <span class="s-label">KS PASS</span>
+      <span class="s-val pass">{{ pass_count }}</span>
+    </div>
+    <div class="s-card">
+      <span class="s-label">KS FAIL</span>
+      <span class="s-val {% if fail_count > 0 %}fail{% endif %}">{{ fail_count }}</span>
+    </div>
+    <div class="s-card">
+      <span class="s-label">통과율</span>
+      <span class="s-val {% if measured_count > 0 %}{% if (pass_count / measured_count) >= 1.0 %}pass{% elif (pass_count / measured_count) >= 0.5 %}warn{% else %}fail{% endif %}{% endif %}">
+        {% if measured_count > 0 %}{{ '%.0f' % (pass_count / measured_count * 100) }}%{% else %}—{% endif %}
+      </span>
+    </div>
+  </div>
+
+  <!-- 구역별 카드 -->
+  {% for item in areas_data %}
+  {% set area   = item.area %}
+  {% set latest = item.latest %}
+  {% set ks = latest.ks_pass if latest else '' %}
+  <div class="rpt-area {% if ks == 'PASS' %}is-pass{% elif ks == 'FAIL' %}is-fail{% elif ks == 'WARNING' %}is-warning{% else %}is-na{% endif %}">
+
+    <!-- 헤더 -->
+    <div class="rpt-area-head">
+      <span class="area-idx">ZONE {{ '%02d' % area.area_index }}</span>
+      <span class="area-nm">{{ area.area_name }}</span>
+      {% if latest %}
+        {% if ks == 'PASS' %}<span class="ks-pill ks-pass">KS PASS</span>
+        {% elif ks == 'FAIL' %}<span class="ks-pill ks-fail">KS FAIL</span>
+        {% elif ks == 'WARNING' %}<span class="ks-pill ks-warning">KS WARNING</span>
+        {% else %}<span class="ks-pill ks-na">{{ ks or 'N/A' }}</span>{% endif %}
+      {% else %}
+        <span class="ks-pill ks-na">미실측</span>
+      {% endif %}
+    </div>
+
+    <div class="rpt-area-body">
+
+      <!-- 설비 칩 -->
+      <div class="info-chips">
+        {% if area.lamp_type %}<span class="info-chip">{{ area.lamp_type }}</span>{% endif %}
+        {% if area.lamp_watt %}<span class="info-chip">{{ area.lamp_watt }} W</span>{% endif %}
+        {% if area.lamp_qty  %}<span class="info-chip">{{ area.lamp_qty }} 등</span>{% endif %}
+        {% if area.installation_height %}<span class="info-chip">H {{ area.installation_height }} m</span>{% endif %}
+        {% if area.grid_rows and area.grid_cols %}<span class="info-chip">{{ area.grid_rows }} × {{ area.grid_cols }} 격자</span>{% endif %}
+      </div>
+
+      <!-- 실측 메타 -->
+      {% if latest %}
+      <div class="measure-meta">
+        실측일 {{ latest.measure_date }}
+        {% if latest.measured_by %} · {{ latest.measured_by }}{% endif %}
+        {% if latest.instrument %} · {{ latest.instrument }}{% endif %}
+        {% if latest.weather %} · {{ latest.weather }}{% endif %}
+        {% if latest.notes %} · {{ latest.notes }}{% endif %}
+      </div>
+      {% endif %}
+
+      <!-- 수치 테이블 -->
+      <table class="ilv-tbl">
+        <thead>
+          <tr>
+            <th style="width:28%">항목</th>
+            <th style="width:17%">설계값</th>
+            <th style="width:17%">실측값</th>
+            <th style="width:20%">KS 기준</th>
+            <th>달성률</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Eav -->
+          <tr>
+            <td class="t-label">평균조도 Eav (lx)</td>
+            <td class="t-design">{{ area.design_eav | int if area.design_eav else '—' }}</td>
+            {% if latest and latest.measured_eav %}
+              {% set ok = (latest.eav_achievement or 0) >= 100 %}
+              <td class="{{ 't-ok' if ok else 't-bad' }}">{{ latest.measured_eav | int }}</td>
+            {% else %}<td class="t-na">—</td>{% endif %}
+            <td class="t-na">{{ (area.ks_eav_min | int ~ ' lx 이상') if area.ks_eav_min else '—' }}</td>
+            <td>
+              {% if latest and latest.eav_achievement %}
+              {% set pct = latest.eav_achievement %}
+              {% set ok  = pct >= 100 %}
+              <div class="ach-wrap">
+                <div class="ach-bar-bg">
+                  <div class="ach-bar-fg {{ 'ach-bar-ok' if ok else 'ach-bar-bad' }}"
+                       style="width:{{ [pct, 100] | min }}%"></div>
+                </div>
+                <span class="ach-num {{ 't-ok' if ok else 't-bad' }}">{{ '%.1f' % pct }}%</span>
+              </div>
+              {% else %}<span class="t-na">—</span>{% endif %}
+            </td>
+          </tr>
+          <!-- Uo -->
+          <tr>
+            <td class="t-label">균제도 Uo</td>
+            <td class="t-design">{{ '%.2f' % area.design_uo if area.design_uo else '—' }}</td>
+            {% if latest and latest.measured_uo %}
+              {% set ok = (latest.uo_achievement or 0) >= 100 %}
+              <td class="{{ 't-ok' if ok else 't-bad' }}">{{ '%.2f' % latest.measured_uo }}</td>
+            {% else %}<td class="t-na">—</td>{% endif %}
+            <td class="t-na">{{ ('%.2f' % area.ks_uo_min ~ ' 이상') if area.ks_uo_min else '—' }}</td>
+            <td>
+              {% if latest and latest.uo_achievement %}
+              {% set pct = latest.uo_achievement %}
+              {% set ok  = pct >= 100 %}
+              <div class="ach-wrap">
+                <div class="ach-bar-bg">
+                  <div class="ach-bar-fg {{ 'ach-bar-ok' if ok else 'ach-bar-bad' }}"
+                       style="width:{{ [pct, 100] | min }}%"></div>
+                </div>
+                <span class="ach-num {{ 't-ok' if ok else 't-bad' }}">{{ '%.1f' % pct }}%</span>
+              </div>
+              {% else %}<span class="t-na">—</span>{% endif %}
+            </td>
+          </tr>
+          <!-- Emin / Emax -->
+          <tr>
+            <td class="t-label">최소 / 최대 (lx)</td>
+            <td class="t-design">
+              {{ area.design_emin | int if area.design_emin else '—' }} /
+              {{ area.design_emax | int if area.design_emax else '—' }}
+            </td>
+            {% if latest %}
+            <td class="t-na">
+              {{ latest.measured_emin | int if latest.measured_emin else '—' }} /
+              {{ latest.measured_emax | int if latest.measured_emax else '—' }}
+            </td>
+            {% else %}<td class="t-na">—</td>{% endif %}
+            <td class="t-na">—</td>
+            <td class="t-na">—</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 격자 히트맵 -->
+      {% if area.design_grid_parsed %}
+      <div class="grid-section">
+        <div class="grid-block">
+          <span class="grid-block-label">설계 조도 분포</span>
+          <div class="grid-canvas" id="gd{{ area.id }}"></div>
+        </div>
+        {% if latest and latest.measured_grid_parsed %}
+        <div class="grid-block">
+          <span class="grid-block-label">실측 조도 분포</span>
+          <div class="grid-canvas" id="gm{{ area.id }}"></div>
+        </div>
+        {% endif %}
+      </div>
+      <script>
+      (function(){
+        var DESIGN   = {{ area.design_grid_parsed | tojson }};
+        var MEASURED = {% if latest and latest.measured_grid_parsed %}{{ latest.measured_grid_parsed | tojson }}{% else %}null{% endif %};
+        var ROWS = {{ area.grid_rows or 0 }};
+        var COLS = {{ area.grid_cols or 0 }};
+
+        function flatten(g){ return g.flat().filter(function(v){ return v !== null && !isNaN(v); }); }
+        function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+        /* 라이트 테마 히트맵: 저(파란 연회색) → 중(노랑) → 고(주황-적) */
+        function heatColor(v, mn, mx){
+          if(v === null || v === undefined) return {bg:'#f1f5f9', fg:'transparent'};
+          var t = mx > mn ? (v - mn)/(mx - mn) : 0.5;
+          var r, g, b;
+          if(t < 0.5){
+            var s = t / 0.5;
+            r = Math.round(clamp(214 + s*(253-214), 0, 255));
+            g = Math.round(clamp(226 + s*(224-226), 0, 255));
+            b = Math.round(clamp(255 + s*(71-255),  0, 255));
+          } else {
+            var s = (t - 0.5) / 0.5;
+            r = Math.round(clamp(253 + s*(220-253), 0, 255));
+            g = Math.round(clamp(224 + s*(38-224),  0, 255));
+            b = Math.round(clamp(71  + s*(38-71),   0, 255));
+          }
+          var bright = (r*299 + g*587 + b*114) / 1000;
+          return { bg:'rgb('+r+','+g+','+b+')', fg: bright > 160 ? '#1e293b' : '#fff' };
+        }
+
+        function renderGrid(grid, id){
+          var el = document.getElementById(id);
+          if(!el || !grid || !grid.length) return;
+          var fv = flatten(grid);
+          var mn = fv.length ? Math.min.apply(null,fv) : 0;
+          var mx = fv.length ? Math.max.apply(null,fv) : 1;
+          el.style.gridTemplateColumns = 'repeat('+COLS+',24px)';
+          for(var r=0; r<ROWS; r++){
+            for(var c=0; c<COLS; c++){
+              var v   = grid[r] && grid[r][c] !== undefined ? grid[r][c] : null;
+              var col = heatColor(v, mn, mx);
+              var cell = document.createElement('div');
+              cell.className = 'gc';
+              cell.style.background = col.bg;
+              cell.style.color      = col.fg;
+              if(v !== null) cell.textContent = Math.round(v);
+              el.appendChild(cell);
+            }
+          }
+        }
+        renderGrid(DESIGN,   'gd{{ area.id }}');
+        if(MEASURED) renderGrid(MEASURED, 'gm{{ area.id }}');
+      })();
+      </script>
+      {% endif %}
+
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+{% endblock %}

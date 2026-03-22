@@ -63,6 +63,8 @@
         <option value="date_asc" {{ 'selected' if unpaid_sort == 'date_asc' }}>계약일 오래된순</option>
         <option value="date_desc" {{ 'selected' if unpaid_sort == 'date_desc' }}>계약일 최신순</option>
     </select>
+    <input type="text" class="form-control form-control-sm" name="q" value="{{ request.args.get('q','') }}" placeholder="계약명 / G2B번호 / 발주처" style="width:200px">
+    <button class="btn btn-primary btn-sm" type="submit" style="white-space:nowrap">검색</button>
 </form>
 
 {# ====== 미청구 계약 목록 (계약 기준 매칭) ====== #}

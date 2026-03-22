@@ -14,10 +14,16 @@
     const validLevels = ['info','warning','danger'];
     let idx = 0, timer = null;
 
-    function restartRoll(text) {
-        const dur = Math.max(10, Math.min(24, Math.ceil((text||'').length / 4)));
+    function restartRoll() {
         messageEl.classList.remove('is-rolling');
+        const track = messageEl.parentElement;
+        if (!track) return;
+        const overflow = messageEl.scrollWidth - track.clientWidth;
+        if (overflow <= 0) return; // 안 넘치면 롤링 안 함
+        const dur = Math.max(8, Math.ceil(overflow / 30));
+        const shift = -(overflow + 20); // 20px 여유
         messageEl.style.setProperty('--ticker-dur', dur + 's');
+        messageEl.style.setProperty('--ticker-shift', shift + 'px');
         void messageEl.offsetWidth;
         messageEl.classList.add('is-rolling');
     }
@@ -30,7 +36,7 @@
         titleEl.textContent = item.title || '공지';
         messageEl.textContent = item.message || '-';
         linkEl.href = item.detail_url || linkEl.dataset.fallbackUrl || '#';
-        restartRoll(item.message || '');
+        restartRoll();
         if (timer) clearTimeout(timer);
         const sec = Math.max(2, Number(item.display_seconds || 6));
         timer = setTimeout(() => { idx = (idx + 1) % items.length; render(idx); }, sec * 1000);

@@ -1,0 +1,286 @@
+{# 챗봇 권한관리 partial — admin_settings.html / chatbot_admin.html 에서 include #}
+
+<div style="max-width:1100px">
+  <div class="row g-3">
+    <!-- 좌측: 사용자 목록 -->
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header py-2 bg-white border-bottom d-flex flex-column gap-2">
+          <input type="text" class="form-control form-control-sm" placeholder="사용자 검색..."
+                 oninput="filterChatbotUsers(this.value)">
+        </div>
+        <div class="list-group list-group-flush" id="cbUserList" style="max-height:calc(100vh - 320px);overflow-y:auto">
+          {% for user in chatbot_users %}
+          <button type="button"
+                  class="list-group-item list-group-item-action py-2 cb-user-item d-flex align-items-center justify-content-between"
+                  data-username="{{ user.username }}"
+                  data-fullname="{{ user.full_name }}"
+                  onclick="selectCbUser('{{ user.username }}')">
+            <div>
+              <div class="fw-semibold" style="font-size:.88rem">{{ user.full_name }}</div>
+              <div class="text-muted" style="font-size:.72rem">{{ user.username }}</div>
+            </div>
+            {% if channel_map.get(user.username) %}
+            <span class="badge bg-warning text-dark" style="font-size:.6rem;white-space:nowrap">고사양</span>
+            {% endif %}
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- 우측: 권한 설정 -->
+    <div class="col-md-9">
+      <!-- 미선택 -->
+      <div id="cbNoSelection" class="card border-0 shadow-sm">
+        <div class="card-body text-center text-muted py-5">
+          왼쪽에서 사용자를 선택하세요
+        </div>
+      </div>
+
+      <!-- 선택됨 -->
+      <div id="cbPermPanel" style="display:none">
+        <!-- 헤더 -->
+        <div class="card border-0 shadow-sm mb-3">
+          <div class="card-body py-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+              <span class="fw-bold" style="font-size:1.05rem" id="cbSelectedName"></span>
+              <span class="text-muted ms-2" style="font-size:.82rem" id="cbSelectedUsername"></span>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+              <!-- 채널 권한 -->
+              <label class="d-flex align-items-center gap-2" style="cursor:pointer;font-size:.85rem">
+                <input type="checkbox" class="form-check-input" id="cbChkChannel" style="width:1.1em;height:1.1em">
+                <span style="white-space:nowrap;">고사양 매그니</span>
+                <span class="badge bg-warning text-dark" style="font-size:.6rem;white-space:nowrap">Channel</span>
+              </label>
+              <button class="btn btn-sm btn-primary px-3" style="white-space:nowrap;" onclick="saveCbPerm()">저장</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 프리셋 -->
+        <div class="card border-0 shadow-sm mb-3">
+          <div class="card-body py-2 d-flex align-items-center gap-2 flex-wrap">
+            <span class="text-muted" style="font-size:.78rem;white-space:nowrap">프리셋:</span>
+            <select id="cbPresetSelect" class="form-select form-select-sm" style="width:auto;min-width:140px" onchange="loadCbPreset()">
+              <option value="">-- 선택 --</option>
+              <option value="__all__">전체 허용</option>
+              <option value="__none__">전체 해제</option>
+              {% for p in chatbot_presets %}
+              <option value="{{ p.name }}">{{ p.name }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-xs btn-outline-primary" style="white-space:nowrap;" onclick="saveCbPreset()">현재 -> 프리셋 저장</button>
+            <button class="btn btn-xs btn-outline-danger" style="white-space:nowrap;" onclick="deleteCbPreset()">프리셋 삭제</button>
+            <span class="text-muted" style="font-size:.72rem">|</span>
+            <button class="btn btn-xs btn-outline-success" style="white-space:nowrap;" onclick="applyCbPresetToAll()">미설정자 일괄 적용</button>
+          </div>
+        </div>
+
+        <!-- 카테고리별 권한 -->
+        <div class="row g-2" id="cbToolGrid">
+          {% for cat_name, cat_tools in tool_groups %}
+          <div class="col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+              <div class="card-header py-2 bg-white border-bottom d-flex align-items-center justify-content-between">
+                <span class="fw-semibold" style="font-size:.82rem">{{ cat_name }}
+                  <span class="text-muted">({{ cat_tools|length }})</span>
+                </span>
+                <label style="font-size:.7rem;cursor:pointer;color:var(--mg-primary);white-space:nowrap">
+                  <input type="checkbox" class="cb-cat-toggle d-none" data-cat="{{ cat_name }}"
+                         onchange="toggleCbCategory('{{ cat_name }}', this.checked)">
+                  전체
+                </label>
+              </div>
+              <div class="card-body py-2 px-3">
+                {% for tool_name, tool_label, tool_group in cat_tools %}
+                <label class="d-flex align-items-center gap-2 py-1" style="cursor:pointer;font-size:.82rem">
+                  <input type="checkbox" class="form-check-input cb-tool-cb"
+                         data-tool="{{ tool_name }}" data-cat="{{ cat_name }}"
+                         style="width:.9em;height:.9em;flex-shrink:0">
+                  <span class="flex-grow-1" style="line-height:1.2">{{ tool_label }}</span>
+                  {% if tool_group != '전체' %}
+                  <span class="badge bg-danger" style="font-size:.55rem;white-space:nowrap">{{ tool_group }}</span>
+                  {% endif %}
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+const cbCsrf = document.querySelector('meta[name="csrf-token"]')?.content;
+let cbCurrentUser = null;
+
+const CB_PERM_MAP = {{ perm_map | tojson }};
+const CB_CHANNEL_MAP = {{ channel_map | tojson }};
+const CB_DEFAULT_TOOLS = {{ default_tools | tojson }};
+const CB_ALL_TOOL_NAMES = [{% for t in all_tools %}'{{ t[0] }}',{% endfor %}];
+const CB_PRESETS = {{ presets_map | tojson }};
+
+window.filterChatbotUsers = function(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.cb-user-item').forEach(el => {
+    const name = el.dataset.fullname.toLowerCase();
+    const uname = el.dataset.username.toLowerCase();
+    el.style.display = (name.includes(q) || uname.includes(q)) ? '' : 'none';
+  });
+};
+
+window.selectCbUser = function(username) {
+  cbCurrentUser = username;
+  document.querySelectorAll('.cb-user-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.username === username);
+  });
+  document.getElementById('cbNoSelection').style.display = 'none';
+  document.getElementById('cbPermPanel').style.display = '';
+
+  const el = document.querySelector(`.cb-user-item[data-username="${username}"]`);
+  document.getElementById('cbSelectedName').textContent = el.dataset.fullname;
+  document.getElementById('cbSelectedUsername').textContent = username;
+  document.getElementById('cbChkChannel').checked = !!CB_CHANNEL_MAP[username];
+
+  const perms = CB_PERM_MAP[username] || CB_DEFAULT_TOOLS;
+  const permSet = new Set(perms);
+  document.querySelectorAll('.cb-tool-cb').forEach(cb => {
+    cb.checked = permSet.has(cb.dataset.tool);
+  });
+  updateCbCatToggles();
+};
+
+window.toggleCbCategory = function(cat, checked) {
+  document.querySelectorAll(`.cb-tool-cb[data-cat="${cat}"]`).forEach(cb => cb.checked = checked);
+};
+
+function updateCbCatToggles() {
+  document.querySelectorAll('.cb-cat-toggle').forEach(toggle => {
+    const cat = toggle.dataset.cat;
+    const cbs = document.querySelectorAll(`.cb-tool-cb[data-cat="${cat}"]`);
+    toggle.checked = [...cbs].every(c => c.checked);
+  });
+}
+
+document.addEventListener('change', e => {
+  if (e.target.classList.contains('cb-tool-cb')) updateCbCatToggles();
+});
+
+window.loadCbPreset = function() {
+  const sel = document.getElementById('cbPresetSelect').value;
+  if (!sel) return;
+  if (sel === '__all__') {
+    document.querySelectorAll('.cb-tool-cb').forEach(cb => cb.checked = true);
+  } else if (sel === '__none__') {
+    document.querySelectorAll('.cb-tool-cb').forEach(cb => cb.checked = false);
+  } else if (CB_PRESETS[sel]) {
+    const s = new Set(CB_PRESETS[sel].tools);
+    document.querySelectorAll('.cb-tool-cb').forEach(cb => cb.checked = s.has(cb.dataset.tool));
+    document.getElementById('cbChkChannel').checked = !!CB_PRESETS[sel].channel;
+  }
+  updateCbCatToggles();
+};
+
+window.saveCbPreset = async function() {
+  const tools = [...document.querySelectorAll('.cb-tool-cb:checked')].map(c => c.dataset.tool);
+  const channel = document.getElementById('cbChkChannel').checked;
+  const sel = document.getElementById('cbPresetSelect');
+  let name = sel.value && !sel.value.startsWith('__') ? sel.value : '';
+  name = prompt('프리셋 이름:', name);
+  if (!name || !name.trim()) return;
+  name = name.trim();
+  const res = await fetch('/chatbot/admin/preset/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': cbCsrf},
+    body: JSON.stringify({ name, tools, channel })
+  });
+  if ((await res.json()).success) {
+    CB_PRESETS[name] = { tools, channel };
+    if (!sel.querySelector(`option[value="${name}"]`)) {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      sel.appendChild(opt);
+    }
+    sel.value = name;
+    alert(`프리셋 "${name}" 저장됨`);
+  }
+};
+
+window.deleteCbPreset = async function() {
+  const sel = document.getElementById('cbPresetSelect');
+  const name = sel.value;
+  if (!name || name.startsWith('__')) return alert('삭제할 프리셋을 선택하세요');
+  if (!confirm(`"${name}" 프리셋을 삭제하시겠습니까?`)) return;
+  const res = await fetch('/chatbot/admin/preset/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': cbCsrf},
+    body: JSON.stringify({ name })
+  });
+  if ((await res.json()).success) {
+    delete CB_PRESETS[name];
+    sel.querySelector(`option[value="${name}"]`)?.remove();
+    sel.value = '';
+    alert('삭제됨');
+  }
+};
+
+window.applyCbPresetToAll = async function() {
+  const sel = document.getElementById('cbPresetSelect').value;
+  if (!sel || sel.startsWith('__')) return alert('적용할 프리셋을 선택하세요');
+  if (!confirm(`"${sel}" 프리셋을 권한 미설정 사용자에게 일괄 적용합니다.`)) return;
+  const res = await fetch('/chatbot/admin/preset/apply-all', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': cbCsrf},
+    body: JSON.stringify({ name: sel })
+  });
+  const data = await res.json();
+  if (data.success) {
+    alert(data.count + '명에게 적용했습니다.');
+    if (data.count > 0) location.reload();
+  }
+};
+
+window.saveCbPerm = async function() {
+  if (!cbCurrentUser) return;
+  const tools = [...document.querySelectorAll('.cb-tool-cb:checked')].map(c => c.dataset.tool);
+  const channelEnabled = document.getElementById('cbChkChannel').checked;
+  const res = await fetch('/chatbot/admin/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': cbCsrf},
+    body: JSON.stringify({
+      erp_username: cbCurrentUser,
+      allowed_tools: tools,
+      channel_enabled: channelEnabled
+    })
+  });
+  const data = await res.json();
+  if (data.success) {
+    CB_PERM_MAP[cbCurrentUser] = tools;
+    CB_CHANNEL_MAP[cbCurrentUser] = channelEnabled;
+
+    const badge = document.querySelector(`.cb-user-item[data-username="${cbCurrentUser}"] .badge`);
+    if (channelEnabled && !badge) {
+      const el = document.querySelector(`.cb-user-item[data-username="${cbCurrentUser}"]`);
+      const b = document.createElement('span');
+      b.className = 'badge bg-warning text-dark';
+      b.style.cssText = 'font-size:.6rem;white-space:nowrap';
+      b.textContent = '고사양';
+      el.appendChild(b);
+    } else if (!channelEnabled && badge) {
+      badge.remove();
+    }
+
+    const btn = document.querySelector('#cbPermPanel .btn-primary');
+    btn.textContent = '저장됨';
+    btn.classList.replace('btn-primary', 'btn-success');
+    setTimeout(() => { btn.textContent = '저장'; btn.classList.replace('btn-success', 'btn-primary'); }, 1500);
+  }
+};
+})();
+</script>

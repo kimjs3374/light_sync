@@ -1,4 +1,26 @@
 -- ══════════════════════════════════════════════
+-- 완료/취소 현장 → 생산완료 일괄 처리 (2026-03-22)
+-- 입금완료/변경완료/취소 = 더 이상 생산 불필요
+-- ══════════════════════════════════════════════
+
+-- 1) 대상 확인 (먼저 실행해서 건수 확인)
+SELECT c.project_id, p.name AS project_name, c.payment_status,
+       ci.id AS item_id, ci.model_name, ci.status_prod
+FROM light_sync.contract_items ci
+JOIN light_sync.contracts c ON c.id = ci.contract_id
+JOIN light_sync.projects p ON p.id = c.project_id
+WHERE c.payment_status IN ('입금완료', '변경완료', '취소')
+  AND ci.status_prod != '생산완료';
+
+-- 2) 일괄 업데이트 실행
+UPDATE light_sync.contract_items
+SET status_prod = '생산완료'
+WHERE contract_id IN (
+    SELECT id FROM light_sync.contracts WHERE payment_status IN ('입금완료', '변경완료', '취소')
+)
+AND status_prod != '생산완료';
+
+-- ══════════════════════════════════════════════
 -- 예외처리 사유 컬럼 (2026-03-21)
 -- ══════════════════════════════════════════════
 ALTER TABLE light_sync.contracts ADD COLUMN IF NOT EXISTS exclude_reason VARCHAR(50);

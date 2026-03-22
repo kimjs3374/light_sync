@@ -66,10 +66,16 @@ def project_overview():
     per_page = 20
 
     with get_db() as db:
-        projects = db.query(Project).filter(Project.is_contracted.is_(True)).options(
+        from modules.contract_filters import active_contract_filter
+        show_done = request.args.get('show_done', '') == '1'
+
+        q = db.query(Project).filter(Project.is_contracted.is_(True)).options(
             joinedload(Project.contracts).joinedload(Contract.items),
             joinedload(Project.contracts).joinedload(Contract.deliveries),
-        ).order_by(Project.id.desc()).all()
+        )
+        if not show_done:
+            q = q.filter(active_contract_filter())
+        projects = q.order_by(Project.id.desc()).all()
 
         # 전체 계산
         all_entries = [_calc_entry(p) for p in projects]

@@ -7,7 +7,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 
 from modules.db_context import get_db
-from modules.contract_filters import active_contract_filter
+from modules.contract_filters import active_contract_filter, DONE_STATUSES
 from modules.utils import safe_int
 from modules.models import (
     Project, User, HistoryLog, Contract, ContractItem,
@@ -149,47 +149,47 @@ def dashboard_view():
         urgent_delivery_count = len(urgent_contracts)
         urgent_delivery_projects = [c.project for c in urgent_contracts if c.project]
 
+        # 진행현장 ID 목록 (contracted_projects와 동일 기준)
+        active_project_ids = [p.id for p in contracted_projects]
+
         prod_waiting_contract_ids = {
             pid
             for (pid,) in db.query(Contract.project_id)
             .join(ContractItem, ContractItem.contract_id == Contract.id)
-            .join(Project, Project.id == Contract.project_id)
             .filter(
-                Project.is_contracted.is_(True),
+                Contract.project_id.in_(active_project_ids),
                 ContractItem.status_prod.in_(['자재대기중', '생산대기중'])
             )
             .distinct()
             .all()
-        }
+        } if active_project_ids else set()
         prod_waiting_site_count = len(prod_waiting_contract_ids)
 
         material_pending_project_ids = {
             pid
             for (pid,) in db.query(Contract.project_id)
             .join(ContractItem, ContractItem.contract_id == Contract.id)
-            .join(Project, Project.id == Contract.project_id)
             .filter(
-                Project.is_contracted.is_(True),
+                Contract.project_id.in_(active_project_ids),
                 ContractItem.status_admin != '입고완료'
             )
             .distinct()
             .all()
-        }
+        } if active_project_ids else set()
 
         overdue_project_ids = {
             pid
             for (pid,) in db.query(Contract.project_id)
             .join(ContractItem, ContractItem.contract_id == Contract.id)
-            .join(Project, Project.id == Contract.project_id)
             .filter(
-                Project.is_contracted.is_(True),
+                Contract.project_id.in_(active_project_ids),
                 Contract.delivery_due_date.isnot(None),
                 Contract.delivery_due_date < today,
                 ContractItem.status_prod != '생산완료',
             )
             .distinct()
             .all()
-        }
+        } if active_project_ids else set()
         waiting_delay_site_count = len(set(prod_waiting_contract_ids) | set(material_pending_project_ids) | set(overdue_project_ids))
 
         issue_project_ids = set()
@@ -432,6 +432,8 @@ def dashboard_view():
                 'contracted_count': contracted_count,
                 'urgent_delivery_count': urgent_delivery_count,
                 'prod_waiting_site_count': prod_waiting_site_count,
+                'material_pending_site_count': len(material_pending_project_ids),
+                'overdue_site_count': len(overdue_project_ids),
                 'waiting_delay_site_count': waiting_delay_site_count,
                 'as_issue_count': as_issue_count,
                 'pending_users': pending_users,

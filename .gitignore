@@ -37,3 +37,4 @@ reference/
 icube_migration/
 .trash/
 .playwright-mcp/
+light_sync_channel/node_modules/

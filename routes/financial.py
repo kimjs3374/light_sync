@@ -12,7 +12,7 @@ from flask import (
     Blueprint, render_template, request, redirect, url_for,
     flash, jsonify, abort,
 )
-from sqlalchemy import desc, func, extract, text
+from sqlalchemy import desc, func, extract, text, or_
 from sqlalchemy.orm import joinedload
 from modules.auth_decorators import login_required, menu_required
 from modules.pagination import make_pagination
@@ -262,11 +262,23 @@ def tax_invoice_list():
             if d:
                 q = q.filter(TaxInvoice.issue_date <= d)
         if search:
-            q = q.filter(
-                (TaxInvoice.buyer_name.ilike(f'%{search}%')) |
-                (TaxInvoice.approval_no.ilike(f'%{search}%')) |
-                (TaxInvoice.item_name.ilike(f'%{search}%'))
-            )
+            # G2B 계약명으로도 검색: g2b_contract_no → g2b_procurements.cntrct_dlvr_req_nm
+            g2b_match_nos = set()
+            if len(search) >= 2:
+                g2b_hits = db.query(G2bProcurement.cntrct_dlvr_req_no).filter(
+                    G2bProcurement.cntrct_dlvr_req_nm.ilike(f'%{search}%')
+                ).distinct().all()
+                g2b_match_nos = {r[0] for r in g2b_hits}
+
+            search_filters = [
+                TaxInvoice.buyer_name.ilike(f'%{search}%'),
+                TaxInvoice.approval_no.ilike(f'%{search}%'),
+                TaxInvoice.item_name.ilike(f'%{search}%'),
+                TaxInvoice.g2b_contract_no.ilike(f'%{search}%'),
+            ]
+            if g2b_match_nos:
+                search_filters.append(TaxInvoice.g2b_contract_no.in_(g2b_match_nos))
+            q = q.filter(or_(*search_filters))
 
         total = q.count()
         invoices = q.order_by(desc(TaxInvoice.issue_date), desc(TaxInvoice.id))\
@@ -313,6 +325,14 @@ def tax_invoice_list():
             ).filter(
                 Contract.payment_status.in_(target_statuses),
             )
+            unpaid_search = (request.args.get('q') or '').strip()
+            if unpaid_search:
+                like_q = f'%{unpaid_search}%'
+                unpaid_q = unpaid_q.filter(
+                    (Contract.contract_name.ilike(like_q)) |
+                    (Contract.g2b_contract_no.ilike(like_q)) |
+                    (Contract.project.has(Project.short_name.ilike(like_q)))
+                )
             _today = datetime.date.today()
             if unpaid_due == 'overdue':
                 unpaid_q = unpaid_q.filter(Contract.delivery_due_date < _today)
@@ -517,8 +537,8 @@ def invoice_candidates(contract_id):
             return jsonify({'recommend': [], 'search_results': []})
 
         contract_name = contract.contract_name or ''
-        project_name = contract.project.temp_name if contract.project else ''
-        buyer_name = contract.project.short_name if contract.project else ''
+        project_name = (contract.project.temp_name if contract.project else '') or ''
+        buyer_name = (contract.project.short_name if contract.project else '') or ''
         g2b_no = contract.g2b_contract_no or ''
 
         # 미매칭 + 조달 추정 세금계산서

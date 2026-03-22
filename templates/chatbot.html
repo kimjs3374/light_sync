@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% block content %}
+<div style="display:flex;flex-direction:column;height:calc(100vh - 60px);">
+
+  <div class="px-3 py-2 border-bottom bg-white d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center gap-2">
+      <span class="fw-semibold" id="engineName">매그니</span>
+      <span id="engineBadge" class="badge" style="white-space:nowrap;font-size:.68rem;display:none"></span>
+      <span id="statusDot" class="rounded-circle d-inline-block" style="width:7px;height:7px;background:#94a3b8"></span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <!-- 엔진 스위치 (채널 권한이 있는 사용자만 표시) -->
+      {% if channel_enabled %}
+      <div class="d-flex align-items-center gap-1" style="font-size:.78rem">
+        <span id="lblGroq" style="font-weight:600;cursor:pointer;color:#64748b" onclick="document.getElementById('engineSwitch').checked=false;switchEngine()">Groq</span>
+        <label class="position-relative d-inline-block" style="width:36px;height:20px;margin:0 2px;cursor:pointer">
+          <input type="checkbox" id="engineSwitch" onchange="switchEngine()"
+            style="opacity:0;width:0;height:0;position:absolute">
+          <span id="switchTrack" style="position:absolute;inset:0;border-radius:10px;background:#cbd5e1;transition:.2s"></span>
+          <span id="switchThumb" style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span>
+        </label>
+        <span id="lblClaude" style="cursor:pointer;color:#64748b" onclick="document.getElementById('engineSwitch').checked=true;switchEngine()">Claude</span>
+      </div>
+      {% endif %}
+      <button class="btn btn-xs btn-outline-secondary" onclick="clearChat()">초기화</button>
+    </div>
+  </div>
+
+  <div id="chatBox" style="flex:1;overflow-y:auto;padding:20px;background:#f5f6f8;display:flex;flex-direction:column;gap:10px;"></div>
+
+  <div class="d-flex border-top bg-white p-2 gap-2">
+    <input id="chatInput" type="text" class="form-control"
+      placeholder="무엇이 궁금하신가요? (예: 이번달 납품 실적, 생산 현황, 재고 부족)"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}">
+    <button class="btn btn-primary px-4" onclick="sendMsg()" id="sendBtn">전송</button>
+  </div>
+</div>
+
+<style>
+.msg-user { align-self:flex-end; background:#4f46e5; color:#fff; border-radius:18px 18px 4px 18px; }
+.msg-bot  { align-self:flex-start; background:#fff; border:1px solid #e2e8f0; border-radius:18px 18px 18px 4px; }
+.msg-bot.claude { border-color:#d4a574; }
+.msg-base { max-width:80%; padding:10px 14px; font-size:0.875rem; white-space:pre-wrap; word-break:break-word; }
+</style>
+
+<script>
+const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+let busy = false;
+const _channelAllowed = {{ 'true' if channel_enabled else 'false' }};
+let engine = _channelAllowed ? (localStorage.getItem('chatEngine') || 'groq') : 'groq';
+let claudeAvailable = false;
+
+const ENGINES = {
+  groq:   { name: '매그니',   badge: 'Groq',   color: '#2563eb', sendUrl: '/chatbot/send',       historyUrl: '/chatbot/history' },
+  claude: { name: '고사양 매그니', badge: 'Channel', color: '#d97706', sendUrl: '/channel-chat/send', historyUrl: '/channel-chat/history' },
+};
+
+function updateUI() {
+  const e = ENGINES[engine];
+  document.getElementById('engineName').textContent = e.name;
+  const badge = document.getElementById('engineBadge');
+  badge.style.display = 'inline-block';
+  badge.textContent = e.badge;
+  badge.style.background = e.color;
+  badge.style.color = '#fff';
+  document.getElementById('lblGroq').style.fontWeight = engine === 'groq' ? '600' : '400';
+  document.getElementById('lblGroq').style.color = engine === 'groq' ? '#2563eb' : '#64748b';
+  document.getElementById('lblClaude').style.fontWeight = engine === 'claude' ? '600' : '400';
+  document.getElementById('lblClaude').style.color = !claudeAvailable ? '#ccc' : engine === 'claude' ? '#d97706' : '#64748b';
+  document.getElementById('statusDot').style.background =
+    engine === 'claude' ? (claudeAvailable ? '#16a34a' : '#dc2626') : '#2563eb';
+  var isClaude = engine === 'claude';
+  document.getElementById('switchTrack').style.background = isClaude ? '#d97706' : '#cbd5e1';
+  document.getElementById('switchThumb').style.left = isClaude ? '18px' : '2px';
+  document.getElementById('engineSwitch').checked = isClaude;
+}
+
+async function checkClaude() {
+  try {
+    const res = await fetch('/channel-chat/health');
+    const data = await res.json();
+    claudeAvailable = data.alive;
+  } catch {
+    claudeAvailable = false;
+  }
+  updateUI();
+}
+
+function switchEngine() {
+  const sw = document.getElementById('engineSwitch');
+  if (sw.checked && !claudeAvailable) {
+    appendMsg('Claude Channel 서버에 연결할 수 없습니다. Claude Code가 실행 중인지 확인하세요.', 'bot');
+    sw.checked = false;
+    return;
+  }
+  engine = sw.checked ? 'claude' : 'groq';
+  localStorage.setItem('chatEngine', engine);
+  document.getElementById('chatBox').innerHTML = '';
+  updateUI();
+  loadHistory();
+}
+
+function appendMsg(text, role) {
+  const box = document.getElementById('chatBox');
+  const d = document.createElement('div');
+  d.className = `msg-base msg-${role}` + (role === 'bot' && engine === 'claude' ? ' claude' : '');
+  d.textContent = text;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+  return d;
+}
+
+async function loadHistory() {
+  const url = ENGINES[engine].historyUrl;
+  if (!url) return;
+  try {
+    const res = await fetch(url);
+    const msgs = await res.json();
+    msgs.forEach(m => appendMsg(m.content, m.role === 'user' ? 'user' : 'bot'));
+  } catch {}
+}
+
+async function sendMsg() {
+  if (busy) return;
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  appendMsg(text, 'user');
+
+  busy = true;
+  document.getElementById('sendBtn').disabled = true;
+  const label = engine === 'claude' ? 'Claude가 처리 중...' : '...';
+  const thinking = appendMsg(label, 'bot');
+  thinking.style.color = '#999';
+
+  try {
+    const e = ENGINES[engine];
+    const headers = {'Content-Type': 'application/json'};
+    if (csrf) headers['X-CSRFToken'] = csrf;
+    const res = await fetch(e.sendUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({text})
+    });
+    const data = await res.json();
+    thinking.remove();
+
+    if (res.status === 502 && engine === 'claude') {
+      appendMsg('Claude Channel 서버에 연결할 수 없습니다.', 'bot');
+      claudeAvailable = false;
+      updateUI();
+    } else if (engine === 'claude' && data.request_id) {
+      // Claude 비동기 모드: 폴링으로 응답 대기
+      thinking.textContent = 'Claude가 처리 중...';
+      const reply = await pollClaudeReply(data.request_id, thinking);
+      thinking.remove();
+      if (reply) appendMsg(reply, 'bot');
+    } else {
+      appendMsg(data.reply || data.error || '오류가 발생했습니다.', 'bot');
+    }
+  } catch (e) {
+    thinking.remove();
+    appendMsg('네트워크 오류: ' + e.message, 'bot');
+  } finally {
+    busy = false;
+    document.getElementById('sendBtn').disabled = false;
+    input.focus();
+  }
+}
+
+async function pollClaudeReply(requestId, thinkingEl) {
+  for (let i = 0; i < 20; i++) {
+    try {
+      const res = await fetch('/channel-chat/poll', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+        body: JSON.stringify({request_id: requestId})
+      });
+      if (!res.ok && res.status !== 404) { await new Promise(r => setTimeout(r, 2000)); continue; }
+      const data = await res.json();
+      if (data.status === 'done') return data.reply;
+      if (data.status === 'timeout') return data.reply;
+      if (data.status === 'not_found') return '요청을 찾을 수 없습니다.';
+      if (data.elapsed != null) thinkingEl.textContent = `Claude가 처리 중... (${data.elapsed}초)`;
+    } catch { await new Promise(r => setTimeout(r, 2000)); }
+  }
+  return '응답 시간이 초과되었습니다.';
+}
+
+async function clearChat() {
+  const e = ENGINES[engine];
+  await fetch(e.sendUrl, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+    body: JSON.stringify({text: '초기화'})
+  });
+  document.getElementById('chatBox').innerHTML = '';
+}
+
+// 초기화 — 저장된 엔진 복원
+document.getElementById('engineSwitch').checked = engine === 'claude';
+updateUI();
+loadHistory();
+checkClaude();
+</script>
+{% endblock %}

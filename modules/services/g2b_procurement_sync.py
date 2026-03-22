@@ -430,6 +430,7 @@ def auto_create_contracts(db, since_date=None):
         new_project = Project(
             project_no=project_no,
             temp_name=contract_name,
+            short_name=rep.dminstt_nm or '',
             status='G2B자동',
             is_contracted=True,
             contract_date=contract_date or datetime.date.today(),

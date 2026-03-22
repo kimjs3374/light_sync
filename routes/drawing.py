@@ -10,6 +10,7 @@ from modules.db_context import get_db
 from modules.utils import validate_upload
 from modules.models import (
     Project,
+    Contract,
     Drawing,
     DrawingVersion,
     DrawingAccessLog,

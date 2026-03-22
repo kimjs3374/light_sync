@@ -155,7 +155,7 @@
                                                 <td>{{ item.quantity }}</td>
                                                 <td>
                                                     {% if c.desired_delivery_date %}
-                                                        <span class="badge bg-light text-dark border">{{ c.desired_delivery_date.strftime('%Y-%m-%d') }}</span>
+                                                        <span class="badge bg-light text-dark border">{{ c.desired_delivery_date.strftime('%Y/%m/%d') }}</span>
                                                     {% else %}
                                                         <span class="text-muted">-</span>
                                                     {% endif %}
