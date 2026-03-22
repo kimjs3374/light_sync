@@ -11,7 +11,7 @@ from modules.models import (
     BomHeader, BomItem, PurchaseOrder, PurchaseOrderItem,
     Item, Vendor,
 )
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, or_
 from modules.history_board import append_history_log, get_project_history_context
 from modules.contract_filters import active_contract_filter
 from modules.priority_utils import (
@@ -372,10 +372,6 @@ def material_management():
             db.commit()
             flash('자재 자동생성/동기화가 완료되었습니다.', 'success')
             return redirect(url_for('material.material_management'))
-
-        sync_material_orders(db)
-        refresh_admin_statuses_from_material_orders(db)
-        db.commit()
 
         q = (request.args.get('q') or '').strip().lower()
         status = request.args.get('status', 'all')

@@ -18,7 +18,7 @@ from flask import (
     flash, jsonify, abort, session, send_file,
 )
 from sqlalchemy import desc
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.db_context import get_db
@@ -382,6 +382,7 @@ def turnover_report():
 # -- 10. 수동 재고 조정 --
 @inventory_bp.route('/inventory/item/<int:item_id>/adjust', methods=['POST'])
 @login_required
+@menu_required('inventory')
 def item_adjust(item_id):
     with get_db() as db:
         item = db.query(Item).get(item_id)
@@ -423,6 +424,7 @@ def item_adjust(item_id):
 # -- 11. 안전재고 설정 --
 @inventory_bp.route('/inventory/item/<int:item_id>/safety-stock', methods=['POST'])
 @login_required
+@menu_required('inventory')
 def item_safety_stock(item_id):
     with get_db() as db:
         item = db.query(Item).get(item_id)

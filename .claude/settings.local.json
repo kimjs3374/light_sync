@@ -1,0 +1,42 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Edit(*)",
+      "Write(*)",
+      "Skill(bkit:pdca)",
+      "Skill(pdca)",
+      "WebFetch(domain:apis.data.go.kr)",
+      "WebFetch(domain:docs.kakaoi.ai)",
+      "WebSearch",
+      "WebFetch(domain:blog.kakaowork.com)",
+      "WebFetch(domain:devtalk.kakao.com)",
+      "WebFetch(domain:developers.kakao.com)",
+      "WebFetch(domain:console.groq.com)",
+      "WebFetch(domain:openai.com)",
+      "WebFetch(domain:openrouter.ai)",
+      "WebFetch(domain:www.reddit.com)",
+      "WebFetch(domain:old.reddit.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.kakaowork.com)",
+      "WebFetch(domain:hackmd.io)",
+      "mcp__lightsync-erp-chat__channel_reply",
+      "mcp__light-sync-erp__get_revenue_summary",
+      "mcp__light-sync-erp__get_projects",
+      "mcp__light-sync-erp__get_financial_overview",
+      "mcp__light-sync-erp__get_delivery_summary",
+      "Skill(code-review:pdca)",
+      "mcp__light-sync-erp__search_projects",
+      "mcp__light-sync-erp__get_project_detail"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "light-sync-erp",
+    "lightsync-erp-chat"
+  ],
+  "prefersReducedMotion": true,
+  "allowDangerouslySkipPermissions": true
+}

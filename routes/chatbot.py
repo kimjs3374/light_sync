@@ -137,10 +137,11 @@ def admin_page():
     presets = _load_presets()
 
     return render_template("chatbot_admin.html",
-                           users=users, perm_map=perm_map, all_tools=ALL_TOOLS,
+                           users=users, chatbot_users=users,
+                           perm_map=perm_map, all_tools=ALL_TOOLS,
                            default_tools=DEFAULT_TOOLS.split(","),
                            channel_map=channel_map, tool_groups=tool_groups,
-                           presets=presets,
+                           presets=presets, chatbot_presets=presets,
                            presets_map={p["name"]: p for p in presets})
 
 

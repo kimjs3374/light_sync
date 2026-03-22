@@ -27,7 +27,8 @@ class User(Base):
     office_fax = Column(String(30), nullable=True)        # 팩스
     user_group = Column(String(50), ForeignKey('group_permissions.group_name'))
     role = Column(String(20), default="user")
-    extra_menus = Column(Text, nullable=True)           # 개인 추가 메뉴 권한 (CSV: "item,vendor")
+    extra_menus = Column(Text, nullable=True)           # 개인 추가 메뉴 권한 (CSV: "item:rw,vendor:r")
+    hide_financial_override = Column(Boolean, nullable=True)  # 개인 금액 숨김 (None=그룹따름, True=숨김, False=표시)
     can_approve_delete = Column(Boolean, default=False)
     is_approved = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
@@ -48,6 +49,7 @@ class GroupPermission(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     group_name = Column(String(50), unique=True, nullable=False)
     allowed_menus = Column(Text, nullable=False)
+    hide_financial = Column(Boolean, default=False)  # True면 금액 컬럼 미표시
 
 
 class UserPriorityPermission(Base):

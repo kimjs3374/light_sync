@@ -90,17 +90,19 @@
             <div class="col-auto d-flex align-items-center gap-2">
                 <button type="submit" class="btn btn-primary btn-sm">검색</button>
                 <a href="{{ url_for('procurement.procurement_summary') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+                {% if not hide_financial %}
                 <div class="form-check form-switch mb-0 ms-2">
                     <input class="form-check-input" type="checkbox" id="toggleAmt" checked>
                     <label class="form-check-label" for="toggleAmt" style="font-size:0.82rem;">금액</label>
                 </div>
+                {% endif %}
             </div>
         </form>
     </div>
 </div>
 
 {# === 차트 === #}
-{% if pivot.models %}
+{% if pivot.models and not hide_financial %}
 <div class="card border-0 shadow-sm mb-2 no-print">
     <div class="card-body py-2" style="height:260px;">
         <canvas id="summaryChart"></canvas>
@@ -138,13 +140,13 @@
                         <td {% if qty == 0 %}class="zero"{% endif %}>
                             {% if qty > 0 %}
                             <span class="qty-val">{{ qty }}</span><br>
-                            <span class="amt-val">{{ "{:,.0f}".format(amt / 10000) }}만</span>
+                            {% if not hide_financial %}<span class="amt-val">{{ "{:,.0f}".format(amt / 10000) }}만</span>{% endif %}
                             {% else %}-{% endif %}
                         </td>
                         {% endfor %}
                         <td class="sum-col">
                             <span class="qty-val fw-bold">{{ mdl.total_qty }}</span><br>
-                            <span class="amt-val fw-bold">{{ "{:,.0f}".format(mdl.total_amt / 10000) }}만</span>
+                            {% if not hide_financial %}<span class="amt-val fw-bold">{{ "{:,.0f}".format(mdl.total_amt / 10000) }}만</span>{% endif %}
                         </td>
                     </tr>
                     {# 년도별 상세행 #}
@@ -157,13 +159,13 @@
                         <td {% if qty == 0 %}class="zero"{% endif %} style="font-size:0.78rem;">
                             {% if qty > 0 %}
                             <span class="qty-val">{{ qty }}</span><br>
-                            <span class="amt-val">{{ "{:,.0f}".format(amt / 10000) }}만</span>
+                            {% if not hide_financial %}<span class="amt-val">{{ "{:,.0f}".format(amt / 10000) }}만</span>{% endif %}
                             {% else %}-{% endif %}
                         </td>
                         {% endfor %}
                         <td class="sum-col" style="font-size:0.78rem;">
                             <span class="qty-val">{{ sub.total_qty }}</span><br>
-                            <span class="amt-val">{{ "{:,.0f}".format(sub.total_amt / 10000) }}만</span>
+                            {% if not hide_financial %}<span class="amt-val">{{ "{:,.0f}".format(sub.total_amt / 10000) }}만</span>{% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -175,13 +177,13 @@
                         <td>
                             {% if gm.qty > 0 %}
                             <span class="qty-val">{{ gm.qty }}</span><br>
-                            <span class="amt-val">{{ "{:,.0f}".format(gm.amt / 10000) }}만</span>
+                            {% if not hide_financial %}<span class="amt-val">{{ "{:,.0f}".format(gm.amt / 10000) }}만</span>{% endif %}
                             {% else %}-{% endif %}
                         </td>
                         {% endfor %}
                         <td class="sum-col">
                             <span class="qty-val">{{ pivot.grand_total.total_qty }}</span><br>
-                            <span class="amt-val">{{ "{:,.0f}".format(pivot.grand_total.total_amt / 10000) }}만</span>
+                            {% if not hide_financial %}<span class="amt-val">{{ "{:,.0f}".format(pivot.grand_total.total_amt / 10000) }}만</span>{% endif %}
                         </td>
                     </tr>
                 </tbody>
@@ -195,7 +197,7 @@
     </div>
 </div>
 
-{% if pivot.models %}
+{% if pivot.models and not hide_financial %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
 (function() {

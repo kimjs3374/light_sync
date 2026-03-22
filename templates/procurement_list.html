@@ -11,6 +11,7 @@
         <div class="d-flex flex-wrap gap-2">
             <a href="{{ url_for('procurement.procurement_report') }}" class="btn btn-outline-info btn-sm">분석 보고서</a>
             {% if is_admin %}
+            <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#manualAddModal">수동 등록</button>
             <div class="dropdown">
                 <button class="btn btn-outline-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown">동기화</button>
                 <ul class="dropdown-menu dropdown-menu-end">
@@ -22,10 +23,19 @@
                         </form>
                     </li>
                     <li>
-                        <form method="POST">
+                        <form method="POST" class="px-3 py-1" style="min-width:200px">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="action" value="sync_bulk">
-                            <button type="submit" class="dropdown-item" onclick="return confirm('2015년~현재까지 전체 데이터를 동기화합니다. 시간이 소요될 수 있습니다.');">벌크 동기화 (전체)</button>
+                            <label class="form-label small mb-1">벌크 동기화</label>
+                            <div class="d-flex gap-1 align-items-center">
+                                <select class="form-select form-select-sm" name="bulk_start_year" style="width:90px">
+                                    {% for y in range(2015, 2027) %}
+                                    <option value="{{ y }}" {% if y == 2024 %}selected{% endif %}>{{ y }}년</option>
+                                    {% endfor %}
+                                </select>
+                                <span class="small text-muted" style="white-space:nowrap">~ 현재</span>
+                                <button type="submit" class="btn btn-outline-primary btn-xs" style="white-space:nowrap" onclick="return confirm('선택 연도부터 현재까지 동기화합니다. 시간이 소요될 수 있습니다.');">실행</button>
+                            </div>
                         </form>
                     </li>
                 </ul>
@@ -45,6 +55,7 @@
             </div>
         </div>
     </div>
+    {% if not hide_financial %}
     <div class="col-md-3 col-6">
         <div class="card border-0 shadow-sm border-start border-4 border-primary">
             <div class="card-body py-2">
@@ -61,6 +72,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
     <div class="col-md-3 col-6">
         <div class="card border-0 shadow-sm border-start border-4 border-info">
             <div class="card-body py-2">
@@ -129,56 +141,83 @@
 
 {# --- 테이블 (계약 단위 그룹핑) --- #}
 <div class="table-responsive">
-    <table class="table table-hover align-middle" style="font-size:0.88rem;">
-        <thead class="table-light">
+    <table class="table table-hover align-middle" style="font-size:0.82rem;table-layout:fixed;min-width:780px;">
+        <colgroup>
+            <col style="width:88px">      {# 계약일 #}
+            <col style="width:110px">     {# 상태 (규격가격+ERP 뱃지) #}
+            <col style="min-width:0">     {# 계약명 — 남은 공간 차지 #}
+            <col style="width:100px">     {# 발주처 #}
+            <col style="width:46px">      {# 품목 #}
+            {% if not hide_financial %}<col style="width:110px">     {# 금액 #}{% endif %}
+            <col style="width:88px">      {# 납기 #}
+            <col style="width:150px">     {# 수금 (뱃지+예외 버튼 여유 확보) #}
+        </colgroup>
+        <thead class="table-light" style="white-space:nowrap">
             <tr>
-                <th style="width:90px;">계약일</th>
-                <th style="width:80px;">상태</th>
+                <th>계약일</th>
+                <th>상태</th>
                 <th>계약명</th>
-                <th style="width:150px;">수요기관</th>
-                <th class="text-center" style="width:60px;">품목</th>
-                <th class="text-end" style="width:130px;">계약금액</th>
-                <th style="width:90px;">납품기한</th>
+                <th>발주처</th>
+                <th class="text-center">품목</th>
+                {% if not hide_financial %}<th class="text-end">금액</th>{% endif %}
+                <th>납기</th>
+                <th>수금</th>
             </tr>
         </thead>
         <tbody>
             {% for c in contracts %}
             <tr role="button" data-bs-toggle="collapse" data-bs-target="#detail-{{ loop.index }}" class="{% if c.status == 'cancelled' %}table-danger{% elif c.status == 'changed' %}table-warning{% elif c.status == 'spec_price' %}{% endif %}" {% if c.status == 'spec_price' %}style="background:#ede9fe;"{% endif %}>
-                <td>{{ c.req_date.strftime('%Y-%m-%d') if c.req_date else '-' }}</td>
-                <td>
+                <td style="white-space:nowrap">{{ c.req_date.strftime('%Y-%m-%d') if c.req_date else '-' }}</td>
+                <td style="white-space:nowrap">
                     {{ status_badge(c.status) }}
                     {% if c.linked %}
                     <a href="{{ url_for('project.contract_detail', project_id=c.linked.project_id) }}#contract-{{ c.linked.contract_id }}"
-                       class="badge bg-primary text-decoration-none" title="ERP 계약으로 이동" style="font-size:0.68rem;">ERP</a>
+                       class="badge bg-primary text-decoration-none" title="ERP 계약으로 이동" style="font-size:0.68rem;white-space:nowrap;">ERP</a>
                     {% endif %}
                 </td>
-                <td>
-                    <span title="{{ c.req_nm or '' }}">
-                        {{ (c.req_nm or '-')[:50] }}{% if c.req_nm and c.req_nm|length > 50 %}...{% endif %}
-                    </span>
-                    {% if c.is_invoiced %}
-                    <span class="badge bg-success" style="font-size:0.65rem; white-space:nowrap;">계산서</span>
-                    {% endif %}
+                <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="{{ c.req_nm or '' }}">
+                    {{ c.req_nm or '-' }}{% if c.is_invoiced %}&nbsp;<span class="badge bg-success" style="font-size:0.65rem;white-space:nowrap;">계산서</span>{% endif %}
                 </td>
-                <td><small>{{ c.dminstt or '-' }}</small></td>
-                <td class="text-center">
+                <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0"><small>{{ c.dminstt or '-' }}</small></td>
+                <td class="text-center" style="white-space:nowrap">
                     {% if c.item_cnt > 1 %}
                         <span class="badge bg-secondary">{{ c.item_cnt }}종</span>
                     {% else %}
                         1
                     {% endif %}
                 </td>
-                <td class="text-end fw-bold">{{ "{:,}".format(c.total_amt) }}원</td>
-                <td><small>{{ c.dlvr_date.strftime('%Y-%m-%d') if c.dlvr_date else '-' }}</small></td>
+                {% if not hide_financial %}<td class="text-end fw-bold" style="white-space:nowrap">{{ "{:,}".format(c.total_amt) }}원</td>{% endif %}
+                <td style="white-space:nowrap"><small>{{ c.dlvr_date.strftime('%Y-%m-%d') if c.dlvr_date else '-' }}</small></td>
+                <td style="white-space:nowrap" onclick="event.stopPropagation()">
+                    {% if c.linked %}
+                        {% set ps = c.linked.payment_status %}
+                        {% if c.linked.is_excluded %}
+                            <span class="badge bg-dark" style="font-size:.65rem;white-space:nowrap">예외</span>&#32;<button class="btn btn-outline-dark btn-xs" style="font-size:.6rem;padding:1px 5px;white-space:nowrap;line-height:1.4"
+                                onclick="openExcludeEdit('{{ c.req_no }}', '{{ (c.req_nm or "")|e }}')">수정</button>
+                        {% elif ps == '입금완료' %}
+                            <span class="badge bg-success" style="font-size:.65rem;white-space:nowrap">입금완료</span>
+                        {% elif ps == '변경완료' %}
+                            <span class="badge bg-secondary" style="font-size:.65rem;white-space:nowrap">변경완료</span>
+                        {% else %}
+                            <span class="badge {{ 'bg-warning text-dark' if ps == '부분입금' else 'bg-secondary' }}" style="font-size:.65rem;white-space:nowrap">{{ ps or '미청구' }}</span>&#32;<button class="btn btn-outline-secondary btn-xs" style="font-size:.6rem;padding:1px 5px;white-space:nowrap;line-height:1.4"
+                                onclick="openExclude('{{ c.req_no }}', '{{ (c.req_nm or "")|e }}')">예외</button>
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
             </tr>
             {# --- 품목 상세 (접히는 행) --- #}
             <tr class="collapse" id="detail-{{ loop.index }}">
-                <td colspan="7" class="p-0">
+                <td colspan="{% if hide_financial %}7{% else %}8{% endif %}" class="p-0">
                     <div class="bg-light p-3" style="font-size:0.82rem;">
                         <div class="mb-2">
                             <strong>계약번호:</strong> {{ c.req_no }}
                             <span class="text-muted ms-2">변경차수: {{ c.chg_ord }}</span>
                             <span class="text-muted ms-3">{{ c.line_items[0].prcrmnt_div_nm or '' }} / {{ c.line_items[0].cntrct_div_nm or '' }}</span>
+                            {% if c.line_items[0].dminstt_nm %}
+                            <span class="ms-3"><strong>수요기관:</strong> {{ c.line_items[0].dminstt_nm }}{% if c.line_items[0].dminstt_rgn_nm %} <small class="text-muted">({{ c.line_items[0].dminstt_rgn_nm }})</small>{% endif %}</span>
+                            {% endif %}
                             {% if c.line_items[0].dlvr_plce_nm %}
                             <span class="text-muted ms-3">납품: {{ c.line_items[0].dlvr_plce_nm }}</span>
                             {% endif %}
@@ -188,9 +227,9 @@
                                 <tr class="table-secondary">
                                     <th>세부품목</th>
                                     <th>규격명</th>
-                                    <th class="text-end" style="width:100px;">단가</th>
+                                    {% if not hide_financial %}<th class="text-end" style="width:100px;">단가</th>{% endif %}
                                     <th class="text-end" style="width:60px;">수량</th>
-                                    <th class="text-end" style="width:120px;">금액</th>
+                                    {% if not hide_financial %}<th class="text-end" style="width:120px;">금액</th>{% endif %}
                                 </tr>
                             </thead>
                             <tbody>
@@ -198,16 +237,16 @@
                                 <tr>
                                     <td>{{ item.dtil_prdct_clsfc_no_nm or '-' }}</td>
                                     <td>{{ item.prdct_idnt_no_nm or '-' }}</td>
-                                    <td class="text-end">{{ "{:,}".format(item.prdct_uprc) if item.prdct_uprc else '-' }}</td>
+                                    {% if not hide_financial %}<td class="text-end">{{ "{:,}".format(item.prdct_uprc) if item.prdct_uprc else '-' }}</td>{% endif %}
                                     <td class="text-end">{{ item.prdct_qty or '-' }}{{ item.prdct_unit or '' }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,}".format(item.prdct_amt) if item.prdct_amt else '-' }}</td>
+                                    {% if not hide_financial %}<td class="text-end fw-bold">{{ "{:,}".format(item.prdct_amt) if item.prdct_amt else '-' }}</td>{% endif %}
                                 </tr>
                                 {% endfor %}
                                 {% if c.item_cnt > 1 %}
                                 <tr class="table-warning">
-                                    <td colspan="3" class="text-end fw-bold">합계</td>
+                                    <td colspan="{% if hide_financial %}2{% else %}3{% endif %}" class="text-end fw-bold">합계</td>
                                     <td class="text-end fw-bold">{{ c.line_items|sum(attribute='prdct_qty') or '-' }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,}".format(c.total_amt) }}원</td>
+                                    {% if not hide_financial %}<td class="text-end fw-bold">{{ "{:,}".format(c.total_amt) }}원</td>{% endif %}
                                 </tr>
                                 {% endif %}
                             </tbody>
@@ -219,7 +258,7 @@
 
             {% if not contracts %}
             <tr>
-                <td colspan="7" class="text-center text-muted py-4">조회된 조달내역이 없습니다.</td>
+                <td colspan="{% if hide_financial %}7{% else %}8{% endif %}" class="text-center text-muted py-4">조회된 조달내역이 없습니다.</td>
             </tr>
             {% endif %}
         </tbody>
@@ -261,4 +300,265 @@
 </nav>
 {% endif %}
 
+{# ====== 예외처리 모달 ====== #}
+<div class="modal fade" id="excludeModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-secondary text-white py-2">
+                <h6 class="modal-title fw-bold mb-0">예외 처리</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3">
+                <p class="small mb-2" id="excludeName"></p>
+                <div class="mb-2">
+                    <label class="form-label small fw-bold">사유</label>
+                    <select class="form-select form-select-sm" id="excludeReason">
+                        <option value="민수계약">민수계약 (G2B 아님)</option>
+                        <option value="변경완료">변경계약으로 대체</option>
+                        <option value="대금완료">대금 수령 확인 (수기)</option>
+                        <option value="취소">계약 취소</option>
+                        <option value="기타">기타</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small fw-bold">메모 (선택)</label>
+                    <input type="text" class="form-control form-control-sm" id="excludeNote" placeholder="사유 메모">
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-secondary btn-sm flex-fill fw-bold" onclick="doExclude()">예외 처리</button>
+                    <button class="btn btn-outline-danger btn-sm" id="btnExcludeCancel" style="display:none;white-space:nowrap" onclick="doExcludeCancel()">해제</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ====== 수동 등록 모달 ====== #}
+<div class="modal fade" id="manualAddModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content border-0 shadow">
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="manual_add">
+                <div class="modal-header bg-success text-white py-2">
+                    <h6 class="modal-title fw-bold mb-0">조달내역 수동 등록</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-3" style="font-size:0.82rem;">
+                    <p class="text-muted small mb-3">타사 명의 계약 등 API 조회 불가 건을 수동 등록합니다. 계약번호 미입력 시 M-YYYY-NNNN으로 자동 채번됩니다.</p>
+
+                    {# --- 계약 기본정보 --- #}
+                    <div class="fw-bold small text-success mb-1">계약 기본정보</div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold">계약번호</label>
+                            <input type="text" class="form-control form-control-sm" name="manual_req_no" placeholder="미입력 시 자동 채번">
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label small fw-bold">계약명 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" name="manual_req_nm" required placeholder="계약건명 입력">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-bold">계약일</label>
+                            <input type="date" class="form-control form-control-sm" name="manual_req_date">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-bold">최초계약일</label>
+                            <input type="date" class="form-control form-control-sm" name="manual_intl_req_date">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-2">
+                            <label class="form-label small">조달구분</label>
+                            <select class="form-select form-select-sm" name="manual_prcrmnt_div_nm">
+                                <option value="수동등록">수동등록</option>
+                                <option value="중앙조달">중앙조달</option>
+                                <option value="자체조달">자체조달</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">계약구분</label>
+                            <select class="form-select form-select-sm" name="manual_cntrct_div_nm">
+                                <option value="">선택</option>
+                                <option value="총액계약">총액계약</option>
+                                <option value="단가계약(MAS)">단가계약(MAS)</option>
+                                <option value="제3자단가계약">제3자단가계약</option>
+                                <option value="수의계약">수의계약</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">계약체결방법</label>
+                            <input type="text" class="form-control form-control-sm" name="manual_cntrct_mthd_nm" placeholder="일반경쟁">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-bold">납기일</label>
+                            <input type="date" class="form-control form-control-sm" name="manual_dlvr_date">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">납품장소</label>
+                            <input type="text" class="form-control form-control-sm" name="manual_dlvr_plce_nm" placeholder="납품장소">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">인도조건</label>
+                            <input type="text" class="form-control form-control-sm" name="manual_dlvry_cndtn_nm" placeholder="도착도">
+                        </div>
+                    </div>
+
+                    {# --- 수요기관 --- #}
+                    <div class="fw-bold small text-success mb-1">수요기관</div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">수요기관명</label>
+                            <input type="text" class="form-control form-control-sm" name="manual_dminstt_nm" placeholder="수요기관명">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">수요기관코드</label>
+                            <input type="text" class="form-control form-control-sm" name="manual_dminstt_cd" placeholder="">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">수요기관지역</label>
+                            <input type="text" class="form-control form-control-sm" name="manual_dminstt_rgn_nm" placeholder="지역명">
+                        </div>
+                    </div>
+
+                    {# --- 업체 정보 --- #}
+                    <div class="fw-bold small text-success mb-1">계약 업체</div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">업체명</label>
+                            <input type="text" class="form-control form-control-sm" name="manual_corp_nm" placeholder="업체명">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">사업자등록번호</label>
+                            <input type="text" class="form-control form-control-sm" name="manual_bizno" placeholder="000-00-00000">
+                        </div>
+                    </div>
+
+                    {# --- 품목 목록 --- #}
+                    <div class="fw-bold small text-success mb-1">품목 목록</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-2" style="font-size:0.78rem;" id="manualItemsTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="min-width:100px">세부품명</th>
+                                    <th style="min-width:120px">규격명(모델)</th>
+                                    <th style="min-width:80px">품명</th>
+                                    <th style="width:80px">물품분류번호</th>
+                                    <th style="width:80px">물품식별번호</th>
+                                    <th style="width:60px" class="text-end">수량</th>
+                                    <th style="width:50px">단위</th>
+                                    <th style="width:90px" class="text-end">단가</th>
+                                    <th style="width:30px"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><input type="text" class="form-control form-control-sm" name="manual_detail_nm[]" placeholder="LED조명기구"></td>
+                                    <td><input type="text" class="form-control form-control-sm" name="manual_spec_nm[]" placeholder="MT-SP1000"></td>
+                                    <td><input type="text" class="form-control form-control-sm" name="manual_prdct_clsfc_nm[]" placeholder="투광등"></td>
+                                    <td><input type="text" class="form-control form-control-sm" name="manual_prdct_clsfc_no[]" placeholder="39111607"></td>
+                                    <td><input type="text" class="form-control form-control-sm" name="manual_prdct_idnt_no[]" placeholder=""></td>
+                                    <td><input type="number" class="form-control form-control-sm text-end" name="manual_qty[]" value="1" min="0"></td>
+                                    <td><input type="text" class="form-control form-control-sm" name="manual_unit[]" value="개" style="width:50px"></td>
+                                    <td><input type="number" class="form-control form-control-sm text-end" name="manual_uprc[]" value="0" min="0"></td>
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary btn-xs" onclick="addManualRow()">+ 품목 추가</button>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-success btn-sm fw-bold" onclick="return confirm('수동 등록하시겠습니까?')">등록</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function addManualRow() {
+    const tbody = document.querySelector('#manualItemsTable tbody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td><input type="text" class="form-control form-control-sm" name="manual_detail_nm[]"></td>
+        <td><input type="text" class="form-control form-control-sm" name="manual_spec_nm[]"></td>
+        <td><input type="text" class="form-control form-control-sm" name="manual_prdct_clsfc_nm[]"></td>
+        <td><input type="text" class="form-control form-control-sm" name="manual_prdct_clsfc_no[]"></td>
+        <td><input type="text" class="form-control form-control-sm" name="manual_prdct_idnt_no[]"></td>
+        <td><input type="number" class="form-control form-control-sm text-end" name="manual_qty[]" value="1" min="0"></td>
+        <td><input type="text" class="form-control form-control-sm" name="manual_unit[]" value="개" style="width:50px"></td>
+        <td><input type="number" class="form-control form-control-sm text-end" name="manual_uprc[]" value="0" min="0"></td>
+        <td><button type="button" class="btn btn-outline-danger btn-xs" onclick="this.closest('tr').remove()" style="font-size:.65rem;padding:1px 4px">&times;</button></td>
+    `;
+    tbody.appendChild(tr);
+}
+</script>
+
+<script>
+let _excludeG2bNo = null;
+let _excludeIsEdit = false;
+function openExclude(g2bNo, name) {
+    _excludeG2bNo = g2bNo;
+    _excludeIsEdit = false;
+    document.getElementById('excludeName').textContent = name;
+    document.getElementById('excludeNote').value = '';
+    document.getElementById('btnExcludeCancel').style.display = 'none';
+    document.querySelector('#excludeModal .modal-title').textContent = '예외 처리';
+    new bootstrap.Modal(document.getElementById('excludeModal')).show();
+}
+function openExcludeEdit(g2bNo, name) {
+    _excludeG2bNo = g2bNo;
+    _excludeIsEdit = true;
+    document.getElementById('excludeName').textContent = name + ' (예외 수정)';
+    document.getElementById('excludeNote').value = '';
+    document.getElementById('btnExcludeCancel').style.display = '';
+    document.querySelector('#excludeModal .modal-title').textContent = '예외 수정';
+    new bootstrap.Modal(document.getElementById('excludeModal')).show();
+    // 기존 사유 불러오기
+    fetch(`/procurement/api/exclude-info?g2b_no=${encodeURIComponent(g2bNo)}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.reason) document.getElementById('excludeReason').value = data.reason;
+            if (data.note) document.getElementById('excludeNote').value = data.note;
+        });
+}
+function doExclude() {
+    if (!confirm('예외 처리하시겠습니까?')) return;
+    fetch('/procurement/api/exclude', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: JSON.stringify({g2b_no: _excludeG2bNo, reason: document.getElementById('excludeReason').value, note: document.getElementById('excludeNote').value})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('excludeModal')).hide();
+            location.reload();
+        } else {
+            alert(data.error || '처리 실패');
+        }
+    })
+    .catch(e => alert('오류: ' + e.message));
+}
+function doExcludeCancel() {
+    if (!confirm('예외 처리를 해제하고 미청구로 되돌리시겠습니까?')) return;
+    fetch('/procurement/api/exclude-cancel', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: JSON.stringify({g2b_no: _excludeG2bNo})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('excludeModal')).hide();
+            location.reload();
+        } else {
+            alert(data.error || '처리 실패');
+        }
+    })
+    .catch(e => alert('오류: ' + e.message));
+}
+</script>
 {% endblock %}

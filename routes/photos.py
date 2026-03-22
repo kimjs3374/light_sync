@@ -29,7 +29,10 @@ def _allowed(filename):
 @login_required
 def photo_list(project_id=None):
     with get_db() as db:
-        sites = (
+        from modules.contract_filters import DONE_STATUSES
+        status_filter = request.args.get('status', 'active')
+
+        q = (
             db.query(
                 Project.id,
                 Project.project_no,
@@ -37,10 +40,18 @@ def photo_list(project_id=None):
                 func.count(ProjectPhoto.id).label('photo_count'),
             )
             .outerjoin(ProjectPhoto, ProjectPhoto.project_id == Project.id)
-            .group_by(Project.id)
-            .order_by(Project.id.desc())
-            .all()
         )
+        if status_filter == 'active':
+            q = q.outerjoin(Contract, Contract.project_id == Project.id).filter(
+                Contract.payment_status.notin_(DONE_STATUSES),
+                Contract.is_excluded.isnot(True),
+            )
+        elif status_filter == 'done':
+            q = q.join(Contract, Contract.project_id == Project.id).filter(
+                Contract.payment_status.in_(DONE_STATUSES),
+            )
+
+        sites = q.group_by(Project.id).order_by(Project.id.desc()).all()
 
         selected = None
         if project_id:
@@ -57,6 +68,7 @@ def photo_list(project_id=None):
             sites=sites,
             selected=selected,
             selected_id=project_id,
+            status_filter=status_filter,
         )
 
 

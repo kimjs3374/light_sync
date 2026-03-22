@@ -233,16 +233,15 @@ def catalog_list():
             'last_synced': last_sync[0].strftime('%Y-%m-%d %H:%M') if last_sync and last_sync[0] else '-',
         }
 
+    filters = {'q': q, 'price_source': price_source, 'method': method}
     return render_template(
         'catalog_list.html',
-        items=items,
-        stats=stats,
-        pagination=pagination,
-        filters={
-            'q': q,
-            'price_source': price_source,
-            'method': method,
-        },
+        catalog_items=items,
+        catalog_stats=stats,
+        catalog_pagination=pagination,
+        catalog_filters=filters,
+        # 하위 호환 (partial 외부에서 사용 가능)
+        items=items, stats=stats, pagination=pagination, filters=filters,
         is_admin=(session.get('role') == 'admin'),
     )
 

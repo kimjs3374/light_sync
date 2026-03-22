@@ -35,3 +35,5 @@ debug_screenshot/
 reference/
 *.pdf
 icube_migration/
+.trash/
+.playwright-mcp/

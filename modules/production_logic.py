@@ -204,9 +204,15 @@ def sync_production_processes_for_contract_item(db, contract, item):
 
 
 def sync_production_processes(db, project_id=None):
+    from modules.contract_filters import DONE_STATUSES
     q = db.query(Contract).options(joinedload(Contract.items))
     if project_id:
         q = q.filter(Contract.project_id == project_id)
+    # 입금완료/변경완료/취소된 계약은 생산공정 생성 불필요
+    q = q.filter(
+        Contract.payment_status.notin_(DONE_STATUSES),
+        Contract.is_excluded.isnot(True),
+    )
 
     for contract in q.all():
         for item in contract.items:

@@ -114,7 +114,8 @@ def _collect_auto_items(db, target_date):
     for c in db.query(WarrantyCase).filter(
         WarrantyCase.created_at >= day_start, WarrantyCase.created_at <= day_end,
     ).options(joinedload(WarrantyCase.warranty)).all():
-        site = c.warranty.site_name if c.warranty else '(현장미상)'
+        w = c.warranty
+        site = w.contract_name or (w.project.temp_name if w and w.project else None) or '(현장미상)' if w else '(현장미상)'
         dept_items.setdefault('생산부', []).append(
             f"{site} 하자/AS 접수 ({c.defect_type or '기타'})"
         )

@@ -117,8 +117,8 @@
                     <col style="width:18%">
                     <col style="width:45px">
                     <col style="width:32px">
-                    <col style="width:65px">
-                    <col style="width:75px">
+                    {% if not hide_financial %}<col style="width:65px">
+                    <col style="width:75px">{% endif %}
                     <col style="width:10%">
                 </colgroup>
                 <thead>
@@ -130,8 +130,8 @@
                         <th class="py-2 text-center">규격</th>
                         <th class="py-2 text-center">수량</th>
                         <th class="py-2 text-center">단위</th>
-                        <th class="py-2 text-end">단가</th>
-                        <th class="py-2 text-end">금액</th>
+                        {% if not hide_financial %}<th class="py-2 text-end">단가</th>
+                        <th class="py-2 text-end">금액</th>{% endif %}
                         <th class="py-2 text-center">비고</th>
                     </tr>
                 </thead>
@@ -152,16 +152,16 @@
                         <td class="spec-cell" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.spec or '' }}">{{ item.spec or '' }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.qty or 0) }}</td>
                         <td class="text-center">{{ item.unit or '' }}</td>
-                        <td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
-                        <td class="text-end amount-cell">{{ "{:,.0f}".format(item.amount or 0) }}</td>
+                        {% if not hide_financial %}<td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
+                        <td class="text-end amount-cell">{{ "{:,.0f}".format(item.amount or 0) }}</td>{% endif %}
                         <td class="remark-cell" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.remark or '' }}">{{ item.remark or '' }}</td>
                         {% else %}
-                        <td colspan="7" class="text-muted">품목 없음</td>
+                        <td colspan="{% if hide_financial %}5{% else %}7{% endif %}" class="text-muted">품목 없음</td>
                         {% endif %}
                     </tr>
                     {% endfor %}
                     {% else %}
-                    <tr><td colspan="10" class="text-center text-muted py-4">등록된 입고가 없습니다.</td></tr>
+                    <tr><td colspan="{% if hide_financial %}8{% else %}10{% endif %}" class="text-center text-muted py-4">등록된 입고가 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -212,8 +212,8 @@
                     <col style="width:18%">
                     <col style="width:45px">
                     <col style="width:32px">
-                    <col style="width:65px">
-                    <col style="width:75px">
+                    {% if not hide_financial %}<col style="width:65px">
+                    <col style="width:75px">{% endif %}
                     <col style="width:10%">
                 </colgroup>
                 <thead>
@@ -225,8 +225,8 @@
                         <th class="py-2 text-center">규격</th>
                         <th class="py-2 text-center">수량</th>
                         <th class="py-2 text-center">단위</th>
-                        <th class="py-2 text-end">단가</th>
-                        <th class="py-2 text-end">금액</th>
+                        {% if not hide_financial %}<th class="py-2 text-end">단가</th>
+                        <th class="py-2 text-end">금액</th>{% endif %}
                         <th class="py-2 text-center">비고</th>
                     </tr>
                 </thead>
@@ -243,8 +243,8 @@
                         <td class="spec-cell" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.spec or '' }}">{{ item.spec or '' }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.qty or 0) }}</td>
                         <td class="text-center">{{ item.unit or '' }}</td>
-                        <td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
-                        <td class="text-end amount-cell">{{ "{:,.0f}".format(item.amount or 0) }}</td>
+                        {% if not hide_financial %}<td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
+                        <td class="text-end amount-cell">{{ "{:,.0f}".format(item.amount or 0) }}</td>{% endif %}
                         <td class="remark-cell" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.remark or '' }}">{{ item.remark or '' }}</td>
                     </tr>
                     {% endfor %}
@@ -253,7 +253,7 @@
                         <td>{{ rh.icube_rcv_nb }}</td>
                         <td>{{ rh.receive_date.strftime('%Y-%m-%d') if rh.receive_date else '-' }}</td>
                         <td class="vendor-cell">{{ rh.vendor_name }}</td>
-                        <td colspan="7" class="text-muted">상세 없음</td>
+                        <td colspan="{% if hide_financial %}5{% else %}7{% endif %}" class="text-muted">상세 없음</td>
                     </tr>
                     {% endif %}
                     {% endfor %}

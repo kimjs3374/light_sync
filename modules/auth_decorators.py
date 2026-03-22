@@ -1,5 +1,5 @@
 import functools
-from flask import session, redirect, url_for, flash
+from flask import session, redirect, url_for, flash, request
 
 
 def login_required(f):
@@ -25,8 +25,10 @@ def admin_required(f):
     return decorated
 
 
-def menu_required(menu_key):
-    """allowed_menus 세션 기반 라우트 접근 제어"""
+def menu_required(menu_key, write=False):
+    """allowed_menus 세션 기반 라우트 접근 제어.
+    write=True면 writable_menus도 체크하여 쓰기 권한이 없으면 차단.
+    """
     def decorator(f):
         @functools.wraps(f)
         def decorated(*args, **kwargs):
@@ -35,9 +37,15 @@ def menu_required(menu_key):
             if session.get('role') == 'admin' or session.get('user_group') == '임원진':
                 return f(*args, **kwargs)
             allowed = session.get('allowed_menus', [])
-            if menu_key in allowed:
-                return f(*args, **kwargs)
-            flash('접근 권한이 없습니다.', 'danger')
-            return redirect(url_for('dashboard.dashboard_view'))
+            if menu_key not in allowed:
+                flash('접근 권한이 없습니다.', 'danger')
+                return redirect(url_for('dashboard.dashboard_view'))
+            # 쓰기 권한 체크: write=True이거나 POST 요청인데 쓰기 권한 없으면 차단
+            if write or request.method == 'POST':
+                writable = session.get('writable_menus', [])
+                if menu_key not in writable:
+                    flash('읽기 전용 권한입니다. 수정할 수 없습니다.', 'warning')
+                    return redirect(request.referrer or url_for('dashboard.dashboard_view'))
+            return f(*args, **kwargs)
         return decorated
     return decorator

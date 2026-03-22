@@ -92,7 +92,7 @@
                         <th style="width:95px">견적일</th>
                         <th style="width:120px">수급자</th>
                         <th>건명</th>
-                        <th style="width:120px" class="text-end">합계금액</th>
+                        {% if not hide_financial %}<th style="width:120px" class="text-end">합계금액</th>{% endif %}
                         <th style="width:75px">상태</th>
                         <th style="width:55px">PDF</th>
                     </tr>
@@ -104,7 +104,7 @@
                         <td>{{ qt.quote_date.strftime('%Y-%m-%d') if qt.quote_date else '-' }}</td>
                         <td><strong>{{ qt.customer_name or '-' }}</strong></td>
                         <td class="td-project">{{ qt.project_name or '-' }}</td>
-                        <td class="text-end fw-bold" style="color:#0f172a;">{{ fmt_money(qt.total_amount) }}</td>
+                        {% if not hide_financial %}<td class="text-end fw-bold" style="color:#0f172a;">{{ fmt_money(qt.total_amount) }}</td>{% endif %}
                         <td>
                             {% if qt.status == '작성중' %}
                                 <span class="badge-status" style="background:#fef3c7;color:#92400e;">{{ qt.status }}</span>
@@ -119,7 +119,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="7" class="text-center text-muted py-4">견적서가 없습니다.</td></tr>
+                    <tr><td colspan="{% if hide_financial %}6{% else %}7{% endif %}" class="text-center text-muted py-4">견적서가 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

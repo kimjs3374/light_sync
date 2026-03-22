@@ -1,0 +1,635 @@
+{# ── 사용자관리 통합 partial (조직트리 + 메뉴권한 + 사용자설정) ── #}
+<div class="row g-0 border rounded" style="min-height:600px">
+
+  {# ── 좌측: 조직 트리 ── #}
+  <div class="col-md-3 border-end">
+    <div class="p-2 border-bottom">
+      <input type="text" class="form-control form-control-sm" placeholder="검색…"
+             id="gmSearch" oninput="gmFilter(this.value)">
+    </div>
+    <div id="gmTree" style="overflow-y:auto;max-height:calc(100vh - 240px)">
+      {% for gd in group_menu_data %}
+      <div class="gm-group-header px-3 py-2 d-flex align-items-center justify-content-between"
+           style="cursor:pointer;background:#f8f9fa;border-bottom:1px solid #dee2e6;font-size:.82rem;font-weight:600"
+           onclick="gmToggleGroup(this, '{{ gd.group_name }}')"
+           data-group="{{ gd.group_name }}" id="gmg-{{ gd.group_name | replace(' ','_') }}">
+        <span><span class="gm-arrow" style="display:inline-block;transition:transform .15s;font-size:.7em;margin-right:4px">▶</span>{{ gd.group_name }}</span>
+        <span class="badge bg-secondary" style="font-size:.6rem">{{ users | selectattr('user_group','equalto', gd.group_name) | selectattr('is_approved') | list | length }}명</span>
+      </div>
+      <div class="gm-group-users" data-group="{{ gd.group_name }}" style="display:none">
+      {% for u in users %}{% if u.user_group == gd.group_name and u.is_approved %}
+      <div class="gm-user-item px-3 py-2 d-flex align-items-center justify-content-between"
+           style="cursor:pointer;border-bottom:1px solid #f0f0f0;font-size:.82rem;padding-left:1.5rem!important"
+           onclick="gmSelectUser({{ u.id }})"
+           data-uid="{{ u.id }}" data-group="{{ u.user_group }}"
+           data-fullname="{{ u.full_name }}" data-username="{{ u.username }}">
+        <div>
+          <div style="font-size:.82rem">
+            {{ u.full_name }}
+            {% if not u.is_active %}<span class="text-muted" style="font-size:.65rem">(퇴사)</span>{% endif %}
+          </div>
+          <div class="text-muted" style="font-size:.68rem">{{ u.username }}{% if u.position %} · {{ u.position }}{% endif %}</div>
+        </div>
+        <div class="d-flex gap-1">
+          {% if u.role == 'admin' %}<span class="badge bg-primary" style="font-size:.55rem;white-space:nowrap">관리자</span>
+          {% else %}
+            {% set u_extra = (u.extra_menus.split(',') if u.extra_menus else []) | select | list %}
+            {% if u_extra %}<span class="badge bg-info" style="font-size:.55rem;white-space:nowrap">+{{ u_extra|length }}</span>{% endif %}
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}{% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {# ── 우측: 통합 패널 ── #}
+  <div class="col-md-9 p-3">
+    <div id="gmNoSel" class="text-center text-muted py-5" style="font-size:.9rem">
+      왼쪽에서 그룹 또는 사용자를 선택하세요
+    </div>
+
+    {# ── 사용자 설정 패널 (사용자 선택 시만) ── #}
+    <div id="gmUserSettings" style="display:none" class="mb-3">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <div>
+          <span id="gmUserName" class="fw-bold" style="font-size:1rem"></span>
+          <span id="gmUserSub" class="text-muted ms-2" style="font-size:.8rem"></span>
+        </div>
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-auto">
+          <label class="small fw-bold text-muted">직급</label>
+          <select class="form-select form-select-sm" id="gmUserPosition" style="width:100px;font-size:.78rem" onchange="gmUpdatePosition()">
+            <option value="">미지정</option>
+            {% for p in position_choices %}
+            <option value="{{ p }}">{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <label class="small fw-bold text-muted">권한</label>
+          <div><button class="btn btn-xs" id="gmUserRoleBtn" onclick="gmToggleAdmin()" style="white-space:nowrap">user</button></div>
+        </div>
+        <div class="col-auto">
+          <label class="small fw-bold text-muted">우선순위권</label>
+          <div><button class="btn btn-xs" id="gmUserPriorityBtn" onclick="gmTogglePriority()" style="white-space:nowrap">미허용</button></div>
+        </div>
+        <div class="col-auto">
+          <label class="small fw-bold text-muted">삭제승인권</label>
+          <div><button class="btn btn-xs" id="gmUserDeleteBtn" onclick="gmToggleDeleteApprover()" style="white-space:nowrap">미허용</button></div>
+        </div>
+        <div class="col-auto">
+          <label class="small fw-bold text-muted">상태</label>
+          <div><button class="btn btn-xs" id="gmUserActiveBtn" onclick="gmToggleActive()" style="white-space:nowrap">활성</button></div>
+        </div>
+        <div class="col-auto">
+          <label class="small fw-bold text-muted">금액정보</label>
+          <div><button class="btn btn-xs" id="gmUserFinBtn" onclick="gmToggleUserFinancial()" style="white-space:nowrap">그룹따름</button></div>
+        </div>
+        <div class="col-auto">
+          <label class="small fw-bold text-muted">비밀번호</label>
+          <div><button class="btn btn-xs btn-outline-secondary" onclick="gmResetPassword()" style="white-space:nowrap">초기화</button></div>
+        </div>
+      </div>
+      <hr class="my-2">
+      <h6 class="fw-bold mb-2" style="font-size:.85rem">개인 추가 메뉴 권한</h6>
+    </div>
+
+    {# ── 그룹 선택 시 헤더 ── #}
+    <div id="gmGroupHeader" style="display:none">
+      <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+        <div>
+          <span id="gmSelName" class="fw-bold" style="font-size:1rem"></span>
+          <span id="gmSelSub" class="text-muted ms-2" style="font-size:.8rem"></span>
+        </div>
+      </div>
+    </div>
+
+    {# ── 금액 숨김 토글 (그룹 모드만) ── #}
+    <div id="gmFinancialToggle" style="display:none" class="mb-3">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between">
+          <div>
+            <span class="fw-semibold" style="font-size:.85rem">💰 금액 정보 숨김</span>
+            <span class="text-muted ms-2" style="font-size:.72rem">이 부서 직원에게 계약금액·단가·발주금액 등 금액 컬럼을 숨깁니다</span>
+          </div>
+          <button class="btn btn-xs" id="gmFinBtn" onclick="gmToggleFinancial()" style="white-space:nowrap">표시</button>
+        </div>
+      </div>
+    </div>
+
+    {# ── 메뉴 체크박스 (공용) ── #}
+    <div id="gmPanel" style="display:none">
+      <div class="d-flex gap-2 mb-2 justify-content-end">
+        <button class="btn btn-xs btn-outline-secondary" onclick="gmToggleAll(true)">전체 선택</button>
+        <button class="btn btn-xs btn-outline-secondary" onclick="gmToggleAll(false)">전체 해제</button>
+        <button class="btn btn-sm btn-primary px-3" id="gmSaveBtn" onclick="gmSave()">저장</button>
+      </div>
+      <div class="row g-2">
+        {% for section_name in ['영업부','관리부','공유','생산부'] %}
+        {% set sec_menus = configurable_menus | selectattr('group','equalto',section_name) | list %}
+        {% if sec_menus %}
+        <div class="col-md-6 col-lg-4">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header py-2 bg-white border-bottom d-flex align-items-center justify-content-between">
+              <span class="fw-semibold" style="font-size:.8rem">{{ section_name }} <span class="text-muted">({{ sec_menus|length }})</span></span>
+              <label style="font-size:.7rem;cursor:pointer;color:var(--mg-primary);white-space:nowrap">
+                <input type="checkbox" class="gm-sec-toggle d-none" data-sec="{{ section_name }}"
+                       onchange="gmToggleSection('{{ section_name }}', this.checked)"> 전체
+              </label>
+            </div>
+            <div class="card-body py-2 px-3">
+              <div class="d-flex justify-content-end gap-3 mb-1 border-bottom pb-1" style="font-size:.65rem;color:#94a3b8">
+                <span style="width:28px;text-align:center">읽기</span>
+                <span style="width:28px;text-align:center">쓰기</span>
+              </div>
+              {% for menu in sec_menus %}
+              <div class="d-flex align-items-center gap-2 py-1" style="font-size:.82rem">
+                <span class="flex-grow-1" style="line-height:1.2">{{ menu.label }}</span>
+                <span class="gm-badge" style="font-size:.58rem;white-space:nowrap"></span>
+                <input type="checkbox" class="form-check-input gm-cb gm-cb-r"
+                       data-key="{{ menu.key }}" data-sec="{{ section_name }}" data-perm="r"
+                       title="읽기"
+                       style="width:.9em;height:.9em;flex-shrink:0;cursor:pointer"
+                       onchange="gmOnReadChange(this)">
+                <input type="checkbox" class="form-check-input gm-cb-w"
+                       data-key="{{ menu.key }}" data-sec="{{ section_name }}" data-perm="w"
+                       title="쓰기"
+                       style="width:.9em;height:.9em;flex-shrink:0;cursor:pointer;accent-color:#e11d48"
+                       onchange="gmOnWriteChange(this)">
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const GM_CSRF = document.querySelector('meta[name="csrf-token"]')?.content;
+const GM_GROUP_MENUS = { {% for gd in group_menu_data %}"{{ gd.group_name }}": {{ gd.current_menus_rw | default(gd.current_menus) | tojson }},{% endfor %} };
+const GM_GROUP_HIDE_FIN = { {% for gd in group_menu_data %}"{{ gd.group_name }}": {{ 'true' if gd.hide_financial else 'false' }},{% endfor %} };
+let gmHideFinancial = false;
+const GM_USERS = { {% for u in users %}{% if u.is_approved %}{{ u.id }}: {
+  id: {{ u.id }}, username: "{{ u.username }}", fullname: "{{ u.full_name | e }}",
+  group: "{{ u.user_group | e }}",
+  position: "{{ u.position or '' }}",
+  role: "{{ u.role }}",
+  is_active: {{ 'true' if u.is_active else 'false' }},
+  can_manage_priority: {{ 'true' if u.can_manage_priority else 'false' }},
+  can_approve_delete: {{ 'true' if u.can_approve_delete else 'false' }},
+  extra: {{ ((u.extra_menus or '').split(',') | select | list) | tojson }},
+  extra_rw: {% set ns = namespace(rw={}) %}{% if u.extra_menus %}{% for e in u.extra_menus.split(',') %}{% if ':' in e %}{% set parts = e.strip().split(':') %}{% set _ = ns.rw.update({parts[0]: parts[1]}) %}{% elif e.strip() %}{% set _ = ns.rw.update({e.strip(): 'rw'}) %}{% endif %}{% endfor %}{% endif %}{{ ns.rw | tojson }},
+  hide_fin_override: {{ u.hide_financial_override | tojson if u.hide_financial_override is not none else 'null' }}
+},{% endif %}{% endfor %} };
+
+let gmMode = null, gmTarget = null;
+
+function gmToggleGroup(headerEl, groupName) {
+  const target = document.querySelector(`.gm-group-users[data-group="${groupName}"]`);
+  const isOpen = target.style.display !== 'none';
+  // 다른 그룹 전부 접기 (아코디언)
+  document.querySelectorAll('.gm-group-users').forEach(el => { el.style.display = 'none'; });
+  document.querySelectorAll('.gm-arrow').forEach(el => { el.style.transform = ''; });
+  // 선택한 그룹만 토글
+  if (!isOpen) {
+    target.style.display = '';
+    headerEl.querySelector('.gm-arrow').style.transform = 'rotate(90deg)';
+  }
+  gmSelectGroup(groupName);
+}
+
+function gmFilter(q) {
+  q = q.toLowerCase();
+  if (!q) {
+    // 검색 초기화: 모든 헤더 표시, 유저목록 접기
+    document.querySelectorAll('.gm-group-header').forEach(el => { el.style.display = ''; el.querySelector('.gm-arrow').style.transform = ''; });
+    document.querySelectorAll('.gm-group-users').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.gm-user-item').forEach(el => el.style.display = '');
+    return;
+  }
+  document.querySelectorAll('.gm-group-header').forEach(el => el.style.display = '');
+  document.querySelectorAll('.gm-group-users').forEach(el => {
+    let hasMatch = false;
+    el.querySelectorAll('.gm-user-item').forEach(item => {
+      const text = (item.dataset.group||'') + (item.dataset.fullname||'') + (item.dataset.username||'');
+      const match = text.toLowerCase().includes(q);
+      item.style.display = match ? '' : 'none';
+      if (match) hasMatch = true;
+    });
+    el.style.display = hasMatch ? '' : 'none';
+    const arrow = el.previousElementSibling?.querySelector('.gm-arrow');
+    if (arrow) arrow.style.transform = hasMatch ? 'rotate(90deg)' : '';
+  });
+}
+
+function gmClearActive() {
+  document.querySelectorAll('.gm-group-header').forEach(el => { el.style.background = '#f8f9fa'; el.style.color = ''; });
+  document.querySelectorAll('.gm-user-item').forEach(el => { el.style.background = ''; el.style.fontWeight = ''; });
+}
+
+function gmSelectGroup(groupName) {
+  gmClearActive();
+  const el = document.getElementById('gmg-' + groupName.replace(/ /g,'_'));
+  if (el) { el.style.background = 'var(--mg-primary, #2563eb)'; el.style.color = '#fff'; }
+  gmMode = 'group'; gmTarget = groupName;
+
+  document.getElementById('gmNoSel').style.display = 'none';
+  document.getElementById('gmUserSettings').style.display = 'none';
+  document.getElementById('gmGroupHeader').style.display = '';
+  document.getElementById('gmPanel').style.display = '';
+  document.getElementById('gmFinancialToggle').style.display = '';
+  document.getElementById('gmSelName').textContent = groupName;
+  document.getElementById('gmSelSub').textContent = '그룹 메뉴 권한 (읽기/쓰기)';
+
+  // hide_financial 토글
+  gmHideFinancial = GM_GROUP_HIDE_FIN[groupName] || false;
+  gmUpdateFinBtn();
+
+  // R/RW 파싱: 값이 object면 {key: 'rw'}, array면 레거시(전부 rw)
+  const raw = GM_GROUP_MENUS[groupName] || [];
+  let menuPerms = {};
+  if (Array.isArray(raw)) {
+    raw.forEach(k => { menuPerms[k] = 'rw'; });
+  } else {
+    menuPerms = raw;
+  }
+
+  document.querySelectorAll('.gm-cb-r').forEach(cb => {
+    const key = cb.dataset.key;
+    const wCb = cb.parentElement.querySelector('.gm-cb-w');
+    const perm = menuPerms[key];
+    cb.checked = !!perm;
+    cb.disabled = false;
+    if (wCb) { wCb.checked = perm === 'rw'; wCb.disabled = false; }
+    const badge = cb.parentElement.querySelector('.gm-badge');
+    if (badge) badge.textContent = '';
+  });
+  gmUpdateSecToggles();
+}
+
+function gmSelectUser(userId) {
+  gmClearActive();
+  const row = document.querySelector(`.gm-user-item[data-uid="${userId}"]`);
+  if (row) { row.style.background = '#e8f0fe'; row.style.fontWeight = '600'; }
+  const u = GM_USERS[userId];
+  if (!u) return;
+  gmMode = 'user'; gmTarget = userId;
+
+  document.getElementById('gmNoSel').style.display = 'none';
+  document.getElementById('gmGroupHeader').style.display = 'none';
+  document.getElementById('gmUserSettings').style.display = '';
+  document.getElementById('gmFinancialToggle').style.display = 'none';
+
+  // admin 사용자는 메뉴 권한 패널 숨기고 안내 표시
+  if (u.role === 'admin') {
+    document.getElementById('gmPanel').style.display = 'none';
+    let notice = document.getElementById('gmAdminNotice');
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.id = 'gmAdminNotice';
+      notice.style.cssText = 'background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;border-radius:8px;padding:16px;text-align:center;font-size:.88rem;font-weight:600;margin-top:8px';
+      document.getElementById('gmPanel').parentElement.appendChild(notice);
+    }
+    notice.textContent = '👑 관리자 권한 — 모든 메뉴 읽기/쓰기 + 금액 표시 (변경 불가)';
+    notice.style.display = '';
+  } else {
+    document.getElementById('gmPanel').style.display = '';
+    const notice = document.getElementById('gmAdminNotice');
+    if (notice) notice.style.display = 'none';
+  }
+
+  document.getElementById('gmUserName').textContent = u.fullname;
+  document.getElementById('gmUserSub').textContent = u.group + ' · ' + u.username;
+  document.getElementById('gmUserPosition').value = u.position;
+
+  const roleBtn = document.getElementById('gmUserRoleBtn');
+  roleBtn.textContent = u.role === 'admin' ? 'admin' : 'user';
+  roleBtn.style.cssText = u.role === 'admin' ? 'background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;white-space:nowrap' : 'white-space:nowrap';
+  roleBtn.className = u.role === 'admin' ? 'btn btn-xs' : 'btn btn-xs btn-outline-secondary';
+
+  const prBtn = document.getElementById('gmUserPriorityBtn');
+  prBtn.textContent = u.can_manage_priority ? '허용됨' : '미허용';
+  prBtn.className = u.can_manage_priority ? 'btn btn-xs' : 'btn btn-xs btn-outline-secondary';
+  prBtn.style.cssText = u.can_manage_priority ? 'background:#dcfce7;color:#166534;border:1px solid #bbf7d0;white-space:nowrap' : 'white-space:nowrap';
+
+  const delBtn = document.getElementById('gmUserDeleteBtn');
+  delBtn.textContent = u.can_approve_delete ? '허용됨' : '미허용';
+  delBtn.className = u.can_approve_delete ? 'btn btn-xs' : 'btn btn-xs btn-outline-secondary';
+  delBtn.style.cssText = u.can_approve_delete ? 'background:#dcfce7;color:#166534;border:1px solid #bbf7d0;white-space:nowrap' : 'white-space:nowrap';
+
+  const actBtn = document.getElementById('gmUserActiveBtn');
+  actBtn.textContent = u.is_active ? '활성' : '퇴사/비활성';
+  actBtn.className = 'btn btn-xs';
+  actBtn.style.cssText = u.is_active ? 'background:#dcfce7;color:#166534;border:1px solid #bbf7d0;white-space:nowrap' : 'background:#fef2f2;color:#dc2626;border:1px solid #fecaca;white-space:nowrap';
+
+  // 금액 정보 버튼
+  const finBtn = document.getElementById('gmUserFinBtn');
+  gmUpdateUserFinBtn(finBtn, u);
+
+  // 개인권한 > 그룹권한: 개인이 그룹 설정을 override 가능
+  const rawGroup = GM_GROUP_MENUS[u.group] || [];
+  let groupPerms = {};
+  if (Array.isArray(rawGroup)) {
+    rawGroup.forEach(k => { groupPerms[k] = 'rw'; });
+  } else {
+    groupPerms = {...rawGroup};
+  }
+  // extra_menus_rw: {key: 'rw'} 형태 (서버에서 전달)
+  const extraRw = u.extra_rw || {};
+  const extraKeys = new Set(u.extra || []);
+
+  document.querySelectorAll('.gm-cb-r').forEach(cb => {
+    const key = cb.dataset.key;
+    const wCb = cb.parentElement.querySelector('.gm-cb-w');
+    const badge = cb.parentElement.querySelector('.gm-badge');
+    const inGroup = key in groupPerms;
+    const hasExtra = key in extraRw || extraKeys.has(key);
+
+    // 최종 권한: 개인이 있으면 개인, 없으면 그룹
+    let finalPerm = null;
+    if (hasExtra) {
+      finalPerm = extraRw[key] || 'rw';
+    } else if (inGroup) {
+      finalPerm = groupPerms[key];
+    }
+
+    cb.checked = !!finalPerm;
+    cb.disabled = false;  // 항상 수정 가능 (개인 override)
+    if (wCb) { wCb.checked = finalPerm === 'rw'; wCb.disabled = false; }
+    cb.parentElement.style.opacity = '';
+
+    if (badge) {
+      if (hasExtra && inGroup) badge.textContent = '개인↑';
+      else if (hasExtra) badge.textContent = '추가';
+      else if (inGroup) badge.textContent = '그룹';
+      else badge.textContent = '';
+    }
+  });
+  gmUpdateSecToggles();
+}
+
+// ── 사용자 설정 AJAX ──
+async function gmPostAction(url, body) {
+  const res = await fetch(url, {
+    method: 'POST', headers: {'Content-Type':'application/json','X-CSRFToken':GM_CSRF},
+    body: JSON.stringify(body)
+  });
+  return res;
+}
+
+async function gmUpdatePosition() {
+  const pos = document.getElementById('gmUserPosition').value;
+  await fetch(`/update_position/${gmTarget}`, {
+    method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded','X-CSRFToken':GM_CSRF},
+    body: 'position=' + encodeURIComponent(pos)
+  });
+  GM_USERS[gmTarget].position = pos;
+}
+
+async function gmToggleAdmin() {
+  await fetch(`/toggle_admin/${gmTarget}`, {
+    method: 'POST', headers: {'X-CSRFToken':GM_CSRF}
+  });
+  const u = GM_USERS[gmTarget];
+  u.role = u.role === 'admin' ? 'user' : 'admin';
+  gmSelectUser(gmTarget);
+}
+
+async function gmTogglePriority() {
+  const u = GM_USERS[gmTarget];
+  await fetch(`/toggle_priority_manager/${gmTarget}`, {
+    method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded','X-CSRFToken':GM_CSRF},
+    body: 'can_manage_priority=' + (u.can_manage_priority ? '0' : '1')
+  });
+  u.can_manage_priority = !u.can_manage_priority;
+  gmSelectUser(gmTarget);
+}
+
+async function gmToggleDeleteApprover() {
+  const u = GM_USERS[gmTarget];
+  await fetch(`/toggle_delete_approver/${gmTarget}`, {
+    method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded','X-CSRFToken':GM_CSRF},
+    body: 'can_approve_delete=' + (u.can_approve_delete ? '0' : '1')
+  });
+  u.can_approve_delete = !u.can_approve_delete;
+  gmSelectUser(gmTarget);
+}
+
+async function gmToggleActive() {
+  const u = GM_USERS[gmTarget];
+  let reason = '';
+  if (u.is_active) {
+    reason = prompt('퇴사 처리 사유를 입력하세요:', '');
+    if (reason === null) return;
+  }
+  await fetch(`/toggle_user_active/${gmTarget}`, {
+    method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded','X-CSRFToken':GM_CSRF},
+    body: 'is_active=' + (u.is_active ? '0' : '1') + '&deactivated_reason=' + encodeURIComponent(reason)
+  });
+  u.is_active = !u.is_active;
+  gmSelectUser(gmTarget);
+}
+
+async function gmResetPassword() {
+  if (!confirm('비밀번호를 초기화하시겠습니까?')) return;
+  await fetch(`/reset_password/${gmTarget}`, {
+    method: 'POST', headers: {'X-CSRFToken':GM_CSRF}
+  });
+  alert('비밀번호가 초기화되었습니다.');
+}
+
+// 금액 정보 개인 override: null(그룹따름) → false(표시) → true(숨김) → null
+function gmUpdateUserFinBtn(btn, u) {
+  const v = u.hide_fin_override;
+  if (v === null || v === undefined) {
+    const groupHide = GM_GROUP_HIDE_FIN[u.group] || false;
+    btn.textContent = '그룹따름(' + (groupHide ? '숨김' : '표시') + ')';
+    btn.className = 'btn btn-xs btn-outline-secondary'; btn.style.cssText = 'white-space:nowrap';
+  } else if (v === false) {
+    btn.textContent = '표시'; btn.className = 'btn btn-xs';
+    btn.style.cssText = 'background:#dcfce7;color:#166534;border:1px solid #bbf7d0;white-space:nowrap';
+  } else {
+    btn.textContent = '숨김'; btn.className = 'btn btn-xs';
+    btn.style.cssText = 'background:#fef2f2;color:#dc2626;border:1px solid #fecaca;white-space:nowrap';
+  }
+}
+
+async function gmToggleUserFinancial() {
+  const u = GM_USERS[gmTarget];
+  // null → false(표시) → true(숨김) → null(그룹따름)
+  if (u.hide_fin_override === null || u.hide_fin_override === undefined) {
+    u.hide_fin_override = false;
+  } else if (u.hide_fin_override === false) {
+    u.hide_fin_override = true;
+  } else {
+    u.hide_fin_override = null;
+  }
+  await fetch(`/admin/api/user_hide_financial/${gmTarget}`, {
+    method: 'POST', headers: {'Content-Type':'application/json','X-CSRFToken':GM_CSRF},
+    body: JSON.stringify({hide_financial_override: u.hide_fin_override})
+  });
+  gmUpdateUserFinBtn(document.getElementById('gmUserFinBtn'), u);
+}
+
+// ── R/W 연동 ──
+function gmOnReadChange(rCb) {
+  const wCb = rCb.parentElement.querySelector('.gm-cb-w');
+  if (!rCb.checked && wCb) wCb.checked = false;
+  gmUpdateSecToggles();
+}
+function gmOnWriteChange(wCb) {
+  const rCb = wCb.parentElement.querySelector('.gm-cb-r');
+  if (wCb.checked && rCb) rCb.checked = true;
+  gmUpdateSecToggles();
+}
+
+// ── 금액 숨김 토글 ──
+function gmUpdateFinBtn() {
+  const btn = document.getElementById('gmFinBtn');
+  if (gmHideFinancial) {
+    btn.textContent = '숨김'; btn.className = 'btn btn-xs';
+    btn.style.cssText = 'background:#fef2f2;color:#dc2626;border:1px solid #fecaca;white-space:nowrap';
+  } else {
+    btn.textContent = '표시'; btn.className = 'btn btn-xs';
+    btn.style.cssText = 'background:#dcfce7;color:#166534;border:1px solid #bbf7d0;white-space:nowrap';
+  }
+}
+function gmToggleFinancial() {
+  gmHideFinancial = !gmHideFinancial;
+  gmUpdateFinBtn();
+}
+
+// ── 메뉴 권한 공통 ──
+function gmToggleAll(on) {
+  document.querySelectorAll('.gm-cb-r:not(:disabled)').forEach(cb => { cb.checked = on; });
+  document.querySelectorAll('.gm-cb-w:not(:disabled)').forEach(cb => { cb.checked = on; });
+  gmUpdateSecToggles();
+}
+
+function gmToggleSection(sec, on) {
+  document.querySelectorAll(`.gm-cb-r[data-sec="${sec}"]:not(:disabled)`).forEach(cb => { cb.checked = on; });
+  document.querySelectorAll(`.gm-cb-w[data-sec="${sec}"]:not(:disabled)`).forEach(cb => { cb.checked = on; });
+}
+
+function gmUpdateSecToggles() {
+  document.querySelectorAll('.gm-sec-toggle').forEach(tog => {
+    const sec = tog.dataset.sec;
+    const all = document.querySelectorAll(`.gm-cb-r[data-sec="${sec}"]`);
+    const checked = document.querySelectorAll(`.gm-cb-r[data-sec="${sec}"]:checked`);
+    tog.checked = all.length > 0 && all.length === checked.length;
+  });
+}
+
+async function gmSave() {
+  if (!gmMode) return;
+  let url, body;
+  if (gmMode === 'group') {
+    // R/RW map 생성: {contract: 'rw', sales: 'r'}
+    const menuPerms = {};
+    document.querySelectorAll('.gm-cb-r:checked').forEach(rCb => {
+      const key = rCb.dataset.key;
+      const wCb = rCb.parentElement.querySelector('.gm-cb-w');
+      menuPerms[key] = (wCb && wCb.checked) ? 'rw' : 'r';
+    });
+    url = '/admin/api/group_menus';
+    body = { group_name: gmTarget, menus_rw: menuPerms, hide_financial: gmHideFinancial };
+  } else {
+    // 개인권한: 그룹과 다른 설정만 extra로 저장 (R/RW 포함)
+    const u = GM_USERS[gmTarget];
+    const rawGroup = GM_GROUP_MENUS[u.group] || [];
+    let groupPerms = {};
+    if (Array.isArray(rawGroup)) {
+      rawGroup.forEach(k => { groupPerms[k] = 'rw'; });
+    } else {
+      groupPerms = {...rawGroup};
+    }
+    const extraRw = {};
+    document.querySelectorAll('.gm-cb-r').forEach(rCb => {
+      const key = rCb.dataset.key;
+      const wCb = rCb.parentElement.querySelector('.gm-cb-w');
+      const curPerm = rCb.checked ? ((wCb && wCb.checked) ? 'rw' : 'r') : null;
+      const grpPerm = groupPerms[key] || null;
+      // 그룹과 다르면 개인 설정으로 저장
+      if (curPerm !== grpPerm) {
+        if (curPerm) extraRw[key] = curPerm;
+      }
+    });
+    url = '/admin/api/user_extra_menus';
+    body = { user_id: gmTarget, extra_menus_rw: extraRw };
+  }
+  const res = await fetch(url, {
+    method: 'POST', headers: {'Content-Type':'application/json','X-CSRFToken':GM_CSRF},
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (data.success) {
+    if (gmMode === 'group') {
+      // menuPerms 객체로 업데이트
+      const menuPerms = {};
+      document.querySelectorAll('.gm-cb-r:checked').forEach(rCb => {
+        const key = rCb.dataset.key;
+        const wCb = rCb.parentElement.querySelector('.gm-cb-w');
+        menuPerms[key] = (wCb && wCb.checked) ? 'rw' : 'r';
+      });
+      GM_GROUP_MENUS[gmTarget] = menuPerms;
+      GM_GROUP_HIDE_FIN[gmTarget] = gmHideFinancial;
+      const el = document.getElementById('gmg-' + gmTarget.replace(/ /g,'_'));
+      // 뱃지는 이용자 수이므로 저장 시 변경하지 않음
+    } else {
+      const u = GM_USERS[gmTarget];
+      const rawGroup = GM_GROUP_MENUS[u.group] || [];
+      let groupPerms2 = {};
+      if (Array.isArray(rawGroup)) { rawGroup.forEach(k => { groupPerms2[k] = 'rw'; }); }
+      else { groupPerms2 = {...rawGroup}; }
+      document.querySelectorAll('.gm-cb-r').forEach(rCb => {
+        const key = rCb.dataset.key;
+        const wCb = rCb.parentElement.querySelector('.gm-cb-w');
+        const curPerm = rCb.checked ? ((wCb && wCb.checked) ? 'rw' : 'r') : null;
+        const grpPerm = groupPerms2[key] || null;
+        if (curPerm !== grpPerm && curPerm) newExtraRw[key] = curPerm;
+      });
+      u.extra_rw = newExtraRw;
+      u.extra = Object.keys(newExtraRw);
+      const row = document.querySelector(`.gm-user-item[data-uid="${gmTarget}"]`);
+      if (row) {
+        let badge = row.querySelector('.badge.bg-info');
+        if (u.extra.length > 0) {
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'badge bg-info';
+            badge.style.cssText = 'font-size:.55rem;white-space:nowrap';
+            row.querySelector('.d-flex.gap-1').appendChild(badge);
+          }
+          badge.textContent = '+' + u.extra.length;
+        } else if (badge) badge.remove();
+      }
+    }
+    const btn = document.getElementById('gmSaveBtn');
+    btn.textContent = '✓ 저장완료'; btn.classList.replace('btn-primary','btn-success');
+    gmShowToast('권한이 저장되었습니다. 해당 사용자 재로그인 시 반영됩니다.');
+    setTimeout(() => { btn.textContent = '저장'; btn.classList.replace('btn-success','btn-primary'); }, 3000);
+  } else {
+    alert('저장 실패: ' + (data.error || ''));
+  }
+}
+
+function gmShowToast(msg) {
+  let t = document.getElementById('gmToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'gmToast';
+    t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#166534;color:#fff;padding:10px 24px;border-radius:8px;font-size:.88rem;font-weight:600;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.3);transition:opacity .3s';
+    document.body.appendChild(t);
+  }
+  t.textContent = '✓ ' + msg;
+  t.style.opacity = '1'; t.style.display = '';
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.style.display = 'none', 300); }, 3000);
+}
+</script>

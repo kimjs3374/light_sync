@@ -160,9 +160,10 @@ app.register_blueprint(cert_bp)
 # NAS 동기화 API는 외부(NAS cron)에서 호출하므로 CSRF 면제
 csrf.exempt(api_bp)
 
-# Channel reply 콜백은 Channel 서버(localhost)에서 POST — CSRF 면제
-from routes.channel_chat import channel_reply as _cr
+# Channel 콜백/폴링은 CSRF 면제 (reply: 서버 간 호출, poll: 반복 AJAX)
+from routes.channel_chat import channel_reply as _cr, chat_poll as _cp
 csrf.exempt(_cr)
+csrf.exempt(_cp)
 
 
 
@@ -193,10 +194,18 @@ def inject_sidebar_menus():
                 "url": url_for(info["endpoint"]),
             })
 
+    writable = set(session.get('writable_menus', []))
+    hide_financial = session.get('hide_financial', False)
+    # admin/임원진은 항상 전체 쓰기 + 금액 표시
+    if is_admin or is_executive:
+        hide_financial = False
+
     return {
         "sidebar_menu_groups": menu_groups,
         "sidebar_group_icons": GROUP_ICONS,
         "is_admin": is_admin,
+        "writable_menus": writable,
+        "hide_financial": hide_financial,
     }
 
 

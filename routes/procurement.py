@@ -11,6 +11,7 @@ from modules.db_context import get_db
 from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.models import G2bProcurement, Contract, ContractItem, Project, TaxInvoice
+from modules.history_board import append_history_log
 from modules.services.g2b_procurement_sync import sync_daily, sync_bulk
 from modules.services.procurement_summary import (
     get_filter_options, get_summary_pivot, build_chart_data, generate_excel,
@@ -34,19 +35,156 @@ def handle_sync_daily(db, form, user_name):
 
 
 def handle_sync_bulk(db, form, user_name):
-    """벌크 동기화 (2015~현재)"""
+    """벌크 동기화 (시작연도~현재)"""
     if session.get('role') != 'admin':
         return {'flash': ('권한이 없습니다.', 'danger')}
-    result = sync_bulk(db, start_year=2015)
+    start_year = safe_int(form.get('bulk_start_year'), 2015)
+    result = sync_bulk(db, start_year=start_year)
     msg = f"벌크 동기화 완료: 신규 {result['created']}건, 갱신 {result['updated']}건"
     if result.get('errors'):
         msg += f", 오류 {result['errors']}건"
     return {'flash': (msg, 'success')}
 
 
+def _parse_form_date(s):
+    """폼 날짜 문자열 -> date 또는 None"""
+    s = (s or '').strip()
+    if not s:
+        return None
+    try:
+        return datetime.date.fromisoformat(s)
+    except ValueError:
+        return None
+
+
+def handle_manual_add(db, form, user_name):
+    """G2B 조달내역 수동 등록 (타사 명의 계약 등)"""
+    if session.get('role') != 'admin':
+        return {'flash': ('권한이 없습니다.', 'danger')}
+
+    # --- 계약 기본정보 ---
+    req_no = (form.get('manual_req_no') or '').strip()
+    req_nm = (form.get('manual_req_nm') or '').strip()
+    if not req_nm:
+        return {'flash': ('계약명은 필수입니다.', 'danger')}
+
+    # 계약번호: 직접 입력 or 자동 채번 (M-YYYY-NNNN)
+    if not req_no:
+        year = str(datetime.date.today().year)
+        prefix = f'M-{year}-'
+        last = db.query(G2bProcurement.cntrct_dlvr_req_no).filter(
+            G2bProcurement.cntrct_dlvr_req_no.like(f'{prefix}%')
+        ).order_by(G2bProcurement.cntrct_dlvr_req_no.desc()).first()
+        seq = int(last[0].replace(prefix, '')) + 1 if last else 1
+        req_no = f'{prefix}{seq:04d}'
+
+    # 중복 체크
+    exists = db.query(G2bProcurement.id).filter_by(
+        cntrct_dlvr_req_no=req_no, prdct_sno='1', cntrct_dlvr_req_chg_ord='00'
+    ).first()
+    if exists:
+        return {'flash': (f'이미 등록된 계약번호입니다: {req_no}', 'danger')}
+
+    req_date = _parse_form_date(form.get('manual_req_date'))
+    intl_req_date = _parse_form_date(form.get('manual_intl_req_date'))
+    dlvr_date = _parse_form_date(form.get('manual_dlvr_date'))
+
+    # --- 수요기관 ---
+    dminstt_nm = (form.get('manual_dminstt_nm') or '').strip() or None
+    dminstt_cd = (form.get('manual_dminstt_cd') or '').strip() or None
+    dminstt_rgn_nm = (form.get('manual_dminstt_rgn_nm') or '').strip() or None
+
+    # --- 계약 구분 ---
+    prcrmnt_div_nm = (form.get('manual_prcrmnt_div_nm') or '수동등록').strip()
+    cntrct_div_nm = (form.get('manual_cntrct_div_nm') or '').strip() or None
+    cntrct_mthd_nm = (form.get('manual_cntrct_mthd_nm') or '').strip() or None
+
+    # --- 업체/납품 ---
+    corp_nm = (form.get('manual_corp_nm') or '').strip() or None
+    bizno = (form.get('manual_bizno') or '').strip() or None
+    dlvr_plce_nm = (form.get('manual_dlvr_plce_nm') or '').strip() or None
+    dlvry_cndtn_nm = (form.get('manual_dlvry_cndtn_nm') or '').strip() or None
+
+    # --- 품목 파싱 (멀티 행) ---
+    detail_names = form.getlist('manual_detail_nm[]')
+    spec_names = form.getlist('manual_spec_nm[]')
+    prdct_clsfc_nos = form.getlist('manual_prdct_clsfc_no[]')
+    prdct_clsfc_nms = form.getlist('manual_prdct_clsfc_nm[]')
+    prdct_idnt_nos = form.getlist('manual_prdct_idnt_no[]')
+    qtys = form.getlist('manual_qty[]')
+    uprcs = form.getlist('manual_uprc[]')
+    units = form.getlist('manual_unit[]')
+
+    if not detail_names or not any(
+        (detail_names[i] or '').strip() or (spec_names[i] if i < len(spec_names) else '').strip()
+        for i in range(len(detail_names))
+    ):
+        return {'flash': ('최소 1개 품목을 입력하세요.', 'danger')}
+
+    created = 0
+    for i in range(len(detail_names)):
+        detail_nm = (detail_names[i] if i < len(detail_names) else '').strip()
+        spec_nm = (spec_names[i] if i < len(spec_names) else '').strip()
+        if not detail_nm and not spec_nm:
+            continue
+
+        def _int(lst, idx):
+            try:
+                return int(float(lst[idx])) if idx < len(lst) and (lst[idx] or '').strip() else 0
+            except (ValueError, TypeError):
+                return 0
+
+        qty = _int(qtys, i)
+        uprc = _int(uprcs, i)
+        amt = qty * uprc
+
+        db.add(G2bProcurement(
+            cntrct_dlvr_req_no=req_no,
+            prdct_sno=str(i + 1),
+            cntrct_dlvr_req_chg_ord='00',
+            prcrmnt_div_nm=prcrmnt_div_nm,
+            cntrct_div_nm=cntrct_div_nm,
+            cntrct_mthd_nm=cntrct_mthd_nm,
+            cntrct_dlvr_req_date=req_date,
+            cntrct_dlvr_req_nm=req_nm,
+            dminstt_nm=dminstt_nm,
+            dminstt_cd=dminstt_cd,
+            dminstt_rgn_nm=dminstt_rgn_nm,
+            dlvr_plce_nm=dlvr_plce_nm,
+            dlvr_tmlmt_date=dlvr_date,
+            dlvry_cndtn_nm=dlvry_cndtn_nm,
+            prdct_clsfc_no=(prdct_clsfc_nos[i] if i < len(prdct_clsfc_nos) else '').strip() or None,
+            prdct_clsfc_no_nm=(prdct_clsfc_nms[i] if i < len(prdct_clsfc_nms) else '').strip() or None,
+            dtil_prdct_clsfc_no_nm=detail_nm or None,
+            prdct_idnt_no=(prdct_idnt_nos[i] if i < len(prdct_idnt_nos) else '').strip() or None,
+            prdct_idnt_no_nm=spec_nm or None,
+            prdct_qty=qty,
+            prdct_uprc=uprc,
+            prdct_unit=(units[i] if i < len(units) else '').strip() or None,
+            prdct_amt=amt,
+            corp_nm=corp_nm,
+            bizno=bizno,
+            intl_cntrct_dlvr_req_date=intl_req_date,
+            fnl_cntrct_dlvr_req_chg_ord_yn='Y',
+        ))
+        created += 1
+
+    if created == 0:
+        return {'flash': ('등록할 품목이 없습니다.', 'danger')}
+
+    append_history_log(
+        db, None, user_name,
+        f'G2B 수동등록: {req_nm} ({req_no}, {created}품목, 업체: {corp_nm or "-"})',
+        scope='procurement',
+    )
+
+    return {'flash': (f'수동 등록 완료: {req_nm} ({req_no}, {created}품목)', 'success')}
+
+
 ACTION_HANDLERS = {
     'sync_daily': handle_sync_daily,
     'sync_bulk': handle_sync_bulk,
+    'manual_add': handle_manual_add,
 }
 
 
@@ -148,12 +286,12 @@ def procurement_list():
 
         # G2B 연동 맵: g2b_contract_no -> (contract_id, project_id)
         linked_contracts = db.query(
-            Contract.g2b_contract_no, Contract.id, Contract.project_id
+            Contract.g2b_contract_no, Contract.id, Contract.project_id, Contract.payment_status, Contract.is_excluded
         ).filter(
             Contract.g2b_contract_no.isnot(None),
             Contract.g2b_contract_no.in_(req_nos) if req_nos else False,
         ).all() if req_nos else []
-        linked_map = {r[0]: {'contract_id': r[1], 'project_id': r[2]} for r in linked_contracts}
+        linked_map = {r[0]: {'contract_id': r[1], 'project_id': r[2], 'payment_status': r[3], 'is_excluded': r[4]} for r in linked_contracts}
 
         # 계약 목록에 품목 상세 매핑
         contracts = []
@@ -273,6 +411,78 @@ def procurement_action():
             db.commit()
 
     return redirect(url_for('procurement.procurement_list'))
+
+
+@procurement_bp.route('/procurement/api/exclude', methods=['POST'])
+@login_required
+def procurement_exclude():
+    """조달내역 기준 예외처리 → contract.payment_status = '예외'"""
+    data = request.get_json() or {}
+    g2b_no = (data.get('g2b_no') or '').strip()
+    reason = data.get('reason', '기타')
+    note = data.get('note', '')
+
+    if not g2b_no:
+        return jsonify({'ok': False, 'error': 'G2B 번호 없음'}), 400
+
+    with get_db() as db:
+        contract = db.query(Contract).filter(
+            Contract.g2b_contract_no == g2b_no
+        ).first()
+        if not contract:
+            return jsonify({'ok': False, 'error': f'계약을 찾을 수 없습니다 (G2B: {g2b_no})'}), 404
+
+        msg = (contract.contract_name or '')[:40]
+        contract.is_excluded = True
+        contract.exclude_reason = reason
+        contract.exclude_note = note or None
+
+        db.commit()
+
+    return jsonify({'ok': True, 'message': f'{msg} → {reason} 예외처리 완료'})
+
+
+@procurement_bp.route('/procurement/api/exclude-info')
+@login_required
+def procurement_exclude_info():
+    """예외 사유 조회"""
+    g2b_no = (request.args.get('g2b_no') or '').strip()
+    if not g2b_no:
+        return jsonify({})
+    with get_db() as db:
+        contract = db.query(Contract).filter(Contract.g2b_contract_no == g2b_no).first()
+        if not contract:
+            return jsonify({})
+        return jsonify({
+            'reason': contract.exclude_reason or '',
+            'note': contract.exclude_note or '',
+        })
+
+
+@procurement_bp.route('/procurement/api/exclude-cancel', methods=['POST'])
+@login_required
+def procurement_exclude_cancel():
+    """예외 해제 → payment_status를 미청구로 복원"""
+    data = request.get_json() or {}
+    g2b_no = (data.get('g2b_no') or '').strip()
+
+    if not g2b_no:
+        return jsonify({'ok': False, 'error': 'G2B 번호 없음'}), 400
+
+    with get_db() as db:
+        contract = db.query(Contract).filter(
+            Contract.g2b_contract_no == g2b_no
+        ).first()
+        if not contract:
+            return jsonify({'ok': False, 'error': '계약 없음'}), 404
+
+        contract.is_excluded = False
+        contract.exclude_reason = None
+        contract.exclude_note = None
+
+        db.commit()
+
+    return jsonify({'ok': True, 'message': '예외 해제 완료 — 미청구로 복원'})
 
 
 @procurement_bp.route('/procurement/report')

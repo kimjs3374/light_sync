@@ -33,11 +33,44 @@ def login():
                         return redirect(url_for('auth.login'))
 
                     group_data = db.query(GroupPermission).filter(GroupPermission.group_name == user.user_group).first()
-                    allowed_menus = [m.strip() for m in group_data.allowed_menus.split(",") if m.strip()] if group_data and group_data.allowed_menus else []
-                    # 개인 추가 메뉴 병합 (팀장 등 개별 권한)
-                    if user.extra_menus:
-                        extra = [m.strip() for m in user.extra_menus.split(",") if m.strip()]
-                        allowed_menus = list(dict.fromkeys(allowed_menus + extra))  # 중복 제거, 순서 유지
+                    # 권한 우선순위: 관리자 > 개인권한 > 그룹권한
+                    if user.role == 'admin':
+                        # 관리자는 모든 메뉴 RW + 금액 표시 (그룹 권한 무시)
+                        from config import MENU_REGISTRY, COMMON_MENU_KEYS
+                        allowed_menus = [k for k in MENU_REGISTRY if k not in COMMON_MENU_KEYS]
+                        writable_menus = list(allowed_menus)
+                        hide_financial = False
+                    else:
+                        # 1단계: 그룹 권한을 base로 깔기
+                        perm_map = {}  # {menu_key: 'r' or 'rw'}
+                        if group_data and group_data.allowed_menus:
+                            for entry in group_data.allowed_menus.split(","):
+                                entry = entry.strip()
+                                if not entry:
+                                    continue
+                                if ':' in entry:
+                                    key, perm = entry.rsplit(':', 1)
+                                else:
+                                    key, perm = entry, 'rw'
+                                perm_map[key] = perm
+                        # 2단계: 개인권한으로 override (그룹 r → 개인 rw 가능)
+                        if user.extra_menus:
+                            for entry in user.extra_menus.split(","):
+                                entry = entry.strip()
+                                if not entry:
+                                    continue
+                                if ':' in entry:
+                                    key, perm = entry.rsplit(':', 1)
+                                else:
+                                    key, perm = entry, 'rw'
+                                perm_map[key] = perm  # 개인이 그룹 덮어쓰기
+                        # 3단계: allowed / writable 리스트 생성
+                        allowed_menus = list(perm_map.keys())
+                        writable_menus = [k for k, v in perm_map.items() if v == 'rw']
+                        # 금액 가시성: 그룹 기본 → 개인 override 가능
+                        hide_financial = bool(group_data and getattr(group_data, 'hide_financial', False))
+                        if hasattr(user, 'hide_financial_override') and user.hide_financial_override is not None:
+                            hide_financial = user.hide_financial_override
                     can_manage_priority = bool(
                         user.role == 'admin'
                         or db.query(UserPriorityPermission).filter(
@@ -50,6 +83,8 @@ def login():
                         'user_id': user.id, 'username': user.username, 'full_name': user.full_name,
                         'user_group': user.user_group, 'role': user.role, 'position': user.position or '',
                         'allowed_menus': allowed_menus,
+                        'writable_menus': writable_menus,
+                        'hide_financial': hide_financial,
                         'can_approve_delete': bool(user.role == 'admin' or user.can_approve_delete),
                         'can_manage_priority': can_manage_priority,
                     })
@@ -111,8 +146,16 @@ def register():
 @admin_required
 def admin_settings():
     with get_db() as db:
+        GROUP_ORDER = ['임원진', '관리부', '영업부', '생산부']
+        POSITION_ORDER = ['대표이사', '전무', '상무', '이사', '부장', '차장', '과장', '대리', '주임', '사원']
+        def _sort_key(u):
+            gi = GROUP_ORDER.index(u.user_group) if u.user_group in GROUP_ORDER else len(GROUP_ORDER)
+            pi = POSITION_ORDER.index(u.position) if u.position in POSITION_ORDER else len(POSITION_ORDER)
+            return (gi, pi, u.full_name)
+
         pending = db.query(User).filter(User.is_approved == False).all()
-        users = db.query(User).filter(User.is_approved == True).order_by(User.created_at.desc()).all()
+        users = db.query(User).filter(User.is_approved == True).all()
+        users.sort(key=_sort_key)
         priority_permissions = db.query(UserPriorityPermission).filter(UserPriorityPermission.is_active.is_(True)).all()
         priority_user_ids = {row.user_id for row in priority_permissions}
         for user in users:
@@ -126,16 +169,29 @@ def admin_settings():
         pending_count = len(pending)
 
         # 부서 목록 (필터용)
-        groups = sorted(set(u.user_group for u in users if u.user_group))
+        groups = sorted(set(u.user_group for u in users if u.user_group),
+                        key=lambda g: GROUP_ORDER.index(g) if g in GROUP_ORDER else len(GROUP_ORDER))
 
-        # 그룹별 메뉴 권한 데이터
-        group_permissions = db.query(GroupPermission).all()
+        # 그룹별 메뉴 권한 데이터 (부서 순서 고정)
+        all_gp = db.query(GroupPermission).all()
+        group_permissions = sorted(all_gp,
+            key=lambda g: GROUP_ORDER.index(g.group_name) if g.group_name in GROUP_ORDER else len(GROUP_ORDER))
         group_menu_data = []
         for gp in group_permissions:
             current_menus = [m.strip() for m in gp.allowed_menus.split(",") if m.strip()] if gp.allowed_menus else []
+            # R/RW map 생성: {key: 'rw'} 또는 레거시 배열 → 전부 rw
+            menus_rw = {}
+            for entry in current_menus:
+                if ':' in entry:
+                    k, p = entry.rsplit(':', 1)
+                    menus_rw[k] = p
+                else:
+                    menus_rw[entry] = 'rw'
             group_menu_data.append({
                 "group_name": gp.group_name,
-                "current_menus": current_menus,
+                "current_menus": list(menus_rw.keys()),
+                "current_menus_rw": menus_rw,
+                "hide_financial": bool(getattr(gp, 'hide_financial', False)),
             })
 
         configurable_menus = [
@@ -153,6 +209,78 @@ def admin_settings():
         from modules.services.dashboard_actions import get_dashboard_setting_int
         production_lead_days = get_dashboard_setting_int(db, 'production_lead_days', 7)
 
+        # ── 공지관리 데이터 ──
+        from modules.models import DashboardNotice
+        from modules.dashboard_utils import build_auto_alert_items
+        notices = db.query(DashboardNotice).order_by(DashboardNotice.sort_order.asc(), DashboardNotice.id.asc()).all()
+        _today = datetime.date.today()
+        _week_later = _today + datetime.timedelta(days=7)
+        auto_notice_items = build_auto_alert_items(db, _today, _week_later)
+        global_display_seconds = max(2, get_dashboard_setting_int(db, 'billboard_global_seconds', 6))
+
+        # ── 제품카탈로그 데이터 ──
+        from modules.models import ProductCatalog
+        catalog_total = db.query(ProductCatalog).count()
+        catalog_missing = db.query(ProductCatalog).filter(ProductCatalog.unit_price.is_(None)).count()
+        catalog_last_sync = db.query(ProductCatalog.last_synced_at).filter(
+            ProductCatalog.last_synced_at.isnot(None)
+        ).order_by(ProductCatalog.last_synced_at.desc()).first()
+        catalog_stats = {
+            'total': catalog_total,
+            'missing_price': catalog_missing,
+            'has_price': catalog_total - catalog_missing,
+            'last_synced': catalog_last_sync[0].strftime('%Y-%m-%d %H:%M') if catalog_last_sync and catalog_last_sync[0] else '-',
+        }
+        # 카탈로그 목록 (최근 30건)
+        catalog_items = db.query(ProductCatalog).order_by(ProductCatalog.krn_prdct_nm).limit(30).all()
+        catalog_pagination = {'page': 1, 'per_page': 30, 'total_pages': max(1, (catalog_total + 29) // 30)}
+        catalog_filters = {'q': '', 'price_source': '', 'method': ''}
+
+        # ── 챗봇 권한 데이터 ──
+        from sqlalchemy import text as _text
+        from modules.services.erp_tools import ALL_TOOLS as _ALL_TOOLS
+        chatbot_users = db.query(User).order_by(User.full_name).all()
+        _cb_rows = db.execute(
+            _text("SELECT erp_username, allowed_tools, COALESCE(channel_enabled, false) FROM chatbot_permissions")
+        ).fetchall()
+        perm_map = {r[0]: r[1].split(",") if r[1] else [] for r in _cb_rows}
+        channel_map = {r[0]: bool(r[2]) for r in _cb_rows}
+        _cb_default = ",".join(t[0] for t in _ALL_TOOLS)
+
+        # 챗봇 카테고리별 그룹핑
+        import re as _re, inspect as _inspect
+        from modules.services import erp_tools as _erp_tools_mod
+        _src = _inspect.getsource(_erp_tools_mod)
+        _tool_groups = []
+        _cur_cat = "기타"
+        _tool_set = {t[0] for t in _ALL_TOOLS}
+        _cat_tools = []
+        for _line in _src.splitlines():
+            _m = _re.match(r'\s*#\s*(.+?)\s*\(\d+\)', _line)
+            if _m:
+                if _cat_tools:
+                    _tool_groups.append((_cur_cat, _cat_tools))
+                _cur_cat = _m.group(1).strip()
+                _cat_tools = []
+                continue
+            _m2 = _re.match(r'\s*\("(\w+)"', _line)
+            if _m2 and _m2.group(1) in _tool_set:
+                _name = _m2.group(1)
+                _label = next((t[1] for t in _ALL_TOOLS if t[0] == _name), _name)
+                _group = next((t[2] for t in _ALL_TOOLS if t[0] == _name), "전체")
+                _cat_tools.append((_name, _label, _group))
+        if _cat_tools:
+            _tool_groups.append((_cur_cat, _cat_tools))
+
+        # 챗봇 프리셋
+        import json as _json
+        try:
+            _preset_rows = db.execute(_text("SELECT name, tools_json, channel_enabled FROM chatbot_presets ORDER BY name")).fetchall()
+        except Exception:
+            _preset_rows = []
+        chatbot_presets = [{"name": r[0], "tools": _json.loads(r[1]) if r[1] else [], "channel": bool(r[2])} for r in _preset_rows]
+        presets_map = {p["name"]: p for p in chatbot_presets}
+
         return render_template('admin_settings.html',
             pending=pending, users=users, delete_requests=delete_requests,
             total_count=total_count, active_count=active_count,
@@ -163,7 +291,19 @@ def admin_settings():
             position_choices=position_choices,
             is_superadmin=is_superadmin,
             current_admin_id=session.get('user_id'),
-            production_lead_days=production_lead_days)
+            production_lead_days=production_lead_days,
+            # 공지관리
+            notices=notices, auto_notice_items=auto_notice_items,
+            global_display_seconds=global_display_seconds,
+            # 제품카탈로그
+            catalog_items=catalog_items, catalog_stats=catalog_stats,
+            catalog_pagination=catalog_pagination, catalog_filters=catalog_filters,
+            is_admin=True,
+            # 챗봇 권한
+            chatbot_users=chatbot_users, perm_map=perm_map, channel_map=channel_map,
+            all_tools=_ALL_TOOLS, default_tools=_cb_default.split(","),
+            tool_groups=_tool_groups, chatbot_presets=chatbot_presets,
+            presets_map=presets_map)
 
 
 @auth_bp.route('/admin/update_ops_setting', methods=['POST'])
@@ -428,7 +568,14 @@ def update_user_extra_menus():
 def menu_perms():
     """메뉴 권한 관리 전용 페이지"""
     with get_db() as db:
-        users = db.query(User).filter(User.is_approved == True).order_by(User.user_group, User.full_name).all()
+        GROUP_ORDER = ['임원진', '관리부', '영업부', '생산부']
+        POSITION_ORDER = ['대표이사', '전무', '상무', '이사', '부장', '차장', '과장', '대리', '주임', '사원']
+        def _sort_key(u):
+            gi = GROUP_ORDER.index(u.user_group) if u.user_group in GROUP_ORDER else len(GROUP_ORDER)
+            pi = POSITION_ORDER.index(u.position) if u.position in POSITION_ORDER else len(POSITION_ORDER)
+            return (gi, pi, u.full_name)
+        users = db.query(User).filter(User.is_approved == True).all()
+        users.sort(key=_sort_key)
         group_permissions = db.query(GroupPermission).all()
         group_menu_data = []
         for gp in group_permissions:
@@ -446,17 +593,26 @@ def menu_perms():
 @auth_bp.route('/admin/api/group_menus', methods=['POST'])
 @admin_required
 def api_update_group_menus():
-    """그룹 메뉴 권한 JSON API"""
+    """그룹 메뉴 권한 JSON API (R/RW 지원)"""
     body = request.get_json(silent=True) or {}
     group_name = body.get('group_name', '').strip()
-    menus = body.get('menus', [])
+    menus_rw = body.get('menus_rw', {})   # {contract: 'rw', sales: 'r'}
+    menus = body.get('menus', [])          # 레거시 호환
+    hide_financial = body.get('hide_financial', None)
     if not group_name:
         return jsonify({'success': False, 'error': '그룹명 필요'}), 400
     with get_db() as db:
         group = db.query(GroupPermission).filter(GroupPermission.group_name == group_name).first()
         if not group:
             return jsonify({'success': False, 'error': '그룹 없음'}), 404
-        group.allowed_menus = ",".join(menus)
+        if menus_rw:
+            # R/RW 형식: "contract:rw,sales:r,inventory:r"
+            parts = [f"{k}:{v}" for k, v in menus_rw.items()]
+            group.allowed_menus = ",".join(parts)
+        else:
+            group.allowed_menus = ",".join(menus)
+        if hide_financial is not None:
+            group.hide_financial = bool(hide_financial)
         db.commit()
     return jsonify({'success': True})
 
@@ -464,17 +620,38 @@ def api_update_group_menus():
 @auth_bp.route('/admin/api/user_extra_menus', methods=['POST'])
 @admin_required
 def api_update_user_extra_menus():
-    """개인 추가 메뉴 권한 JSON API"""
+    """개인 추가 메뉴 권한 JSON API (R/RW override 지원)"""
     body = request.get_json(silent=True) or {}
     user_id = body.get('user_id')
-    extra_menus = body.get('extra_menus', [])
+    extra_menus = body.get('extra_menus', [])       # 레거시: ["key1","key2"]
+    extra_menus_rw = body.get('extra_menus_rw', {})  # 신규: {"key1":"rw","key2":"r"}
     if not user_id:
         return jsonify({'success': False, 'error': 'user_id 필요'}), 400
     with get_db() as db:
         user = db.get(User, user_id)
         if not user:
             return jsonify({'success': False, 'error': '사용자 없음'}), 404
-        user.extra_menus = ",".join(extra_menus) if extra_menus else None
+        if extra_menus_rw:
+            # R/RW 형식: "sales:rw,inventory:r"
+            parts = [f"{k}:{v}" for k, v in extra_menus_rw.items()]
+            user.extra_menus = ",".join(parts) if parts else None
+        else:
+            user.extra_menus = ",".join(extra_menus) if extra_menus else None
+        db.commit()
+    return jsonify({'success': True})
+
+
+@auth_bp.route('/admin/api/user_hide_financial/<int:user_id>', methods=['POST'])
+@admin_required
+def api_update_user_hide_financial(user_id):
+    """개인별 금액 숨김 override API"""
+    body = request.get_json(silent=True) or {}
+    override_val = body.get('hide_financial_override')  # True/False/None
+    with get_db() as db:
+        user = db.get(User, user_id)
+        if not user:
+            return jsonify({'success': False, 'error': '사용자 없음'}), 404
+        user.hide_financial_override = override_val
         db.commit()
     return jsonify({'success': True})
 

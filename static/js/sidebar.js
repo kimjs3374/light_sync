@@ -30,6 +30,9 @@
     if (document.documentElement.classList.contains('sb-collapsed')) {
         sidebar.classList.add('collapsed');
         if (mainContent) mainContent.classList.add('sidebar-collapsed');
+        // 토글 아이콘도 즉시 동기화 (접힌 상태 → ▶)
+        var icon = toggleBtn ? toggleBtn.querySelector('.toggle-icon') : null;
+        if (icon) icon.textContent = '\u25B6';
     }
     // DOM 렌더 후 transition 활성화
     requestAnimationFrame(function() {

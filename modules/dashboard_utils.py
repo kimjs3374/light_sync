@@ -6,6 +6,7 @@ from flask import url_for
 from sqlalchemy.orm import joinedload
 
 from modules.models import Project, Contract
+from modules.contract_filters import active_contract_filter
 from modules.priority_utils import (
     append_due_priority_reason,
     append_manual_priority_reason,
@@ -285,7 +286,7 @@ def build_auto_alert_items(db, today, week_later):
     """자동 생성 전광판 문구 + 원문 이동 링크를 생성한다."""
     contracted_projects = (
         db.query(Project)
-        .filter(Project.is_contracted.is_(True))
+        .filter(Project.is_contracted.is_(True), active_contract_filter())
         .options(joinedload(Project.contracts))
         .order_by(Project.created_at.desc(), Project.id.desc())
         .all()
@@ -296,6 +297,7 @@ def build_auto_alert_items(db, today, week_later):
         .join(Project, Project.id == Contract.project_id)
         .filter(
             Project.is_contracted.is_(True),
+            active_contract_filter(),
             Contract.delivery_due_date.isnot(None),
             Contract.delivery_due_date >= today,
             Contract.delivery_due_date <= week_later,

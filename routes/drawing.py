@@ -54,7 +54,10 @@ def drawings_index(project_id=None):
         return redirect(url_for('dashboard.dashboard_view'))
 
     with get_db() as db:
-        projects = (
+        from modules.contract_filters import DONE_STATUSES
+        status_filter = request.args.get('status', 'active')
+
+        q = (
             db.query(
                 Project.id,
                 Project.project_no,
@@ -62,10 +65,18 @@ def drawings_index(project_id=None):
                 func.count(Drawing.id).label('drawing_count'),
             )
             .outerjoin(Drawing, Drawing.project_id == Project.id)
-            .group_by(Project.id)
-            .order_by(Project.id.desc())
-            .all()
         )
+        if status_filter == 'active':
+            q = q.outerjoin(Contract, Contract.project_id == Project.id).filter(
+                Contract.payment_status.notin_(DONE_STATUSES),
+                Contract.is_excluded.isnot(True),
+            )
+        elif status_filter == 'done':
+            q = q.join(Contract, Contract.project_id == Project.id).filter(
+                Contract.payment_status.in_(DONE_STATUSES),
+            )
+
+        projects = q.group_by(Project.id).order_by(Project.id.desc()).all()
 
         selected = None
         if project_id:
@@ -84,6 +95,7 @@ def drawings_index(project_id=None):
             selected_id=project_id,
             drawing_type_options=DRAWING_TYPE_OPTIONS,
             can_write=_can_write_drawings(),
+            status_filter=status_filter,
         )
 
 

@@ -27,7 +27,7 @@
         <a href="{{ url_for('dashboard.dashboard_view') }}" class="sidebar-brand text-decoration-none">
             <h4 class="text-center text-white mb-3" style="margin:0;">⚡ <span class="sidebar-label">Light-Sync</span></h4>
         </a>
-        <div class="sidebar-icon-only">⚡</div>
+        <a href="{{ url_for('dashboard.dashboard_view') }}" class="sidebar-icon-only text-decoration-none" style="color:white;">⚡</a>
 
         {# === 유저 정보 === #}
         <div class="sidebar-user text-center mb-3">
@@ -43,6 +43,7 @@
         </div>
         <hr class="sidebar-label" style="border-color: #334155; margin: 4px 15px 8px;">
 
+        <div class="sidebar-menu-scroll">
         {# === 즐겨찾기 그룹 (JS 동적 렌더링) === #}
         <div class="sidebar-group" id="favGroup" style="display:none;">
             <div class="sidebar-group-header open" data-group-id="fav">
@@ -122,6 +123,7 @@
             </div>
         </div>
         {% endif %}
+        </div>{# /sidebar-menu-scroll #}
 
         {# === 토글 버튼 (하단 고정) === #}
         <div class="sidebar-toggle-area">

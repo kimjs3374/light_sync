@@ -110,7 +110,7 @@
                         </td>
                         <td style="white-space:nowrap">
                             <span class="badge {{ 'bg-warning text-dark' if c.payment_status == '부분입금' else 'bg-secondary' }} badge-sm">{{ c.payment_status }}</span>
-                            {% if c.project and c.project.status == '납품완료' and c.payment_status != '입금완료' %}
+                            {% if c.is_excluded %}
                                 <span class="badge bg-dark badge-sm">예외</span>
                             {% endif %}
                         </td>
@@ -118,10 +118,6 @@
                             <button type="button" class="btn btn-xs btn-outline-primary" style="white-space:nowrap"
                                 onclick="openMatchModal({{ c.id }})">
                                 세금계산서 찾기
-                            </button>
-                            <button type="button" class="btn btn-xs btn-outline-secondary" style="white-space:nowrap"
-                                onclick="openExcludeModal({{ c.id }}, '{{ (c.contract_name or '')|e }}')">
-                                예외
                             </button>
                         </td>
                     </tr>
@@ -159,7 +155,7 @@
 </form>
 
 <div class="d-flex gap-3 mb-2">
-    <small class="text-muted fw-bold">공급가액 합계: <span class="text-dark">{{ fmt_money(sum_supply) }}원</span></small>
+    {% if not hide_financial %}<small class="text-muted fw-bold">공급가액 합계: <span class="text-dark">{{ fmt_money(sum_supply) }}원</span></small>{% endif %}
     <small class="text-muted">{{ pagination.total }}건</small>
 </div>
 
@@ -173,9 +169,9 @@
                         <th>분류</th>
                         <th>공급받는자</th>
                         <th>품목</th>
-                        <th class="text-end">공급가액</th>
+                        {% if not hide_financial %}<th class="text-end">공급가액</th>
                         <th class="text-end">세액</th>
-                        <th class="text-end">합계</th>
+                        <th class="text-end">합계</th>{% endif %}
                         <th>G2B 계약명</th>
                         {% if match_filter == 'all' %}<th>상태</th>{% endif %}
                     </tr>
@@ -194,9 +190,9 @@
                         </td>
                         <td class="ellipsis" title="{{ inv.buyer_name or '' }}">{{ inv.buyer_name or '-' }}</td>
                         <td class="ellipsis" title="{{ inv.item_name or '' }}">{{ inv.item_name or '-' }}</td>
-                        <td class="text-end {% if inv.total_amount and inv.total_amount < 0 %}text-danger{% endif %}">{{ fmt_money(inv.total_amount) }}</td>
+                        {% if not hide_financial %}<td class="text-end {% if inv.total_amount and inv.total_amount < 0 %}text-danger{% endif %}">{{ fmt_money(inv.total_amount) }}</td>
                         <td class="text-end">{{ fmt_money(inv.tax_amount) }}</td>
-                        <td class="text-end fw-bold">{{ fmt_money(inv.total_amount) }}</td>
+                        <td class="text-end fw-bold">{{ fmt_money(inv.total_amount) }}</td>{% endif %}
                         <td class="ellipsis" title="{{ inv.g2b_contract_name or (g2b.cntrct_dlvr_req_nm if g2b else '') }}">
                             {{ inv.g2b_contract_name or (g2b.cntrct_dlvr_req_nm[:25] if g2b else '-') }}
                         </td>
@@ -211,7 +207,7 @@
                         {% endif %}
                     </tr>
                 {% else %}
-                    <tr><td colspan="{{ 9 if match_filter == 'all' else 8 }}" class="text-center text-muted py-4">세금계산서가 없습니다.</td></tr>
+                    <tr><td colspan="{{ (6 if hide_financial else 9) if match_filter == 'all' else (5 if hide_financial else 8) }}" class="text-center text-muted py-4">세금계산서가 없습니다.</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
@@ -272,36 +268,6 @@
     </div>
 </div>
 
-{# ====== 예외처리 모달 ====== #}
-<div class="modal fade" id="excludeModal" tabindex="-1">
-    <div class="modal-dialog modal-sm">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-secondary text-white py-2">
-                <h6 class="modal-title fw-bold mb-0">예외 처리</h6>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-3">
-                <p class="small mb-2" id="excludeContractName"></p>
-                <div class="mb-2">
-                    <label class="form-label small fw-bold">처리 사유</label>
-                    <select class="form-select form-select-sm" id="excludeReason">
-                        <option value="민수계약">민수계약 (G2B 아님)</option>
-                        <option value="변경완료">변경계약으로 대체</option>
-                        <option value="대금완료">대금 수령 확인 (수기)</option>
-                        <option value="취소">계약 취소</option>
-                        <option value="기타">기타</option>
-                    </select>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label small fw-bold">메모 (선택)</label>
-                    <input type="text" class="form-control form-control-sm" id="excludeNote" placeholder="사유 메모">
-                </div>
-                <button class="btn btn-secondary btn-sm w-100 fw-bold" onclick="doExclude()">예외 처리</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 {# ====== 임포트 모달 ====== #}
 <div class="modal fade" id="importModal" tabindex="-1">
     <div class="modal-dialog">
@@ -332,35 +298,6 @@
 
 <script>
 let _currentContractId = null;
-let _excludeContractId = null;
-
-function openExcludeModal(contractId, contractName) {
-    _excludeContractId = contractId;
-    document.getElementById('excludeContractName').textContent = contractName;
-    document.getElementById('excludeNote').value = '';
-    new bootstrap.Modal(document.getElementById('excludeModal')).show();
-}
-
-function doExclude() {
-    const reason = document.getElementById('excludeReason').value;
-    const note = document.getElementById('excludeNote').value.trim();
-    if (!confirm(`이 계약을 "${reason}"(으)로 예외 처리하시겠습니까?`)) return;
-    fetch('/financial/api/exclude-contract', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
-        body: JSON.stringify({contract_id: _excludeContractId, reason: reason, note: note})
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.ok) {
-            bootstrap.Modal.getInstance(document.getElementById('excludeModal')).hide();
-            location.reload();
-        } else {
-            alert('처리 실패: ' + (data.error || ''));
-        }
-    })
-    .catch(e => alert('오류: ' + e.message));
-}
 const _fmtMoney = n => n ? n.toLocaleString() + '원' : '-';
 
 function openMatchModal(contractId) {

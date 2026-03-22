@@ -6,45 +6,12 @@
 
 {% block content %}
 
-<div class="page-hero mg-fade">
+<div class="page-hero mg-fade mb-0">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
         <div>
             <div class="hero-eyebrow">Admin Settings</div>
             <h2>시스템관리</h2>
             <div class="hero-sub">사용자, 권한, 부서별 메뉴를 관리합니다</div>
-        </div>
-    </div>
-</div>
-
-<!-- 통계 카드 -->
-<div class="row g-3 mb-4 stat-cards-row">
-    <div class="col-6 col-md-3">
-        <div class="card stat-card shadow-sm text-center py-3">
-            <div class="stat-number text-dark">{{ total_count }}</div>
-            <div class="stat-label">전체 인원</div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="card stat-card shadow-sm text-center py-3">
-            <div class="stat-number text-success">{{ active_count }}</div>
-            <div class="stat-label">활성 직원</div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="card stat-card shadow-sm text-center py-3">
-            <div class="stat-number text-secondary">{{ inactive_count }}</div>
-            <div class="stat-label">비활성/퇴사</div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="card stat-card shadow-sm text-center py-3 {{ 'border border-danger' if pending_count > 0 else '' }}">
-            <div class="stat-number {{ 'text-danger' if pending_count > 0 else 'text-muted' }}">{{ pending_count }}</div>
-            <div class="stat-label">
-                승인 대기
-                {% if pending_count > 0 %}
-                    <span class="badge bg-danger rounded-pill ms-1">!</span>
-                {% endif %}
-            </div>
         </div>
     </div>
 </div>
@@ -58,7 +25,7 @@
         <button class="nav-link" id="pending-tab" data-bs-toggle="tab" data-bs-target="#pendingPane" type="button" role="tab">
             가입승인
             {% if pending_count > 0 %}
-                <span class="badge bg-danger rounded-pill ms-1">{{ pending_count }}</span>
+                <span class="badge bg-danger rounded-pill ms-1" style="white-space:nowrap;">{{ pending_count }}</span>
             {% endif %}
         </button>
     </li>
@@ -66,13 +33,10 @@
         <button class="nav-link" id="delete-tab" data-bs-toggle="tab" data-bs-target="#deletePane" type="button" role="tab">삭제요청</button>
     </li>
     <li class="nav-item" role="presentation">
-        <a class="nav-link" href="{{ url_for('dashboard.dashboard_notice_admin') }}">공지관리</a>
+        <button class="nav-link" id="notice-tab" data-bs-toggle="tab" data-bs-target="#noticePane" type="button" role="tab">공지관리</button>
     </li>
     <li class="nav-item" role="presentation">
-        <a class="nav-link" href="{{ url_for('catalog.catalog_list') }}">품목관리</a>
-    </li>
-    <li class="nav-item" role="presentation">
-        <button class="nav-link" id="group-menus-tab" data-bs-toggle="tab" data-bs-target="#groupMenusPane" type="button" role="tab">그룹 메뉴 권한</button>
+        <button class="nav-link" id="catalog-tab" data-bs-toggle="tab" data-bs-target="#catalogPane" type="button" role="tab">제품카탈로그</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="chatbot-perms-tab" data-bs-toggle="tab" data-bs-target="#chatbotPermsPane" type="button" role="tab">챗봇 권한</button>
@@ -95,156 +59,36 @@
 
     <!-- 사용자관리 탭 -->
     <div class="tab-pane fade show active p-3" id="usersPane" role="tabpanel">
-        <!-- 검색/필터 바 -->
-        <div class="filter-bar mb-3">
-            <div class="row g-2 align-items-center">
-                <div class="col-12 col-md-5">
-                    <div class="input-group input-group-sm">
-                        <span class="input-group-text border-0 bg-white">검색</span>
-                        <input type="text" class="form-control" id="userSearchInput" placeholder="이름으로 검색...">
-                    </div>
+        <!-- 통계 카드 -->
+        <div class="row g-3 mb-3 stat-cards-row">
+            <div class="col-6 col-md-3">
+                <div class="card stat-card shadow-sm text-center py-2">
+                    <div class="stat-number text-dark">{{ total_count }}</div>
+                    <div class="stat-label">전체 인원</div>
                 </div>
-                <div class="col-12 col-md-4">
-                    <select class="form-select form-select-sm" id="groupFilter">
-                        <option value="">전체 부서</option>
-                        {% for g in groups %}
-                        <option value="{{ g }}">{{ g }}</option>
-                        {% endfor %}
-                    </select>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card stat-card shadow-sm text-center py-2">
+                    <div class="stat-number text-success">{{ active_count }}</div>
+                    <div class="stat-label">활성 직원</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card stat-card shadow-sm text-center py-2">
+                    <div class="stat-number text-secondary">{{ inactive_count }}</div>
+                    <div class="stat-label">비활성/퇴사</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card stat-card shadow-sm text-center py-2 {{ 'border border-danger' if pending_count > 0 else '' }}">
+                    <div class="stat-number {{ 'text-danger' if pending_count > 0 else 'text-muted' }}">{{ pending_count }}</div>
+                    <div class="stat-label">승인 대기{% if pending_count > 0 %} <span class="badge bg-danger rounded-pill ms-1" style="white-space:nowrap">!</span>{% endif %}</div>
                 </div>
             </div>
         </div>
 
-        <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th class="ps-3" style="white-space:nowrap;">이름</th>
-                        <th style="white-space:nowrap;">아이디</th>
-                        <th style="white-space:nowrap;">직급</th>
-                        <th style="white-space:nowrap;">부서</th>
-                        <th style="white-space:nowrap;">권한</th>
-                        <th style="white-space:nowrap;">상태</th>
-                        <th style="white-space:nowrap;">우선순위권</th>
-                        <th style="white-space:nowrap;">삭제승인권</th>
-                        <th style="white-space:nowrap;">추가메뉴</th>
-                        <th style="white-space:nowrap;">퇴사/복구</th>
-                        <th class="text-center" style="white-space:nowrap;">비밀번호</th>
-                    </tr>
-                </thead>
-                <tbody id="userTableBody">
-                    {% for u in users %}
-                    <tr data-name="{{ u.full_name }}" data-group="{{ u.user_group }}">
-                        <td class="ps-3 fw-semibold" style="white-space:nowrap;">{{ u.full_name }}</td>
-                        <td class="text-muted small" style="white-space:nowrap;">{{ u.username }}</td>
-                        <td>
-                            <select class="form-select form-select-sm" style="width:90px;font-size:.78rem;padding:2px 6px;"
-                                    onchange="updatePosition({{ u.id }}, this.value)">
-                                <option value="">미지정</option>
-                                {% for p in position_choices %}
-                                <option value="{{ p }}" {{ 'selected' if u.position == p }}>{{ p }}</option>
-                                {% endfor %}
-                            </select>
-                        </td>
-                        <td>
-                            <span class="badge-status" style="background:#f1f5f9;color:#475569;white-space:nowrap;">{{ u.user_group }}</span>
-                        </td>
-                        <td style="white-space:nowrap;">
-                            {% if u.id == current_admin_id %}
-                                <span class="badge-status" style="background:#2563eb;color:#fff;white-space:nowrap;">admin</span>
-                            {% else %}
-                                <form method="POST" action="{{ url_for('auth.toggle_admin', user_id=u.id) }}" class="d-inline">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    {% if u.role == 'admin' %}
-                                        <button class="btn btn-xs" style="background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;white-space:nowrap;">admin</button>
-                                    {% else %}
-                                        <button class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;">user</button>
-                                    {% endif %}
-                                </form>
-                            {% endif %}
-                        </td>
-                        <td style="white-space:nowrap;">
-                            {% if u.role == 'admin' %}
-                                <span class="badge-status" style="background:#dbeafe;color:#1e40af;white-space:nowrap;">관리자</span>
-                            {% elif u.is_active %}
-                                <span class="badge-status" style="background:#dcfce7;color:#166534;white-space:nowrap;">활성</span>
-                            {% else %}
-                                <span class="badge-status" style="background:#f1f5f9;color:#64748b;white-space:nowrap;">퇴사/비활성</span>
-                                {% if u.deactivated_at %}
-                                    <div class="small text-muted mt-1">{{ (u.deactivated_at|string)[:19] }}</div>
-                                {% endif %}
-                                {% if u.deactivated_reason %}
-                                    <div class="small text-muted">사유: {{ u.deactivated_reason }}</div>
-                                {% endif %}
-                            {% endif %}
-                        </td>
-                        <td style="white-space:nowrap;">
-                            {% if u.role == 'admin' %}
-                                <small class="text-muted">기본허용</small>
-                            {% else %}
-                                <form method="POST" action="{{ url_for('auth.toggle_priority_manager', user_id=u.id) }}" class="d-inline">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <input type="hidden" name="can_manage_priority" value="{{ '0' if u.can_manage_priority else '1' }}">
-                                    {% if u.can_manage_priority %}
-                                        <button class="btn btn-xs" style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;white-space:nowrap;">허용됨</button>
-                                    {% else %}
-                                        <button class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;">미허용</button>
-                                    {% endif %}
-                                </form>
-                            {% endif %}
-                        </td>
-                        <td style="white-space:nowrap;">
-                            {% if u.role == 'admin' %}
-                                <small class="text-muted">기본허용</small>
-                            {% else %}
-                                <form method="POST" action="{{ url_for('auth.toggle_delete_approver', user_id=u.id) }}" class="d-inline">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <input type="hidden" name="can_approve_delete" value="{{ '0' if u.can_approve_delete else '1' }}">
-                                    {% if u.can_approve_delete %}
-                                        <button class="btn btn-xs" style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;white-space:nowrap;">허용됨</button>
-                                    {% else %}
-                                        <button class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;">미허용</button>
-                                    {% endif %}
-                                </form>
-                            {% endif %}
-                        </td>
-                        <td style="white-space:nowrap;">
-                            {% if u.role == 'admin' %}
-                                <small class="text-muted">기본허용</small>
-                            {% else %}
-                                <button class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;" onclick="openExtraMenuModal({{ u.id }}, '{{ u.full_name }}', '{{ u.extra_menus or '' }}')">
-                                    {% if u.extra_menus %}{{ u.extra_menus.split(',')|length }}개{% else %}설정{% endif %}
-                                </button>
-                            {% endif %}
-                        </td>
-                        <td style="white-space:nowrap;">
-                            {% if u.role == 'admin' %}
-                                <small class="text-muted">-</small>
-                            {% else %}
-                                <form method="POST" action="{{ url_for('auth.toggle_user_active', user_id=u.id) }}" class="d-inline" data-current-active="{{ '1' if u.is_active else '0' }}" onsubmit="return submitToggleUserActive(this);">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <input type="hidden" name="is_active" value="{{ '0' if u.is_active else '1' }}">
-                                    <input type="hidden" name="deactivated_reason" value="">
-                                    {% if u.is_active %}
-                                        <button class="btn btn-xs" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;white-space:nowrap;">퇴사처리</button>
-                                    {% else %}
-                                        <button class="btn btn-xs" style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;white-space:nowrap;">복구</button>
-                                    {% endif %}
-                                </form>
-                            {% endif %}
-                        </td>
-                        <td class="text-center" style="white-space:nowrap;">
-                            {% if u.role != 'admin' %}
-                                <button class="btn btn-xs btn-outline-secondary" style="white-space:nowrap;" onclick="openResetPwModal({{ u.id }}, '{{ u.full_name }}')">초기화</button>
-                            {% else %}
-                                <small class="text-muted">-</small>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+        {% include 'partials/admin_menu_perms.html' %}
+
     </div>
 
     <!-- 가입승인 탭 -->
@@ -252,22 +96,22 @@
         <div class="table-responsive">
             <table class="table table-hover mb-0 align-middle">
                 <thead class="table-light">
-                    <tr><th class="ps-3">이름</th><th>아이디</th><th>희망 부서</th><th class="text-end pe-3">액션</th></tr>
+                    <tr><th class="ps-3" style="white-space:nowrap;">이름</th><th style="white-space:nowrap;">아이디</th><th style="white-space:nowrap;">희망 부서</th><th class="text-end pe-3" style="white-space:nowrap;">액션</th></tr>
                 </thead>
                 <tbody>
                     {% for u in pending %}
                     <tr>
                         <td class="ps-3"><b>{{ u.full_name }}</b></td>
                         <td>{{ u.username }}</td>
-                        <td><span class="badge bg-secondary">{{ u.user_group }}</span></td>
-                        <td class="text-end pe-3">
+                        <td><span class="badge bg-secondary" style="white-space:nowrap;">{{ u.user_group }}</span></td>
+                        <td class="text-end pe-3" style="white-space:nowrap;">
                             <form method="POST" action="{{ url_for('auth.approve_user', user_id=u.id) }}" style="display:inline">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                <button type="submit" class="btn btn-sm btn-success">승인</button>
+                                <button type="submit" class="btn btn-sm btn-success" style="white-space:nowrap;">승인</button>
                             </form>
                             <form method="POST" action="{{ url_for('auth.reject_user', user_id=u.id) }}" style="display:inline" onsubmit="return confirm('삭제하시겠습니까?')">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                <button type="submit" class="btn btn-sm btn-outline-danger">거절</button>
+                                <button type="submit" class="btn btn-sm btn-outline-danger" style="white-space:nowrap;">거절</button>
                             </form>
                         </td>
                     </tr>
@@ -285,13 +129,13 @@
             <table class="table table-sm table-hover mb-0 align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3">요청일시</th>
-                        <th>현장</th>
-                        <th>요청자</th>
-                        <th>삭제사유</th>
-                        <th>상태</th>
-                        <th>승인자/처리시각</th>
-                        <th class="text-end pe-3">처리</th>
+                        <th class="ps-3" style="white-space:nowrap;">요청일시</th>
+                        <th style="white-space:nowrap;">현장</th>
+                        <th style="white-space:nowrap;">요청자</th>
+                        <th style="white-space:nowrap;">삭제사유</th>
+                        <th style="white-space:nowrap;">상태</th>
+                        <th style="white-space:nowrap;">승인자/처리시각</th>
+                        <th class="text-end pe-3" style="white-space:nowrap;">처리</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -309,13 +153,13 @@
                         <td style="white-space: pre-wrap; max-width: 280px;">{{ r.request_reason }}</td>
                         <td>
                             {% if r.status == 'PENDING' %}
-                                <span class="badge bg-warning text-dark">대기</span>
+                                <span class="badge bg-warning text-dark" style="white-space:nowrap;">대기</span>
                             {% elif r.status == 'APPROVED' %}
-                                <span class="badge bg-success">승인/삭제완료</span>
+                                <span class="badge bg-success" style="white-space:nowrap;">승인/삭제완료</span>
                             {% elif r.status == 'REJECTED' %}
-                                <span class="badge bg-secondary">반려</span>
+                                <span class="badge bg-secondary" style="white-space:nowrap;">반려</span>
                             {% else %}
-                                <span class="badge bg-light text-dark">{{ r.status }}</span>
+                                <span class="badge bg-light text-dark" style="white-space:nowrap;">{{ r.status }}</span>
                             {% endif %}
                         </td>
                         <td>
@@ -327,15 +171,15 @@
                         </td>
                         <td class="text-end pe-3">
                             {% if r.status == 'PENDING' %}
-                            <div class="d-flex justify-content-end gap-1">
+                            <div class="d-flex justify-content-end gap-1" style="white-space:nowrap;">
                                 <form method="POST" action="{{ url_for('project.approve_project_delete_request', req_id=r.id) }}" class="d-inline" onsubmit="return confirm('해당 삭제요청을 승인하고 즉시 삭제할까요?');">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <button class="btn btn-sm btn-success">승인</button>
+                                    <button class="btn btn-sm btn-success" style="white-space:nowrap;">승인</button>
                                 </form>
                                 <form method="POST" action="{{ url_for('project.reject_project_delete_request', req_id=r.id) }}" class="d-inline" onsubmit="return submitRejectReason(this);">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <input type="hidden" name="reject_reason" value="">
-                                    <button class="btn btn-sm btn-outline-danger">반려</button>
+                                    <button class="btn btn-sm btn-outline-danger" style="white-space:nowrap;">반려</button>
                                 </form>
                             </div>
                             {% endif %}
@@ -349,25 +193,129 @@
         </div>
     </div>
 
-    <!-- 그룹 메뉴 권한 탭 -->
-    <div class="tab-pane fade p-3" id="groupMenusPane" role="tabpanel">
-        <h5 class="mb-2">메뉴 권한 관리</h5>
-        <p class="text-muted small mb-3">부서별 메뉴 접근 권한 및 개인 추가 권한을 관리합니다.</p>
-        <a href="{{ url_for('auth.menu_perms') }}" class="btn btn-primary">
-            메뉴 권한 관리 페이지 열기 →
-        </a>
+    {# ── 공지관리 탭 ── #}
+    <div class="tab-pane fade p-3" id="noticePane" role="tabpanel">
+        {% include 'partials/admin_notices.html' %}
+    </div>
+
+    {# ── 제품카탈로그 탭 ── #}
+    <div class="tab-pane fade p-3" id="catalogPane" role="tabpanel">
+        {% include 'partials/admin_catalog.html' %}
     </div>
 
     {# ── 챗봇 권한 탭 ── #}
     <div class="tab-pane fade p-3" id="chatbotPermsPane" role="tabpanel">
-        <h5 class="mb-2">챗봇 권한 관리</h5>
-        <p class="text-muted small mb-3">사용자별 챗봇 조회 권한 및 고사양 매그니(Channel) 사용 권한을 관리합니다.</p>
-        <a href="{{ url_for('chatbot.admin_page') }}" class="btn btn-primary">
-            챗봇 권한 관리 페이지 열기 →
-        </a>
+        {% include 'partials/admin_chatbot.html' %}
     </div>
 
-</div>
+    {# ── 운영설정 탭 ── #}
+    <div class="tab-pane fade p-3" id="opsPane" role="tabpanel">
+        <h6 class="fw-bold mb-3">운영 설정</h6>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <label class="small fw-bold mb-1">생산 소요일 (기본값)</label>
+                        <p class="text-muted" style="font-size:.75rem;">입고예정 납기위험도 계산에 사용됩니다.<br>납기위험 = 납품기일 - 입고예정일 - 생산소요일</p>
+                        <div class="input-group input-group-sm" style="max-width:200px;">
+                            <input type="number" class="form-control" id="prodLeadDays" value="{{ production_lead_days }}" min="1" max="90">
+                            <span class="input-group-text">일</span>
+                            <button class="btn btn-primary" style="white-space:nowrap;" onclick="saveOps('production_lead_days', document.getElementById('prodLeadDays').value)">저장</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── G2B 계약동기화 탭 ── #}
+    {% if is_superadmin %}
+    <div class="tab-pane fade p-3" id="g2bSyncPane" role="tabpanel">
+        <div class="alert alert-info mb-3">
+            <strong>G2B 조달내역 -> 계약 동기화</strong><br>
+            나라장터 조달내역을 계약관리로 일괄 등록하고, 세금계산서 매칭 + 하자보증을 자동 생성합니다.
+        </div>
+        <div class="card">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3">동기화 내용</h6>
+                <ul class="small mb-3">
+                    <li>G2B 조달내역 (계약번호 기준) -> <strong>계약(contracts)</strong> 자동 생성</li>
+                    <li>매칭된 세금계산서 -> 계약에 연결 + <strong>입금완료</strong> 처리</li>
+                    <li>입금완료 건 -> <strong>하자보증</strong> 자동 생성 (우수/혁신 3년, 일반 1년)</li>
+                    <li>이미 등록된 G2B 번호는 스킵 (중복 방지)</li>
+                </ul>
+                <button type="button" class="btn btn-primary btn-sm" style="white-space:nowrap;" id="btnG2bSync" onclick="runG2bSync()">
+                    G2B -> 계약 동기화 실행
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm ms-2" style="white-space:nowrap;" onclick="runRematch()">
+                    미매칭 세금계산서 재매칭
+                </button>
+                <div id="g2bSyncResult" class="mt-3" style="display:none"></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── 프로젝트 초기화 탭 ── #}
+    {% if is_superadmin %}
+    <div class="tab-pane fade p-3" id="resetPane" role="tabpanel">
+        <div class="alert alert-danger mb-3">
+            <strong>프로젝트 초기화</strong> -- 모든 프로젝트 및 연관 데이터를 삭제합니다.<br>
+            품목(Items), 거래처(Vendors), BOM, 사용자, 조달내역(G2B) 등 마스터 데이터는 유지됩니다.
+        </div>
+        <div class="card border-danger">
+            <div class="card-body">
+                <h6 class="fw-bold text-danger mb-3">삭제 대상</h6>
+                <div class="row g-2 mb-3" style="font-size:.85rem;">
+                    <div class="col-md-4">
+                        <ul class="mb-0">
+                            <li>프로젝트 (projects)</li>
+                            <li>계약 (contracts)</li>
+                            <li>계약품목 (contract_items)</li>
+                            <li>납품 (deliveries)</li>
+                            <li>영업 (sales_activities)</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-4">
+                        <ul class="mb-0">
+                            <li>자재발주 (material_orders)</li>
+                            <li>생산공정 (production_processes)</li>
+                            <li>생산일지 (production_daily_logs)</li>
+                            <li>히스토리 (history_logs)</li>
+                            <li>연락처 (contacts)</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-4">
+                        <ul class="mb-0">
+                            <li>하자/AS (warranties, warranty_cases)</li>
+                            <li>도면 (drawings)</li>
+                            <li>현장사진 (project_photos)</li>
+                            <li>우선순위 (priority_overrides)</li>
+                            <li>세금계산서 프로젝트 연결 해제</li>
+                        </ul>
+                    </div>
+                </div>
+                <h6 class="fw-bold text-success mb-2">유지 대상</h6>
+                <p class="small text-muted mb-3">품목(Items), 거래처(Vendors), BOM, 사용자, 조달내역(G2B), 제품카탈로그, 입고이력(iCUBE), 세금계산서, 재고(Stock)</p>
+                <hr>
+                <form method="POST" action="{{ url_for('auth.reset_projects') }}" id="resetForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-danger">확인 문구 입력</label>
+                        <input type="text" name="confirm_text" class="form-control form-control-sm" style="max-width:300px;"
+                               placeholder="프로젝트초기화" autocomplete="off">
+                        <div class="form-text">"프로젝트초기화" 를 정확히 입력해야 실행됩니다.</div>
+                    </div>
+                    <button type="submit" class="btn btn-danger fw-bold" style="white-space:nowrap;"
+                            onclick="return confirm('정말로 모든 프로젝트 데이터를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.');">
+                        프로젝트 전체 초기화
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}{# admin only reset pane #}
+</div>{# /tab-content #}
 
 <!-- 비밀번호 초기화 모달 -->
 <div class="modal fade" id="resetPwModal" tabindex="-1">
@@ -433,122 +381,11 @@
     </div>
 </div>
 
-{# ── 운영설정 탭 ── #}
-<div class="tab-pane fade p-3" id="opsPane" role="tabpanel">
-    <h6 class="fw-bold mb-3">운영 설정</h6>
-    <div class="row g-3">
-        <div class="col-md-4">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body">
-                    <label class="small fw-bold mb-1">생산 소요일 (기본값)</label>
-                    <p class="text-muted" style="font-size:.75rem;">입고예정 납기위험도 계산에 사용됩니다.<br>납기위험 = 납품기일 - 입고예정일 - 생산소요일</p>
-                    <div class="input-group input-group-sm" style="max-width:200px;">
-                        <input type="number" class="form-control" id="prodLeadDays" value="{{ production_lead_days }}" min="1" max="90">
-                        <span class="input-group-text">일</span>
-                        <button class="btn btn-primary" onclick="saveOps('production_lead_days', document.getElementById('prodLeadDays').value)">저장</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-{# ── G2B 계약동기화 탭 ── #}
-{% if is_superadmin %}
-<div class="tab-pane fade p-3" id="g2bSyncPane" role="tabpanel">
-    <div class="alert alert-info mb-3">
-        <strong>G2B 조달내역 → 계약 동기화</strong><br>
-        나라장터 조달내역을 계약관리로 일괄 등록하고, 세금계산서 매칭 + 하자보증을 자동 생성합니다.
-    </div>
-    <div class="card">
-        <div class="card-body">
-            <h6 class="fw-bold mb-3">동기화 내용</h6>
-            <ul class="small mb-3">
-                <li>G2B 조달내역 (계약번호 기준) → <strong>계약(contracts)</strong> 자동 생성</li>
-                <li>매칭된 세금계산서 → 계약에 연결 + <strong>입금완료</strong> 처리</li>
-                <li>입금완료 건 → <strong>하자보증</strong> 자동 생성 (우수/혁신 3년, 일반 1년)</li>
-                <li>이미 등록된 G2B 번호는 스킵 (중복 방지)</li>
-            </ul>
-            <button type="button" class="btn btn-primary btn-sm" id="btnG2bSync" onclick="runG2bSync()">
-                G2B → 계약 동기화 실행
-            </button>
-            <button type="button" class="btn btn-outline-primary btn-sm ms-2" onclick="runRematch()">
-                미매칭 세금계산서 재매칭
-            </button>
-            <div id="g2bSyncResult" class="mt-3" style="display:none"></div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-{# ── 프로젝트 초기화 탭 ── #}
-{% if is_superadmin %}
-<div class="tab-pane fade p-3" id="resetPane" role="tabpanel">
-    <div class="alert alert-danger mb-3">
-        <strong>프로젝트 초기화</strong> — 모든 프로젝트 및 연관 데이터를 삭제합니다.<br>
-        품목(Items), 거래처(Vendors), BOM, 사용자, 조달내역(G2B) 등 마스터 데이터는 유지됩니다.
-    </div>
-    <div class="card border-danger">
-        <div class="card-body">
-            <h6 class="fw-bold text-danger mb-3">삭제 대상</h6>
-            <div class="row g-2 mb-3" style="font-size:.85rem;">
-                <div class="col-md-4">
-                    <ul class="mb-0">
-                        <li>프로젝트 (projects)</li>
-                        <li>계약 (contracts)</li>
-                        <li>계약품목 (contract_items)</li>
-                        <li>납품 (deliveries)</li>
-                        <li>영업 (sales_activities)</li>
-                    </ul>
-                </div>
-                <div class="col-md-4">
-                    <ul class="mb-0">
-                        <li>자재발주 (material_orders)</li>
-                        <li>생산공정 (production_processes)</li>
-                        <li>생산일지 (production_daily_logs)</li>
-                        <li>히스토리 (history_logs)</li>
-                        <li>연락처 (contacts)</li>
-                    </ul>
-                </div>
-                <div class="col-md-4">
-                    <ul class="mb-0">
-                        <li>하자/AS (warranties, warranty_cases)</li>
-                        <li>도면 (drawings)</li>
-                        <li>현장사진 (project_photos)</li>
-                        <li>우선순위 (priority_overrides)</li>
-                        <li>세금계산서 프로젝트 연결 해제</li>
-                    </ul>
-                </div>
-            </div>
-            <h6 class="fw-bold text-success mb-2">유지 대상</h6>
-            <p class="small text-muted mb-3">품목(Items), 거래처(Vendors), BOM, 사용자, 조달내역(G2B), 제품카탈로그, 입고이력(iCUBE), 세금계산서, 재고(Stock)</p>
-            <hr>
-            <form method="POST" action="{{ url_for('auth.reset_projects') }}" id="resetForm">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="mb-3">
-                    <label class="form-label fw-bold text-danger">확인 문구 입력</label>
-                    <input type="text" name="confirm_text" class="form-control form-control-sm" style="max-width:300px;"
-                           placeholder="프로젝트초기화" autocomplete="off">
-                    <div class="form-text">"프로젝트초기화" 를 정확히 입력해야 실행됩니다.</div>
-                </div>
-                <button type="submit" class="btn btn-danger fw-bold"
-                        onclick="return confirm('정말로 모든 프로젝트 데이터를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.');">
-                    프로젝트 전체 초기화
-                </button>
-            </form>
-        </div>
-    </div>
-</div>
-{% endif %}{# admin only reset pane #}
-</div>{# /tab-content #}
-
 {% endblock %}
 
 {% block scripts %}
 <script>
 window.ADMIN_RESET_PW_URL = '{{ url_for("auth.reset_password", user_id=0) }}';
-document.getElementById('userSearchInput').addEventListener('input', filterUsers);
-document.getElementById('groupFilter').addEventListener('change', filterUsers);
 
 function runRematch() {
     if (!confirm('미매칭 세금계산서를 계약과 재매칭합니다. 진행하시겠습니까?')) return;
@@ -583,7 +420,7 @@ function runG2bSync() {
     .then(r => r.json())
     .then(data => {
         btn.disabled = false;
-        btn.textContent = 'G2B → 계약 동기화 실행';
+        btn.textContent = 'G2B -> 계약 동기화 실행';
         if (data.ok) {
             div.innerHTML = '<div class="alert alert-success small mb-0">' + data.message + '</div>';
         } else {
@@ -592,7 +429,7 @@ function runG2bSync() {
     })
     .catch(e => {
         btn.disabled = false;
-        btn.textContent = 'G2B → 계약 동기화 실행';
+        btn.textContent = 'G2B -> 계약 동기화 실행';
         div.innerHTML = '<div class="alert alert-danger small mb-0">네트워크 오류: ' + e.message + '</div>';
     });
 }

@@ -97,21 +97,50 @@ async function sendChatPanel() {
     thinking.style.color = '#999';
     try {
         var e = _PANEL_ENGINES[_panelEngine];
-        var res = await fetch(e.sendUrl, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text: text}) });
+        var csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        var headers = {'Content-Type': 'application/json'};
+        if (csrf) headers['X-CSRFToken'] = csrf;
+        var res = await fetch(e.sendUrl, { method: 'POST', headers: headers, body: JSON.stringify({text: text}) });
         var data = await res.json();
-        thinking.remove();
         if (res.status === 502 && _panelEngine === 'claude') {
+            thinking.remove();
             appendChatMsg('Claude Channel 서버에 연결할 수 없습니다.', 'bot');
+        } else if (_panelEngine === 'claude' && data.request_id) {
+            thinking.textContent = 'Claude가 처리 중...';
+            var reply = await _pollPanelReply(data.request_id, thinking, csrf);
+            thinking.remove();
+            if (reply) appendChatMsg(reply, 'bot');
         } else {
-            appendChatMsg(data.reply || data.error || '오류', 'bot');
+            thinking.remove();
+            appendChatMsg(data.reply || data.error || '응답 없음', 'bot');
         }
-    } catch {
+    } catch(err) {
         thinking.remove();
-        appendChatMsg('오류가 발생했습니다.', 'bot');
+        appendChatMsg('네트워크 오류: ' + err.message, 'bot');
     } finally {
         _chatPanelBusy = false;
         input.focus();
     }
+}
+
+async function _pollPanelReply(requestId, thinkingEl, csrf) {
+    for (var i = 0; i < 20; i++) {
+        try {
+            var headers = {'Content-Type': 'application/json'};
+            if (csrf) headers['X-CSRFToken'] = csrf;
+            var res = await fetch('/channel-chat/poll', {
+                method: 'POST', headers: headers,
+                body: JSON.stringify({request_id: requestId})
+            });
+            if (!res.ok && res.status !== 404) { await new Promise(function(r){setTimeout(r,2000)}); continue; }
+            var data = await res.json();
+            if (data.status === 'done') return data.reply;
+            if (data.status === 'timeout') return data.reply;
+            if (data.status === 'not_found') return '요청을 찾을 수 없습니다.';
+            if (data.elapsed != null) thinkingEl.textContent = 'Claude가 처리 중... (' + data.elapsed + '초)';
+        } catch(e) { await new Promise(function(r){setTimeout(r,2000)}); }
+    }
+    return '응답 시간이 초과되었습니다.';
 }
 
 async function clearChatPanel() {

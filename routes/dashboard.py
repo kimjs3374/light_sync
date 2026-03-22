@@ -7,6 +7,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 
 from modules.db_context import get_db
+from modules.contract_filters import active_contract_filter
 from modules.utils import safe_int
 from modules.models import (
     Project, User, HistoryLog, Contract, ContractItem,
@@ -90,11 +91,13 @@ def dashboard_view():
         else:
             next_month_start = month_start.replace(month=month_start.month + 1, day=1)
 
-        contracted_count = db.query(Project).filter(Project.is_contracted.is_(True)).count()
+        contracted_count = db.query(Project).filter(
+            Project.is_contracted.is_(True), active_contract_filter()
+        ).count()
 
         contracted_projects = (
             db.query(Project)
-            .filter(Project.is_contracted.is_(True))
+            .filter(Project.is_contracted.is_(True), active_contract_filter())
             .options(
                 joinedload(Project.materials),
                 joinedload(Project.priority_override),
@@ -119,7 +122,7 @@ def dashboard_view():
         deliveries = (
             db.query(Delivery)
             .join(Project, Project.id == Delivery.project_id)
-            .filter(Project.is_contracted.is_(True))
+            .filter(Project.is_contracted.is_(True), active_contract_filter())
             .options(
                 joinedload(Delivery.project),
                 joinedload(Delivery.contract),

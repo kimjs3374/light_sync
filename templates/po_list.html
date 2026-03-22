@@ -105,7 +105,7 @@
                         <th style="width:140px" class="po-col-contract">계약</th>
                         <th>거래처</th>
                         <th style="width:75px">상태</th>
-                        <th style="width:100px" class="text-end">합계</th>
+                        {% if not hide_financial %}<th style="width:100px" class="text-end">합계</th>{% endif %}
                         <th style="width:55px">발송</th>
                         <th style="width:50px"></th>
                     </tr>
@@ -136,7 +136,7 @@
                                 <span class="badge-status" style="background:#f1f5f9;color:#64748b;">{{ po.status }}</span>
                             {% endif %}
                         </td>
-                        <td class="text-end fw-bold" style="color:#0f172a;">{{ fmt_money((po.total_amount or 0) + (po.tax_amount or 0)) }}</td>
+                        {% if not hide_financial %}<td class="text-end fw-bold" style="color:#0f172a;">{{ fmt_money((po.total_amount or 0) + (po.tax_amount or 0)) }}</td>{% endif %}
                         <td>
                             {% if po.email_sent_at %}
                                 <small class="text-success fw-bold">{{ po.email_sent_at.strftime('%m/%d') }}</small>
@@ -151,7 +151,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr class="po-empty-row"><td colspan="8" class="text-center text-muted py-4">발주서가 없습니다.</td></tr>
+                    <tr class="po-empty-row"><td colspan="{% if hide_financial %}7{% else %}8{% endif %}" class="text-center text-muted py-4">발주서가 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -170,14 +170,14 @@
         <div class="table-responsive">
             <table class="table table-sm mb-0 po-table" style="table-layout:fixed;">
                 <colgroup>
-                    <col style="width:120px"><col style="width:95px"><col><col style="width:120px"><col>
+                    <col style="width:120px"><col style="width:95px"><col>{% if not hide_financial %}<col style="width:120px">{% endif %}<col>
                 </colgroup>
                 <thead>
                     <tr style="background:#f8fafc;">
                         <th class="ps-3">발주번호</th>
                         <th>발주일</th>
                         <th>거래처</th>
-                        <th class="text-end">합계</th>
+                        {% if not hide_financial %}<th class="text-end">합계</th>{% endif %}
                         <th>비고</th>
                     </tr>
                 </thead>
@@ -187,7 +187,7 @@
                         <td class="ps-3"><code class="po-no-link">{{ h.icube_cls_nb }}</code></td>
                         <td>{{ h.order_date.strftime('%Y-%m-%d') if h.order_date else '-' }}</td>
                         <td><strong>{{ h.vendor_name or '-' }}</strong></td>
-                        <td class="text-end fw-bold">{{ fmt_money(h.total_amount) }}</td>
+                        {% if not hide_financial %}<td class="text-end fw-bold">{{ fmt_money(h.total_amount) }}</td>{% endif %}
                         <td class="text-muted small" style="overflow:hidden;text-overflow:ellipsis;">{{ h.remark or '' }}</td>
                     </tr>
                     {% endfor %}
@@ -256,10 +256,10 @@
                 <div class="table-responsive">
                     <table class="table table-sm" style="table-layout:fixed;">
                         <colgroup>
-                            <col style="width:36px"><col><col style="width:70px"><col style="width:40px"><col style="width:90px"><col style="width:100px"><col>
+                            <col style="width:36px"><col><col style="width:70px"><col style="width:40px">{% if not hide_financial %}<col style="width:90px"><col style="width:100px">{% endif %}<col>
                         </colgroup>
                         <thead class="table-light">
-                            <tr><th>No</th><th>품명/규격</th><th class="text-end">수량</th><th>단위</th><th class="text-end">단가</th><th class="text-end">금액</th><th>비고</th></tr>
+                            <tr><th>No</th><th>품명/규격</th><th class="text-end">수량</th><th>단위</th>{% if not hide_financial %}<th class="text-end">단가</th><th class="text-end">금액</th>{% endif %}<th>비고</th></tr>
                         </thead>
                         <tbody id="hd_items"></tbody>
                     </table>
@@ -298,11 +298,17 @@ function showHistoryDetail(id) {
                     '<td>' + nameSpec + '</td>' +
                     '<td class="text-end">' + (item.qty || 0).toLocaleString() + '</td>' +
                     '<td>' + (item.unit || '') + '</td>' +
+                    {% if not hide_financial %}
                     '<td class="text-end">' + (item.unit_price || 0).toLocaleString() + '</td>' +
                     '<td class="text-end fw-bold">' + amt.toLocaleString() + '</td>' +
+                    {% endif %}
                     '<td class="text-muted small">' + (item.remark || '') + '</td></tr>';
             });
+            {% if not hide_financial %}
             document.getElementById('hd_total').textContent = '합계: ' + total.toLocaleString() + '원';
+            {% else %}
+            document.getElementById('hd_total').textContent = '';
+            {% endif %}
             document.getElementById('historyModalTitle').textContent = d.po_nb + ' 발주 상세';
             new bootstrap.Modal(document.getElementById('historyDetailModal')).show();
         })
@@ -313,7 +319,7 @@ function showHistoryDetail(id) {
 <script>
 /* ═══ 거래처 그룹핑 / 날짜순 토글 ═══ */
 (function(){
-    var COL_COUNT = 8;
+    var COL_COUNT = {{ 7 if hide_financial else 8 }};
     var STORAGE_KEY = 'po_list_group_mode';
     var tbody = document.querySelector('.po-table tbody');
     if (!tbody) return;
@@ -344,7 +350,11 @@ function showHistoryDetail(id) {
         tr.setAttribute('data-group-header', '');
         tr.dataset.collapsed = 'false';
         tr.style.cssText = 'cursor:pointer;user-select:none;';
+        {% if hide_financial %}
+        var fmt = '';
+        {% else %}
         var fmt = total > 0 ? total.toLocaleString() + '원' : '-';
+        {% endif %}
         tr.innerHTML = '<td colspan="' + COL_COUNT + '" style="'
             + 'background:linear-gradient(135deg,#f1f5f9,#e8f0fe);'
             + 'border-top:2px solid var(--mg-primary);'

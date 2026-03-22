@@ -304,11 +304,14 @@ def tax_invoice_list():
         unpaid_sort = request.args.get('sort', 'due_asc')
         unpaid_due = request.args.get('due', 'all')
         if match_filter in ('unmatched', 'partial'):
-            target_status = '부분입금' if match_filter == 'partial' else '미청구'
+            if match_filter == 'partial':
+                target_statuses = ['부분입금']
+            else:
+                target_statuses = ['미청구']
             unpaid_q = db.query(Contract).options(
                 joinedload(Contract.project),
             ).filter(
-                Contract.payment_status == target_status,
+                Contract.payment_status.in_(target_statuses),
             )
             _today = datetime.date.today()
             if unpaid_due == 'overdue':
@@ -740,16 +743,21 @@ def exclude_contract():
             return jsonify({'ok': False, 'error': '계약 없음'}), 404
 
         msg_name = (contract.contract_name or '')[:40]
+        old_status = contract.payment_status
 
-        # 예외처리 메모 기록 (payment_status 변경 없이 유지)
+        # payment_status를 '예외'로 변경 → 관리 화면에서 숨김
+        # 세금계산서 탭에서는 '예외' 상태로 별도 표시
+        contract.payment_status = '예외'
+
+        # 메모 기록
         if contract.project_id:
             proj = db.query(Project).get(contract.project_id)
             if proj:
-                proj.site_memo = (proj.site_memo or '') + f'\n[예외처리] {reason}' + (f' — {note}' if note else '')
+                proj.site_memo = (proj.site_memo or '') + f'\n[예외처리] {reason}: {old_status}→예외' + (f' — {note}' if note else '')
 
         db.commit()
 
-    return jsonify({'ok': True, 'message': f'{msg_name} → {reason} 예외처리 완료 (세금계산서 탭에서 매칭 가능)'})
+    return jsonify({'ok': True, 'message': f'{msg_name} → {reason} 예외처리 완료'})
 
 
 # ===================================================================
