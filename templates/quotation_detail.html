@@ -115,24 +115,29 @@
             <tr><th>NO</th><th>품명</th><th>규격</th><th>단위</th><th>수량</th><th>단 가</th><th>금액</th><th>비고</th></tr>
         </thead>
         <tbody>
-            {% for item in q.items %}
+            {% for i in range(9) %}
+            {% if i < q.items|length %}
+            {% set item = q.items[i] %}
             <tr>
-                <td class="td-no">{{ loop.index }}</td>
-                <td class="td-name">{{ item.item_name }}</td>
-                <td class="td-spec">{{ item.item_spec or '' }}</td>
+                <td class="td-no">{{ i + 1 }}</td>
+                <td class="td-name"><div class="cell-wrap">{{ item.item_name.replace('\\', '\n') }}</div></td>
+                <td class="td-spec"><div class="cell-wrap">{{ (item.item_spec or '').replace('\\', '\n') }}</div></td>
                 <td class="td-unit">{{ item.unit or '' }}</td>
                 <td class="td-qty">{{ '{:,.0f}'.format(item.quantity) }}</td>
                 <td class="td-price">{{ '{:,.0f}'.format(item.unit_price) }}</td>
                 <td class="td-amount">{{ '{:,.0f}'.format(item.amount) }}</td>
-                <td class="td-note">{{ item.note or '' }}</td>
+                <td class="td-note"><div class="cell-wrap">{{ (item.note or '').replace('\\', '\n') }}</div></td>
             </tr>
+            {% else %}
+            <tr class="qt-empty-row"><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+            {% endif %}
             {% endfor %}
         </tbody>
     </table>
 
     {# ─── 합 계 ─── #}
     <div class="qt-total">
-        <div class="qt-total-label">합 &nbsp; 계</div>
+        <div class="qt-total-label">합 &nbsp; 계{% if q.tax_included %} <span class="qt-tax-inc">(부가세포함)</span>{% endif %}</div>
         <div class="qt-total-val">{{ fmt_money(q.total_amount) }}</div>
     </div>
 
@@ -161,16 +166,18 @@
             <div class="qt-notes-line">-.견적 외 추가비용 별도</div>
             <div class="qt-notes-line">-.납품은 현장 준공일정에 따름</div>
             {% if q.note %}
-            {% for line in q.note.split('\n') %}
+            {% for line in q.note.replace('\\', '\n').split('\n') %}
             <div class="qt-notes-line">-.{{ line }}</div>
             {% endfor %}
             {% endif %}
         </div>
         <div class="qt-stamp-area">
             <div class="qt-stamp-text">상기 가격은 1개월간 유효합니다.</div>
-            <div class="qt-stamp-img"><img src="{{ url_for('static', filename='images/company/stamp.png') }}" alt="직인"></div>
-            <div class="qt-stamp-company">매그나텍 주식회사</div>
-            <div class="qt-stamp-ceo">박선후 / 대표이사</div>
+            <div class="qt-stamp-company">주식회사 매그나텍</div>
+            <div class="qt-stamp-ceo-wrap">
+                <img class="qt-stamp-overlay" src="{{ url_for('static', filename='images/company/stamp.png') }}" alt="직인">
+                <div class="qt-stamp-ceo">대표이사 / 박선후</div>
+            </div>
         </div>
     </div>
 

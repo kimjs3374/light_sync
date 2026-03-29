@@ -1,0 +1,252 @@
+{% extends 'base.html' %}
+{% set active_menu_key = 'inventory' %}
+
+{% block content %}
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Stock Adjustment</div>
+            <h2>재고 조정</h2>
+            <div class="hero-sub">시료제작 / 재고실사 / 기타 사유</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('inventory.inventory_dashboard') }}" class="btn btn-outline-light btn-sm" style="white-space:nowrap;">재고현황</a>
+            <a href="{{ url_for('inventory.consume_form') }}" class="btn btn-outline-light btn-sm" style="white-space:nowrap;">소진등록</a>
+        </div>
+    </div>
+</div>
+
+<style>
+.autocomplete-dropdown {
+    position: absolute; z-index: 1050; background: #fff;
+    border: 1px solid #e2e8f0; border-radius: .5rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,.1);
+    max-height: 250px; overflow-y: auto; width: 100%;
+}
+.autocomplete-dropdown .item {
+    padding: .4rem .8rem; cursor: pointer; font-size: .82rem;
+}
+.autocomplete-dropdown .item:hover { background: #f1f5f9; }
+</style>
+
+{# ═══ 1. 조정 입력 폼 ═══ #}
+<form method="POST" action="{{ url_for('inventory.adjust_execute') }}" id="adjustForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card border-0 shadow-sm mb-3 mg-fade" style="animation-delay:.05s">
+        <div class="card-header bg-white py-2"><strong>조정 정보</strong></div>
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">날짜 <span class="text-danger">*</span></label>
+                    <input type="date" name="tx_date" class="form-control form-control-sm" value="{{ today }}" required>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3 mg-fade" style="animation-delay:.1s">
+        <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+            <strong>조정 품목</strong>
+            <button type="button" class="btn btn-outline-primary btn-sm" style="white-space:nowrap;" id="addRowBtn">+ 행 추가</button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0 align-middle" style="white-space:nowrap; font-size:.82rem;">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="min-width:200px;">품목검색</th>
+                            <th style="width:10%;">품번</th>
+                            <th style="width:16%;">품명</th>
+                            <th class="text-end" style="width:8%;">현재고</th>
+                            <th style="width:120px;">조정수량</th>
+                            <th style="width:150px;">사유</th>
+                            <th class="text-center" style="width:50px;">삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adjustTbody">
+                        <tr>
+                            <td style="position:relative;min-width:200px;">
+                                <input type="text" class="form-control form-control-sm item-search" placeholder="품목 검색..." autocomplete="off">
+                                <input type="hidden" name="item_id[]" value="">
+                                <div class="autocomplete-dropdown" style="display:none;"></div>
+                            </td>
+                            <td class="item-code text-muted" style="font-size:.8rem;">-</td>
+                            <td class="item-name" style="font-size:.8rem;">-</td>
+                            <td class="stock-qty text-end">-</td>
+                            <td style="width:120px;"><input type="number" name="adjust_qty[]" class="form-control form-control-sm text-end" step="any" placeholder="±수량"></td>
+                            <td style="width:150px;">
+                                <select name="reason[]" class="form-select form-select-sm">
+                                    <option value="시료제작">시료제작</option>
+                                    <option value="실사보정">실사보정</option>
+                                    <option value="반품">반품</option>
+                                    <option value="파손">파손</option>
+                                    <option value="기타">기타</option>
+                                </select>
+                            </td>
+                            <td class="text-center"><button type="button" class="btn btn-sm text-danger remove-row-btn" title="삭제">&times;</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer bg-white py-2 text-end">
+            <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;" id="submitBtn">조정 등록</button>
+        </div>
+    </div>
+</form>
+
+{# ═══ 2. 최근 조정 이력 ═══ #}
+<div class="card border-0 shadow-sm mb-3 mg-fade" style="animation-delay:.15s">
+    <div class="card-header bg-white py-2">
+        <strong>최근 조정 이력</strong>
+        <small class="text-muted ms-2">최근 20건</small>
+    </div>
+    <div class="card-body p-0">
+        {% if recent_adjustments %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" style="white-space:nowrap; font-size:.82rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:12%;">일시</th>
+                        <th style="width:25%;">품명</th>
+                        <th style="width:12%;">유형</th>
+                        <th class="text-end" style="width:10%;">수량</th>
+                        <th style="width:25%;">비고</th>
+                        <th style="width:12%;">담당자</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in recent_adjustments %}
+                    <tr>
+                        <td>{{ m.created_at.strftime('%m/%d %H:%M') }}</td>
+                        <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ items_map[m.item_id].item_name if m.item_id in items_map else '-' }}</td>
+                        <td><span class="badge {{ 'bg-success' if 'IN' in m.movement_type else 'bg-danger' }}" style="white-space:nowrap;">{{ movement_labels.get(m.movement_type, m.movement_type) }}</span></td>
+                        <td class="text-end {{ 'text-success' if m.quantity > 0 else 'text-danger' }}">{{ '%+g'|format(m.quantity) }}</td>
+                        <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ m.note or '-' }}</td>
+                        <td style="white-space:nowrap;">{{ m.created_by }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-3">조정 이력이 없습니다.</div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+(function() {
+    // 행 템플릿
+    var ROW_TEMPLATE =
+        '<tr>' +
+        '<td style="position:relative;min-width:200px;">' +
+            '<input type="text" class="form-control form-control-sm item-search" placeholder="품목 검색..." autocomplete="off">' +
+            '<input type="hidden" name="item_id[]" value="">' +
+            '<div class="autocomplete-dropdown" style="display:none;"></div>' +
+        '</td>' +
+        '<td class="item-code text-muted" style="font-size:.8rem;">-</td>' +
+        '<td class="item-name" style="font-size:.8rem;">-</td>' +
+        '<td class="stock-qty text-end">-</td>' +
+        '<td style="width:120px;"><input type="number" name="adjust_qty[]" class="form-control form-control-sm text-end" step="any" placeholder="\u00b1\uc218\ub7c9"></td>' +
+        '<td style="width:150px;">' +
+            '<select name="reason[]" class="form-select form-select-sm">' +
+                '<option value="\uc2dc\ub8cc\uc81c\uc791">\uc2dc\ub8cc\uc81c\uc791</option>' +
+                '<option value="\uc2e4\uc0ac\ubcf4\uc815">\uc2e4\uc0ac\ubcf4\uc815</option>' +
+                '<option value="\ubc18\ud488">\ubc18\ud488</option>' +
+                '<option value="\ud30c\uc190">\ud30c\uc190</option>' +
+                '<option value="\uae30\ud0c0">\uae30\ud0c0</option>' +
+            '</select>' +
+        '</td>' +
+        '<td class="text-center"><button type="button" class="btn btn-sm text-danger remove-row-btn" title="\uc0ad\uc81c">&times;</button></td>' +
+        '</tr>';
+
+    // 행 추가
+    document.getElementById('addRowBtn').addEventListener('click', function() {
+        document.getElementById('adjustTbody').insertAdjacentHTML('beforeend', ROW_TEMPLATE);
+        var lastRow = document.getElementById('adjustTbody').lastElementChild;
+        setupAutocomplete(lastRow.querySelector('.item-search'));
+    });
+
+    // 행 삭제 (이벤트 위임)
+    document.getElementById('adjustTbody').addEventListener('click', function(e) {
+        if (e.target.closest('.remove-row-btn')) {
+            var tbody = document.getElementById('adjustTbody');
+            if (tbody.children.length > 1) {
+                e.target.closest('tr').remove();
+            } else {
+                alert('최소 1행은 유지해야 합니다.');
+            }
+        }
+    });
+
+    // 자동완성 설정
+    function setupAutocomplete(input) {
+        var timeout;
+        var dropdown = input.parentElement.querySelector('.autocomplete-dropdown');
+
+        input.addEventListener('input', function() {
+            clearTimeout(timeout);
+            var q = this.value.trim();
+            if (q.length < 1) { dropdown.style.display = 'none'; return; }
+            var self = this;
+            timeout = setTimeout(async function() {
+                try {
+                    var resp = await fetch('/api/inventory/item-search?q=' + encodeURIComponent(q));
+                    var data = await resp.json();
+                    dropdown.innerHTML = data.map(function(item) {
+                        return '<div class="item" data-id="' + item.id + '" data-code="' + (item.item_code || '-') + '" ' +
+                               'data-name="' + item.item_name + '" data-stock="' + item.stock_qty + '">' +
+                               '<b>' + (item.item_code || '-') + '</b> ' + item.item_name +
+                               ' <small class="text-muted">(재고: ' + item.stock_qty + ')</small>' +
+                               '</div>';
+                    }).join('');
+                    dropdown.style.display = data.length ? 'block' : 'none';
+                } catch (e) {
+                    console.error(e);
+                }
+            }, 300);
+        });
+
+        dropdown.addEventListener('click', function(e) {
+            var item = e.target.closest('.item');
+            if (!item) return;
+            var row = input.closest('tr');
+            row.querySelector('input[name="item_id[]"]').value = item.dataset.id;
+            row.querySelector('.item-code').textContent = item.dataset.code;
+            row.querySelector('.item-name').textContent = item.dataset.name;
+            row.querySelector('.stock-qty').textContent = item.dataset.stock;
+            input.value = item.dataset.name;
+            dropdown.style.display = 'none';
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!input.parentElement.contains(e.target)) dropdown.style.display = 'none';
+        });
+    }
+
+    // 초기 행 자동완성 설정
+    document.querySelectorAll('.item-search').forEach(setupAutocomplete);
+
+    // 폼 제출 전 유효성 검사
+    document.getElementById('adjustForm').addEventListener('submit', function(e) {
+        var rows = document.getElementById('adjustTbody').querySelectorAll('tr');
+        var valid = false;
+        for (var i = 0; i < rows.length; i++) {
+            var itemId = rows[i].querySelector('input[name="item_id[]"]').value;
+            var qty = rows[i].querySelector('input[name="adjust_qty[]"]').value;
+            if (itemId && qty && parseFloat(qty) !== 0) {
+                valid = true;
+            }
+        }
+        if (!valid) {
+            e.preventDefault();
+            alert('품목을 선택하고 조정수량을 입력해주세요.');
+        }
+    });
+})();
+</script>
+
+{% endblock %}

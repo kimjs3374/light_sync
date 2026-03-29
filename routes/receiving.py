@@ -178,7 +178,12 @@ def receiving_list():
                 if not spec and note:
                     spec = note
                     note = ''
+                # 품번: ReceivingItem 우선, 없으면 PO 품목에서
+                item_cd = ri.item_cd or ''
+                if not item_cd and ri.po_item:
+                    item_cd = ri.po_item.item_code or ''
                 row = {
+                    'item_cd': item_cd,
                     'item_name': ri.item_name or '',
                     'spec': spec,
                     'qty': ri.received_qty or 0,
@@ -400,6 +405,7 @@ def receiving_create():
             db.flush()
 
             # 품목 추가
+            item_cds = request.form.getlist('item_cd[]')
             item_names = request.form.getlist('item_name[]')
             item_specs = request.form.getlist('item_spec[]')
             item_qtys = request.form.getlist('received_qty[]')
@@ -414,6 +420,7 @@ def receiving_create():
                 if not name:
                     continue
 
+                item_cd = (item_cds[i] if i < len(item_cds) else '').strip()
                 spec = (item_specs[i] if i < len(item_specs) else '').strip()
                 qty = float(item_qtys[i]) if i < len(item_qtys) and item_qtys[i] else 0
                 price = float(item_prices[i]) if i < len(item_prices) and item_prices[i] else 0
@@ -422,9 +429,16 @@ def receiving_create():
                 linked_po_item_id = safe_int(po_item_ids[i] if i < len(po_item_ids) else '', 0) or None
                 amount = qty * price
 
+                # 발주 품목 연결 시 품번 자동 가져오기
+                if linked_po_item_id and not item_cd:
+                    po_item = db.query(PurchaseOrderItem).get(linked_po_item_id)
+                    if po_item:
+                        item_cd = po_item.item_code or ''
+
                 ri = ReceivingItem(
                     receiving_id=rcv.id,
                     po_item_id=linked_po_item_id,
+                    item_cd=item_cd or None,
                     item_name=name,
                     item_spec=spec,
                     received_qty=qty,
@@ -455,7 +469,7 @@ def receiving_create():
                     if price > 0:
                         item.last_unit_price = price
                     record_stock_movement(
-                        db, item_id=item.id, movement_type='입고',
+                        db, item_id=item.id, movement_type='IN_RECEIVING',
                         quantity=qty, reference_type='receiving',
                         reference_id=rcv.id, unit_price=price,
                         note=f'직접입고 {rcv.rcv_no}',
@@ -527,6 +541,132 @@ def receiving_detail(rcv_id):
             total_amount=total_amount,
             tax_amount=tax_amount,
             fmt_money=_fmt_money,
+        )
+
+
+# ===================================================================
+# 4. 입고 수정
+# ===================================================================
+@receiving_bp.route('/receiving/<int:rcv_id>/edit', methods=['GET', 'POST'])
+@login_required
+@menu_required('receiving')
+def receiving_edit(rcv_id):
+    with get_db() as db:
+        rcv = db.query(Receiving).options(
+            joinedload(Receiving.items).joinedload(ReceivingItem.po_item),
+            joinedload(Receiving.vendor),
+            joinedload(Receiving.purchase_order).joinedload(PurchaseOrder.items),
+            joinedload(Receiving.purchase_order).joinedload(PurchaseOrder.vendor),
+        ).get(rcv_id)
+        if not rcv:
+            abort(404)
+
+        if request.method == 'POST':
+            vendor_id = safe_int(request.form.get('vendor_id'), 0)
+            rcv_date_str = request.form.get('rcv_date', '')
+            note = (request.form.get('note') or '').strip()
+
+            if not vendor_id:
+                flash('거래처를 선택해주세요.', 'warning')
+                return redirect(url_for('receiving.receiving_edit', rcv_id=rcv_id))
+
+            vendor = db.query(Vendor).get(vendor_id)
+            if not vendor:
+                flash('거래처를 찾을 수 없습니다.', 'danger')
+                return redirect(url_for('receiving.receiving_edit', rcv_id=rcv_id))
+
+            try:
+                rcv.rcv_date = datetime.datetime.strptime(rcv_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+
+            rcv.vendor_id = vendor_id
+            rcv.note = note
+
+            # 기존 품목 삭제 후 재등록
+            for old_item in list(rcv.items):
+                db.delete(old_item)
+            db.flush()
+
+            # 품목 추가
+            item_cds = request.form.getlist('item_cd[]')
+            item_names = request.form.getlist('item_name[]')
+            item_specs = request.form.getlist('item_spec[]')
+            item_qtys = request.form.getlist('received_qty[]')
+            item_prices = request.form.getlist('unit_price[]')
+            item_units = request.form.getlist('unit[]')
+            item_notes = request.form.getlist('item_note[]')
+            po_item_ids = request.form.getlist('po_item_id[]')
+
+            for i in range(len(item_names)):
+                name = (item_names[i] if i < len(item_names) else '').strip()
+                if not name:
+                    continue
+
+                item_cd = (item_cds[i] if i < len(item_cds) else '').strip()
+                spec = (item_specs[i] if i < len(item_specs) else '').strip()
+                qty = float(item_qtys[i]) if i < len(item_qtys) and item_qtys[i] else 0
+                price = float(item_prices[i]) if i < len(item_prices) and item_prices[i] else 0
+                unit = (item_units[i] if i < len(item_units) else '').strip()
+                item_note = (item_notes[i] if i < len(item_notes) else '').strip()
+                linked_po_item_id = safe_int(po_item_ids[i] if i < len(po_item_ids) else '', 0) or None
+                amount = qty * price
+
+                if linked_po_item_id and not item_cd:
+                    po_item = db.query(PurchaseOrderItem).get(linked_po_item_id)
+                    if po_item:
+                        item_cd = po_item.item_code or ''
+
+                ri = ReceivingItem(
+                    receiving_id=rcv.id,
+                    po_item_id=linked_po_item_id,
+                    item_cd=item_cd or None,
+                    item_name=name,
+                    item_spec=spec,
+                    received_qty=qty,
+                    unit=unit,
+                    unit_price=price,
+                    amount=amount,
+                    note=item_note,
+                )
+                db.add(ri)
+
+            # 발주서 상태 재계산
+            if rcv.po_id:
+                _update_po_status_on_receiving(db, rcv.po_id)
+
+            log_activity(db, '입고관리', 'update', f'{rcv.rcv_no} 입고 수정 ({vendor.name})', ref_type='Receiving', ref_id=rcv.id)
+            db.commit()
+
+            flash(f'입고 {rcv.rcv_no}가 수정되었습니다.', 'success')
+            return redirect(url_for('receiving.receiving_detail', rcv_id=rcv.id))
+
+        # GET: 수정 폼
+        po = rcv.purchase_order
+        po_items = []
+        if po:
+            for pi in po.items:
+                already = db.query(func.coalesce(func.sum(ReceivingItem.received_qty), 0)).filter(
+                    ReceivingItem.po_item_id == pi.id,
+                    ReceivingItem.receiving_id != rcv.id,  # 현재 입고건 제외
+                ).scalar() or 0
+                pi._already_received = float(already)
+                pi._remaining = max(0, float(pi.quantity or 0) - float(already))
+                # 현재 입고건에서의 수량
+                current_ri = next((ri for ri in rcv.items if ri.po_item_id == pi.id), None)
+                pi._current_qty = float(current_ri.received_qty) if current_ri else 0
+                pi._current_note = current_ri.note or '' if current_ri else ''
+            po_items = po.items
+
+        # 직접입고 품목 (po_item_id 없는 것들)
+        direct_items = [ri for ri in rcv.items if not ri.po_item_id]
+
+        return render_template(
+            'receiving_edit.html',
+            rcv=rcv,
+            po=po,
+            po_items=po_items,
+            direct_items=direct_items,
         )
 
 
@@ -674,13 +814,36 @@ def api_receiving_history_detail(history_id):
 def api_confirm_expected(poi_id):
     """입고예정 목록에서 입고확인 처리 (PurchaseOrderItem.in_confirmed = True)"""
     import datetime as _dt
-    from modules.history_board import append_history_log
+    from modules.history_board import append_history_log, get_user_display_name
     with get_db() as db:
         poi = db.query(PurchaseOrderItem).get(poi_id)
         if not poi:
             return jsonify({'ok': False, 'error': '품목을 찾을 수 없습니다.'}), 404
         poi.in_confirmed = True
         poi.in_confirmed_at = _dt.datetime.now()
+
+        # 재고 반영: item_id 직접 연결 또는 bom_item → item 연결
+        linked_item = None
+        if poi.item_id:
+            linked_item = db.query(Item).get(poi.item_id)
+        elif poi.bom_item_id:
+            bi = db.query(BomItem).get(poi.bom_item_id)
+            if bi and bi.item_id:
+                linked_item = db.query(Item).get(bi.item_id)
+
+        confirm_qty = poi.quantity or 0
+        if linked_item and confirm_qty > 0:
+            record_stock_movement(
+                db, linked_item.id,
+                movement_type='IN_RECEIVING',
+                quantity=confirm_qty,
+                reference_type='purchase_order_item',
+                reference_id=poi.id,
+                unit_price=poi.unit_price,
+                note=f'입고확인 (발주품목 #{poi.id})',
+            )
+            if poi.unit_price and poi.unit_price > 0:
+                linked_item.last_unit_price = poi.unit_price
 
         # 해당 발주서의 모든 품목이 확인되면 발주서 상태 변경
         po = poi.purchase_order
@@ -703,12 +866,12 @@ def api_confirm_expected(poi_id):
                 append_history_log(
                     db,
                     project_id=project_id,
-                    user_name=session.get('full_name', '시스템'),
-                    content=f"입고확인: {poi.item_name} ({poi.quantity or 0}개)",
+                    user_name=get_user_display_name('시스템'),
+                    content=f"입고확인: {poi.item_name} ({confirm_qty}개) → 재고반영{'✓' if linked_item else '✗(품목미연결)'}",
                     scope='material',
                     kind='system'
                 )
-        log_activity(db, '입고관리', 'confirm', f'{poi.item_name} 입고확인', ref_type='Receiving')
+        log_activity(db, '입고관리', 'confirm', f'{poi.item_name} 입고확인 ({confirm_qty}개)', ref_type='Receiving')
         db.commit()
     return jsonify({'ok': True})
 
@@ -722,7 +885,7 @@ def api_confirm_expected(poi_id):
 def api_update_expected_date(poi_id):
     """입고예정일 인라인 편집 저장"""
     import datetime as _dt
-    from modules.history_board import append_history_log
+    from modules.history_board import append_history_log, get_user_display_name
 
     with get_db() as db:
         poi = db.query(PurchaseOrderItem).get(poi_id)
@@ -754,7 +917,7 @@ def api_update_expected_date(poi_id):
             append_history_log(
                 db,
                 project_id=project_id,
-                user_name=session.get('full_name', '시스템'),
+                user_name=get_user_display_name('시스템'),
                 content=f"입고예정일 변경: {poi.item_name} → {date_str or '미정'}",
                 scope='material',
                 kind='system'

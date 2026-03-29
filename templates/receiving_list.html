@@ -119,8 +119,9 @@
                     <col style="width:90px">
                     <col style="width:80px">
                     <col style="width:100px">
-                    <col style="width:22%">
+                    <col style="width:10%">
                     <col style="width:18%">
+                    <col style="width:15%">
                     <col style="width:45px">
                     <col style="width:32px">
                     {% if not hide_financial %}<col style="width:65px">
@@ -132,6 +133,7 @@
                         <th class="py-2 text-center">입고번호</th>
                         <th class="py-2 text-center">입고일</th>
                         <th class="py-2 text-center">거래처</th>
+                        <th class="py-2 text-center">품번</th>
                         <th class="py-2 text-center">품명</th>
                         <th class="py-2 text-center">규격</th>
                         <th class="py-2 text-center">수량</th>
@@ -154,6 +156,7 @@
                         <td rowspan="{{ rows|length }}" class="align-top vendor-cell" style="border-right:1px solid #e2e8f0;">{{ rcv.vendor_name }}</td>
                         {% endif %}
                         {% if item %}
+                        <td style="overflow:hidden;text-overflow:ellipsis;font-family:var(--mg-mono);font-size:.78rem;" title="{{ item.item_cd or '' }}">{{ item.item_cd or '' }}</td>
                         <td style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_name or '' }}">{{ item.item_name or '' }}</td>
                         <td class="spec-cell" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.spec or '' }}">{{ item.spec or '' }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.qty or 0) }}</td>
@@ -162,12 +165,12 @@
                         <td class="text-end amount-cell">{{ "{:,.0f}".format(item.amount or 0) }}</td>{% endif %}
                         <td class="remark-cell" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.remark or '' }}">{{ item.remark or '' }}</td>
                         {% else %}
-                        <td colspan="{% if hide_financial %}5{% else %}7{% endif %}" class="text-muted">품목 없음</td>
+                        <td colspan="{% if hide_financial %}6{% else %}8{% endif %}" class="text-muted">품목 없음</td>
                         {% endif %}
                     </tr>
                     {% endfor %}
                     {% else %}
-                    <tr><td colspan="{% if hide_financial %}8{% else %}10{% endif %}" class="text-center text-muted py-4">등록된 입고가 없습니다.</td></tr>
+                    <tr><td colspan="{% if hide_financial %}9{% else %}11{% endif %}" class="text-center text-muted py-4">등록된 입고가 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -214,8 +217,9 @@
                     <col style="width:90px">
                     <col style="width:80px">
                     <col style="width:100px">
-                    <col style="width:22%">
+                    <col style="width:10%">
                     <col style="width:18%">
+                    <col style="width:15%">
                     <col style="width:45px">
                     <col style="width:32px">
                     {% if not hide_financial %}<col style="width:65px">
@@ -227,6 +231,7 @@
                         <th class="py-2 text-center">입고번호</th>
                         <th class="py-2 text-center">입고일</th>
                         <th class="py-2 text-center">거래처</th>
+                        <th class="py-2 text-center">품번</th>
                         <th class="py-2 text-center">품명</th>
                         <th class="py-2 text-center">규격</th>
                         <th class="py-2 text-center">수량</th>
@@ -245,7 +250,8 @@
                         <td rowspan="{{ rh.detail_rows|length }}" class="align-top" style="border-right:1px solid #e2e8f0;">{{ rh.receive_date.strftime('%Y-%m-%d') if rh.receive_date else '-' }}</td>
                         <td rowspan="{{ rh.detail_rows|length }}" class="align-top vendor-cell" style="border-right:1px solid #e2e8f0;">{{ rh.vendor_name }}</td>
                         {% endif %}
-                        <td style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_name or item.item_cd or '' }}">{{ item.item_name or item.item_cd or '' }}</td>
+                        <td style="overflow:hidden;text-overflow:ellipsis;font-family:var(--mg-mono);font-size:.78rem;" title="{{ item.item_cd or '' }}">{{ item.item_cd or '' }}</td>
+                        <td style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.item_name or '' }}">{{ item.item_name or '' }}</td>
                         <td class="spec-cell" style="overflow:hidden;text-overflow:ellipsis;" title="{{ item.spec or '' }}">{{ item.spec or '' }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.qty or 0) }}</td>
                         <td class="text-center">{{ item.unit or '' }}</td>
@@ -259,7 +265,7 @@
                         <td>{{ rh.icube_rcv_nb }}</td>
                         <td>{{ rh.receive_date.strftime('%Y-%m-%d') if rh.receive_date else '-' }}</td>
                         <td class="vendor-cell">{{ rh.vendor_name }}</td>
-                        <td colspan="{% if hide_financial %}5{% else %}7{% endif %}" class="text-muted">상세 없음</td>
+                        <td colspan="{% if hide_financial %}6{% else %}8{% endif %}" class="text-muted">상세 없음</td>
                     </tr>
                     {% endif %}
                     {% endfor %}

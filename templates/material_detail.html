@@ -181,7 +181,7 @@
                                         {% for o in order_items %}
                                         {% set bi = o.bom_item %}
                                         {% set linked_item = bi.item if bi and bi.item_id else None %}
-                                        {% set avail = ((linked_item.stock_qty or 0) - (linked_item.reserved_qty or 0))|round(0)|int if linked_item else '-' %}
+                                        {% set avail = ((linked_item.stock_qty or 0) - 0)|round(0)|int if linked_item else '-' %}
                                         <tr>
                                             <td class="text-center">
                                                 <input type="checkbox" class="form-check-input order-check" data-group="order-item-{{ item.id }}" name="selected_order_ids" value="{{ o.id }}" form="bulkApplyForm">
@@ -285,7 +285,7 @@
                                             <td class="small">{{ bi.item_name if bi else '-' }}</td>
                                             <td class="small text-muted" style="max-width:100px;overflow:hidden;text-overflow:ellipsis;" title="{{ bi.item_spec if bi and bi.item_spec else '' }}">{{ bi.item_spec if bi and bi.item_spec else '-' }}</td>
                                             <td class="text-end">{{ o.quantity }}</td>
-                                            <td class="text-end">{{ (linked_item.reserved_qty or 0)|round(0)|int if linked_item else '-' }}</td>
+                                            <td class="text-end">{{ 0|round(0)|int if linked_item else '-' }}</td>
                                             <td class="text-end">{{ (linked_item.stock_qty or 0)|round(0)|int if linked_item else '-' }}</td>
                                             <td class="text-center text-nowrap">
                                                 <form method="POST" class="d-inline m-0" onsubmit="return confirm('이 자재의 재고 예약을 취소하시겠습니까?')">
@@ -399,6 +399,7 @@
 {% set history_post_url = url_for('material.material_detail', project_id=project.id) %}
 {% set history_board_id = 'material-history-board-detail' %}
 {% set history_default_filter = 'material' %}
+{% set history_write_scope = 'material' %}
 {% set history_offcanvas_id = 'materialHistoryOffcanvas' %}
 {% include 'components/history_offcanvas.html' %}
 
@@ -423,8 +424,8 @@
                         <div class="alert alert-light py-2 mb-3 stock-info">
                             <strong>재고 현황:</strong>
                             실재고 <strong>{{ (linked_item.stock_qty or 0)|round(0)|int }}</strong>
-                            / 예약 <strong>{{ (linked_item.reserved_qty or 0)|round(0)|int }}</strong>
-                            / 가용 <strong class="{{ 'text-success' if ((linked_item.stock_qty or 0) - (linked_item.reserved_qty or 0)) >= (o.quantity or 0) else 'text-danger' }}">{{ ((linked_item.stock_qty or 0) - (linked_item.reserved_qty or 0))|round(0)|int }}</strong>
+                            / 예약 <strong>{{ 0|round(0)|int }}</strong>
+                            / 가용 <strong class="{{ 'text-success' if ((linked_item.stock_qty or 0) - 0) >= (o.quantity or 0) else 'text-danger' }}">{{ ((linked_item.stock_qty or 0) - 0)|round(0)|int }}</strong>
                         </div>
                         {% endif %}
                         <div class="row g-2">

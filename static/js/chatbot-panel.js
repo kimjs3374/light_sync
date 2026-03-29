@@ -170,7 +170,7 @@ async function sendChatPanel() {
 }
 
 async function _pollPanelReply(requestId, thinkingEl, csrf) {
-    for (var i = 0; i < 20; i++) {
+    for (var i = 0; i < 60; i++) {
         try {
             var headers = {'Content-Type': 'application/json'};
             if (csrf) headers['X-CSRFToken'] = csrf;
@@ -182,7 +182,8 @@ async function _pollPanelReply(requestId, thinkingEl, csrf) {
             var data = await res.json();
             if (data.status === 'done') return data.reply;
             if (data.status === 'timeout') return data.reply;
-            if (data.status === 'not_found') return '요청을 찾을 수 없습니다.';
+            if (data.status === 'partial') { thinkingEl.textContent = data.reply; thinkingEl.style.color = '#666'; continue; }
+            if (data.status === 'not_found') { await new Promise(function(r){setTimeout(r,2000)}); continue; }
             if (data.elapsed != null) thinkingEl.textContent = 'Claude가 처리 중... (' + data.elapsed + '초)';
         } catch(e) { await new Promise(function(r){setTimeout(r,2000)}); }
     }

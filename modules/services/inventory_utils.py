@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 def record_stock_movement(db, item_id, movement_type, quantity,
                           reference_type=None, reference_id=None,
-                          unit_price=None, note=None, created_by='시스템'):
+                          unit_price=None, note=None, created_by='시스템',
+                          model_name=None, project_id=None, tx_date=None):
     """재고 변동을 기록하고 Item.stock_qty를 갱신한다.
 
     Args:
@@ -28,11 +29,14 @@ def record_stock_movement(db, item_id, movement_type, quantity,
         item_id: Item.id
         movement_type: MOVEMENT_TYPES 중 하나
         quantity: 양수=입고, 음수=출고
-        reference_type: 참조 테이블명 (receiving, purchase_order, stock_audit, material_order)
+        reference_type: 참조 테이블명
         reference_id: 참조 테이블 ID
         unit_price: 변동 시점 단가
         note: 비고
         created_by: 담당자명
+        model_name: 소진 대상 완제품 모델명 (소진 시)
+        project_id: 현장 ID (소진 시)
+        tx_date: 거래일자 (사용자 지정)
 
     Returns:
         StockMovement 객체 또는 None
@@ -57,6 +61,9 @@ def record_stock_movement(db, item_id, movement_type, quantity,
         reference_id=reference_id,
         note=note,
         created_by=created_by,
+        model_name=model_name,
+        project_id=project_id,
+        tx_date=tx_date,
     )
     db.add(movement)
     return movement
@@ -105,7 +112,7 @@ def calc_turnover_rate(db, start_date, end_date, category=None):
         StockMovement.item_id,
         func.sum(func.abs(StockMovement.quantity)).label('total_out')
     ).filter(
-        StockMovement.movement_type.in_(['OUT_RESERVE', 'OUT_ADJUST']),
+        StockMovement.movement_type.in_(['OUT_CONSUMPTION', 'OUT_ADJUST', 'OUT_RESERVE']),
         StockMovement.created_at >= start_date,
         StockMovement.created_at <= end_date,
     ).group_by(StockMovement.item_id)

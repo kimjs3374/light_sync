@@ -1,0 +1,513 @@
+{% extends 'base.html' %}
+{% set active_menu_key = 'inventory' %}
+
+{% block content %}
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Stock Consumption</div>
+            <h2>소진 등록</h2>
+            <div class="hero-sub">계약 품목 기준 자재 소진 처리</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('inventory.shortage_view') }}" class="btn btn-outline-light btn-sm" style="white-space:nowrap;">부족자재</a>
+            <a href="{{ url_for('inventory.inventory_dashboard') }}" class="btn btn-outline-light btn-sm" style="white-space:nowrap;">재고현황</a>
+        </div>
+    </div>
+</div>
+
+{# ═══ 1. 계약 검색 ═══ #}
+<div class="card border-0 shadow-sm mb-3 mg-fade" style="animation-delay:.05s; overflow:visible; position:relative; z-index:10;">
+    <div class="card-header bg-white py-2"><strong>계약 선택</strong></div>
+    <div class="card-body py-2" style="overflow:visible;">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-5" style="position:relative;">
+                <label class="form-label fw-bold mb-0" style="font-size:.75rem;">계약명 검색</label>
+                <input type="text" id="contractSearch" class="form-control form-control-sm" placeholder="계약명을 입력하세요..." autocomplete="off">
+                <div id="contractDropdown" class="autocomplete-dropdown" style="display:none;"></div>
+            </div>
+            <div class="col-md-5">
+                <div id="selectedContractInfo" class="text-muted" style="font-size:.85rem;">계약을 검색해주세요.</div>
+            </div>
+            <div class="col-md-2 text-end">
+                <button type="button" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;" onclick="clearContract()">초기화</button>
+                <button type="button" class="btn btn-outline-primary btn-sm" style="white-space:nowrap;" id="manualModeBtn" onclick="toggleManualMode()">직접 입력</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ═══ 2. 계약 품목 목록 (계약 선택 시 표시) ═══ #}
+<div id="contractItemsSection" class="card border-0 shadow-sm mb-3 mg-fade" style="display:none; animation-delay:.1s">
+    <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <strong>계약 품목</strong>
+        <small class="text-muted" id="contractItemsCount"></small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" style="font-size:.82rem; white-space:nowrap;">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center" style="width:40px;">선택</th>
+                        <th>품목</th>
+                        <th>모델명</th>
+                        <th class="text-end">수량</th>
+                        <th>생산상태</th>
+                        <th>BOM</th>
+                        <th class="text-center">소진</th>
+                    </tr>
+                </thead>
+                <tbody id="contractItemsTbody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ═══ 3. 소진 등록 폼 ═══ #}
+<form method="POST" action="{{ url_for('inventory.consume_execute') }}" id="consumeForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="bom_id" id="bom_id" value="">
+    <input type="hidden" name="contract_item_id" id="contract_item_id" value="">
+    <input type="hidden" name="model_name" id="model_name" value="">
+    <input type="hidden" name="project_id" id="project_id" value="">
+
+    <div id="consumeFormSection" class="card border-0 shadow-sm mb-3 mg-fade" style="display:none; animation-delay:.15s">
+        <div class="card-header bg-white py-2"><strong>소진 정보</strong></div>
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">날짜 <span class="text-danger">*</span></label>
+                    <input type="date" name="tx_date" id="tx_date" class="form-control form-control-sm" value="{{ today }}" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">모델명</label>
+                    <input type="text" id="modelNameDisplay" class="form-control form-control-sm bg-light" readonly>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">수량 <span class="text-danger">*</span></label>
+                    <input type="number" name="quantity" id="quantity" class="form-control form-control-sm text-end" value="1" min="1" step="1" required>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">비고</label>
+                    <input type="text" name="note" class="form-control form-control-sm" placeholder="소진 사유, 현장명 등">
+                </div>
+            </div>
+            <div class="mt-2 d-flex gap-2">
+                <button type="button" class="btn btn-info btn-sm" style="white-space:nowrap;" id="previewBtn" onclick="loadBreakdown()">BOM 분해 미리보기</button>
+                <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;" id="submitBtn" disabled>소진 등록</button>
+            </div>
+        </div>
+    </div>
+
+    {# ═══ 4. BOM 소진 자재 미리보기 ═══ #}
+    <div id="breakdownSection" class="card border-0 shadow-sm mb-3" style="display:none;">
+        <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+            <strong>소진 자재 목록</strong>
+            <span class="badge bg-warning text-dark" id="warningBadge" style="display:none; white-space:nowrap;">재고부족 있음</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0" style="font-size:.82rem; white-space:nowrap;">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="text-center" style="width:36px;">&#9745;</th>
+                            <th>품번</th>
+                            <th>품명</th>
+                            <th>규격</th>
+                            <th class="text-end">1대당</th>
+                            <th class="text-end">소요량</th>
+                            <th class="text-end">현재고</th>
+                            <th style="width:100px;">소진수량</th>
+                            <th style="width:120px;">비고</th>
+                        </tr>
+                    </thead>
+                    <tbody id="breakdownTbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</form>
+
+{# ═══ 5. 직접 입력 모드 (계약 미연동) ═══ #}
+<div id="manualSection" class="card border-0 shadow-sm mb-3" style="display:none;">
+    <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <strong>직접 입력 (계약 미연동)</strong>
+        <button type="button" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;" onclick="toggleManualMode()">닫기</button>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('inventory.consume_execute') }}" id="manualForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="bom_id" value="">
+            <input type="hidden" name="contract_item_id" value="">
+            <input type="hidden" name="project_id" value="">
+            <div class="row g-2 align-items-end mb-2">
+                <div class="col-md-2">
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">날짜</label>
+                    <input type="date" name="tx_date" class="form-control form-control-sm" value="{{ today }}" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">모델명 <span class="text-danger">*</span></label>
+                    <input type="text" name="model_name" class="form-control form-control-sm" placeholder="모델명 직접 입력" required>
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">수량</label>
+                    <input type="number" name="quantity" class="form-control form-control-sm text-end" value="1" min="1" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">비고</label>
+                    <input type="text" name="note" class="form-control form-control-sm" placeholder="시료제작, 현장명 등">
+                </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-info btn-sm w-100" style="white-space:nowrap;" onclick="loadManualBreakdown(this)">BOM 검색</button>
+                </div>
+            </div>
+            <div id="manualBreakdownArea"></div>
+            <div class="mt-2">
+                <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;">소진 등록</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ═══ 6. 최근 소진 이력 ═══ #}
+<div class="card border-0 shadow-sm mb-3 mg-fade" style="animation-delay:.2s">
+    <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <div>
+            <strong>최근 소진 이력</strong>
+            <small class="text-muted ms-2">최근 10건</small>
+        </div>
+        <a href="{{ url_for('inventory.consumption_history') }}" class="btn btn-outline-primary btn-xs" style="white-space:nowrap; font-size:.72rem;">전체 이력</a>
+    </div>
+    <div class="card-body py-2">
+        {% if recent_consumptions %}
+        <ul class="list-unstyled mb-0" style="font-size:.85rem;">
+            {% for rc in recent_consumptions %}
+            <li class="d-flex justify-content-between align-items-center py-1 border-bottom">
+                <a href="{{ url_for('inventory.consumption_detail', consumption_id=rc.id) }}" class="text-decoration-none text-dark d-flex align-items-center" style="flex:1;">
+                    <span class="text-muted" style="font-family:'JetBrains Mono',monospace; font-size:.78rem;">{{ rc.tx_date.strftime('%m/%d') if rc.tx_date else '-' }}</span>
+                    <span class="ms-2 fw-bold">{{ rc.model_name or '-' }}</span>
+                    <span class="ms-1">x{{ rc.quantity }}</span>
+                    {% if rc.note %}<small class="text-muted ms-2">{{ rc.note }}</small>{% endif %}
+                </a>
+                <span class="badge bg-light text-dark" style="white-space:nowrap; font-size:.75rem;">{{ rc.created_by or '-' }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div class="text-center text-muted py-3">소진 이력이 없습니다.</div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.autocomplete-dropdown {
+    position: absolute; top: 100%; left: 0; right: 0;
+    z-index: 9999; background: #fff;
+    border: 1px solid #e2e8f0; border-radius: .5rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,.15);
+    max-height: 300px; overflow-y: auto;
+}
+.autocomplete-dropdown .ac-item {
+    padding: .5rem .8rem; cursor: pointer; font-size: .82rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.autocomplete-dropdown .ac-item:hover { background: #f1f5f9; }
+.ci-row-selected { background: #eff6ff !important; }
+</style>
+
+<script>
+(function() {
+    let selectedContractId = null;
+    let selectedContractItems = [];
+    let manualMode = false;
+
+    // ═══ 계약 검색 자동완성 ═══
+    const searchInput = document.getElementById('contractSearch');
+    const dropdown = document.getElementById('contractDropdown');
+    let searchTimeout;
+
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const q = this.value.trim();
+        if (q.length < 1) { dropdown.style.display = 'none'; return; }
+        searchTimeout = setTimeout(async () => {
+            const resp = await fetch('/api/inventory/contract-search?q=' + encodeURIComponent(q));
+            const data = await resp.json();
+            dropdown.innerHTML = data.map(c =>
+                '<div class="ac-item" data-id="' + c.id + '" data-name="' + c.contract_name + '" data-project-id="' + (c.project_id || '') + '">' +
+                '<b>' + c.contract_name + '</b>' +
+                (c.project_name ? ' <small class="text-muted">(' + c.project_name + ')</small>' : '') +
+                '</div>'
+            ).join('') || '<div class="ac-item text-muted">검색 결과 없음</div>';
+            dropdown.style.display = 'block';
+        }, 300);
+    });
+
+    dropdown.addEventListener('click', function(e) {
+        const item = e.target.closest('.ac-item');
+        if (!item || !item.dataset.id) return;
+        selectContract(parseInt(item.dataset.id), item.dataset.name, item.dataset.projectId);
+        dropdown.style.display = 'none';
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!searchInput.parentElement.contains(e.target)) dropdown.style.display = 'none';
+    });
+
+    // ═══ 계약 선택 → 품목 로드 ═══
+    window.selectContract = async function(contractId, contractName, projectId) {
+        selectedContractId = contractId;
+        searchInput.value = contractName;
+        document.getElementById('project_id').value = projectId || '';
+        document.getElementById('selectedContractInfo').innerHTML =
+            '<span class="fw-bold text-primary">' + contractName + '</span> 선택됨';
+
+        // 품목 로드
+        const resp = await fetch('/api/inventory/contract-items/' + contractId);
+        const data = await resp.json();
+        selectedContractItems = data.items || [];
+
+        const tbody = document.getElementById('contractItemsTbody');
+        tbody.innerHTML = '';
+        document.getElementById('contractItemsCount').textContent = selectedContractItems.length + '개 품목';
+
+        selectedContractItems.forEach(function(ci) {
+            const hasBom = ci.bom_id ? true : false;
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td class="text-center"><input type="radio" name="ciSelect" value="' + ci.contract_item_id + '" ' +
+                    'data-model="' + ci.model_name + '" data-qty="' + ci.quantity + '" ' +
+                    'data-bom-id="' + (ci.bom_id || '') + '" data-ci-id="' + ci.contract_item_id + '" ' +
+                    'onchange="onSelectItem(this)"></td>' +
+                '<td>' + (ci.category || '-') + '</td>' +
+                '<td class="fw-bold">' + (ci.model_name || '-') + '</td>' +
+                '<td class="text-end">' + ci.quantity + '</td>' +
+                '<td><span class="badge ' + (ci.status_prod === '생산완료' ? 'bg-success' : ci.status_prod === '생산중' ? 'bg-warning text-dark' : 'bg-secondary') + '" style="white-space:nowrap;">' + (ci.status_prod || '-') + '</span></td>' +
+                '<td>' + (hasBom ? '<span class="badge bg-info text-dark" style="white-space:nowrap;">' + ci.bom_name + '</span>' : '<span class="text-muted">미매칭</span>') + '</td>' +
+                '<td class="text-center">' + (hasBom ? '<span class="text-success">&#10003;</span>' : '-') + '</td>';
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('contractItemsSection').style.display = 'block';
+        document.getElementById('consumeFormSection').style.display = 'none';
+        document.getElementById('breakdownSection').style.display = 'none';
+    };
+
+    // ═══ 품목 선택 → 소진 폼 표시 ═══
+    window.onSelectItem = function(radio) {
+        const model = radio.dataset.model;
+        const qty = radio.dataset.qty;
+        const bomId = radio.dataset.bomId;
+        const ciId = radio.dataset.ciId;
+
+        document.getElementById('model_name').value = model;
+        document.getElementById('modelNameDisplay').value = model;
+        document.getElementById('quantity').value = qty;
+        document.getElementById('bom_id').value = bomId;
+        document.getElementById('contract_item_id').value = ciId;
+
+        document.getElementById('consumeFormSection').style.display = 'block';
+        document.getElementById('breakdownSection').style.display = 'none';
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('previewBtn').style.display = bomId ? '' : 'none';
+
+        // 선택 행 하이라이트
+        document.querySelectorAll('#contractItemsTbody tr').forEach(r => r.classList.remove('ci-row-selected'));
+        radio.closest('tr').classList.add('ci-row-selected');
+
+        // 옵션 선택 UI 렌더링
+        const ci = selectedContractItems.find(x => x.contract_item_id == parseInt(ciId));
+        renderOptionSelector(ci);
+
+        if (bomId) {
+            loadBreakdown();
+        } else {
+            document.getElementById('breakdownSection').style.display = 'none';
+            document.getElementById('submitBtn').disabled = false;
+            document.getElementById('previewBtn').style.display = 'none';
+        }
+    };
+
+    // ═══ BOM 옵션 선택 UI ═══
+    function renderOptionSelector(ci) {
+        let container = document.getElementById('optionSelectorArea');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'optionSelectorArea';
+            const formSection = document.getElementById('consumeFormSection');
+            const previewBtn = document.getElementById('previewBtn');
+            if (previewBtn) previewBtn.parentElement.insertBefore(container, previewBtn);
+            else formSection.appendChild(container);
+        }
+        container.innerHTML = '';
+
+        if (!ci || !ci.option_schema) return;
+
+        const schema = ci.option_schema;
+        const preselected = ci.item_spec || {};
+
+        // item_spec_json 키 → option_filter 키 매핑
+        const keyMap = {lens_angle: '렌즈', color_temp: '색온도', body_type: '형태', reflector: '반사판'};
+        const translated = {};
+        for (const [ek, v] of Object.entries(preselected)) {
+            translated[keyMap[ek] || ek] = v;
+        }
+
+        let html = '<div class="row g-2 mb-2">';
+        for (const [key, values] of Object.entries(schema)) {
+            const sel = translated[key] || '';
+            html += '<div class="col-auto">' +
+                '<label class="form-label fw-bold mb-0" style="font-size:.72rem;">' + key + '</label>' +
+                '<select class="form-select form-select-sm option-select" data-key="' + key + '" onchange="loadBreakdown()">' +
+                '<option value="">전체</option>' +
+                values.map(v => '<option value="' + v + '"' + (v === sel ? ' selected' : '') + '>' + v + '</option>').join('') +
+                '</select></div>';
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    // ═══ 초기화 ═══
+    window.clearContract = function() {
+        selectedContractId = null;
+        searchInput.value = '';
+        document.getElementById('selectedContractInfo').innerHTML = '계약을 검색해주세요.';
+        document.getElementById('contractItemsSection').style.display = 'none';
+        document.getElementById('consumeFormSection').style.display = 'none';
+        document.getElementById('breakdownSection').style.display = 'none';
+    };
+
+    // ═══ 직접 입력 모드 토글 ═══
+    window.toggleManualMode = function() {
+        manualMode = !manualMode;
+        document.getElementById('manualSection').style.display = manualMode ? 'block' : 'none';
+        document.getElementById('manualModeBtn').textContent = manualMode ? '계약 검색' : '직접 입력';
+        if (manualMode) {
+            document.getElementById('contractItemsSection').style.display = 'none';
+            document.getElementById('consumeFormSection').style.display = 'none';
+            document.getElementById('breakdownSection').style.display = 'none';
+        }
+    };
+})();
+
+// ═══ BOM 분해 미리보기 ═══
+async function loadBreakdown() {
+    const bomId = document.getElementById('bom_id').value;
+    const qty = document.getElementById('quantity').value;
+    if (!bomId) {
+        // BOM 미매칭 — 분해 없이 등록 가능
+        document.getElementById('breakdownSection').style.display = 'none';
+        document.getElementById('submitBtn').disabled = false;
+        return;
+    }
+    if (!qty || qty <= 0) {
+        alert('수량을 입력해주세요.');
+        return;
+    }
+
+    const previewBtn = document.getElementById('previewBtn');
+    previewBtn.disabled = true;
+    previewBtn.textContent = '로딩중...';
+
+    try {
+        // 선택된 옵션 수집
+        const opts = {};
+        document.querySelectorAll('.option-select').forEach(s => {
+            if (s.value) opts[s.dataset.key] = s.value;
+        });
+        const optParam = Object.keys(opts).length ? '&option_filter=' + encodeURIComponent(JSON.stringify(opts)) : '';
+        const resp = await fetch('/api/inventory/bom-breakdown?bom_id=' + bomId + '&quantity=' + qty + optParam);
+        const data = await resp.json();
+        renderBreakdown(data, 'breakdownTbody');
+        document.getElementById('breakdownSection').style.display = 'block';
+        document.getElementById('submitBtn').disabled = false;
+    } catch (e) {
+        alert('BOM 분해 조회 실패');
+    } finally {
+        previewBtn.disabled = false;
+        previewBtn.textContent = 'BOM 분해 미리보기';
+    }
+}
+
+function renderBreakdown(data, tbodyId) {
+    const tbody = document.getElementById(tbodyId);
+    tbody.innerHTML = '';
+    let hasWarning = false;
+
+    data.forEach(function(item) {
+        const isLow = item.stock_qty < item.total_qty;
+        if (isLow) hasWarning = true;
+        const tr = document.createElement('tr');
+        tr.className = isLow ? 'table-warning' : '';
+        tr.innerHTML =
+            '<td class="text-center"><input type="checkbox" checked onchange="toggleRow(this)"></td>' +
+            '<td>' + (item.item_code || '-') + '</td>' +
+            '<td>' + item.item_name + '</td>' +
+            '<td>' + (item.item_spec || '-') + '</td>' +
+            '<td class="text-end">' + item.per_unit + '</td>' +
+            '<td class="text-end fw-bold">' + item.total_qty + '</td>' +
+            '<td class="text-end ' + (isLow ? 'text-danger fw-bold' : '') + '">' + item.stock_qty + '</td>' +
+            '<td><input type="number" name="consumed_qty[]" value="' + item.total_qty + '" step="any" min="0" class="form-control form-control-sm text-end" style="width:80px;"></td>' +
+            '<td><input type="text" name="item_note[]" class="form-control form-control-sm" style="width:100px;"></td>' +
+            '<input type="hidden" name="item_id[]" value="' + item.item_id + '">' +
+            '<input type="hidden" name="bom_item_id[]" value="' + (item.bom_item_id || '') + '">' +
+            '<input type="hidden" name="required_qty[]" value="' + item.total_qty + '">';
+        tbody.appendChild(tr);
+    });
+
+    const wb = document.getElementById('warningBadge');
+    if (wb) wb.style.display = hasWarning ? '' : 'none';
+}
+
+function toggleRow(cb) {
+    cb.closest('tr').querySelectorAll('input[name]').forEach(function(inp) {
+        inp.disabled = !cb.checked;
+    });
+}
+
+// ═══ 직접 입력 BOM 검색 ═══
+async function loadManualBreakdown(btn) {
+    const form = document.getElementById('manualForm');
+    const modelName = form.querySelector('input[name="model_name"]').value.trim();
+    if (!modelName) { alert('모델명을 입력해주세요.'); return; }
+
+    // BOM 검색
+    const searchResp = await fetch('/api/inventory/bom-search?q=' + encodeURIComponent(modelName));
+    const boms = await searchResp.json();
+
+    if (boms.length === 0) {
+        document.getElementById('manualBreakdownArea').innerHTML =
+            '<div class="alert alert-warning mt-2" style="font-size:.85rem;">매칭되는 BOM이 없습니다. BOM 없이 소진 등록됩니다.</div>';
+        return;
+    }
+
+    // 첫번째 BOM으로 분해
+    const bom = boms[0];
+    form.querySelector('input[name="bom_id"]').value = bom.id;
+    const qty = form.querySelector('input[name="quantity"]').value || 1;
+    const resp = await fetch('/api/inventory/bom-breakdown?bom_id=' + bom.id + '&quantity=' + qty);
+    const data = await resp.json();
+
+    let html = '<div class="table-responsive mt-2"><table class="table table-sm mb-0" style="font-size:.82rem; white-space:nowrap;">' +
+        '<thead class="table-light"><tr><th>&#9745;</th><th>품명</th><th class="text-end">소요</th><th class="text-end">재고</th><th style="width:80px;">소진수량</th></tr></thead><tbody>';
+    data.forEach(function(item) {
+        const isLow = item.stock_qty < item.total_qty;
+        html += '<tr class="' + (isLow ? 'table-warning' : '') + '">' +
+            '<td><input type="checkbox" checked onchange="toggleRow(this)"></td>' +
+            '<td>' + item.item_name + '</td>' +
+            '<td class="text-end">' + item.total_qty + '</td>' +
+            '<td class="text-end ' + (isLow ? 'text-danger' : '') + '">' + item.stock_qty + '</td>' +
+            '<td><input type="number" name="consumed_qty[]" value="' + item.total_qty + '" step="any" min="0" class="form-control form-control-sm text-end" style="width:80px;"></td>' +
+            '<input type="hidden" name="item_id[]" value="' + item.item_id + '">' +
+            '<input type="hidden" name="bom_item_id[]" value="' + (item.bom_item_id || '') + '">' +
+            '<input type="hidden" name="required_qty[]" value="' + item.total_qty + '">' +
+            '<input type="hidden" name="item_note[]" value="">' +
+            '</tr>';
+    });
+    html += '</tbody></table></div>';
+    document.getElementById('manualBreakdownArea').innerHTML = html;
+}
+</script>
+
+{% endblock %}

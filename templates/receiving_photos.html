@@ -1,0 +1,314 @@
+{% extends 'base.html' %}
+{% block title %}입고사진{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/kakao_archive.css') }}">
+<style>
+  /* ─── 글쓰기 박스 전용 ─── */
+  .rp-write-box {
+    border: 1px solid #e8e8e8;
+    border-radius: 12px;
+    background: #fff;
+    margin-bottom: 24px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .rp-write-body {
+    padding: 14px 20px 10px;
+  }
+  .rp-write-body textarea {
+    width: 100%;
+    border: none;
+    resize: none;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #333;
+    outline: none;
+    font-family: inherit;
+    background: transparent;
+  }
+  .rp-write-body textarea:focus {
+    outline: none;
+    box-shadow: none;
+  }
+  .rp-write-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px 12px;
+    border-top: 1px solid #f0f0f0;
+    gap: 8px;
+  }
+  .rp-write-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .rp-preview-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 20px 10px;
+  }
+  .rp-preview-item {
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .rp-preview-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  /* ─── 삭제 버튼 ─── */
+  .rp-delete-btn {
+    font-size: 12px;
+    color: #bbb;
+    background: none;
+    border: none;
+    padding: 2px 6px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .rp-delete-btn:hover {
+    color: #ef4444;
+  }
+  /* ─── 빈 상태 ─── */
+  .rp-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: #bbb;
+  }
+  .rp-empty-icon {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+  }
+  .rp-empty p {
+    font-size: 14px;
+    margin: 0 0 4px;
+    color: #999;
+  }
+  .rp-empty small {
+    font-size: 12px;
+    color: #bbb;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set colors = ['#a0d468','#4fc1e9','#fc6e51','#ed5565','#ac92ec','#48cfad','#ffce54','#5d9cec'] %}
+
+<div class="kw-board">
+
+  {# ─── 보드 헤더 ─── #}
+  <div class="kw-board-header">
+    <h5>입고사진</h5>
+    <span class="kw-board-badge">📷 피드</span>
+  </div>
+
+  {# ─── 글쓰기 박스 ─── #}
+  <div class="rp-write-box">
+    <form method="POST" action="{{ url_for('receiving_photo.create') }}" enctype="multipart/form-data" id="writeForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="rp-write-body">
+        <textarea name="content" rows="2" placeholder="입고 내용을 간단히 작성하세요..." required></textarea>
+      </div>
+      <div class="rp-preview-grid" id="previewGrid" style="display:none"></div>
+      <div class="rp-write-footer">
+        <div class="rp-write-left">
+          <input type="file" id="photoInput" multiple accept="image/*" style="display:none">
+          <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
+          <button type="button" class="btn btn-outline-secondary btn-sm"
+                  onclick="document.getElementById('photoInput').click();"
+                  style="font-size:13px;border-radius:8px;">
+            + 사진
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm"
+                  onclick="document.getElementById('cameraInput').click();"
+                  style="font-size:13px;border-radius:8px;">
+            📷 촬영
+          </button>
+          <span id="photoCount" style="font-size:12px;color:#999;"></span>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm"
+                style="font-size:13px;border-radius:8px;padding:5px 16px;">등록</button>
+      </div>
+    </form>
+  </div>
+
+  {# ─── 피드 목록 ─── #}
+  {% for post in posts %}
+  <div class="kw-post">
+
+    {# 헤더 #}
+    <div class="kw-post-header">
+      <div class="kw-avatar" style="background:{{ colors[post.author|length % 8] }}">
+        {{ post.author[:1] }}
+      </div>
+      <div class="kw-author-info">
+        <span class="kw-author-name">{{ post.author }}</span>
+        <span class="kw-post-date">· {{ post.created_at.strftime('%m/%d %H:%M') if post.created_at else '' }}</span>
+      </div>
+    </div>
+
+    {# 본문 #}
+    <div class="kw-post-body" style="white-space:pre-line;">{{ post.content }}</div>
+
+    {# 이미지 그리드 #}
+    {% if post.photos %}
+    <div class="kw-attachments">
+      <div class="kw-img-grid">
+        {% for photo in post.photos %}
+        <img src="{{ photo.url }}"
+             data-full="{{ photo.url }}"
+             alt="{{ photo.file_name }}"
+             class="kw-img-thumb"
+             loading="lazy"
+             onclick="kwLightbox(this.dataset.full)">
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# 푸터 #}
+    <div class="kw-post-footer">
+      {% if post.photos %}
+      <span class="kw-stat"><span class="kw-stat-icon">📷</span> {{ post.photos|length }}</span>
+      {% endif %}
+      <span style="flex:1"></span>
+      {% if session.get('role') == 'admin' %}
+      <form method="POST" action="{{ url_for('receiving_photo.delete', post_id=post.id) }}"
+            style="margin:0;" onsubmit="return confirm('삭제하시겠습니까?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="rp-delete-btn">삭제</button>
+      </form>
+      {% endif %}
+    </div>
+
+  </div>
+  {% else %}
+  <div class="rp-empty">
+    <div class="rp-empty-icon">📷</div>
+    <p>아직 등록된 입고사진이 없습니다.</p>
+    <small>위에서 첫 게시물을 작성해보세요!</small>
+  </div>
+  {% endfor %}
+
+  {# ─── 페이지네이션 ─── #}
+  {% if pagination.total_pages > 1 %}
+  <nav class="kw-paging mb-4">
+    <ul class="pagination pagination-sm mb-0">
+      {% for p in range(1, pagination.total_pages + 1) %}
+      <li class="page-item {{ 'active' if p == pagination.page }}">
+        <a class="page-link" href="?page={{ p }}">{{ p }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </nav>
+  {% endif %}
+
+</div>
+
+{# ─── 라이트박스 ─── #}
+<div class="kw-lightbox" id="kwLightbox">
+  <button class="kw-lb-nav kw-lb-prev" onclick="event.stopPropagation();kwLbNav(-1)">‹</button>
+  <img id="kwLightboxImg" src="" alt="" onclick="event.stopPropagation()">
+  <button class="kw-lb-nav kw-lb-next" onclick="event.stopPropagation();kwLbNav(1)">›</button>
+  <button class="kw-lb-close" onclick="event.stopPropagation();kwLbClose()">✕</button>
+  <div class="kw-lb-counter" id="kwLbCounter"></div>
+</div>
+
+<script>
+/* ─── 라이트박스 ─── */
+(function(){
+  var imgs=[], idx=0;
+  window.kwLightbox = function(src) {
+    var clicked = event.target;
+    var grid = clicked.closest('.kw-img-grid') || clicked.closest('.kw-attachments');
+    var thumbs = grid ? grid.querySelectorAll('.kw-img-thumb[src]') : [];
+    imgs = Array.from(thumbs).map(function(t){ return t.dataset.full || t.src; });
+    if (!imgs.length) imgs = [src];
+    idx = imgs.indexOf(src);
+    if (idx < 0) idx = 0;
+    kwLbShow();
+  };
+  window.kwLbNav = function(dir) {
+    idx = (idx + dir + imgs.length) % imgs.length;
+    kwLbShow();
+  };
+  window.kwLbClose = function() {
+    document.getElementById('kwLightbox').classList.remove('active');
+  };
+  function kwLbShow() {
+    document.getElementById('kwLightboxImg').src = imgs[idx];
+    document.getElementById('kwLbCounter').textContent = (idx+1) + ' / ' + imgs.length;
+    document.getElementById('kwLightbox').classList.add('active');
+  }
+  document.getElementById('kwLightbox').addEventListener('click', function(e){
+    if (e.target === this) kwLbClose();
+  });
+  document.addEventListener('keydown', function(e){
+    if (!document.getElementById('kwLightbox').classList.contains('active')) return;
+    if (e.key === 'Escape') kwLbClose();
+    if (e.key === 'ArrowLeft') kwLbNav(-1);
+    if (e.key === 'ArrowRight') kwLbNav(1);
+  });
+})();
+
+/* ─── 사진 미리보기 (갤러리 + 카메라 촬영 합산) ─── */
+(function(){
+  var photoInput  = document.getElementById('photoInput');
+  var cameraInput = document.getElementById('cameraInput');
+  var grid        = document.getElementById('previewGrid');
+  var countEl     = document.getElementById('photoCount');
+  var form        = document.getElementById('writeForm');
+  var collected   = new DataTransfer();
+
+  function addFiles(fileList) {
+    Array.from(fileList).forEach(function(f) {
+      collected.items.add(f);
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var div = document.createElement('div');
+        div.className = 'rp-preview-item';
+        var img = document.createElement('img');
+        img.src = e.target.result;
+        div.appendChild(img);
+        grid.appendChild(div);
+      };
+      reader.readAsDataURL(f);
+    });
+    countEl.textContent = collected.files.length + '장 선택';
+    grid.style.display = collected.files.length ? 'flex' : 'none';
+  }
+
+  if (photoInput) {
+    photoInput.addEventListener('change', function() {
+      if (this.files.length) addFiles(this.files);
+      this.value = '';
+    });
+  }
+  if (cameraInput) {
+    cameraInput.addEventListener('change', function() {
+      if (this.files.length) addFiles(this.files);
+      this.value = '';
+    });
+  }
+
+  if (form) {
+    form.addEventListener('submit', function() {
+      var hidden = document.createElement('input');
+      hidden.type = 'file';
+      hidden.name = 'photos';
+      hidden.multiple = true;
+      hidden.style.display = 'none';
+      hidden.files = collected.files;
+      form.appendChild(hidden);
+    });
+  }
+})();
+</script>
+{% endblock %}

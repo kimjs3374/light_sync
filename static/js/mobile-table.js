@@ -32,9 +32,16 @@
 
 (function () {
     function markStackTables(root) {
-        (root || document).querySelectorAll('.main-content table.table, .main-content table[class*="table"]').forEach(function (table) {
+        if (window.innerWidth > 1199.98) return;
+        (root || document).querySelectorAll('.main-content table.table, .main-content table[class*="table"], .main-content table[class*="tbl"], .main-content table.inv-tbl').forEach(function (table) {
             if (table.classList.contains('tree-card-table')) return;
             if (table.closest('.modal')) return;
+            // 조도검증 격자/히트맵: 카드 변환 하지 않음
+            if (table.classList.contains('ilv-grid') || table.classList.contains('ilv-table') || table.closest('.ilv-grid-wrap') || table.querySelector('.ilv-cell') || table.querySelector('th.ilv-xaxis') || table.id === 'heatmapTable' || table.id === 'diffTable' || table.id === 'measureTable') return;
+            // BOM 상세 편집 테이블 제외
+            if (table.id === 'bomTable' || table.id === 'itemsTable' || table.id === 'editItemsTable') return;
+            // 피벗 테이블 제외 (월별 컬럼)
+            if (table.classList.contains('pivot-tbl')) return;
             // no-stack-table도 모바일에서는 카드형으로 변환 (가로 스크롤 제거)
             table.classList.remove('no-stack-table');
             table.style.minWidth = '0';
@@ -86,9 +93,20 @@
         });
     }
 
+    function fixCollapseTdWidth() {
+        if (window.innerWidth > 1199.98) return;
+        document.querySelectorAll('.tree-card-table tr.collapse.show > td[colspan], .tree-card-table tr.collapse > td[colspan]').forEach(function(td) {
+            td.style.display = 'block';
+            td.style.width = '100%';
+            td.style.maxWidth = '100%';
+            td.style.boxSizing = 'border-box';
+        });
+    }
+
     function refreshTables() {
         markStackTables(document);
         hydrateMobileTableLabels(document);
+        fixCollapseTdWidth();
     }
 
     refreshTables();

@@ -222,7 +222,7 @@ async function sendMsg() {
 }
 
 async function pollClaudeReply(requestId, thinkingEl) {
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 60; i++) {
     try {
       const res = await fetch('/channel-chat/poll', {
         method: 'POST',
@@ -233,7 +233,8 @@ async function pollClaudeReply(requestId, thinkingEl) {
       const data = await res.json();
       if (data.status === 'done') return data.reply;
       if (data.status === 'timeout') return data.reply;
-      if (data.status === 'not_found') return '요청을 찾을 수 없습니다.';
+      if (data.status === 'partial') { thinkingEl.textContent = data.reply; thinkingEl.style.color = '#666'; continue; }
+      if (data.status === 'not_found') { await new Promise(r => setTimeout(r, 2000)); continue; }
       if (data.elapsed != null) thinkingEl.textContent = `Claude가 처리 중... (${data.elapsed}초)`;
     } catch { await new Promise(r => setTimeout(r, 2000)); }
   }

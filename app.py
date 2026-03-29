@@ -32,6 +32,7 @@ from routes.daily_report import daily_report_bp
 from routes.vendor import vendor_bp
 from routes.purchase_order import purchase_order_bp
 from routes.receiving import receiving_bp
+from routes.receiving_photo import receiving_photo_bp
 from routes.bom import bom_bp
 from routes.item import item_bp
 from routes.financial import financial_bp
@@ -46,6 +47,10 @@ from routes.channel_chat import channel_chat_bp
 from routes.certification import cert_bp
 from routes.lighting_layout import lighting_layout_bp
 from routes.processing_order import processing_order_bp
+from routes.business_trip import business_trip_bp
+from routes.tools import tools_bp
+from routes.document import document_bp
+from routes.app_api import app_api_bp
 from modules.pagination import pagination_query
 
 # =====================================================================
@@ -218,6 +223,7 @@ app.register_blueprint(daily_report_bp)
 app.register_blueprint(vendor_bp)
 app.register_blueprint(purchase_order_bp)
 app.register_blueprint(receiving_bp)
+app.register_blueprint(receiving_photo_bp)
 app.register_blueprint(bom_bp)
 app.register_blueprint(item_bp)
 app.register_blueprint(financial_bp)
@@ -233,8 +239,49 @@ app.register_blueprint(channel_chat_bp)
 app.register_blueprint(cert_bp)
 app.register_blueprint(lighting_layout_bp)
 app.register_blueprint(processing_order_bp)
+app.register_blueprint(business_trip_bp)
+app.register_blueprint(tools_bp)
+app.register_blueprint(document_bp)
+app.register_blueprint(app_api_bp)
 
-# 워크보드 아카이브 첨부파일 서빙
+# 워크보드 이미지 썸네일 서빙 (on-the-fly 생성 + 디스크 캐싱)
+@app.route('/static-archive/thumb/<path:filename>')
+def serve_archive_thumb(filename):
+    import os as _os
+    from pathlib import Path
+
+    orig_path = Path('storage/archive') / filename
+    if not orig_path.is_file():
+        return send_from_directory('storage/archive', filename)
+
+    # 썸네일 캐시 경로
+    thumb_dir = Path('storage/archive/.thumbs') / _os.path.dirname(filename)
+    thumb_path = thumb_dir / _os.path.basename(filename)
+
+    if thumb_path.is_file():
+        return send_from_directory(str(thumb_dir), _os.path.basename(filename))
+
+    # Pillow로 썸네일 생성
+    try:
+        from PIL import Image
+        thumb_dir.mkdir(parents=True, exist_ok=True)
+        with Image.open(str(orig_path)) as img:
+            img.thumbnail((300, 300), Image.LANCZOS)
+            # EXIF 회전 보정
+            from PIL import ImageOps
+            img = ImageOps.exif_transpose(img) or img
+            # JPEG로 저장 (투명 PNG 제외)
+            if img.mode in ('RGBA', 'P'):
+                img.save(str(thumb_path), format='PNG', optimize=True)
+            else:
+                img = img.convert('RGB')
+                img.save(str(thumb_path), format='JPEG', quality=75, optimize=True)
+        return send_from_directory(str(thumb_dir), _os.path.basename(filename))
+    except Exception:
+        # 썸네일 실패 시 원본 반환
+        return send_from_directory('storage/archive', filename)
+
+# 워크보드 아카이브 첨부파일 원본 서빙
 @app.route('/static-archive/<path:filename>')
 def serve_archive_file(filename):
     return send_from_directory('storage/archive', filename)
@@ -246,6 +293,9 @@ csrf.exempt(api_bp)
 from routes.channel_chat import channel_reply as _cr, chat_poll as _cp
 csrf.exempt(_cr)
 csrf.exempt(_cp)
+
+# 모바일 앱 API는 CSRF 면제
+csrf.exempt(app_api_bp)
 
 
 

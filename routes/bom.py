@@ -18,8 +18,9 @@ from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.db_context import get_db
 from modules.models import (
-    BomHeader, BomItem, Contract, Project,
+    BomHeader, BomItem, BomModelAlias, Contract, Project,
 )
+from modules.activity import log_activity
 from modules.services.bom_actions import (
     parse_option_filter_text,
     get_latest_receiving_prices,
@@ -189,6 +190,10 @@ def bom_detail(bom_id):
             except (json.JSONDecodeError, TypeError):
                 pass
 
+        aliases = db.query(BomModelAlias).filter(
+            BomModelAlias.bom_id == bom.id
+        ).order_by(BomModelAlias.alias_name).all()
+
         for bi in bom.bom_items:
             bi._option_display = ''
             if bi.option_filter:
@@ -203,7 +208,82 @@ def bom_detail(bom_id):
             bom=bom,
             latest_prices=latest_prices,
             option_schema=option_schema,
+            aliases=aliases,
         )
+
+
+# ===================================================================
+# 3-1. BOM 별칭 추가
+# ===================================================================
+@bom_bp.route('/bom/<int:bom_id>/alias', methods=['POST'])
+@login_required
+@menu_required('bom')
+def bom_add_alias(bom_id):
+    """BOM 별칭 추가"""
+    data = request.get_json(silent=True) or {}
+    alias_name = (data.get('alias_name') or '').strip()
+    if not alias_name:
+        return jsonify({'error': '별칭을 입력해주세요.'}), 400
+
+    with get_db() as db:
+        bom = db.query(BomHeader).get(bom_id)
+        if not bom:
+            return jsonify({'error': 'BOM을 찾을 수 없습니다.'}), 404
+
+        # 중복 체크 (다른 BOM에 이미 등록된 경우)
+        existing = db.query(BomModelAlias).filter(
+            BomModelAlias.alias_name == alias_name
+        ).first()
+        if existing:
+            if existing.bom_id == bom_id:
+                return jsonify({'error': f'이미 등록된 별칭입니다.'}), 409
+            other_bom = db.query(BomHeader).get(existing.bom_id)
+            other_name = other_bom.product_name if other_bom else f'BOM #{existing.bom_id}'
+            return jsonify({'error': f'다른 BOM({other_name})에 등록된 별칭입니다.'}), 409
+
+        alias = BomModelAlias(
+            bom_id=bom_id,
+            alias_name=alias_name,
+            alias_type='manual',
+            created_by=session.get('full_name', ''),
+        )
+        db.add(alias)
+        db.flush()
+
+        log_activity(db, 'BOM', 'alias_add',
+                     f'{bom.product_name} 별칭 추가: {alias_name}',
+                     ref_type='BomHeader', ref_id=bom_id)
+        db.commit()
+
+        return jsonify({'id': alias.id, 'alias_name': alias.alias_name}), 201
+
+
+# ===================================================================
+# 3-2. BOM 별칭 삭제
+# ===================================================================
+@bom_bp.route('/bom/<int:bom_id>/alias/<int:alias_id>', methods=['DELETE'])
+@login_required
+@menu_required('bom')
+def bom_delete_alias(bom_id, alias_id):
+    """BOM 별칭 삭제"""
+    with get_db() as db:
+        alias = db.query(BomModelAlias).filter(
+            BomModelAlias.id == alias_id,
+            BomModelAlias.bom_id == bom_id,
+        ).first()
+        if not alias:
+            return jsonify({'error': '별칭을 찾을 수 없습니다.'}), 404
+
+        bom = db.query(BomHeader).get(bom_id)
+        alias_name = alias.alias_name
+
+        db.delete(alias)
+        log_activity(db, 'BOM', 'alias_delete',
+                     f'{bom.product_name if bom else "BOM"} 별칭 삭제: {alias_name}',
+                     ref_type='BomHeader', ref_id=bom_id)
+        db.commit()
+
+    return jsonify({'ok': True})
 
 
 # ===================================================================

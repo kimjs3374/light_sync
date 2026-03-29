@@ -5,7 +5,7 @@ from sqlalchemy.orm import joinedload
 from modules.auth_decorators import login_required, menu_required
 from modules.contract_filters import active_contract_filter
 
-from modules.history_board import get_project_history_context
+from modules.history_board import get_project_history_context, get_user_display_name
 from modules.services.ical_sync import get_leave_events_for_date
 from modules.db_context import get_db
 from modules.utils import safe_int
@@ -140,7 +140,7 @@ def production_management():
         return redirect(url_for('production.production_main'))
 
     with get_db() as db:
-        current_user = session.get('full_name') or '사용자'
+        current_user = get_user_display_name()
 
         if request.method == 'POST' and request.form.get('action') == 'sync_production_processes':
             sync_production_processes(db)
@@ -186,7 +186,7 @@ def production_management():
 def production_detail(project_id):
 
     with get_db() as db:
-        current_user = session.get('full_name') or '사용자'
+        current_user = get_user_display_name()
 
         project = db.query(Project).options(
             joinedload(Project.contracts)
@@ -310,7 +310,7 @@ def api_process_toggle(process_id):
     data = request.get_json() or {}
     is_active = data.get('is_active', True)
     off_reason = (data.get('off_reason') or '').strip()
-    current_user = session.get('full_name') or '사용자'
+    current_user = get_user_display_name()
 
     with get_db() as db:
         result, status_code = handle_process_toggle(db, process_id, is_active, off_reason, current_user)
@@ -323,7 +323,7 @@ def api_process_toggle(process_id):
 def api_process_daily_log(process_id):
     """일일 수량 입력"""
     data = request.get_json() or {}
-    current_user = session.get('full_name') or '사용자'
+    current_user = get_user_display_name()
 
     with get_db() as db:
         result, status_code = handle_process_daily_log(db, process_id, data.get('daily_qty'), current_user)
@@ -337,7 +337,7 @@ def api_process_complete(process_id):
     """공정 완료/완료해제"""
     data = request.get_json() or {}
     complete = data.get('complete', True)
-    current_user = session.get('full_name') or '사용자'
+    current_user = get_user_display_name()
 
     with get_db() as db:
         result, status_code = handle_process_complete(db, process_id, complete, current_user)

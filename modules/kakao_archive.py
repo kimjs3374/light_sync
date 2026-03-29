@@ -154,6 +154,12 @@ def parse_attachments(atts_json, board_type, post_id):
         fsize = att.get('file_size', 0)
 
         file_url = _storage_url(board_type, post_id, att_id, fname)
+        is_image = ftype == 'img'
+
+        # 이미지일 경우 썸네일 URL 생성 (로컬 파일만)
+        thumb_url = None
+        if is_image and file_url and file_url.startswith('/static-archive/'):
+            thumb_url = file_url.replace('/static-archive/', '/static-archive/thumb/', 1)
 
         result.append({
             'id': att_id,
@@ -163,8 +169,9 @@ def parse_attachments(atts_json, board_type, post_id):
             'file_size_fmt': _fmt_size(fsize),
             'ext': att.get('ext_name', '').lstrip('.').lower(),
             'local_url': file_url,
+            'thumb_url': thumb_url,
             'original_url': att.get('url', ''),
-            'is_image': ftype == 'img',
+            'is_image': is_image,
         })
     return result
 

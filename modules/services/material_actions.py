@@ -246,7 +246,9 @@ def handle_add_history_reply(db, project, form, current_user, **ctx):
 # 재고 예약/취소 액션 핸들러
 # ===================================================================
 def handle_cancel_reservation(db, project, form, current_user, **ctx):
-    """재고이용 -> 발주대기 전환 (예약 취소, 가용재고 복원)"""
+    """(비활성) 재고이용 -> 발주대기 전환 — 풀체인 해제로 예약 메커니즘 폐기 (2026-03-27)"""
+    return None  # 풀체인 해제
+    # --- 아래는 레거시 코드 ---
     refresh_fn = ctx['refresh_fn']
     order_id = safe_int(form.get('material_order_id'))
     order = db.query(MaterialOrder).get(order_id)
@@ -289,7 +291,9 @@ def handle_cancel_reservation(db, project, form, current_user, **ctx):
 
 
 def handle_reserve_stock(db, project, form, current_user, **ctx):
-    """발주대기 -> 재고이용 전환 (재예약, 가용재고 차감)"""
+    """(비활성) 발주대기 -> 재고이용 전환 — 풀체인 해제로 예약 메커니즘 폐기 (2026-03-27)"""
+    return None  # 풀체인 해제
+    # --- 아래는 레거시 코드 ---
     refresh_fn = ctx['refresh_fn']
     order_id = safe_int(form.get('material_order_id'))
     order = db.query(MaterialOrder).get(order_id)

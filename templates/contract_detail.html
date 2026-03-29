@@ -673,6 +673,7 @@
 {% set history_post_url = url_for('project.contract_detail', project_id=project.id) %}
 {% set history_board_id = 'contract-history-board' %}
 {% set history_default_filter = 'all' %}
+{% set history_write_scope = 'contract' %}
 {% set history_offcanvas_id = 'contractHistoryOffcanvas' %}
 {% include 'components/history_offcanvas.html' %}
 

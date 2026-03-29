@@ -20,6 +20,7 @@ from modules.db_context import get_db
 from modules.models import (
     Item, PurchaseOrderItem, PurchaseOrder, ReceivingItem, Receiving,
     ReceivingHistory, BomItem, BomHeader, Vendor,
+    StockMovement, MOVEMENT_TYPE_LABELS,
 )
 from modules.services.inventory_utils import record_stock_movement
 
@@ -265,12 +266,35 @@ def item_detail(item_id):
                         'quantity': bi.quantity,
                     })
 
+        # 입출고 변동이력 (StockMovement)
+        movements = (
+            db.query(StockMovement)
+            .filter(StockMovement.item_id == item.id)
+            .order_by(desc(StockMovement.created_at))
+            .limit(100)
+            .all()
+        )
+        movement_list = []
+        for m in movements:
+            movement_list.append({
+                'date': m.created_at.strftime('%Y-%m-%d') if m.created_at else '',
+                'datetime': m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else '',
+                'type': m.movement_type,
+                'type_label': MOVEMENT_TYPE_LABELS.get(m.movement_type, m.movement_type),
+                'quantity': float(m.quantity or 0),
+                'before_qty': float(m.before_qty or 0),
+                'after_qty': float(m.after_qty or 0),
+                'note': m.note or '',
+                'created_by': m.created_by or '',
+            })
+
     return render_template('item_detail.html',
                            item=item,
                            categories=categories,
                            price_history=price_history,
                            related_vendors=related_vendors,
-                           used_in_boms=used_in_boms)
+                           used_in_boms=used_in_boms,
+                           movements=movement_list)
 
 
 # ===================================================================

@@ -169,7 +169,7 @@
     <div class="card qt-section shadow-sm mb-4">
         <div class="card-header"><span class="section-num">5</span><strong>비고</strong></div>
         <div class="card-body p-3 p-md-4">
-            <textarea name="note" class="form-control" rows="3" placeholder="비고 사항 (PDF에 표시됩니다)">{{ q.note or '' if edit_mode else '' }}</textarea>
+            <textarea name="note" class="form-control" rows="3" placeholder="비고 사항 (PDF에 표시됩니다, \ 로 줄바꿈)">{{ q.note or '' if edit_mode else '' }}</textarea>
             <div class="form-check mt-2">
                 <input class="form-check-input" type="checkbox" name="tax_included" id="taxIncluded" {{ 'checked' if edit_mode and q.tax_included }}>
                 <label class="form-check-label small text-muted" for="taxIncluded">부가세 포함</label>

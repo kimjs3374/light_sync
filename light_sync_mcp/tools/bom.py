@@ -74,6 +74,15 @@ def register(mcp: FastMCP):
             else:
                 return "bom_id 또는 product_code가 필요합니다."
 
+            # 별칭 fallback: product_code로 못 찾으면 별칭 테이블에서 검색
+            if not bom and product_code:
+                from modules.models.inventory_entities import BomModelAlias
+                alias = session.query(BomModelAlias).filter(
+                    BomModelAlias.alias_name == product_code
+                ).first()
+                if alias:
+                    bom = session.get(BomHeader, alias.bom_id)
+
             if not bom:
                 return "BOM을 찾을 수 없습니다."
 
@@ -254,7 +263,7 @@ def register(mcp: FastMCP):
                 if bi.item_id:
                     item = session.get(Item, bi.item_id)
                     if item:
-                        available = _sn(item.stock_qty) - _sn(item.reserved_qty)
+                        available = _sn(item.stock_qty)
                         item_name = _s(item.item_name)
 
                 if available < required:

@@ -30,10 +30,59 @@
 | photo-management | 현장 사진 독립 갤러리 (모바일 카메라+드래그앤드롭+ZIP다운로드+계약별필터) | 91% | 2026-03-20 | 3 |
 | illuminance-verification | Relux PDF 파싱 + 조도 격자 히트맵 + KS 판정 + 비교 리포트 | 95% | 2026-03-20 | 4 |
 | receiving-expected | 입고예정 v2 (MaterialOrder→PurchaseOrderItem 전환, 검수 제거, 디자인 통일) | N/A | 2026-03-20 | 3 |
+| stock-material-redesign | 자재/재고 전면 재설계 (BOM풀체인해제+재고원장+소진등록+부족자재+메뉴분리) | 95% | 2026-03-28 | 3 |
 | warranty-redesign | A/S 관리 전면 재설계 (대시보드+목록+접수+상세+as.db 133건 마이그레이션+보증 자동화) | 95% | 2026-03-22 | 3 |
 | illuminance-design-integration | 조도검증-설계관리 통합 연동 (양방향+PDF원스톱+파서개선+자유입력+다중기구) | 95% | 2026-03-21 | 4 |
 | code-simplify-split | 전체 코드 간소화 및 스플릿 (4Phase: CSS/JS추출+MCP분할+엔티티분할+Route서비스분리) | 100% | 2026-03-21 | 4 |
 | drawing-management | 도면관리 고도화 (SPA 갤러리+PDF 미리보기+DWG 업/다운+버전관리+선택삭제) | ~93% | 2026-03-21 | 1 |
+| menu-order-ui | 메뉴 순서 편집 UI + 제품목록 명칭변경 + 누락메뉴 자동보충 | ~95% | 2026-03-28 | 1 |
+| bom-management-upgrade | BOM 일괄삭제+엑셀임포트(비교/적용)+엑셀다운로드 | 구현완료 | 2026-03-28 | 1 |
+| tax-invoice-revenue | 국세청 세금계산서 임포트+G2B매칭+수금관리+매출대시보드 | 구현완료 | 2026-03-28 | 1 |
+| rw-permission | R/RW 권한분리+금액컬럼숨김(12개템플릿)+개인override | 구현완료 | 2026-03-28 | 1 |
+| production-redesign | 생산관리 카드형 재설계 (작업자 중심+AJAX+모바일) | 구현완료 | 2026-03-28 | 2 |
+| quotation | 견적서 CRUD + PDF 출력 (매그나텍 양식+도장 오버레이) | 구현완료 | 2026-03-28 | 2 |
+| consultation-task-flow | 협의완료→부서별 할일 자동표시 (대시보드 5탭 확장) | 구현완료 | 2026-03-28 | 2 |
+| processing-order | 가공발주 (외주가공+DWG첨부+이메일+입고확인) | 구현완료 | 2026-03-28 | 2 |
+| mobile-responsive | 전체 모바일 반응형 (mobile-stack-table+4 breakpoint+116템플릿) | 구현완료 | 2026-03-28 | 2 |
+| icube-procurement | iCUBE DB→Supabase 마이그레이션 (SITEM/STRADE/발주/입고) | 구현완료 | 2026-03-28 | 3 |
+| icube-procurement-phase2 | iCUBE Phase2 (추가 테이블+데이터 정합성) | 구현완료 | 2026-03-28 | 2 |
+| g2b-auto-contract | G2B 자동계약생성 + 설계현장 병합 + 계약삭제 | 구현완료 | 2026-03-28 | 3 |
+| g2b-contract-match | G2B 계약매칭 (조달내역↔계약 자동연결) | 구현완료 | 2026-03-28 | 3 |
+
+## menu-order-ui
+
+- **Duration**: 2026-03-28 (1 session)
+- **Iterations**: 0
+- **Key Result**: 사용자관리에 "메뉴 순서" 탭 추가. 드래그&드롭+▲▼버튼으로 그룹/메뉴 순서 편집. 기존 `/admin/api/menu_order` API 재사용(백엔드 변경 0줄). "제품카탈로그"→"제품목록" 명칭 변경. DB에 누락된 신규 메뉴 자동 보충 로직. 기존 버그 1건 수정(newExtraRw 미선언).
+- **Modified**: config.py, templates/partials/admin_menu_perms.html
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Report | [menu-order-ui.report.md](menu-order-ui/menu-order-ui.report.md) |
+
+---
+
+## stock-material-redesign
+
+- **Duration**: 2026-03-27 ~ 2026-03-28 (2일 + 추가개선 1세션)
+- **Iterations**: 1 (Check 이슈 9건) + 추가개선 3건
+- **Key Result**: BOM 풀체인 해제, 재고원장, 소진등록/이력CRUD, 부족자재뷰, 재고조정, reserved_qty 전면 폐기, 메뉴 그룹 분리
+- **v2 추가**: 소진 이력 목록/상세/수정/삭제, BOM 미연결 부품 자동 Item 생성(57개 BOM 1,517부품), 협의→소진 연동 검증
+- **New Tables**: stock_consumptions, stock_consumption_items + stock_movements 확장(3컬럼)
+- **New Files**: inventory_shortage/consume/adjust/consumption_history/consumption_detail.html (5개)
+- **Modified**: 30개 파일 (모델/서비스/라우트/템플릿/MCP/설정)
+
+### Documents
+
+| Document | File |
+|----------|------|
+| Plan | [stock-material-redesign.plan.md](stock-material-redesign/stock-material-redesign.plan.md) |
+| Design | [stock-material-redesign.design.md](stock-material-redesign/stock-material-redesign.design.md) |
+| Report | [stock-material-redesign.report.md](stock-material-redesign/stock-material-redesign.report.md) |
+
+---
 
 ## drawing-management
 

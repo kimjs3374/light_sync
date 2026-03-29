@@ -18,7 +18,7 @@ from modules.models import (
     DETAIL_ITEM_OPTIONS, LIGHTING_DETAIL_ITEMS, normalize_detail_item, DRAWING_TYPE_OPTIONS,
     CONTRACT_ITEM_SPEC_SCHEMA,
 )
-from modules.history_board import append_history_log, get_project_history_context
+from modules.history_board import append_history_log, get_project_history_context, get_user_display_name
 from modules.priority_utils import (
     append_due_priority_reason,
     append_manual_priority_reason,
@@ -492,7 +492,7 @@ def contract_detail(project_id):
 
 def handle_detail_common(project_id, template_name):
     with get_db() as db:
-        current_user = session.get('full_name')
+        current_user = get_user_display_name()
         user_group = session.get('user_group')
         page_scope = 'contract' if 'contract' in template_name else 'design'
 
@@ -952,8 +952,8 @@ def api_merge_design_project(project_id, design_id):
             source.status = '병합완료'
 
             # 병합 히스토리 기록
-            from modules.history_board import append_history_log
-            current_user = session.get('full_name') or '사용자'
+            from modules.history_board import append_history_log, get_user_display_name
+            current_user = get_user_display_name()
             merge_detail = ', '.join(f"{k} {v}건" for k, v in merged_counts.items() if v > 0)
             append_history_log(
                 db,

@@ -16,6 +16,10 @@
             <div class="sub">Inventory Dashboard — 실시간 재고 모니터링</div>
         </div>
         <div class="nav-pills d-flex flex-wrap gap-2">
+            <a href="{{ url_for('inventory.shortage_view') }}" class="btn" style="background:#fef2f2;color:#dc2626;">부족자재</a>
+            <a href="{{ url_for('inventory.consume_form') }}" class="btn" style="background:#eff6ff;color:#2563eb;">소진등록</a>
+            <a href="{{ url_for('inventory.consumption_history') }}" class="btn" style="background:#f5f3ff;color:#7c3aed;">소진이력</a>
+            <a href="{{ url_for('inventory.adjust_form') }}" class="btn" style="background:#f0fdf4;color:#16a34a;">재고조정</a>
             <a href="{{ url_for('inventory.inventory_items') }}" class="btn">품목별 재고</a>
             <a href="{{ url_for('inventory.bom_stock') }}" class="btn">BOM 재고</a>
             <a href="{{ url_for('inventory.audit_list') }}" class="btn">재고실사</a>
@@ -41,15 +45,9 @@
         <div class="stat-bar"></div>
     </div>
     <div class="stat-card card-avail anim-in" style="animation-delay:.15s">
-        <div class="stat-icon">✅</div>
-        <div class="stat-label">가용재고액</div>
-        <div class="stat-value mono" style="color:#16a34a">{{ fmt_money(total_available_value) }}<span style="font-size:.7rem;color:#64748b;font-family:'DM Sans'">원</span></div>
-        <div class="stat-bar"></div>
-    </div>
-    <div class="stat-card card-reserved anim-in" style="animation-delay:.2s">
-        <div class="stat-icon">🔒</div>
-        <div class="stat-label">예약재고액</div>
-        <div class="stat-value mono" style="color:#d97706">{{ fmt_money(total_reserved_value) }}<span style="font-size:.7rem;color:#64748b;font-family:'DM Sans'">원</span></div>
+        <div class="stat-icon">📊</div>
+        <div class="stat-label">카테고리</div>
+        <div class="stat-value mono" style="color:#16a34a">{{ cat_summary|length }}<span style="font-size:.7rem;color:#64748b;font-family:'DM Sans'">개</span></div>
         <div class="stat-bar"></div>
     </div>
     {% endif %}
@@ -124,12 +122,10 @@
             <table class="inv-table">
                 <thead>
                     <tr>
-                        <th style="width:22%">카테고리</th>
-                        <th class="text-center" style="width:10%">품목수</th>
-                        <th class="text-end" style="width:14%">총재고</th>
-                        <th class="text-end" style="width:14%">예약</th>
-                        <th class="text-end" style="width:14%">가용</th>
-                        {% if not hide_financial %}<th class="text-end" style="width:18%">재고금액</th>{% endif %}
+                        <th style="width:30%">카테고리</th>
+                        <th class="text-center" style="width:15%">품목수</th>
+                        <th class="text-end" style="width:20%">재고</th>
+                        {% if not hide_financial %}<th class="text-end" style="width:25%">재고금액</th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -141,13 +137,11 @@
                         </td>
                         <td class="text-center">{{ cat.count }}</td>
                         <td class="text-end mono-cell">{{ fmt_money(cat.total_stock) }}</td>
-                        <td class="text-end mono-cell" style="color:#d97706">{{ fmt_money(cat.reserved) }}</td>
-                        <td class="text-end mono-cell" style="color:#16a34a">{{ fmt_money(cat.available) }}</td>
                         {% if not hide_financial %}<td class="text-end mono-cell">{{ fmt_money(cat.value) }}원</td>{% endif %}
                     </tr>
                     {% endfor %}
                     {% if not cat_summary %}
-                    <tr><td colspan="{% if hide_financial %}5{% else %}6{% endif %}" style="text-align:center;color:#94a3b8;padding:2rem;">데이터가 없습니다.</td></tr>
+                    <tr><td colspan="{% if hide_financial %}3{% else %}4{% endif %}" style="text-align:center;color:#94a3b8;padding:2rem;">데이터가 없습니다.</td></tr>
                     {% endif %}
                 </tbody>
             </table>
@@ -220,7 +214,7 @@
                         {% for m in recent_movements %}
                         <tr>
                             <td class="mono-cell" style="font-size:.72rem;color:#64748b;">{{ m.created_at.strftime('%m/%d %H:%M') if m.created_at else '' }}</td>
-                            <td style="font-weight:500;">{{ m.item.item_name if m.item else '' }}</td>
+                            <td style="font-weight:500;">{% if m.item %}<a href="{{ url_for('item.item_detail', item_id=m.item.id) }}?tab=movement" style="color:inherit;text-decoration:none;" onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='inherit'">{{ m.item.item_name }}</a>{% endif %}</td>
                             <td class="text-center">
                                 <span class="mv-badge {% if m.movement_type.startswith('IN') %}mv-in{% elif m.movement_type.startswith('OUT') %}mv-out{% else %}mv-adj{% endif %}">
                                     {{ movement_labels.get(m.movement_type, m.movement_type) }}

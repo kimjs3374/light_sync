@@ -11,7 +11,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from modules.models.entities import Project, TowerLayout, TowerLayoutPosition, LensAngleConfig
-from modules.history_board import append_history_log
+from modules.history_board import append_history_log, get_user_display_name
 
 lighting_layout_bp = Blueprint('lighting_layout', __name__, url_prefix='/lighting-layout')
 
@@ -105,7 +105,7 @@ def add_tower():
                 no += 1
 
         append_history_log(db, project_id=project_id,
-                           user_name=session.get('full_name', '사용자'),
+                           user_name=get_user_display_name(),
                            content=f"조명배치도 타워 추가: {tower_name} ({rows}×{cols}={rows*cols}등)",
                            scope='design')
         db.commit()
@@ -200,7 +200,7 @@ def save_positions(tower_id):
 
         if changed:
             append_history_log(db, project_id=tower.project_id,
-                               user_name=session.get('full_name', '사용자'),
+                               user_name=get_user_display_name(),
                                content=f"조명배치도 [{tower.tower_name}] 렌즈각도 변경: {', '.join(changed[:5])}{'...' if len(changed) > 5 else ''}",
                                scope='design')
         db.commit()
@@ -254,7 +254,7 @@ def edit_tower(tower_id):
                     no += 1
 
         append_history_log(db, project_id=tower.project_id,
-                           user_name=session.get('full_name', '사용자'),
+                           user_name=get_user_display_name(),
                            content=f"조명배치도 [{tower.tower_name}] 정보 수정",
                            scope='design')
         db.commit()
@@ -279,7 +279,7 @@ def delete_tower(tower_id):
         name = tower.tower_name
         db.delete(tower)
         append_history_log(db, project_id=project_id,
-                           user_name=session.get('full_name', '사용자'),
+                           user_name=get_user_display_name(),
                            content=f"조명배치도 타워 삭제: {name}",
                            scope='design')
         db.commit()
@@ -304,7 +304,7 @@ def delete_site(project_id):
         for t in towers:
             db.delete(t)
         append_history_log(db, project_id=project_id,
-                           user_name=session.get('full_name', '사용자'),
+                           user_name=get_user_display_name(),
                            content=f"조명배치도 현장 전체 삭제: 타워 {count}개",
                            scope='design')
         db.commit()

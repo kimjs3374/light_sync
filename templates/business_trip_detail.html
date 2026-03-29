@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}출장 상세{% endblock %}
+
+{% block content %}
+<div class="container py-3" style="max-width:750px">
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <h5 class="mb-0 me-auto">출장 상세</h5>
+    {% set writable = 'business_trip' in session.get('writable_menus', []) or session.get('role') == 'admin' %}
+    {% if writable %}
+    <a href="{{ url_for('business_trip.trip_edit', trip_id=trip.id) }}" class="btn btn-sm btn-outline-primary" style="white-space:nowrap">수정</a>
+    <form method="POST" action="{{ url_for('business_trip.trip_delete', trip_id=trip.id) }}" class="d-inline"
+          onsubmit="return confirm('정말 삭제하시겠습니까?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-outline-danger" style="white-space:nowrap">삭제</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {# ── 상태 뱃지 + 빠른 변경 ── #}
+  <div class="card mb-3">
+    <div class="card-body py-2 d-flex align-items-center gap-2 flex-wrap">
+      <span class="fw-bold">상태:</span>
+      {% if trip.status == '예정' %}
+      <span class="badge bg-primary fs-6">예정</span>
+      {% elif trip.status == '진행중' %}
+      <span class="badge bg-warning text-dark fs-6">진행중</span>
+      {% elif trip.status == '완료' %}
+      <span class="badge bg-success fs-6">완료</span>
+      {% elif trip.status == '취소' %}
+      <span class="badge bg-secondary fs-6">취소</span>
+      {% endif %}
+
+      {% if writable %}
+      <span class="ms-auto"></span>
+      {% for code, label in status_choices %}
+        {% if code != trip.status %}
+        <form method="POST" action="{{ url_for('business_trip.trip_status_change', trip_id=trip.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="status" value="{{ code }}">
+          <button class="btn btn-xs btn-outline-secondary" style="white-space:nowrap">{{ label }}</button>
+        </form>
+        {% endif %}
+      {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── 기본 정보 ── #}
+  <div class="card mb-3">
+    <div class="card-header py-2"><strong>기본 정보</strong></div>
+    <div class="card-body">
+      <table class="table table-sm table-borderless mb-0">
+        <tr><th style="width:120px;white-space:nowrap" class="text-muted">출장제목</th><td class="fw-bold">{{ trip.title }}</td></tr>
+        <tr><th class="text-muted" style="white-space:nowrap">출장장소</th><td>{{ trip.destination }}</td></tr>
+        <tr><th class="text-muted" style="white-space:nowrap">출발일시</th><td>{{ trip.departure_date_str }}</td></tr>
+        <tr><th class="text-muted" style="white-space:nowrap">복귀일시</th><td>{{ trip.return_date_str or '미정' }}</td></tr>
+        <tr><th class="text-muted" style="white-space:nowrap">이동수단</th><td>{{ trip.vehicle or '-' }}</td></tr>
+        {% if trip.purpose %}
+        <tr><th class="text-muted" style="white-space:nowrap">출장목적</th><td style="white-space:pre-line">{{ trip.purpose }}</td></tr>
+        {% endif %}
+        {% if trip.note %}
+        <tr><th class="text-muted" style="white-space:nowrap">비고</th><td style="white-space:pre-line">{{ trip.note }}</td></tr>
+        {% endif %}
+        <tr><th class="text-muted" style="white-space:nowrap">등록자</th><td>{{ trip.creator.full_name if trip.creator else '-' }}</td></tr>
+        <tr><th class="text-muted" style="white-space:nowrap">등록일</th><td>{{ trip.created_at.strftime('%Y-%m-%d %H:%M') if trip.created_at else '' }}</td></tr>
+      </table>
+    </div>
+  </div>
+
+  {# ── 출장인원 ── #}
+  <div class="card mb-3">
+    <div class="card-header py-2"><strong>출장인원 ({{ trip.members|length }}명)</strong></div>
+    <div class="card-body p-0">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>이름</th>
+            <th>직급</th>
+            <th>부서</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in trip.members %}
+          <tr>
+            <td class="fw-bold">{{ m.user_name }}</td>
+            <td>{{ m.position or '-' }}</td>
+            <td>{{ m.department or '-' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="text-center text-muted py-3">인원 정보 없음</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <a href="{{ url_for('business_trip.trip_list') }}" class="btn btn-sm btn-outline-secondary">목록으로</a>
+</div>
+{% endblock %}

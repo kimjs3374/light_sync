@@ -85,6 +85,7 @@ def _build_card(item, contract, project, today):
     return {
         'project_id': project.id,
         'contract_item_id': item.id,
+        'contract_name': (contract.contract_name or '') if contract else '',
         'project_name': project.short_name or project.temp_name or '미지정',
         'project_no': project.project_no or '',
         'category': item.category or '',

@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}공구관리{% endblock %}
+
+{% block content %}
+<style>
+  .tool-card{border-radius:var(--mg-radius);border:1px solid var(--mg-border);padding:.75rem;margin-bottom:.5rem;cursor:pointer;transition:background .12s,box-shadow .12s}
+  .tool-card:hover{background:#eef2ff;box-shadow:inset 3px 0 0 var(--mg-primary)}
+  .tool-card .tool-name{font-weight:700;font-size:.92rem;color:var(--mg-ink)}
+  .tool-card .tool-meta{font-size:.78rem;color:var(--mg-muted);margin-top:.25rem}
+  .tool-card .tool-meta span+span::before{content:"·";margin:0 .35rem;color:var(--mg-subtle)}
+  .stat-num{font-weight:800;font-size:1.15rem;font-family:var(--mg-mono)}
+</style>
+
+<div class="container-fluid py-3">
+
+  {# ── 상단 통계 ── #}
+  <div class="row g-2 mb-3">
+    <div class="col"><div class="card text-center p-2 shadow-sm">
+      <div class="stat-num">{{ stats.total }}</div>
+      <small class="text-muted">전체</small></div></div>
+    <div class="col"><div class="card text-center p-2 shadow-sm border-success">
+      <div class="stat-num text-success">{{ stats.available }}</div>
+      <small class="text-muted">보관중</small></div></div>
+    <div class="col"><div class="card text-center p-2 shadow-sm border-warning">
+      <div class="stat-num text-warning">{{ stats.in_use }}</div>
+      <small class="text-muted">사용중</small></div></div>
+    <div class="col"><div class="card text-center p-2 shadow-sm border-primary">
+      <div class="stat-num text-primary">{{ stats.checkout_active }}</div>
+      <small class="text-muted">불출중</small></div></div>
+  </div>
+
+  {# ── 필터 + 등록 버튼 ── #}
+  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <h5 class="mb-0 me-auto" style="white-space:nowrap">공구관리</h5>
+    <form class="d-flex gap-2 flex-wrap" method="GET">
+      <input type="text" name="search" class="form-control form-control-sm" placeholder="공구명 검색..."
+             value="{{ filters.search }}" style="width:130px">
+      <select name="team" class="form-select form-select-sm" onchange="this.form.submit()" style="width:100px">
+        <option value="">전체팀</option>
+        {% for t in teams %}
+        <option value="{{ t }}" {{ 'selected' if filters.team == t }}>{{ t }}</option>
+        {% endfor %}
+      </select>
+      <select name="status" class="form-select form-select-sm" onchange="this.form.submit()" style="width:90px">
+        <option value="">전체상태</option>
+        {% for s in status_choices %}
+        <option value="{{ s }}" {{ 'selected' if filters.status == s }}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-sm btn-outline-secondary" style="white-space:nowrap">검색</button>
+    </form>
+    {% if 'tools' in session.get('writable_menus', []) or session.get('role') == 'admin' %}
+    <button type="button" class="btn btn-sm btn-primary" style="white-space:nowrap" data-bs-toggle="modal" data-bs-target="#addToolModal">+ 공구등록</button>
+    {% endif %}
+  </div>
+
+  {# ── 데스크톱 테이블 ── #}
+  <div class="d-none d-md-block">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="white-space:nowrap">상태</th>
+            <th>공구명</th>
+            <th style="white-space:nowrap">소속팀</th>
+            <th style="white-space:nowrap">수량 (가용/전체)</th>
+            <th style="white-space:nowrap">현재위치</th>
+            <th>비고</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tools %}
+          <tr style="cursor:pointer" onclick="location.href='{{ url_for('tools.tool_detail', tool_id=t.id) }}'">
+            <td style="white-space:nowrap">
+              {% if t.status == '보관중' %}
+              <span class="badge bg-success">보관중</span>
+              {% elif t.status == '사용중' %}
+              <span class="badge bg-warning text-dark">사용중</span>
+              {% elif t.status == '점검중' %}
+              <span class="badge bg-info">점검중</span>
+              {% elif t.status == '폐기' %}
+              <span class="badge bg-secondary">폐기</span>
+              {% else %}
+              <span class="badge bg-light text-dark">{{ t.status }}</span>
+              {% endif %}
+            </td>
+            <td class="fw-bold">{{ t.tool_name }}</td>
+            <td style="white-space:nowrap">{{ t.team or '-' }}</td>
+            <td style="white-space:nowrap;font-family:var(--mg-mono)">
+              <span class="{{ 'text-danger fw-bold' if t.available_qty == 0 else '' }}">{{ t.available_qty }}</span> / {{ t.total_qty }}
+            </td>
+            <td style="white-space:nowrap">{{ t.current_location or '-' }}</td>
+            <td><span class="text-truncate d-inline-block" style="max-width:180px">{{ t.note or '' }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-4">등록된 공구가 없습니다.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ── 모바일 카드 ── #}
+  <div class="d-md-none">
+    {% for t in tools %}
+    <div class="tool-card" onclick="location.href='{{ url_for('tools.tool_detail', tool_id=t.id) }}'">
+      <div class="d-flex align-items-center gap-2">
+        <span class="tool-name flex-grow-1">{{ t.tool_name }}</span>
+        {% if t.status == '보관중' %}
+        <span class="badge bg-success" style="white-space:nowrap">보관중</span>
+        {% elif t.status == '사용중' %}
+        <span class="badge bg-warning text-dark" style="white-space:nowrap">사용중</span>
+        {% elif t.status == '점검중' %}
+        <span class="badge bg-info" style="white-space:nowrap">점검중</span>
+        {% elif t.status == '폐기' %}
+        <span class="badge bg-secondary" style="white-space:nowrap">폐기</span>
+        {% endif %}
+      </div>
+      <div class="tool-meta">
+        <span>{{ t.team or '미지정' }}</span>
+        <span style="font-family:var(--mg-mono)">
+          <span class="{{ 'text-danger fw-bold' if t.available_qty == 0 else '' }}">{{ t.available_qty }}</span>/{{ t.total_qty }}
+        </span>
+        <span>{{ t.current_location or '-' }}</span>
+      </div>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">등록된 공구가 없습니다.</div>
+    {% endfor %}
+  </div>
+
+  {# ── 페이지네이션 ── #}
+  {% if pagination.total_pages > 1 %}
+  <nav class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center">
+      {% if pagination.show_first %}
+      <li class="page-item"><a class="page-link" href="?page=1&team={{ filters.team }}&status={{ filters.status }}&search={{ filters.search }}">1</a></li>
+      <li class="page-item disabled"><span class="page-link">...</span></li>
+      {% endif %}
+      {% for p in pagination.page_range %}
+      <li class="page-item {{ 'active' if p == pagination.page }}">
+        <a class="page-link" href="?page={{ p }}&team={{ filters.team }}&status={{ filters.status }}&search={{ filters.search }}">{{ p }}</a>
+      </li>
+      {% endfor %}
+      {% if pagination.show_last %}
+      <li class="page-item disabled"><span class="page-link">...</span></li>
+      <li class="page-item"><a class="page-link" href="?page={{ pagination.total_pages }}&team={{ filters.team }}&status={{ filters.status }}&search={{ filters.search }}">{{ pagination.total_pages }}</a></li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+
+</div>
+
+{# ── 공구 등록 모달 ── #}
+{% if 'tools' in session.get('writable_menus', []) or session.get('role') == 'admin' %}
+<div class="modal fade" id="addToolModal" tabindex="-1">
+  <div class="modal-dialog modal-fullscreen-sm-down">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('tools.tool_create') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header py-2">
+          <h6 class="modal-title fw-bold">공구 등록</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold" style="font-size:.82rem">공구명 <span class="text-danger">*</span></label>
+            <input type="text" name="tool_name" class="form-control form-control-sm" required placeholder="예) 충전 그라인더">
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label fw-bold" style="font-size:.82rem">카테고리</label>
+              <input type="text" name="category" class="form-control form-control-sm" value="전동공구">
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-bold" style="font-size:.82rem">소속팀</label>
+              <select name="team" class="form-select form-select-sm">
+                <option value="">선택</option>
+                <option value="생산1팀">생산1팀</option>
+                <option value="생산2팀">생산2팀</option>
+              </select>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label fw-bold" style="font-size:.82rem">수량</label>
+              <input type="number" name="total_qty" class="form-control form-control-sm" value="1" min="1">
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-bold" style="font-size:.82rem">보관위치</label>
+              <input type="text" name="current_location" class="form-control form-control-sm" value="사무실">
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label fw-bold" style="font-size:.82rem">비고</label>
+            <textarea name="note" class="form-control form-control-sm" rows="2" placeholder="추가 정보"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
+          <button type="submit" class="btn btn-sm btn-primary" style="white-space:nowrap">등록</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

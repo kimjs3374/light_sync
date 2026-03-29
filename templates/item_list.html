@@ -72,8 +72,6 @@
                         <th style="width:40px">단위</th>
                         <th style="width:70px">분류</th>
                         <th class="text-end" style="width:55px">실재고</th>
-                        <th class="text-end" style="width:50px">예약</th>
-                        <th class="text-end" style="width:50px">가용</th>
                         <th style="width:12%">제조사</th>
                         <th style="width:45px">거래</th>
                     </tr>
@@ -81,8 +79,6 @@
                 <tbody>
                     {% for item in items %}
                     {% set stock = (item.stock_qty or 0)|round(0)|int %}
-                    {% set reserved = (item.reserved_qty or 0)|round(0)|int %}
-                    {% set available = stock - reserved %}
                     <tr onclick="location.href='{{ url_for('item.item_detail', item_id=item.id) }}'">
                         <td><span class="mono" style="color:#64748b;">{{ item.icube_item_cd or '-' }}</span></td>
                         <td class="ellipsis fw-bold" title="{{ item.item_name }}">{{ item.item_name }}</td>
@@ -91,13 +87,7 @@
                         <td style="text-align:center;">
                             {% if item.category %}<span style="font-size:.72rem;color:#2563eb;font-weight:600;">{{ item.category }}</span>{% else %}-{% endif %}
                         </td>
-                        <td class="text-end mono">{% if stock > 0 %}<b>{{ stock }}</b>{% else %}<span style="color:#cbd5e1;">0</span>{% endif %}</td>
-                        <td class="text-end mono" style="color:#d97706;">{% if reserved > 0 %}{{ reserved }}{% else %}<span style="color:#cbd5e1;">0</span>{% endif %}</td>
-                        <td class="text-end mono">
-                            {% if available > 0 %}<span style="color:#16a34a;font-weight:700;">{{ available }}</span>
-                            {% elif available < 0 %}<span style="color:#dc2626;font-weight:700;">{{ available }}</span>
-                            {% else %}<span style="color:#cbd5e1;">0</span>{% endif %}
-                        </td>
+                        <td class="text-end mono fw-bold">{% if stock > 0 %}{{ stock }}{% elif stock < 0 %}<span class="text-danger">{{ stock }}</span>{% else %}<span style="color:#cbd5e1;">0</span>{% endif %}</td>
                         <td class="ellipsis" style="color:#16a34a;font-size:.78rem;">{{ item.manufacturer or '-' }}</td>
                         <td style="text-align:center;font-size:.78rem;">
                             {% set tc = trade_counts.get(item.id, 0) %}

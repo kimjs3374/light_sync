@@ -95,12 +95,13 @@
                 <colgroup>
                     <col style="width:4%">
                     <col style="width:10%">
-                    <col style="width:22%">
+                    <col style="width:20%">
                     <col style="width:12%">
                     <col style="width:8%">
                     <col style="width:9%">
                     <col style="width:9%">
                     <col style="width:9%">
+                    <col style="width:8%">
                     <col style="width:9%">
                     <col style="width:8%">
                 </colgroup>
@@ -111,8 +112,7 @@
                         <th>품명</th>
                         <th>규격</th>
                         <th class="text-end">소요량</th>
-                        <th class="text-end">총재고</th>
-                        <th class="text-end">예약</th>
+                        <th class="text-end">재고</th>
                         <th class="text-end">가용</th>
                         <th class="text-end">생산가능</th>
                         <th class="text-center">상태</th>
@@ -129,7 +129,6 @@
                         <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ d.bom_item.item_spec or '-' }}</td>
                         <td class="text-end">{{ "{:,.1f}".format(d.needed) }}</td>
                         <td class="text-end">{{ "{:,.1f}".format(d.stock_qty) }}</td>
-                        <td class="text-end">{{ "{:,.1f}".format(d.reserved_qty) }}</td>
                         <td class="text-end fw-bold {{ 'stock-ok' if d.enough else 'stock-short' }}">
                             {{ "{:,.1f}".format(d.available) }}
                         </td>

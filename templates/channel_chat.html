@@ -168,7 +168,7 @@ async function sendMsg() {
 }
 
 async function pollReply(requestId, thinkingEl) {
-  const maxPolls = 20;
+  const maxPolls = 60;
   for (let i = 0; i < maxPolls; i++) {
     try {
       const res = await fetch('/channel-chat/poll', {
@@ -185,7 +185,16 @@ async function pollReply(requestId, thinkingEl) {
 
       if (data.status === 'done') return data.reply;
       if (data.status === 'timeout') return data.reply;
-      if (data.status === 'not_found') return '요청을 찾을 수 없습니다.';
+      if (data.status === 'partial') {
+        // 중간 메시지 표시 후 계속 폴링
+        thinkingEl.textContent = data.reply;
+        thinkingEl.style.color = '#666';
+        continue;
+      }
+      if (data.status === 'not_found') {
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
 
       if (data.elapsed != null) {
         thinkingEl.textContent = `Claude가 처리 중... (${data.elapsed}초)`;

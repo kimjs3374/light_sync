@@ -173,6 +173,8 @@
     border: 1px solid #e2e8f0;
     border-radius: .75rem;
     overflow: hidden;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 .panel-pad { padding: 1rem; }
 .panel-head {
@@ -508,6 +510,18 @@
     text-decoration: none;
 }
 .tl-link:hover { text-decoration: underline; }
+.tl-scope-badge {
+    display: inline-block;
+    padding: .08rem .35rem;
+    margin-right: .2rem;
+    font-size: .62rem;
+    font-weight: 700;
+    color: #fff;
+    background: #64748b;
+    border-radius: .3rem;
+    white-space: nowrap;
+    vertical-align: middle;
+}
 
 /* ─── Responsive ─── */
 @media (max-width: 1199.98px) {

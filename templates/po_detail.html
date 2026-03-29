@@ -196,7 +196,7 @@
                         </td>
                         {% set linked = item.bom_item.item if item.bom_item and item.bom_item.item_id else None %}
                         {% set stock = (linked.stock_qty or 0)|round(0)|int if linked else '-' %}
-                        {% set avail = ((linked.stock_qty or 0) - (linked.reserved_qty or 0))|round(0)|int if linked else '-' %}
+                        {% set avail = (linked.stock_qty or 0)|round(0)|int if linked else '-' %}
                         <td class="text-end">{{ stock }}</td>
                         <td class="text-end {{ 'text-danger fw-bold' if avail != '-' and avail <= 0 else 'text-success fw-bold' if avail != '-' else '' }}">{{ avail }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.quantity or 0) }}</td>
@@ -251,12 +251,12 @@
                         <table class="table table-sm" id="editItemsTable">
                             <thead class="table-light">
                                 <tr>
-                                    <th>품명</th>
-                                    <th style="width:120px">규격</th>
-                                    <th style="width:80px">수량</th>
+                                    <th style="width:25%">품명</th>
+                                    <th style="width:100px">규격</th>
+                                    <th style="width:70px">수량</th>
                                     <th style="width:50px">단위</th>
-                                    <th style="width:100px">단가</th>
-                                    <th style="width:100px">비고</th>
+                                    <th style="width:90px">단가</th>
+                                    <th>비고</th>
                                     <th style="width:40px"></th>
                                 </tr>
                             </thead>

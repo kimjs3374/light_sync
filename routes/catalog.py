@@ -1,4 +1,5 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+import io
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, send_file
 from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from modules.pagination import make_pagination
@@ -175,11 +176,9 @@ ACTION_HANDLERS = {
 
 @catalog_bp.route('/product_catalog', methods=['GET'])
 @login_required
+@menu_required('catalog')
 def catalog_list():
-    """품목관리 (관리자 전용)"""
-    if session.get('role') != 'admin':
-        flash('관리자만 접근할 수 있습니다.', 'danger')
-        return redirect(url_for('dashboard.dashboard_view'))
+    """제품 카탈로그 목록"""
     q = (request.args.get('q') or '').strip().lower()
     price_source = request.args.get('price_source', '')
     method = request.args.get('method', '')
@@ -248,7 +247,7 @@ def catalog_list():
 
 @catalog_bp.route('/product_catalog', methods=['POST'])
 @login_required
-@menu_required('item')
+@menu_required('catalog')
 def catalog_action():
     """POST 액션 처리 (sync_catalog, update_price)"""
     action = request.form.get('action')
@@ -263,3 +262,78 @@ def catalog_action():
             db.commit()
 
     return redirect(url_for('catalog.catalog_list'))
+
+
+@catalog_bp.route('/product_catalog/excel')
+@login_required
+@menu_required('catalog')
+def catalog_excel():
+    """카탈로그 전체 엑셀 다운로드"""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    with get_db() as db:
+        items = db.query(ProductCatalog).order_by(ProductCatalog.krn_prdct_nm).all()
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = '제품카탈로그'
+
+        headers = ['No', '물품식별번호', '품목명', '제조사', '모델명', '규격', '단위', '단가(원)', '단가출처', '계약방식', '계약번호', '계약시작일', '계약종료일']
+        header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+        header_font = Font(color='FFFFFF', bold=True, size=10)
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin'),
+        )
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = thin_border
+
+        source_map = {'api': 'API', 'manual': '수기입력', 'quote': '견적'}
+        for r, item in enumerate(items, 2):
+            row_data = [
+                r - 1,
+                item.prdct_idnt_no or '',
+                item.item_name or item.krn_prdct_nm or '',
+                item.manufacturer or '',
+                item.model_name or '',
+                item.spec or '',
+                item.unit or '',
+                item.unit_price or '',
+                source_map.get(item.price_source, item.price_source or ''),
+                item.g2b_contract_method or '',
+                item.g2b_cntrct_no or '',
+                item.cntrct_bgn_date.strftime('%Y-%m-%d') if item.cntrct_bgn_date else '',
+                item.cntrct_end_date.strftime('%Y-%m-%d') if item.cntrct_end_date else '',
+            ]
+            for col, val in enumerate(row_data, 1):
+                cell = ws.cell(row=r, column=col, value=val)
+                cell.border = thin_border
+                cell.font = Font(size=9)
+            # 단가 숫자 포맷
+            price_cell = ws.cell(row=r, column=8)
+            if isinstance(price_cell.value, int) and price_cell.value:
+                price_cell.number_format = '#,##0'
+
+        widths = [6, 16, 28, 14, 20, 18, 8, 14, 10, 12, 18, 14, 14]
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+        ws.auto_filter.ref = f'A1:{openpyxl.utils.get_column_letter(len(headers))}{len(items) + 1}'
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+    from datetime import date
+    filename = f'제품카탈로그_{date.today().strftime("%Y%m%d")}.xlsx'
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename,
+    )

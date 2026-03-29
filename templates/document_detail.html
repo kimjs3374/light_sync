@@ -1,0 +1,368 @@
+{% extends 'base.html' %}
+{% block head %}
+<style>
+.doc-info-label{font-size:.75rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.doc-info-value{font-size:.92rem;font-weight:500;color:#0f172a}
+.doc-section{border:none;border-radius:12px;overflow:hidden}
+.doc-section .card-header{background:#f8fafc;font-weight:700;font-size:.9rem;padding:.6rem 1rem}
+.doc-section .card-body{padding:1rem}
+.amount-row{display:flex;justify-content:space-between;align-items:center;padding:.35rem 0;border-bottom:1px solid #f1f5f9}
+.amount-row:last-child{border-bottom:none}
+.amount-row.total{border-top:2px solid #0f172a;margin-top:.3rem;padding-top:.5rem}
+.amount-val{font-family:'JetBrains Mono',monospace;font-size:1.05rem;color:var(--mg-primary)}
+.step-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:8px;font-size:.8rem;font-weight:600}
+.step-done{background:#dcfce7;color:#166534}
+.step-ready{background:#fef3c7;color:#92400e}
+.step-wait{background:#f1f5f9;color:#64748b}
+.items-table th{font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;background:#f8fafc}
+.items-table td{font-size:.83rem;vertical-align:middle;white-space:nowrap}
+.att-list .att-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9}
+.att-list .att-item:last-child{border-bottom:none}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Document Package</div>
+            <h2 style="font-size:1.2rem;">{{ package.business_name or '서류관리' }}</h2>
+            <div class="hero-sub">
+                <span class="badge bg-light text-dark border me-1" style="font-family:'JetBrains Mono',monospace;">{{ package.procurement_req_no }}</span>
+                <span>{{ package.demand_org or '' }}</span>
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('document.document_list') }}" class="btn btn-outline-light btn-sm">목록으로</a>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid px-3 px-md-4 mt-3">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show flash-auto-hide" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="row g-3 mb-3 mg-fade" style="animation-delay:.05s">
+        <div class="col-4 col-md-2">
+            <div class="step-badge {{ 'step-done' if package.req_pdf_path else 'step-wait' }}">
+                {% if package.req_pdf_path %}&#10003;{% else %}1{% endif %}
+                계약서 등록
+            </div>
+        </div>
+        <div class="col-4 col-md-2">
+            <div class="step-badge {{ 'step-done' if package.commencement_generated else ('step-ready' if package.req_pdf_path else 'step-wait') }}">
+                {% if package.commencement_generated %}&#10003;{% else %}2{% endif %}
+                착수계
+            </div>
+        </div>
+        <div class="col-4 col-md-2">
+            <div class="step-badge {{ 'step-done' if package.delivery_generated else ('step-ready' if package.commencement_generated else 'step-wait') }}">
+                {% if package.delivery_generated %}&#10003;{% else %}3{% endif %}
+                납품계
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-xl-8">
+            <div class="card doc-section shadow-sm mb-3 mg-fade" style="animation-delay:.08s">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>1. 계약서 (납품요구서)</span>
+                    {% if package.req_pdf_path %}
+                    <span class="badge bg-success" style="font-size:.72rem;">등록완료</span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if package.req_pdf_path %}
+                    <div class="alert alert-success border-0 py-2 px-3 mb-3">
+                        <div class="fw-bold small">파싱 완료</div>
+                        <div class="small text-muted">계약번호, 수수료, 검사/검수기관 등이 자동 추출되었습니다.</div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-4 col-6">
+                            <div class="doc-info-label">계약체결번호</div>
+                            <div class="doc-info-value" style="font-family:'JetBrains Mono',monospace;font-size:.85rem;">{{ package.contract_no or '-' }}</div>
+                        </div>
+                        <div class="col-md-4 col-6">
+                            <div class="doc-info-label">계약체결일</div>
+                            <div class="doc-info-value">{{ package.contract_date.strftime('%Y-%m-%d') if package.contract_date else '-' }}</div>
+                        </div>
+                        <div class="col-md-4 col-6">
+                            <div class="doc-info-label">하자담보기간</div>
+                            <div class="doc-info-value">{{ package.warranty_period or '-' }}</div>
+                        </div>
+                        <div class="col-md-4 col-6">
+                            <div class="doc-info-label">검사기관</div>
+                            <div class="doc-info-value">{{ package.inspection_org or '-' }}</div>
+                        </div>
+                        <div class="col-md-4 col-6">
+                            <div class="doc-info-label">검수기관</div>
+                            <div class="doc-info-value">{{ package.acceptance_org or '-' }}</div>
+                        </div>
+                        <div class="col-md-4 col-6">
+                            <div class="doc-info-label">관청구분</div>
+                            <div class="doc-info-value">
+                                <span class="badge {{ 'bg-primary' if package.org_type == '청' else 'bg-info' }}" style="font-size:.72rem;">{{ package.org_type or '-' }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <form method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="upload_contract_pdf">
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="file" name="contract_pdf" accept=".pdf" class="form-control form-control-sm" style="max-width:300px;">
+                            <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;">
+                                {{ '재업로드' if package.req_pdf_path else '업로드' }}
+                            </button>
+                            {% if package.req_pdf_path %}
+                            <a href="/{{ package.req_pdf_path }}" target="_blank" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">PDF 보기</a>
+                            {% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card doc-section shadow-sm mb-3 mg-fade" style="animation-delay:.1s">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>2. 착수계</span>
+                    {% if package.commencement_generated %}
+                    <span class="badge bg-success" style="font-size:.72rem;">생성완료</span>
+                    {% elif package.commencement_doc_no %}
+                    <span class="badge bg-warning text-dark" style="font-size:.72rem;">정보저장됨</span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if not package.req_pdf_path %}
+                    <div class="alert alert-warning border-0 py-2 px-3 mb-0">
+                        <div class="small">계약서(납품요구서)를 먼저 업로드해주세요.</div>
+                    </div>
+                    {% else %}
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="save_commencement">
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-4 col-6">
+                                <label class="form-label small fw-bold text-muted">착수일</label>
+                                <input type="date" name="commencement_date" class="form-control form-control-sm"
+                                       value="{{ package.commencement_date.strftime('%Y-%m-%d') if package.commencement_date else '' }}">
+                            </div>
+                            <div class="col-md-4 col-6">
+                                <label class="form-label small fw-bold text-muted">현장대리인</label>
+                                <select name="agent_id" class="form-select form-select-sm">
+                                    <option value="">선택</option>
+                                    {% for agent in agents %}
+                                    <option value="{{ agent.id }}" {{ 'selected' if package.commencement_agent_id == agent.id }}>
+                                        {{ agent.full_name }}{% if agent.position %} {{ agent.position }}{% endif %}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-4 col-6">
+                                <label class="form-label small fw-bold text-muted">공문번호</label>
+                                <input type="text" class="form-control form-control-sm" value="{{ package.commencement_doc_no or '자동채번' }}" readonly
+                                       style="background:#f8fafc;font-family:'JetBrains Mono',monospace;font-size:.82rem;">
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary btn-sm">정보 저장</button>
+                            {% if package.commencement_doc_no %}
+                            <a href="{{ url_for('document.download_commencement_pdf', req_no=package.procurement_req_no) }}"
+                               class="btn btn-dark btn-sm fw-bold" target="_blank">
+                                착수계 PDF 생성
+                            </a>
+                            {% endif %}
+                        </div>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card doc-section shadow-sm mb-3 mg-fade" style="animation-delay:.12s">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>3. 납품계</span>
+                    {% if package.delivery_generated %}
+                    <span class="badge bg-success" style="font-size:.72rem;">생성완료</span>
+                    {% elif package.delivery_doc_no %}
+                    <span class="badge bg-warning text-dark" style="font-size:.72rem;">정보저장됨</span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if not package.req_pdf_path %}
+                    <div class="alert alert-warning border-0 py-2 px-3 mb-0">
+                        <div class="small">계약서(납품요구서)를 먼저 업로드해주세요.</div>
+                    </div>
+                    {% else %}
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="save_delivery">
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-4 col-6">
+                                <label class="form-label small fw-bold text-muted">납품일 (제출일자)</label>
+                                <input type="date" name="delivery_date" class="form-control form-control-sm"
+                                       value="{{ package.delivery_date.strftime('%Y-%m-%d') if package.delivery_date else '' }}">
+                            </div>
+                            <div class="col-md-4 col-6">
+                                <label class="form-label small fw-bold text-muted">공문번호</label>
+                                <input type="text" class="form-control form-control-sm" value="{{ package.delivery_doc_no or '자동채번' }}" readonly
+                                       style="background:#f8fafc;font-family:'JetBrains Mono',monospace;font-size:.82rem;">
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary btn-sm">정보 저장</button>
+                            {% if package.delivery_doc_no %}
+                            <a href="{{ url_for('document.download_delivery_pdf', req_no=package.procurement_req_no) }}"
+                               class="btn btn-dark btn-sm fw-bold" target="_blank">
+                                납품계 PDF 생성
+                            </a>
+                            {% endif %}
+                        </div>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card doc-section shadow-sm mb-3 mg-fade" style="animation-delay:.14s">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>첨부파일</span>
+                    <span class="badge bg-light text-dark border" style="font-size:.72rem;">{{ attachments|length }}건</span>
+                </div>
+                <div class="card-body">
+                    <div class="att-list mb-3">
+                        {% for att in attachments %}
+                        <div class="att-item">
+                            <span class="badge bg-light text-dark border" style="font-size:.7rem;white-space:nowrap;">{{ DOC_ATTACH_TYPES.get(att.file_type, att.file_type) }}</span>
+                            <a href="/{{ att.storage_path }}" target="_blank" class="small text-primary text-decoration-none flex-grow-1" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                {{ att.file_name }}
+                            </a>
+                            <form method="POST" class="d-inline" onsubmit="return confirm('삭제하시겠습니까?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="action" value="delete_attachment">
+                                <input type="hidden" name="attachment_id" value="{{ att.id }}">
+                                <button type="submit" class="btn btn-outline-danger" style="font-size:.65rem;padding:1px 6px;">삭제</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                        {% if not attachments %}
+                        <div class="text-center text-muted small py-2">등록된 첨부파일이 없습니다.</div>
+                        {% endif %}
+                    </div>
+                    <form method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="upload_attachment">
+                        <div class="d-flex align-items-center gap-2">
+                            <select name="file_type" class="form-select form-select-sm" style="max-width:180px;">
+                                {% for k, v in DOC_ATTACH_TYPES.items() %}
+                                <option value="{{ k }}">{{ v }}</option>
+                                {% endfor %}
+                            </select>
+                            <input type="file" name="attachment_file" class="form-control form-control-sm" style="max-width:250px;">
+                            <button type="submit" class="btn btn-outline-primary btn-sm" style="white-space:nowrap;">업로드</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4">
+            <div class="d-flex flex-column gap-3" style="position:sticky;top:80px;">
+                <div class="card doc-section shadow-sm mg-fade" style="animation-delay:.08s">
+                    <div class="card-header"><strong>금액 정보</strong></div>
+                    <div class="card-body">
+                        <div class="amount-row">
+                            <span class="text-muted" style="font-size:.85rem;">품대계</span>
+                            <strong style="font-family:'JetBrains Mono',monospace;">{{ fmt_money(package.supply_amount or total_supply) }}원</strong>
+                        </div>
+                        <div class="amount-row">
+                            <span class="text-muted" style="font-size:.85rem;">수수료</span>
+                            <strong style="font-family:'JetBrains Mono',monospace;">{{ fmt_money(package.fee) }}원</strong>
+                        </div>
+                        <div class="amount-row total">
+                            <strong style="font-size:.9rem;">합계금액</strong>
+                            <strong class="amount-val">{{ fmt_money(package.total_amount) }}원</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card doc-section shadow-sm mg-fade" style="animation-delay:.1s">
+                    <div class="card-header"><strong>기본 정보</strong></div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <div class="doc-info-label">사업명</div>
+                                <div class="doc-info-value" style="font-size:.85rem;">{{ package.business_name or '-' }}</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="doc-info-label">수요기관</div>
+                                <div class="doc-info-value">{{ package.demand_org or '-' }}</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="doc-info-label">수요기관번호</div>
+                                <div class="doc-info-value" style="font-family:'JetBrains Mono',monospace;font-size:.82rem;">{{ package.demand_org_no or '-' }}</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="doc-info-label">납품기한</div>
+                                <div class="doc-info-value">
+                                    {% if procurements[0].dlvr_tmlmt_date %}
+                                    {{ procurements[0].dlvr_tmlmt_date.strftime('%Y-%m-%d') }}
+                                    {% else %}-{% endif %}
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="doc-info-label">납품요구일자</div>
+                                <div class="doc-info-value">
+                                    {% if procurements[0].cntrct_dlvr_req_date %}
+                                    {{ procurements[0].cntrct_dlvr_req_date.strftime('%Y-%m-%d') }}
+                                    {% else %}-{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card doc-section shadow-sm mg-fade" style="animation-delay:.12s">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <strong>품목 내역</strong>
+                        <span class="badge bg-light text-dark border" style="font-size:.72rem;">{{ procurements|length }}건</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0 items-table">
+                                <thead>
+                                    <tr>
+                                        <th class="ps-3">품명/규격</th>
+                                        <th class="text-end">단가</th>
+                                        <th class="text-center">수량</th>
+                                        <th class="text-end pe-3">금액</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for p in procurements %}
+                                    <tr>
+                                        <td class="ps-3" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;" title="{{ p.prdct_idnt_no_nm }}">
+                                            <div class="small fw-bold">{{ p.dtil_prdct_clsfc_no_nm or p.prdct_clsfc_no_nm or '-' }}</div>
+                                            <div class="small text-muted" style="font-size:.72rem;">{{ p.prdct_idnt_no_nm or '' }}</div>
+                                        </td>
+                                        <td class="text-end" style="font-family:'JetBrains Mono',monospace;font-size:.78rem;">{{ fmt_money(p.prdct_uprc) }}</td>
+                                        <td class="text-center">{{ p.prdct_qty or '-' }}</td>
+                                        <td class="text-end pe-3 fw-bold" style="font-family:'JetBrains Mono',monospace;font-size:.78rem;">{{ fmt_money(p.prdct_amt) }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

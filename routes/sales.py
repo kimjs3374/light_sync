@@ -307,3 +307,21 @@ def spec_schema_save():
         _save_spec_meta(meta)
 
     return jsonify({'ok': True})
+
+
+# ── BOM 옵션 스키마 조회 API ──────────────────────────────
+@sales_bp.route('/api/sales/bom-options/<model_name>')
+@login_required
+def api_bom_options(model_name):
+    """모델명으로 BOM option_schema 반환 (협의관리 옵션 드롭다운용)."""
+    import json as _json
+    from modules.services.bom_actions import find_bom_by_model_name
+    with get_db() as db:
+        bom = find_bom_by_model_name(db, model_name)
+        if not bom or not bom.option_schema:
+            return jsonify({'options': None})
+        try:
+            schema = _json.loads(bom.option_schema)
+        except (ValueError, TypeError):
+            return jsonify({'options': None})
+        return jsonify({'options': schema, 'bom_code': bom.product_code})

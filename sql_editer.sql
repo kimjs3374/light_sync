@@ -1,4 +1,152 @@
 -- ══════════════════════════════════════════════
+-- BOM 모델명 별칭 테이블 (2026-03-28)
+-- ══════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS light_sync.bom_model_aliases (
+  id SERIAL PRIMARY KEY,
+  bom_id INTEGER NOT NULL REFERENCES light_sync.bom_headers(id) ON DELETE CASCADE,
+  alias_name VARCHAR(200) NOT NULL,
+  alias_type VARCHAR(20) DEFAULT 'manual',
+  note VARCHAR(300),
+  created_at TIMESTAMP DEFAULT NOW(),
+  created_by VARCHAR(50) DEFAULT '시스템',
+  CONSTRAINT uq_bom_alias UNIQUE(alias_name)
+);
+CREATE INDEX IF NOT EXISTS idx_bom_model_aliases_bom_id ON light_sync.bom_model_aliases(bom_id);
+CREATE INDEX IF NOT EXISTS idx_bom_model_aliases_name ON light_sync.bom_model_aliases(alias_name);
+
+-- ══════════════════════════════════════════════
+-- 재고관리 재설계: StockMovement 확장 + 소진 테이블 (2026-03-27)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.stock_movements
+  ADD COLUMN IF NOT EXISTS model_name VARCHAR(200),
+  ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES light_sync.projects(id),
+  ADD COLUMN IF NOT EXISTS tx_date DATE;
+
+CREATE TABLE IF NOT EXISTS light_sync.stock_consumptions (
+  id SERIAL PRIMARY KEY,
+  project_id INTEGER REFERENCES light_sync.projects(id),
+  contract_item_id INTEGER REFERENCES light_sync.contract_items(id),
+  model_name VARCHAR(200) NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 0,
+  bom_id INTEGER REFERENCES light_sync.bom_headers(id),
+  tx_date DATE NOT NULL,
+  note TEXT,
+  created_by VARCHAR(50) DEFAULT '사용자',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS light_sync.stock_consumption_items (
+  id SERIAL PRIMARY KEY,
+  consumption_id INTEGER NOT NULL REFERENCES light_sync.stock_consumptions(id) ON DELETE CASCADE,
+  item_id INTEGER NOT NULL REFERENCES light_sync.items(id),
+  bom_item_id INTEGER REFERENCES light_sync.bom_items(id),
+  required_qty FLOAT NOT NULL DEFAULT 0,
+  consumed_qty FLOAT NOT NULL DEFAULT 0,
+  movement_id INTEGER REFERENCES light_sync.stock_movements(id),
+  note TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_consumptions_project ON light_sync.stock_consumptions(project_id);
+CREATE INDEX IF NOT EXISTS idx_stock_consumptions_tx_date ON light_sync.stock_consumptions(tx_date);
+CREATE INDEX IF NOT EXISTS idx_stock_consumption_items_consumption ON light_sync.stock_consumption_items(consumption_id);
+
+-- ══════════════════════════════════════════════
+-- 서류관리 테이블 생성 (2026-03-26)
+-- ══════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS light_sync.document_serials (
+    id SERIAL PRIMARY KEY,
+    year INTEGER NOT NULL UNIQUE,
+    last_number INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS light_sync.document_packages (
+    id SERIAL PRIMARY KEY,
+    procurement_req_no VARCHAR(30) NOT NULL,
+    project_id INTEGER REFERENCES light_sync.projects(id),
+    contract_id INTEGER REFERENCES light_sync.contracts(id),
+    business_name VARCHAR(300),
+    demand_org VARCHAR(200),
+    demand_org_no VARCHAR(20),
+    org_type VARCHAR(10),
+    contract_no VARCHAR(50),
+    contract_date DATE,
+    fee INTEGER,
+    total_amount INTEGER,
+    supply_amount INTEGER,
+    warranty_period VARCHAR(20),
+    inspection_org VARCHAR(200),
+    acceptance_org VARCHAR(200),
+    req_pdf_path VARCHAR(500),
+    commencement_doc_no VARCHAR(30),
+    commencement_date DATE,
+    commencement_agent_id INTEGER REFERENCES light_sync.users(id),
+    commencement_generated BOOLEAN DEFAULT FALSE,
+    delivery_doc_no VARCHAR(30),
+    delivery_date DATE,
+    delivery_generated BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    created_by VARCHAR(50)
+);
+CREATE INDEX IF NOT EXISTS idx_docpkg_req_no ON light_sync.document_packages(procurement_req_no);
+
+CREATE TABLE IF NOT EXISTS light_sync.document_attachments (
+    id SERIAL PRIMARY KEY,
+    package_id INTEGER NOT NULL REFERENCES light_sync.document_packages(id) ON DELETE CASCADE,
+    file_type VARCHAR(50) NOT NULL,
+    file_name VARCHAR(300),
+    storage_path VARCHAR(500),
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ══════════════════════════════════════════════
+-- G2B 조달내역 PDF 파싱 보완 필드 추가 (2026-03-26)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.g2b_procurements ADD COLUMN IF NOT EXISTS pdf_contract_no VARCHAR(50);
+ALTER TABLE light_sync.g2b_procurements ADD COLUMN IF NOT EXISTS pdf_contract_date DATE;
+ALTER TABLE light_sync.g2b_procurements ADD COLUMN IF NOT EXISTS pdf_fee INTEGER;
+ALTER TABLE light_sync.g2b_procurements ADD COLUMN IF NOT EXISTS pdf_total_amount INTEGER;
+ALTER TABLE light_sync.g2b_procurements ADD COLUMN IF NOT EXISTS pdf_warranty_period VARCHAR(20);
+ALTER TABLE light_sync.g2b_procurements ADD COLUMN IF NOT EXISTS pdf_inspection_org VARCHAR(200);
+ALTER TABLE light_sync.g2b_procurements ADD COLUMN IF NOT EXISTS pdf_acceptance_org VARCHAR(200);
+
+-- ══════════════════════════════════════════════
+-- 기존 코멘트 scope 보정 (2026-03-25)
+-- common으로 저장된 코멘트를 가장 가까운 시스템 로그의 scope로 유추하여 업데이트
+-- ══════════════════════════════════════════════
+UPDATE light_sync.history_logs AS c
+SET log_scope = COALESCE(
+    (SELECT s.log_scope
+     FROM light_sync.history_logs s
+     WHERE s.project_id = c.project_id
+       AND s.log_kind = 'system'
+       AND s.log_scope IS NOT NULL
+       AND s.log_scope != 'common'
+       AND s.created_at <= c.created_at
+     ORDER BY s.created_at DESC
+     LIMIT 1),
+    c.log_scope
+)
+WHERE c.log_kind = 'comment'
+  AND c.log_scope = 'common'
+  AND EXISTS (
+    SELECT 1 FROM light_sync.history_logs s
+    WHERE s.project_id = c.project_id
+      AND s.log_kind = 'system'
+      AND s.log_scope IS NOT NULL
+      AND s.log_scope != 'common'
+      AND s.created_at <= c.created_at
+  );
+
+-- ══════════════════════════════════════════════
+-- 입고품목에 품번 컬럼 추가 (2026-03-24)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.receiving_items ADD COLUMN IF NOT EXISTS item_cd VARCHAR(50);
+
+-- ══════════════════════════════════════════════
 -- 비밀번호 강제변경 플래그 (2026-03-23)
 -- ══════════════════════════════════════════════
 ALTER TABLE light_sync.users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
@@ -678,3 +826,269 @@ ALTER TABLE light_sync.history_logs ADD COLUMN IF NOT EXISTS attachments_json JS
 ALTER TABLE light_sync.history_logs ADD COLUMN IF NOT EXISTS mentions_json JSONB DEFAULT '[]'::jsonb;
 -- history_read_marks: full_name 캐시 (아바타 표시용)
 ALTER TABLE light_sync.history_read_marks ADD COLUMN IF NOT EXISTS full_name VARCHAR(50);
+
+-- ===================================================================
+-- 자재발주 첨부파일 테이블 (검수 사진 등) (2026-03-24)
+-- ===================================================================
+CREATE TABLE IF NOT EXISTS light_sync.purchase_order_files (
+    id SERIAL PRIMARY KEY,
+    po_id INTEGER NOT NULL REFERENCES light_sync.purchase_orders(id) ON DELETE CASCADE,
+    file_name VARCHAR(500) NOT NULL,
+    file_path VARCHAR(1000) NOT NULL,
+    file_size INTEGER DEFAULT 0,
+    file_type VARCHAR(20),
+    uploaded_by INTEGER REFERENCES light_sync.users(id),
+    uploaded_at TIMESTAMP DEFAULT NOW(),
+    is_confirmed INTEGER DEFAULT 0,
+    confirmed_by INTEGER REFERENCES light_sync.users(id),
+    confirmed_at TIMESTAMP
+);
+
+-- ===================================================================
+-- 입고사진 피드 (워크보드 스타일) (2026-03-24)
+-- ===================================================================
+CREATE TABLE IF NOT EXISTS light_sync.receiving_photo_posts (
+    id SERIAL PRIMARY KEY,
+    content TEXT NOT NULL,
+    vendor_name VARCHAR(200),
+    po_no VARCHAR(20),
+    photos_json JSONB DEFAULT '[]'::jsonb,
+    created_by INTEGER REFERENCES light_sync.users(id),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ══════════════════════════════════════════════
+-- 출장관리 테이블 (2026-03-24)
+-- ══════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS light_sync.business_trips (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    destination VARCHAR(300) NOT NULL,
+    purpose TEXT,
+    vehicle VARCHAR(100),
+    status VARCHAR(20) DEFAULT '예정',
+    departure_date TIMESTAMP NOT NULL,
+    return_date TIMESTAMP,
+    note TEXT,
+    created_by INTEGER NOT NULL REFERENCES light_sync.users(id),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS light_sync.business_trip_members (
+    id SERIAL PRIMARY KEY,
+    trip_id INTEGER NOT NULL REFERENCES light_sync.business_trips(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES light_sync.users(id),
+    user_name VARCHAR(50) NOT NULL,
+    position VARCHAR(50),
+    department VARCHAR(50)
+);
+
+-- ══════════════════════════════════════════════
+-- 공구관리 테이블 (2026-03-25)
+-- ══════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS light_sync.tools (
+    id SERIAL PRIMARY KEY,
+    tool_name VARCHAR(200) NOT NULL,
+    category VARCHAR(50) DEFAULT '전동공구',
+    team VARCHAR(50),
+    total_qty INTEGER DEFAULT 1,
+    available_qty INTEGER DEFAULT 1,
+    current_location VARCHAR(200) DEFAULT '사무실',
+    status VARCHAR(20) DEFAULT '보관중',
+    note TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS light_sync.tool_checkouts (
+    id SERIAL PRIMARY KEY,
+    tool_id INTEGER NOT NULL REFERENCES light_sync.tools(id) ON DELETE CASCADE,
+    checkout_user_id INTEGER REFERENCES light_sync.users(id),
+    checkout_user_name VARCHAR(50) NOT NULL,
+    purpose TEXT,
+    location VARCHAR(200),
+    checkout_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    expected_return_at TIMESTAMP,
+    return_at TIMESTAMP,
+    return_note TEXT,
+    status VARCHAR(20) DEFAULT '불출',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 초기 데이터: 전동공구 관리대장.xlsx 기반
+-- 생산1팀 (10종)
+INSERT INTO light_sync.tools (tool_name, category, team, total_qty, available_qty) VALUES
+('충전 그라인더', '전동공구', '생산1팀', 1, 1),
+('충전 드릴', '전동공구', '생산1팀', 2, 2),
+('전기 4인치 그라인더', '전동공구', '생산1팀', 8, 8),
+('충전 임팩드릴', '전동공구', '생산1팀', 3, 3),
+('전기 6인치 그라인더', '전동공구', '생산1팀', 1, 1),
+('전기 포터블 그라인더 (광택 작업용)', '전동공구', '생산1팀', 3, 3),
+('전기 샌딩기', '전동공구', '생산1팀', 2, 2),
+('에어 샌딩기', '전동공구', '생산1팀', 2, 2),
+('충전 임팩렌치 (기초너트 체결용)', '전동공구', '생산1팀', 1, 1),
+('에어 니들 건 (CO2 용접 비딩 제거)', '전동공구', '생산1팀', 2, 2);
+
+-- 생산2팀 (15종)
+INSERT INTO light_sync.tools (tool_name, category, team, total_qty, available_qty) VALUES
+('충전 실리콘 건', '전동공구', '생산2팀', 1, 1),
+('충전 임팩 드릴', '전동공구', '생산2팀', 2, 2),
+('충전 리벳 건', '전동공구', '생산2팀', 2, 2),
+('충전 그라인더', '전동공구', '생산2팀', 1, 1),
+('전기 샌딩기', '전동공구', '생산2팀', 1, 1),
+('충전 드릴', '전동공구', '생산2팀', 6, 6),
+('전기 히팅건', '전동공구', '생산2팀', 2, 2),
+('에어 리벳건', '전동공구', '생산2팀', 1, 1),
+('수동 리벳건', '수공구', '생산2팀', 1, 1),
+('압착기 6SQ미만', '수공구', '생산2팀', 3, 3),
+('압착기 6SQ이상', '수공구', '생산2팀', 3, 3),
+('압착기 16SQ이상', '수공구', '생산2팀', 1, 1),
+('밀워키 배터리 18V', '배터리', '생산2팀', 3, 3),
+('밀워키 배터리 12V', '배터리', '생산2팀', 2, 2),
+('보쉬 배터리 10.8V', '배터리', '생산2팀', 15, 15);
+
+-- ══════════════════════════════════════════════
+-- 재고변동 movement_type 보정 (2026-03-26)
+-- 직접입고 시 '입고'(한글)로 잘못 기록된 건 → 'IN_RECEIVING'으로 통일
+-- ══════════════════════════════════════════════
+UPDATE light_sync.stock_movements
+SET movement_type = 'IN_RECEIVING'
+WHERE movement_type = '입고';
+-- ============================================================
+-- 인증서 일괄 임포트 (매그나텍 인증 및 유효기간 관리.xlsx)
+-- ============================================================
+
+-- 시트1: 매그나텍 인증관련 (회사 인증서)
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('KS인증', 'KS C 7658(가로등 및 보안등기구)', '2026-03-27', '2026-08-04', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('KS인증', 'KS C 7712(투광등기구)', '2026-03-27', '2028-03-29', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('KS인증', 'KS C 7658(1년심사)', NULL, '2026-08-31', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('조달우수제품', '우수제품지정증서(가로등,보안등)', '2026-03-27', '2027-03-21', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('조달우수제품', '우수제품지정증서(투광등)', '2026-03-27', '2027-03-24', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('혁신제품', '혁신제품 ARENA(M)', '2026-03-27', '2027-01-28', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('혁신제품', '혁신제품 STA(X)', '2026-03-27', '2026-12-25', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('녹색기술인증', '녹색기술인증서 (3차원 히트파이프와 적층3D 방열핀이 적용된 조명기기용 냉각기술', '2026-03-27', '2027-10-13', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('ISO', 'ISO 9001(3년)', '2026-03-27', '2027-08-09', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('ISO', 'ISO 14001(3년)', '2026-03-27', '2027-08-09', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('ISO', 'ISO 9001,14001(1년심사)', NULL, '2026-08-31', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('MAS계약', 'MAS계약(가로등부속자재)', '2026-03-27', '2028-04-17', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('MAS계약', 'MAS계약(LED투광등기구)', '2026-03-27', '2026-08-31', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('MAS계약', 'MAS계약(조명타워)', '2026-03-27', '2028-03-03', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('MAS계약', 'MAS계약(등주)', '2026-03-27', '2028-04-17', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('MAS계약', 'MAS계약(태양광가로등)', '2026-03-27', '2026-10-31', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('조달우수제품', '조달우수계약(가로등,보안등)', '2026-03-27', '2027-03-21', 30, '60일전부터 신청가능', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('조달우수제품', '조달우수계약(LED투광등)', '2026-03-27', '2027-03-24', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('중소기업확인서', '중소기업확인서', '2026-03-27', '2026-03-31', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('직접생산증명', '직접생산증명(등기구)', '2026-03-27', '2027-01-20', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('직접생산증명', '직접생산증명(등주)', '2026-03-27', '2026-07-31', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('직접생산증명', '직접생산증명(조명타워)', '2026-03-27', '2026-07-31', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('직접생산증명', '직접생산증명(도로표지병)', NULL, '2027-09-25', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('G-PASS', 'G-PASS', '2026-03-27', '2029-09-22', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('기타', '광기술원 장비사용계약서', '2026-03-27', '2027-02-02', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('단체표준', '단체표준 지정연장(탄소,스테인레스 등주)', NULL, '2029-01-28', 30, NULL, true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, issued_date, expiry_date, alert_days, note, is_active) VALUES ('단체표준', '단체표준 지정연장(조명타워)', NULL, '2028-10-31', 30, NULL, true);
+
+-- 시트2: 고효율인증유효기간 (제품별 고효율 인증)
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-FL-400S', '37685', '2026-08-19', 'MT-FL-400S', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(X)-1500', '71592', '2026-09-14', 'STA(X)-1500', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(X)-1000', '71573', '2026-09-15', 'STA(X)-1000', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(X)-400', '71587', '2026-09-15', 'STA(X)-400', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(X)-500', '71558', '2026-09-15', 'STA(X)-500', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(X)-700', '71481', '2026-09-19', 'STA(X)-700', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(X)-800', '71480', '2026-09-19', 'STA(X)-800', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(X)-1200', '71622', '2026-09-21', 'STA(X)-1200', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(X)-600', '71621', '2026-09-21', 'STA(X)-600', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-025-35', '72471', '2026-10-26', 'MT-SLC-025-35', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-075-40', '72472', '2026-10-26', 'MT-SLC-075-40', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-100-40', '72476', '2026-10-26', 'MT-SLC-100-40', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-100-45', '72477', '2026-10-26', 'MT-SLC-100-45', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-125-40', '72470', '2026-10-26', 'MT-SLC-125-40', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-125-45', '72473', '2026-10-26', 'MT-SLC-125-45', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-150-40', '72484', '2026-10-26', 'MT-SLC-150-40', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-150-45', '72475', '2026-10-26', 'MT-SLC-150-45', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-200', '72474', '2026-10-26', 'MT-SLC-200', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-050-35', '72702', '2026-11-01', 'MT-SLC-050-35', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-075-45', '72722', '2026-11-01', 'MT-SLC-075-45', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-240', '72685', '2026-11-01', 'MT-SLC-240', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA-400', '72623', '2026-11-01', 'STA-400', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA-500', '72621', '2026-11-01', 'STA-500', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA-600', '72622', '2026-11-01', 'STA-600', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA-700', '72634', '2026-11-01', 'STA-700', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA-800', '72624', '2026-11-01', 'STA-800', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA-400', '41808', '2026-12-22', 'ARENA-400', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA-500', '41809', '2026-12-22', 'ARENA-500', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA-600', '41807', '2026-12-22', 'ARENA-600', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA-800', '41806', '2026-12-22', 'ARENA-800', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA-400(3000K)', '43264', '2027-02-05', 'ARENA-400(3000K)', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA-500(3000K)', '43242', '2027-02-06', 'ARENA-500(3000K)', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA-600(3000K)', '43290', '2027-02-08', 'ARENA-600(3000K)', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA-800(3000K)', '43323', '2027-02-09', 'ARENA-800(3000K)', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(M)-400', '50668', '2027-09-10', 'ARENA(M)-400', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(M)-500', '50667', '2027-09-10', 'ARENA(M)-500', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(M)-600', '50677', '2027-09-10', 'ARENA(M)-600', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(M)-800', '50680', '2027-09-10', 'ARENA(M)-800', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-ML-050', '18449', '2027-12-10', 'MT-ML-050', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-ML-125', '18450', '2027-12-10', 'MT-ML-125', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-ML-150', '18451', '2027-12-10', 'MT-ML-150', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 BATOO-400', '18610', '2027-12-17', 'BATOO-400', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 BATOO-300', '19409', '2028-01-24', 'BATOO-300', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-FL-1000A', '19407', '2028-01-24', 'MT-FL-1000A', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-FL-1200A', '19408', '2028-01-25', 'MT-FL-1200A', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-FL-300A', '19404', '2028-01-25', 'MT-FL-300A', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-FL-600A', '19405', '2028-01-25', 'MT-FL-600A', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-FL-800A', '19406', '2028-01-25', 'MT-FL-800A', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 BATOO-600', '19501', '2028-01-28', 'BATOO-600', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-TL-100', '19480', '2028-01-28', 'MT-TL-100', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-TL-200', '19481', '2028-01-28', 'MT-TL-200', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 BATOO-1000', '19517', '2028-01-29', 'BATOO-1000', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 BATOO-1200', '19516', '2028-01-29', 'BATOO-1200', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 BATOO-800', '19509', '2028-01-29', 'BATOO-800', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA-400S', '54888', '2028-02-01', 'ARENA-400S', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA-200S', '55088', '2028-02-04', 'ARENA-200S', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA-300S', '55087', '2028-02-04', 'ARENA-300S', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-ML-040', '19832', '2028-02-06', 'MT-ML-040', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-ML-060', '19819', '2028-02-06', 'MT-ML-060', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-ML-100', '19830', '2028-02-06', 'MT-ML-100', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-ML-030', '19865', '2028-02-07', 'MT-ML-030', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-TL-050', '20095', '2028-02-13', 'MT-TL-050', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-TL-075', '20070', '2028-02-13', 'MT-TL-075', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-TL-150', '20072', '2028-02-13', 'MT-TL-150', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA-1000', '55523', '2028-02-21', 'STA-1000', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA-1200', '55524', '2028-02-21', 'STA-1200', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA-1500', '55522', '2028-02-21', 'STA-1500', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLA-030', '91947', '2028-03-07', 'MT-SLA-030', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLA-040', '91948', '2028-03-07', 'MT-SLA-040', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLA-050', '91946', '2028-03-07', 'MT-SLA-050', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLA-075', '91949', '2028-03-07', 'MT-SLA-075', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLA-100', '91950', '2028-03-07', 'MT-SLA-100', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLA-150', '91954', '2028-03-07', 'MT-SLA-150', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLA-125', '92147', '2028-03-13', 'MT-SLA-125', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(M)-200S', '56753', '2028-04-06', 'ARENA(M)-200S', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(M)-300S', '56752', '2028-04-06', 'ARENA(M)-300S', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(M)-400S', '56751', '2028-04-06', 'ARENA(M)-400S', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(H)-1500', '93719', '2028-04-17', 'STA(H)-1500', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(H)-1200', '94709', '2028-05-12', 'STA(H)-1200', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(M)-1200', '58432', '2028-06-02', 'STA(M)-1200', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(M)-1000', '58430', '2028-06-03', 'STA(M)-1000', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 STA(M)-1500', '58625', '2028-06-09', 'STA(M)-1500', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(X)-600', '60051', '2028-07-12', 'ARENA(X)-600', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(X)-400', '59787', '2028-07-13', 'ARENA(X)-400', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(X)-500', '59751', '2028-07-13', 'ARENA(X)-500', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(X)-800', '59749', '2028-07-13', 'ARENA(X)-800', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(X)-200S', '60055', '2028-07-21', 'ARENA(X)-200S', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(X)-300S', '60050', '2028-07-21', 'ARENA(X)-300S', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 ARENA(X)-400S', '60056', '2028-07-21', 'ARENA(X)-400S', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 BATOO-200', '25269', '2028-07-24', 'BATOO-200', 60, 'LED투광등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLA(D)-040', '25-1744', '2029-03-10', 'MT-SLA(D)-040', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLA(D)-050', '25-1745', '2029-03-10', 'MT-SLA(D)-050', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLA(D)-100', '25-1746', '2029-03-10', 'MT-SLA(D)-100', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLA(D)-125', '25-1747', '2029-03-10', 'MT-SLA(D)-125', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLA(D)-150', '25-1748', '2029-03-10', 'MT-SLA(D)-150', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-030', '31243', '2030-02-20', 'MT-SLC-030', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-040', '31240', '2030-02-20', 'MT-SLC-040', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-050', '31241', '2030-02-20', 'MT-SLC-050', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-060', '31239', '2030-02-20', 'MT-SLC-060', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-100', '31242', '2030-02-20', 'MT-SLC-100', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-125', '31244', '2030-02-20', 'MT-SLC-125', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-150', '31237', '2030-02-20', 'MT-SLC-150', 60, 'LED 가로등 및 보안 등기구', true);
+INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-075', '32912', '2030-04-07', 'MT-SLC-075', 60, 'LED 가로등 및 보안 등기구', true);

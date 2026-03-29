@@ -36,7 +36,6 @@ def register(mcp: FastMCP):
 
             result = []
             for item in items:
-                available = _sn(item.stock_qty) - _sn(item.reserved_qty)
                 result.append({
                     "id": item.id,
                     "item_name": _s(item.item_name),
@@ -44,8 +43,7 @@ def register(mcp: FastMCP):
                     "category": _s(item.category),
                     "unit": _s(item.unit),
                     "stock_qty": _sn(item.stock_qty),
-                    "reserved_qty": _sn(item.reserved_qty),
-                    "available_qty": round(available, 2),
+                    "available_qty": _sn(item.stock_qty),
                     "safety_stock": _sn(item.safety_stock),
                     "last_unit_price": int(_sn(item.last_unit_price)),
                     "is_low_stock": _sn(item.stock_qty) < _sn(item.safety_stock) and _sn(item.safety_stock) > 0,

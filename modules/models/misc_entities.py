@@ -331,6 +331,15 @@ class G2bProcurement(Base):
     intl_cntrct_dlvr_req_date = Column(Date, nullable=True)       # 최초계약납품요구일자
     exclc_prodct_yn = Column(String(5), nullable=True)            # 우수제품여부
 
+    # PDF 파싱 보완 필드 (API 미제공)
+    pdf_contract_no = Column(String(50), nullable=True)           # 계약체결번호 (제002280992-01호)
+    pdf_contract_date = Column(Date, nullable=True)               # 계약체결일자
+    pdf_fee = Column(Integer, nullable=True)                      # 조달수수료
+    pdf_total_amount = Column(Integer, nullable=True)             # 합계금액 (품대계+수수료)
+    pdf_warranty_period = Column(String(20), nullable=True)       # 하자담보책임기간 (1년/3년)
+    pdf_inspection_org = Column(String(200), nullable=True)       # 검사기관
+    pdf_acceptance_org = Column(String(200), nullable=True)       # 검수기관
+
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
@@ -468,11 +477,18 @@ class IlluminanceMeasured(Base):
 # ── 인증서 만료 관리 ──
 CERT_TYPE_CHOICES = [
     ('KS인증', 'KS인증'),
+    ('고효율인증', '고효율인증'),
     ('성능인증', '성능인증'),
     ('녹색기술인증', '녹색기술인증'),
     ('환경표지', '환경표지'),
     ('조달우수제품', '조달우수제품'),
+    ('혁신제품', '혁신제품'),
+    ('ISO', 'ISO'),
+    ('MAS계약', 'MAS계약'),
+    ('직접생산증명', '직접생산증명'),
     ('G-PASS', 'G-PASS'),
+    ('중소기업확인서', '중소기업확인서'),
+    ('단체표준', '단체표준'),
     ('기타', '기타'),
 ]
 
@@ -617,3 +633,75 @@ class LensAngleConfig(Base):
     @property
     def angle_list(self):
         return [a.strip() for a in self.angles.split('|') if a.strip()]
+
+
+# ── 출장관리 상수 ──
+TRIP_STATUS_CHOICES = [
+    ('예정', '예정'),
+    ('진행중', '진행중'),
+    ('완료', '완료'),
+    ('취소', '취소'),
+]
+
+VEHICLE_CHOICES = [
+    ('쏘렌토 9539', '쏘렌토 9539'),
+    ('스타리아 3417', '스타리아 3417'),
+    ('포터 8804', '포터 8804'),
+    ('개인차량', '개인차량'),
+    ('대중교통', '대중교통'),
+    ('기타', '기타'),
+]
+
+
+class BusinessTrip(Base):
+    """출장 관리"""
+    __tablename__ = 'business_trips'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(200), nullable=False)                 # 출장 제목 (목적 요약)
+    destination = Column(String(300), nullable=False)           # 출장장소
+    purpose = Column(Text, nullable=True)                       # 출장목적 상세
+    vehicle = Column(String(100), nullable=True)                # 이동수단
+    status = Column(String(20), default='예정')                 # 예정/진행중/완료/취소
+    departure_date = Column(DateTime, nullable=False)           # 출발 일시
+    return_date = Column(DateTime, nullable=True)               # 복귀 일시 (미정 가능)
+    note = Column(Text, nullable=True)                          # 비고
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    creator = relationship("User", foreign_keys=[created_by])
+    members = relationship("BusinessTripMember", back_populates="trip",
+                           cascade="all, delete-orphan", order_by="BusinessTripMember.id")
+
+    @property
+    def member_names(self):
+        """출장인원 이름 목록 (이름 직급)"""
+        return ', '.join(f"{m.user_name} {m.position or ''}" .strip() for m in self.members)
+
+    @property
+    def departure_date_str(self):
+        if not self.departure_date:
+            return ''
+        return self.departure_date.strftime('%Y.%m.%d %H:%M')
+
+    @property
+    def return_date_str(self):
+        if not self.return_date:
+            return ''
+        return self.return_date.strftime('%Y.%m.%d %H:%M')
+
+
+class BusinessTripMember(Base):
+    """출장 참여 인원"""
+    __tablename__ = 'business_trip_members'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    trip_id = Column(Integer, ForeignKey('business_trips.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)    # 등록된 사용자
+    user_name = Column(String(50), nullable=False)                       # 이름
+    position = Column(String(50), nullable=True)                         # 직급
+    department = Column(String(50), nullable=True)                       # 부서
+
+    trip = relationship("BusinessTrip", back_populates="members")
+    user = relationship("User", foreign_keys=[user_id])

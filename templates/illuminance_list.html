@@ -242,7 +242,7 @@
       </form>
       <div style="position:relative">
       <button class="btn btn-xs btn-outline-danger py-0 px-1"
-              style="position:absolute;top:.5rem;right:.5rem;z-index:3;font-size:.65rem;line-height:1.6;white-space:nowrap"
+              style="position:absolute;top:.8rem;right:.5rem;z-index:3;font-size:.65rem;line-height:1.6;white-space:nowrap"
               onclick="event.preventDefault();event.stopPropagation();if(confirm('&quot;{{ p.project_name | e }}&quot; 삭제할까요?'))document.getElementById('delForm{{ p.id }}').submit()">삭제</button>
       <a class="ilv-project-card status-{{ p.status }}"
          href="{{ url_for('illuminance.detail', project_id=p.id) }}"

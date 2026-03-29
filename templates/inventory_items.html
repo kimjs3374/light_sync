@@ -51,24 +51,20 @@
             <table class="table table-sm table-bordered table-hover mb-0" style="table-layout:fixed; white-space:nowrap; font-size:0.82rem; border-color:#dee2e6;">
                 <colgroup>
                     <col style="width:4%">
-                    <col style="width:25%">
-                    <col style="width:9%">
+                    <col style="width:30%">
+                    <col style="width:12%">
+                    <col style="width:10%">
+                    <col style="width:10%">
+                    {% if not hide_financial %}<col style="width:10%">
+                    <col style="width:14%">{% endif %}
                     <col style="width:8%">
-                    <col style="width:9%">
-                    <col style="width:9%">
-                    <col style="width:9%">
-                    {% if not hide_financial %}<col style="width:9%">
-                    <col style="width:11%">{% endif %}
-                    <col style="width:7%">
                 </colgroup>
                 <thead class="table-light">
                     <tr>
                         <th class="text-center">No</th>
                         <th>품명</th>
                         <th>품번</th>
-                        <th class="text-end">총재고</th>
-                        <th class="text-end">예약</th>
-                        <th class="text-end">가용</th>
+                        <th class="text-end">재고</th>
                         <th class="text-end">안전재고</th>
                         {% if not hide_financial %}<th class="text-end">단가</th>
                         <th class="text-end">금액</th>{% endif %}
@@ -78,8 +74,6 @@
                 <tbody>
                     {% for item in items %}
                     {% set stock = item.stock_qty or 0 %}
-                    {% set reserved = item.reserved_qty or 0 %}
-                    {% set available = [0, stock - reserved]|max %}
                     {% set safety = item.safety_stock or 0 %}
                     {% set price = item.last_unit_price or 0 %}
                     {% set value = stock * price %}
@@ -93,9 +87,7 @@
                             <a href="{{ url_for('item.item_detail', item_id=item.id) }}">{{ item.item_name }}</a>
                         </td>
                         <td style="overflow:hidden; text-overflow:ellipsis; max-width:0;">{{ item.icube_item_cd or '' }}</td>
-                        <td class="text-end">{{ fmt_money(stock) }}</td>
-                        <td class="text-end">{{ fmt_money(reserved) }}</td>
-                        <td class="text-end fw-bold">{{ fmt_money(available) }}</td>
+                        <td class="text-end fw-bold">{{ fmt_money(stock) }}</td>
                         <td class="text-end {% if is_low %}text-danger{% endif %}">{{ fmt_money(safety) }}</td>
                         {% if not hide_financial %}<td class="text-end">{{ fmt_money(price) }}</td>
                         <td class="text-end fw-bold">{{ fmt_money(value) }}</td>{% endif %}

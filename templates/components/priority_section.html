@@ -2,8 +2,10 @@
 {% set priority_dom_id = priority_section_id|default('priority_section_panel') %}
 <style>
     .priority-section-card .table {
-        table-layout: fixed;
         border-collapse: collapse;
+    }
+    @media (min-width: 1200px) {
+        .priority-section-card .table { table-layout: fixed; }
     }
     .priority-section-card th,
     .priority-section-card td {

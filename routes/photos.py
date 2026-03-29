@@ -160,7 +160,8 @@ def api_upload():
     if not ok:
         return jsonify({'error': err}), 500
 
-    current_user = session.get('full_name') or '사용자'
+    from modules.history_board import get_user_display_name
+    current_user = get_user_display_name()
     with get_db() as db:
         photo = ProjectPhoto(
             project_id=site_id,

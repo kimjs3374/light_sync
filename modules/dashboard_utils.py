@@ -24,6 +24,25 @@ def project_detail_link(project):
     return url_for('project.project_detail', project_id=project.id)
 
 
+# log_scope → 상세 페이지 URL 매핑
+_SCOPE_ROUTE_MAP = {
+    'design':     'project.project_detail',
+    'contract':   'project.contract_detail',
+    'sales':      'sales.sales_detail',
+    'material':   'material.material_detail',
+    'production': 'production.production_detail',
+    'delivery':   'delivery.delivery_detail',
+}
+
+
+def history_detail_link(project, log_scope=None):
+    """히스토리 log_scope에 따라 해당 관리 페이지 URL을 반환"""
+    route = _SCOPE_ROUTE_MAP.get(log_scope)
+    if route:
+        return url_for(route, project_id=project.id)
+    return project_detail_link(project)
+
+
 def resolve_kanban_stage(project):
     """계약 현장 기준 대표 단계를 계산하여 4단계 칸반에 배치한다."""
     contract_items = []
@@ -484,11 +503,13 @@ def build_dashboard_priority_items(design_projects, contracted_projects, deliver
         if override and override.note:
             meta_lines.insert(0, f"수동 사유: {override.note}")
 
+        contract_title = (primary_contract.contract_name if primary_contract and primary_contract.contract_name else '')
+        project_label = project.short_name or project.temp_name or '-'
         items.append(make_priority_entry(
             project_id=project.id,
             project_no=project.project_no,
-            title=project.short_name or project.temp_name or '-',
-            subtitle='계약 이후 통합 우선 브리핑',
+            title=contract_title or project_label,
+            subtitle=project_label if contract_title else '계약 이후 통합 우선 브리핑',
             detail_url=url_for('project.contract_detail', project_id=project.id),
             reasons=reasons,
             dday=dday,

@@ -3,6 +3,7 @@ import datetime
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -19,8 +20,9 @@ MOVEMENT_TYPES = [
     'IN_RECEIVING',         # 입고
     'IN_ADJUST',            # 수동 조정 (증가)
     'OUT_ADJUST',           # 수동 조정 (감소)
-    'OUT_RESERVE',          # 예약 (출고 예정)
-    'IN_CANCEL_RESERVE',    # 예약 취소 (복원)
+    'OUT_CONSUMPTION',      # BOM 기반 소진
+    'OUT_RESERVE',          # (레거시) 예약
+    'IN_CANCEL_RESERVE',    # (레거시) 예약 취소
     'AUDIT_ADJUST',         # 실사 조정
 ]
 
@@ -28,8 +30,9 @@ MOVEMENT_TYPE_LABELS = {
     'IN_RECEIVING': '입고',
     'IN_ADJUST': '수동조정(+)',
     'OUT_ADJUST': '수동조정(-)',
-    'OUT_RESERVE': '예약',
-    'IN_CANCEL_RESERVE': '예약취소',
+    'OUT_CONSUMPTION': '소진',
+    'OUT_RESERVE': '(레거시)예약',
+    'IN_CANCEL_RESERVE': '(레거시)예약취소',
     'AUDIT_ADJUST': '실사조정',
 }
 
@@ -72,6 +75,25 @@ class BomHeader(Base):
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
     bom_items = relationship("BomItem", back_populates="bom_header", cascade="all, delete-orphan", order_by="BomItem.id")
+    aliases = relationship("BomModelAlias", back_populates="bom_header", cascade="all, delete-orphan")
+
+
+class BomModelAlias(Base):
+    """BOM 모델명 별칭 (계약 model_name ↔ BOM 매칭)"""
+    __tablename__ = 'bom_model_aliases'
+    __table_args__ = (
+        UniqueConstraint('alias_name', name='uq_bom_alias'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    bom_id = Column(Integer, ForeignKey('bom_headers.id', ondelete='CASCADE'), nullable=False)
+    alias_name = Column(String(200), nullable=False)
+    alias_type = Column(String(20), default='manual')   # exact / option / manual
+    note = Column(String(300), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    created_by = Column(String(50), default='시스템')
+
+    bom_header = relationship("BomHeader", back_populates="aliases")
 
 
 class BomItem(Base):
@@ -154,5 +176,47 @@ class StockMovement(Base):
     note = Column(Text, nullable=True)
     created_by = Column(String(50), default='시스템')
     created_at = Column(DateTime, default=datetime.datetime.now)
+    # 재설계 확장 (2026-03-27)
+    model_name = Column(String(200), nullable=True)      # 소진 대상 완제품 모델명
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)
+    tx_date = Column(Date, nullable=True)                 # 거래일자
 
     item = relationship("Item")
+
+
+class StockConsumption(Base):
+    """소진 등록 (건 단위 묶음)"""
+    __tablename__ = 'stock_consumptions'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)
+    contract_item_id = Column(Integer, ForeignKey('contract_items.id'), nullable=True)
+    model_name = Column(String(200), nullable=False)
+    quantity = Column(Integer, nullable=False, default=0)
+    bom_id = Column(Integer, ForeignKey('bom_headers.id'), nullable=True)
+    tx_date = Column(Date, nullable=False)
+    note = Column(Text, nullable=True)
+    created_by = Column(String(50), default='사용자')
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+    project = relationship("Project", foreign_keys=[project_id])
+    bom = relationship("BomHeader", foreign_keys=[bom_id])
+    items = relationship("StockConsumptionItem", back_populates="consumption",
+                         cascade="all, delete-orphan", order_by="StockConsumptionItem.id")
+
+
+class StockConsumptionItem(Base):
+    """소진 상세 (BOM 분해된 자재별 소진)"""
+    __tablename__ = 'stock_consumption_items'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    consumption_id = Column(Integer, ForeignKey('stock_consumptions.id'), nullable=False)
+    item_id = Column(Integer, ForeignKey('items.id'), nullable=False)
+    bom_item_id = Column(Integer, ForeignKey('bom_items.id'), nullable=True)
+    required_qty = Column(Float, nullable=False, default=0)
+    consumed_qty = Column(Float, nullable=False, default=0)
+    movement_id = Column(Integer, ForeignKey('stock_movements.id'), nullable=True)
+    note = Column(Text, nullable=True)
+
+    consumption = relationship("StockConsumption", back_populates="items")
+    item = relationship("Item", foreign_keys=[item_id])

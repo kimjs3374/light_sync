@@ -1,0 +1,144 @@
+{% extends 'base.html' %}
+{% set active_menu_key = 'inventory' %}
+
+{% block content %}
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Consumption Detail</div>
+            <h2>소진 상세</h2>
+            <div class="hero-sub">{{ c.model_name }} x{{ c.quantity }} — {{ c.tx_date.strftime('%Y-%m-%d') if c.tx_date else '' }}</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('inventory.consumption_history') }}" class="btn btn-outline-light btn-sm" style="white-space:nowrap;">목록</a>
+            <a href="{{ url_for('inventory.consume_form') }}" class="btn btn-outline-light btn-sm" style="white-space:nowrap;">소진등록</a>
+        </div>
+    </div>
+</div>
+
+{# ═══ 기본 정보 ═══ #}
+<div class="card border-0 shadow-sm mb-3 mg-fade" style="animation-delay:.05s">
+    <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <strong>소진 정보</strong>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-primary btn-sm" style="white-space:nowrap;" onclick="toggleEditMode()">수정</button>
+            <form method="POST" action="{{ url_for('inventory.consumption_delete', consumption_id=c.id) }}" onsubmit="return confirm('소진 이력을 삭제하고 재고를 복원하시겠습니까?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-danger btn-sm" style="white-space:nowrap;">삭제</button>
+            </form>
+        </div>
+    </div>
+    <div class="card-body py-2">
+        <form method="POST" action="{{ url_for('inventory.consumption_edit', consumption_id=c.id) }}" id="editForm" style="display:none;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="row g-2 align-items-end mb-2">
+                <div class="col-md-2">
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">날짜</label>
+                    <input type="date" name="tx_date" class="form-control form-control-sm" value="{{ c.tx_date.strftime('%Y-%m-%d') if c.tx_date else '' }}">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label fw-bold mb-0" style="font-size:.75rem;">비고</label>
+                    <input type="text" name="note" class="form-control form-control-sm" value="{{ c.note or '' }}">
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;">저장</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;" onclick="toggleEditMode()">취소</button>
+                </div>
+            </div>
+        </form>
+
+        <div id="infoDisplay">
+            <div class="row g-3" style="font-size:.85rem;">
+                <div class="col-md-2">
+                    <div class="text-muted" style="font-size:.72rem;">날짜</div>
+                    <div class="fw-bold">{{ c.tx_date.strftime('%Y-%m-%d') if c.tx_date else '-' }}</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-muted" style="font-size:.72rem;">모델명</div>
+                    <div class="fw-bold">{{ c.model_name }}</div>
+                </div>
+                <div class="col-md-1">
+                    <div class="text-muted" style="font-size:.72rem;">수량</div>
+                    <div class="fw-bold">{{ c.quantity }}</div>
+                </div>
+                <div class="col-md-2">
+                    <div class="text-muted" style="font-size:.72rem;">현장</div>
+                    <div>{{ project_name or '-' }}</div>
+                </div>
+                <div class="col-md-2">
+                    <div class="text-muted" style="font-size:.72rem;">BOM</div>
+                    <div>{{ bom_name or '-' }}</div>
+                </div>
+                <div class="col-md-2">
+                    <div class="text-muted" style="font-size:.72rem;">등록자</div>
+                    <div>{{ c.created_by or '-' }} <small class="text-muted">{{ c.created_at.strftime('%m/%d %H:%M') if c.created_at else '' }}</small></div>
+                </div>
+            </div>
+            {% if c.note %}
+            <div class="mt-2 text-muted" style="font-size:.82rem;">비고: {{ c.note }}</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# ═══ 소진 자재 목록 ═══ #}
+<div class="card border-0 shadow-sm mb-3 mg-fade" style="animation-delay:.1s">
+    <div class="card-header bg-white py-2">
+        <strong>소진 자재</strong>
+        <small class="text-muted ms-2">{{ sci_list|length }}개 품목</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" style="font-size:.82rem; white-space:nowrap;">
+                <thead class="table-light">
+                    <tr>
+                        <th>품번</th>
+                        <th>품명</th>
+                        <th>규격</th>
+                        <th class="text-end">소요량</th>
+                        <th class="text-end">소진량</th>
+                        <th class="text-end" id="thCurrentStock" style="display:none;">현재고</th>
+                        <th id="thNewQty" style="display:none;">수정수량</th>
+                        <th>비고</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in sci_list %}
+                    {% set item = items_map.get(s.item_id) %}
+                    <tr>
+                        <td style="font-family:'JetBrains Mono',monospace; font-size:.78rem;">{{ item.icube_item_cd if item else '-' }}</td>
+                        <td class="fw-bold">{{ item.item_name if item else '(삭제됨)' }}</td>
+                        <td class="text-muted">{{ item.item_spec if item else '-' }}</td>
+                        <td class="text-end">{{ s.required_qty }}</td>
+                        <td class="text-end fw-bold">{{ s.consumed_qty }}</td>
+                        <td class="text-end edit-col" style="display:none;">{{ item.stock_qty|default(0, true) if item else '-' }}</td>
+                        <td class="edit-col" style="display:none;">
+                            <input type="hidden" name="sci_id[]" value="{{ s.id }}" form="editForm" disabled>
+                            <input type="number" name="new_consumed_qty[]" value="{{ s.consumed_qty }}" step="any" min="0" class="form-control form-control-sm text-end" style="width:80px;" form="editForm" disabled>
+                        </td>
+                        <td class="text-muted">{{ s.note or '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted py-3">소진 자재 없음 (BOM 미연동)</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+let editMode = false;
+function toggleEditMode() {
+    editMode = !editMode;
+    document.getElementById('editForm').style.display = editMode ? 'block' : 'none';
+    document.getElementById('infoDisplay').style.display = editMode ? 'none' : 'block';
+    document.getElementById('thCurrentStock').style.display = editMode ? '' : 'none';
+    document.getElementById('thNewQty').style.display = editMode ? '' : 'none';
+    document.querySelectorAll('.edit-col').forEach(el => el.style.display = editMode ? '' : 'none');
+    document.querySelectorAll('.edit-col input').forEach(inp => inp.disabled = !editMode);
+}
+</script>
+
+{% endblock %}

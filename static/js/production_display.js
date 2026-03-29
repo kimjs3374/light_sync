@@ -121,7 +121,7 @@
         const card = cardStore[cardId];
         if (!card) return;
 
-        modalTitle.textContent = `${card.project_name} (${card.project_no})`;
+        modalTitle.textContent = card.contract_name ? `${card.contract_name} — ${card.project_name}` : `${card.project_name} (${card.project_no})`;
         modalDetailLink.href = card.detail_url || '#';
 
         let html = '';
@@ -252,7 +252,8 @@
         }
 
         return `<div class="pd-card${urgent}${priority}" data-card-id="${cid}" data-col-key="${colKey}">
-            <div class="pd-card-header">${star}<span class="pd-card-name">${card.project_name}</span>${ddayHtml(card)}</div>
+            <div class="pd-card-header">${star}<span class="pd-card-name">${card.contract_name || card.project_name}</span>${ddayHtml(card)}</div>
+            <div class="pd-card-sub">${card.project_name}</div>
             <div class="pd-card-item">${card.category} ${card.model_name} x${card.quantity}</div>
             ${body}
         </div>`;

@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload
 from modules.utils import safe_int
 from modules.pagination import make_pagination
 
-from modules.history_board import append_history_log, get_project_history_context
+from modules.history_board import append_history_log, get_project_history_context, get_user_display_name
 from modules.activity import log_activity
 from modules.db_context import get_db
 from modules.contract_filters import active_contract_filter
@@ -97,7 +97,7 @@ ACTION_HANDLERS = {
 def delivery_management():
 
     with get_db() as db:
-        current_user = session.get("full_name") or "사용자"
+        current_user = get_user_display_name()
         if request.method == "POST" and request.form.get("action") == "sync_deliveries":
             sync_deliveries(db)
             db.commit()
@@ -260,7 +260,7 @@ def delivery_detail(project_id):
             flash("Project not found.", "warning")
             return redirect(url_for("delivery.delivery_management"))
 
-        current_user = session.get("full_name") or "User"
+        current_user = get_user_display_name()
         if request.method == "POST":
             action = request.form.get("action")
             handler = ACTION_HANDLERS.get(action)

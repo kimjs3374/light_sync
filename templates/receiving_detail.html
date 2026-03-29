@@ -66,17 +66,19 @@
             <table class="table table-sm mb-0 no-stack-table" style="table-layout:fixed;">
                 <colgroup>
                     <col style="width:30px">
-                    <col style="width:25%">
-                    <col style="width:20%">
-                    <col style="width:80px">
-                    <col style="width:60px">
-                    <col style="width:100px">
-                    <col style="width:100px">
+                    <col style="width:12%">
+                    <col style="width:22%">
+                    <col style="width:18%">
+                    <col style="width:70px">
+                    <col style="width:50px">
+                    <col style="width:90px">
+                    <col style="width:90px">
                     <col>
                 </colgroup>
                 <thead class="table-light">
                     <tr>
                         <th>#</th>
+                        <th>품번</th>
                         <th>품명</th>
                         <th>규격</th>
                         <th class="text-end">수량</th>
@@ -90,6 +92,7 @@
                     {% for item in rcv.items %}
                     <tr>
                         <td>{{ loop.index }}</td>
+                        <td>{{ item.item_cd or (item.po_item.item_code if item.po_item else '') or '-' }}</td>
                         <td>{{ item.item_name }}</td>
                         <td>{{ item.item_spec or '-' }}</td>
                         <td class="text-end">{{ item.received_qty|int }}</td>
@@ -100,24 +103,21 @@
                     </tr>
                     {% endfor %}
                 </tbody>
-                <tfoot>
-                    <tr class="table-light">
-                        <td colspan="6" class="text-end fw-bold">공급가액</td>
-                        <td class="text-end fw-bold">{{ fmt_money(total_amount) }}</td>
-                        <td></td>
-                    </tr>
-                    <tr class="table-light">
-                        <td colspan="6" class="text-end">부가세 (10%)</td>
-                        <td class="text-end">{{ fmt_money(tax_amount) }}</td>
-                        <td></td>
-                    </tr>
-                    <tr class="table-light">
-                        <td colspan="6" class="text-end fw-bold fs-6">합계</td>
-                        <td class="text-end fw-bold fs-6 text-primary">{{ fmt_money(total_amount + tax_amount) }}</td>
-                        <td></td>
-                    </tr>
-                </tfoot>
             </table>
+        </div>
+        <div style="max-width:280px;margin-left:auto;margin-top:12px;padding:0 12px 12px;">
+            <div class="d-flex justify-content-between py-1" style="font-size:.85rem;color:#64748b;">
+                <span>공급가액</span>
+                <strong style="color:#0f172a;">{{ fmt_money(total_amount) }}</strong>
+            </div>
+            <div class="d-flex justify-content-between py-1" style="font-size:.85rem;color:#64748b;">
+                <span>부가세 (10%)</span>
+                <span>{{ fmt_money(tax_amount) }}</span>
+            </div>
+            <div class="d-flex justify-content-between py-2 mt-1" style="border-top:2px solid #0f172a;font-size:1rem;">
+                <strong>합계</strong>
+                <strong style="color:#2563eb;font-size:1.1rem;">{{ fmt_money(total_amount + tax_amount) }}</strong>
+            </div>
         </div>
     </div>
 </div>
@@ -156,6 +156,7 @@
 <div class="card border-0 shadow-sm mb-3">
     <div class="card-body">
         <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('receiving.receiving_edit', rcv_id=rcv.id) }}" class="btn btn-outline-primary btn-sm">수정</a>
             <form method="POST" action="{{ url_for('receiving.receiving_delete', rcv_id=rcv.id) }}" class="d-inline ms-auto">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('이 입고를 삭제하시겠습니까?');">삭제</button>

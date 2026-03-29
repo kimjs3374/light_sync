@@ -64,6 +64,7 @@
 
 <form class="mb-2 history-ajax-form" data-project-id="{{ project.id if project else '' }}"
       data-default-scope="{{ history_default_filter or 'common' }}"
+      data-write-scope="{{ history_write_scope or 'common' }}"
       data-board-id="{{ hb_id }}"
       data-fallback-url="{% if history_post_url %}{{ history_post_url }}{% endif %}"
       enctype="multipart/form-data" style="position:relative;">
@@ -165,6 +166,7 @@
                     <form id="reply_form_{{ log.id }}" class="mt-1 d-none history-ajax-form"
                           data-project-id="{{ project.id if project else '' }}"
                           data-default-scope="{{ history_default_filter or 'common' }}"
+                          data-write-scope="{{ history_write_scope or 'common' }}"
                           enctype="multipart/form-data">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="add_history_reply">
@@ -455,6 +457,7 @@
             try {
                 const fd = new FormData(form);
                 fd.set('default_scope', form.dataset.defaultScope || 'common');
+                fd.set('write_scope', form.dataset.writeScope || 'common');
                 fd.set('board_id', _boardId);
                 const resp = await fetch(`/api/history/${projectId}/add`, {
                     method: 'POST', body: fd

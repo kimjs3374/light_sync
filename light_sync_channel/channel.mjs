@@ -36,7 +36,8 @@ const mcp = new Server(
 3. channel_reply 호출 시 request_id를 반드시 태그에서 가져와 전달하세요.
 4. 한국어로 간결하게 답변하세요. 숫자는 한국 단위(건, 개, 원)로 표시하세요.
 5. 데이터 조회가 필요 없는 일반 질문도 channel_reply로 응답하세요.
-6. 메시지에 [허용 도구: ...] 목록이 있으면 해당 도구만 사용하세요. 목록에 없는 도구 호출 시 "해당 기능은 사용 권한이 없습니다."라고 channel_reply하세요.`,
+6. 메시지에 [허용 도구: ...] 목록이 있으면 해당 도구만 사용하세요. 목록에 없는 도구 호출 시 "해당 기능은 사용 권한이 없습니다."라고 channel_reply하세요.
+7. **MCP 도구를 2개 이상 호출해야 하는 복잡한 질문이면**, 먼저 channel_reply(partial=true)로 "분석 중입니다. 잠시만 기다려주세요." 같은 안내 메시지를 보낸 뒤 작업을 시작하세요. 마지막 최종 답변은 partial 없이 보내세요.`,
   }
 );
 
@@ -58,6 +59,12 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "string",
             description: "유저에게 보낼 응답 메시지",
           },
+          partial: {
+            type: "boolean",
+            description:
+              "true면 중간 안내 메시지 (작업 계속 진행). 생략 또는 false면 최종 답변.",
+            default: false,
+          },
         },
         required: ["request_id", "text"],
       },
@@ -67,11 +74,12 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (req.params.name === "channel_reply") {
-    const { request_id, text } = req.params.arguments;
-    process.stderr.write(`[channel] reply tool called: ${request_id} → Flask:${FLASK_PORT}\n`);
+    const { request_id, text, partial } = req.params.arguments;
+    const label = partial ? "partial" : "final";
+    process.stderr.write(`[channel] reply tool called (${label}): ${request_id} → Flask:${FLASK_PORT}\n`);
     try {
-      await postToFlask(request_id, text);
-      process.stderr.write(`[channel] reply delivered: ${request_id}\n`);
+      await postToFlask(request_id, text, !!partial);
+      process.stderr.write(`[channel] reply delivered (${label}): ${request_id}\n`);
       return { content: [{ type: "text", text: "sent" }] };
     } catch (err) {
       process.stderr.write(`[channel] reply FAILED: ${err.message}\n`);
@@ -84,9 +92,9 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
 });
 
 // ── Flask 서버로 POST ─────────────────────────────────────────────────
-function postToFlask(requestId, text) {
+function postToFlask(requestId, text, partial = false) {
   return new Promise((resolve, reject) => {
-    const payload = JSON.stringify({ request_id: requestId, text });
+    const payload = JSON.stringify({ request_id: requestId, text, partial });
     const options = {
       hostname: "127.0.0.1",
       port: FLASK_PORT,

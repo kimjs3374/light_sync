@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+{% set active_menu_key = 'inventory' %}
+
+{% block content %}
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Consumption History</div>
+            <h2>소진 이력</h2>
+            <div class="hero-sub">전체 소진 등록 이력 조회 — {{ total }}건</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('inventory.consume_form') }}" class="btn btn-outline-light btn-sm" style="white-space:nowrap;">소진등록</a>
+            <a href="{{ url_for('inventory.inventory_dashboard') }}" class="btn btn-outline-light btn-sm" style="white-space:nowrap;">재고현황</a>
+        </div>
+    </div>
+</div>
+
+{# ═══ 검색 필터 ═══ #}
+<div class="card border-0 shadow-sm mb-3 mg-fade" style="animation-delay:.05s">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label fw-bold mb-0" style="font-size:.75rem;">검색</label>
+                <input type="text" name="q" class="form-control form-control-sm" placeholder="모델명, 비고, 등록자..." value="{{ filters.q }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-bold mb-0" style="font-size:.75rem;">시작일</label>
+                <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.date_from }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-bold mb-0" style="font-size:.75rem;">종료일</label>
+                <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;">검색</button>
+                <a href="{{ url_for('inventory.consumption_history') }}" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">초기화</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ═══ 소진 이력 테이블 ═══ #}
+<div class="card border-0 shadow-sm mb-3 mg-fade" style="animation-delay:.1s">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" style="font-size:.82rem; white-space:nowrap;">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:80px;">날짜</th>
+                        <th>모델명</th>
+                        <th class="text-end" style="width:50px;">수량</th>
+                        <th>현장</th>
+                        <th class="text-center" style="width:60px;">자재</th>
+                        <th>비고</th>
+                        <th style="width:70px;">등록자</th>
+                        <th class="text-center" style="width:50px;">상세</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in consumptions %}
+                    <tr>
+                        <td><span style="font-family:'JetBrains Mono',monospace; font-size:.78rem;">{{ c.tx_date.strftime('%m/%d') if c.tx_date else '-' }}</span></td>
+                        <td class="fw-bold">{{ c.model_name or '-' }}</td>
+                        <td class="text-end">{{ c.quantity }}</td>
+                        <td>{{ projects_map.get(c.project_id, '') if c.project_id else '' }}</td>
+                        <td class="text-center"><span class="badge bg-light text-dark" style="white-space:nowrap;">{{ item_counts.get(c.id, 0) }}건</span></td>
+                        <td class="text-muted" style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">{{ c.note or '' }}</td>
+                        <td>{{ c.created_by or '-' }}</td>
+                        <td class="text-center">
+                            <a href="{{ url_for('inventory.consumption_detail', consumption_id=c.id) }}" class="btn btn-outline-primary btn-xs" style="white-space:nowrap; font-size:.72rem; padding:1px 6px;">보기</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted py-4">소진 이력이 없습니다.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ═══ 페이지네이션 ═══ #}
+{% if pagination.total_pages > 1 %}
+<nav class="mg-fade" style="animation-delay:.15s">
+    <ul class="pagination pagination-sm justify-content-center mb-4">
+        {% if pagination.has_prev %}
+        <li class="page-item"><a class="page-link" href="?page={{ pagination.page - 1 }}&q={{ filters.q }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">&laquo;</a></li>
+        {% endif %}
+        {% for p in range(1, pagination.total_pages + 1) %}
+        {% if p == pagination.page %}
+        <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+        {% elif p <= 3 or p > pagination.total_pages - 3 or (p >= pagination.page - 2 and p <= pagination.page + 2) %}
+        <li class="page-item"><a class="page-link" href="?page={{ p }}&q={{ filters.q }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">{{ p }}</a></li>
+        {% elif p == 4 or p == pagination.total_pages - 3 %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+        {% endfor %}
+        {% if pagination.has_next %}
+        <li class="page-item"><a class="page-link" href="?page={{ pagination.page + 1 }}&q={{ filters.q }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">&raquo;</a></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{% endblock %}

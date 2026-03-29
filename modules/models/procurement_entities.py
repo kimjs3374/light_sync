@@ -93,6 +93,8 @@ class PurchaseOrder(Base):
     contract = relationship("Contract", foreign_keys=[contract_id])
     assignee = relationship("User", foreign_keys=[assigned_to])
     items = relationship("PurchaseOrderItem", back_populates="purchase_order", cascade="all, delete-orphan", order_by="PurchaseOrderItem.id")
+    files = relationship("PurchaseOrderFile", back_populates="purchase_order",
+                         cascade="all, delete-orphan", order_by="PurchaseOrderFile.id")
 
 
 class PurchaseOrderItem(Base):
@@ -227,3 +229,25 @@ class ProcessingOrderFile(Base):
     uploaded_at = Column(DateTime, default=datetime.datetime.now)
 
     processing_order = relationship("ProcessingOrder", back_populates="files")
+
+
+class PurchaseOrderFile(Base):
+    """자재발주 검수 사진/파일"""
+    __tablename__ = 'purchase_order_files'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    po_id = Column(Integer, ForeignKey('purchase_orders.id', ondelete='CASCADE'), nullable=False)
+    file_name = Column(String(500), nullable=False)
+    file_path = Column(String(1000), nullable=False)
+    file_size = Column(Integer, default=0)
+    file_type = Column(String(20), nullable=True)
+    uploaded_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    uploaded_at = Column(DateTime, default=datetime.datetime.now)
+    # 검수 확인
+    is_confirmed = Column(Integer, default=0)          # 0=대기, 1=확인
+    confirmed_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    confirmed_at = Column(DateTime, nullable=True)
+
+    purchase_order = relationship("PurchaseOrder", back_populates="files")
+    uploader = relationship("User", foreign_keys=[uploaded_by])
+    confirmer = relationship("User", foreign_keys=[confirmed_by])

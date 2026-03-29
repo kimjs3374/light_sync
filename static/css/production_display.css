@@ -194,6 +194,14 @@ body {
 }
 .pd-star { color: #fbbf24; font-size: .75rem; flex-shrink: 0; }
 
+.pd-card-sub {
+    font-size: .62rem;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: .15rem;
+}
 .pd-card-item {
     font-size: .7rem;
     color: #94a3b8;

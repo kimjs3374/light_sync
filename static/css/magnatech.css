@@ -419,264 +419,6 @@ html.sb-collapsed .main-content { margin-left: 60px; }
     max-width: 100%;
 }
 
-.btn-xs {
-    --bs-btn-padding-y: .2rem;
-    --bs-btn-padding-x: .42rem;
-    --bs-btn-font-size: .74rem;
-    --bs-btn-border-radius: .35rem;
-    line-height: 1.2;
-}
-
-@media (max-width: 991.98px) {
-    .sidebar {
-        width: 250px !important;
-        transform: translateX(-100%);
-        transition: transform 0.25s ease;
-        z-index: 1050;
-    }
-    .sidebar.show { transform: translateX(0); }
-    /* 모바일에서 collapsed 무시 */
-    .sidebar.collapsed { width: 250px !important; }
-    .sidebar.collapsed .sidebar-label { display: unset !important; }
-    /* sidebar-icon-only 제거됨 */
-    .sidebar.collapsed .sidebar-sub { display: revert !important; }
-    .sidebar.collapsed .sidebar-sub:not(.open) { display: none !important; }
-    .sidebar.collapsed .sidebar-user { display: block !important; }
-    .sidebar.collapsed .sidebar-group-header { justify-content: flex-start; padding: 8px 16px; margin: 1px 10px; }
-    .sidebar.collapsed .fav-toggle { display: inline !important; }
-    .sidebar.collapsed a { justify-content: flex-start; padding: 8px 16px; margin: 1px 10px; }
-    .sidebar-toggle-area { display: none !important; }
-    .sidebar-flyout-popup { display: none !important; }
-    .mobile-menu-btn {
-        display: inline-flex;
-    }
-    .sidebar-backdrop.show {
-        display: block;
-    }
-    .page-sticky-bar { display: none !important; }
-    .main-content {
-        margin-left: 0 !important;
-        padding: 64px 14px 16px !important;
-    }
-    .main-content h2 {
-        font-size: 1.3rem;
-    }
-    .main-content .card,
-    .main-content .panel-card,
-    .main-content .dashboard-header {
-        border-radius: 12px;
-    }
-    .main-content .btn {
-        white-space: nowrap;
-    }
-    .main-content .table {
-        font-size: .88rem;
-    }
-    .main-content .card-body form .text-md-end,
-    .main-content form .text-md-end {
-        text-align: left !important;
-    }
-    .main-content .row {
-        --bs-gutter-x: 1rem;
-    }
-    .main-content .modal-dialog {
-        margin: .75rem;
-    }
-    .main-content .card-header,
-    .main-content .card-body,
-    .main-content .card-footer {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-    .main-content .d-flex {
-        min-width: 0;
-    }
-}
-
-@media (max-width: 1199.98px) {
-    .main-content .btn {
-        white-space: normal;
-    }
-    /* A1: overflow-x 스코프 수정 — mobile-stack-table만 visible, no-stack-table은 스크롤 보장 */
-    /* collapse 내부는 제외 (접힘 상태에서 내용 유출 방지) */
-    .main-content .table-responsive:has(.mobile-stack-table):not(.collapse .table-responsive) {
-        overflow-x: visible !important;
-    }
-    .main-content .collapse .table-responsive {
-        overflow: hidden !important;
-    }
-    .main-content .collapse.show .table-responsive:has(.mobile-stack-table) {
-        overflow-x: visible !important;
-        overflow-y: visible !important;
-    }
-    .main-content .table-responsive:has(.no-stack-table) {
-        overflow-x: auto !important;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    /* A2: no-stack-table 스택 방지 (revert) — tree-card-table 제외 */
-    .main-content .no-stack-table:not(.tree-card-table) { display: table !important; }
-    .main-content .no-stack-table:not(.tree-card-table) thead { display: table-header-group !important; }
-    .main-content .no-stack-table:not(.tree-card-table) tbody,
-    .main-content .no-stack-table:not(.tree-card-table) tr,
-    .main-content .no-stack-table:not(.tree-card-table) td { display: revert !important; }
-    .main-content .no-stack-table > tbody > tr > td::before { content: none !important; }
-
-    /* ═══ 모바일 카드형 테이블 (전면 재작성) ═══ */
-    .main-content table.mobile-stack-table {
-        width: 100% !important;
-        min-width: 0 !important;
-        table-layout: auto !important;
-        border: 0 !important;
-    }
-    .main-content table.mobile-stack-table thead { display: none; }
-    .main-content table.mobile-stack-table tbody {
-        display: flex; flex-direction: column; gap: 8px;
-    }
-    /* 카드 행 */
-    .main-content table.mobile-stack-table tbody tr {
-        display: flex !important;
-        flex-wrap: wrap;
-        align-items: baseline;
-        gap: 4px 8px;
-        border: 1px solid #e2e8f0;
-        border-left: 4px solid #2563eb;
-        border-radius: 10px;
-        background: #fff;
-        padding: 10px 12px !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,.04);
-    }
-    /* 셀 기본: 인라인 흐름 */
-    .main-content table.mobile-stack-table td {
-        border: 0 !important;
-        padding: 1px 0 !important;
-        text-align: left !important;
-        display: inline;
-        max-width: 100%;
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: break-word;
-        overflow: visible !important;
-        font-size: .82rem;
-    }
-    .main-content table.mobile-stack-table td::before { content: none; }
-    .main-content table.mobile-stack-table td:empty { display: none !important; }
-    /* 버튼/폼: 인라인 자동 크기 */
-    .main-content table.mobile-stack-table td .btn {
-        white-space: nowrap !important;
-        font-size: .73rem;
-        padding: .25rem .45rem;
-    }
-    .main-content table.mobile-stack-table td form { display: inline; }
-    .main-content table.mobile-stack-table td .form-control,
-    .main-content table.mobile-stack-table td .form-select {
-        width: 100% !important; max-width: 100%;
-    }
-    /* colspan / 빈 상태 */
-    .main-content table.mobile-stack-table td[colspan],
-    .main-content table.mobile-stack-table td.mobile-full-row {
-        display: block !important;
-        flex: 0 0 100%;
-        text-align: center !important;
-        padding: 10px 0 !important;
-        color: #94a3b8;
-        word-break: keep-all !important;
-        overflow-wrap: normal !important;
-    }
-    .main-content table.mobile-stack-table tbody tr:has(td[colspan]) {
-        border: none !important;
-        border-left: none !important;
-        box-shadow: none !important;
-        padding: 4px 0 !important;
-        background: transparent !important;
-    }
-    /* 배지/뱃지 줄바꿈 금지 */
-    .main-content table.mobile-stack-table .badge {
-        white-space: nowrap !important;
-        font-size: .68rem;
-    }
-    /* 클릭 화살표 제거 (공백 방지) */
-    .main-content table.mobile-stack-table tbody tr::after { content: none !important; }
-    /* d-flex 감싸기 */
-    .main-content .d-flex.gap-2 { flex-wrap: wrap; }
-    .main-content .mobile-actions,
-    .main-content .mobile-actions > * { width: 100%; }
-}
-
-@media (max-width: 767.98px) {
-    .mobile-menu-btn {
-        top: 10px;
-        left: 10px;
-        padding: .45rem .7rem;
-        font-size: .92rem;
-    }
-    .main-content {
-        padding: 60px 12px 16px;
-    }
-    .main-content table.mobile-stack-table td::before {
-        font-size: .65rem;
-    }
-    .main-content .btn,
-    .main-content .form-control,
-    .main-content .form-select {
-        font-size: .92rem;
-    }
-    .btn-xs {
-        --bs-btn-font-size: .78rem;
-    }
-    .main-content .btn-group,
-    .main-content .input-group,
-    .main-content .d-flex.gap-2,
-    .main-content .d-flex.gap-3 {
-        flex-wrap: wrap;
-    }
-    .main-content .d-flex.gap-2 > .btn,
-    .main-content .d-flex.gap-3 > .btn,
-    .main-content .d-flex.gap-2 > a.btn,
-    .main-content .d-flex.gap-3 > a.btn {
-        width: 100%;
-    }
-}
-
-/* ═══ 사이드바 하단 고정 영역 ═══ */
-.sidebar-bottom-area {
-    margin-top: auto;
-    flex-shrink: 0;
-    border-top: 1px solid #334155;
-    padding: 4px 8px 4px;
-}
-.sidebar-quick-actions {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 4px;
-}
-.sidebar-quick-btn {
-    flex: 1 1 50%;
-    min-width: 0;
-    color: #94a3b8; text-decoration: none; font-size: .75rem;
-    padding: 6px 0; display: flex; align-items: center; justify-content: center;
-    border-radius: 5px; white-space: nowrap;
-    gap: 4px; position: relative;
-    transition: background .15s, color .15s;
-}
-.sidebar-quick-btn:hover { background: #1e293b; color: #fff; }
-.sidebar-quick-btn .sq-badge {
-    font-size: .6rem; font-weight: 700;
-    background: #ef4444; color: #fff;
-    min-width: 16px; height: 16px; border-radius: 8px;
-    display: inline-flex; align-items: center; justify-content: center;
-    padding: 0 4px; margin-left: 2px; flex-shrink: 0;
-}
-/* 접힌 상태 */
-html.sb-collapsed .sidebar-quick-actions,
-.sidebar.collapsed .sidebar-quick-actions {
-    flex-direction: column; gap: 1px;
-}
-html.sb-collapsed .sidebar-quick-btn,
-.sidebar.collapsed .sidebar-quick-btn {
-    padding: 8px 0;
-}
-
 /* ═══ 챗봇 패널 ═══ */
 #chatbotPanel {
     position: fixed; top: 0; right: -420px; width: 400px; height: 100vh;
@@ -728,181 +470,213 @@ html.sb-collapsed .sidebar-quick-btn,
     content: ''; flex: 1; height: 1px; background: #e2e8f0;
 }
 
-@media (max-width: 767.98px) {
-    #chatbotPanel {
-        width: 100%; height: 85vh;
-        top: auto; bottom: -100vh; right: 0;
-        border-left: none; border-top: 1px solid #e2e8f0;
-        border-radius: 16px 16px 0 0;
-        transition: bottom .25s ease;
-    }
-    #chatbotPanel.open { bottom: 0; right: 0; }
-    .chat-panel-footer .form-control { font-size: 1rem; }
-    .chat-panel-footer .btn { font-size: 1rem; padding: .45rem .9rem; }
-    .chat-msg { font-size: .92rem; max-width: 88%; }
+/* ═══ 사이드바 하단 고정 영역 ═══ */
+.sidebar-bottom-area {
+    margin-top: auto; flex-shrink: 0;
+    border-top: 1px solid #334155; padding: 4px 8px 4px;
+}
+.sidebar-quick-actions {
+    display: flex; gap: 4px; margin-bottom: 4px;
+}
+.sidebar-quick-btn {
+    flex: 1 1 50%; min-width: 0;
+    color: #94a3b8; text-decoration: none; font-size: .75rem;
+    padding: 6px 0; display: flex; align-items: center; justify-content: center;
+    border-radius: 5px; white-space: nowrap; gap: 4px; position: relative;
+    transition: background .15s, color .15s;
+}
+.sidebar-quick-btn:hover { background: #1e293b; color: #fff; }
+.sidebar-quick-btn .sq-badge {
+    font-size: .6rem; font-weight: 700;
+    background: #ef4444; color: #fff;
+    min-width: 16px; height: 16px; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0 4px; margin-left: 2px; flex-shrink: 0;
+}
+html.sb-collapsed .sidebar-quick-actions,
+.sidebar.collapsed .sidebar-quick-actions { flex-direction: column; gap: 1px; }
+html.sb-collapsed .sidebar-quick-btn,
+.sidebar.collapsed .sidebar-quick-btn { padding: 8px 0; }
+
+.btn-xs {
+    --bs-btn-padding-y: .2rem;
+    --bs-btn-padding-x: .42rem;
+    --bs-btn-font-size: .74rem;
+    --bs-btn-border-radius: .35rem;
+    line-height: 1.2;
 }
 
-/* ═══ Mobile Responsive Enhancement (2026-03-23) ═══ */
-
-/* --- Page Hero 반응형 --- */
-@media (max-width: 767.98px) {
-    .page-hero { padding: 1rem 1.2rem; border-radius: .75rem; }
-    .page-hero h2, .page-hero h3 { font-size: 1.1rem; }
-    .page-hero .hero-sub { font-size: .72rem; }
-    .page-hero .hero-eyebrow { font-size: .58rem; }
-    .page-hero .d-flex.gap-2,
-    .page-hero .d-flex.flex-wrap { gap: .35rem !important; }
-    .page-hero .btn { font-size: .7rem; padding: .25rem .5rem; }
-}
-@media (max-width: 575.98px) {
-    .page-hero { padding: .85rem 1rem; }
-    .page-hero h2, .page-hero h3 { font-size: 1rem; }
-    .page-hero .d-flex.gap-2 > .btn,
-    .page-hero .d-flex.flex-wrap > .btn,
-    .page-hero .d-flex.flex-wrap > a.btn {
-        flex: 1 1 auto; text-align: center;
+/* ═══════════════════════════════════════════════════════
+   TABLET (≤991px): 사이드바 오버레이 + 레이아웃 조정
+   ═══════════════════════════════════════════════════════ */
+@media (max-width: 991.98px) {
+    .sidebar {
+        width: 250px !important;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        z-index: 1050;
     }
-}
-
-/* --- 터치 타겟 + 타이포그래피 --- */
-@media (max-width: 767.98px) {
-    .main-content h3 { font-size: 1rem; }
-    .main-content h4 { font-size: .92rem; }
-    .main-content .card-header { font-size: .82rem; }
-    .main-content .btn { min-height: 38px; padding-top: .45rem; padding-bottom: .45rem; }
-    .main-content .form-control,
-    .main-content .form-select { min-height: 40px; font-size: .92rem; }
-    .main-content .mb-4 { margin-bottom: .75rem !important; }
-    .main-content .mb-3 { margin-bottom: .5rem !important; }
-    .main-content .g-3, .main-content .gx-3 { --bs-gutter-x: .75rem; --bs-gutter-y: .75rem; }
-}
-@media (max-width: 575.98px) {
-    .main-content h2 { font-size: 1.05rem; }
-    .main-content .card-body { padding: .75rem; }
-    .kpi-value { font-size: 1.2rem !important; }
-    .kpi-label { font-size: .72rem !important; }
+    .sidebar.show { transform: translateX(0); }
+    .sidebar.collapsed { width: 250px !important; }
+    .sidebar.collapsed .sidebar-label { display: unset !important; }
+    .sidebar.collapsed .sidebar-sub { display: revert !important; }
+    .sidebar.collapsed .sidebar-sub:not(.open) { display: none !important; }
+    .sidebar.collapsed .sidebar-user { display: block !important; }
+    .sidebar.collapsed .sidebar-group-header { justify-content: flex-start; padding: 8px 16px; margin: 1px 10px; }
+    .sidebar.collapsed .fav-toggle { display: inline !important; }
+    .sidebar.collapsed a { justify-content: flex-start; padding: 8px 16px; margin: 1px 10px; }
+    .sidebar-toggle-area { display: none !important; }
+    .sidebar-flyout-popup { display: none !important; }
+    .mobile-menu-btn { display: inline-flex; }
+    .sidebar-backdrop.show { display: block; }
+    .page-sticky-bar { display: none !important; }
+    .main-content {
+        margin-left: 0 !important;
+        padding: 64px 14px 16px !important;
+    }
+    .main-content h2 { font-size: 1.3rem; }
+    .main-content .card, .main-content .panel-card, .main-content .dashboard-header { border-radius: 12px; }
+    .main-content .btn { white-space: nowrap; }
+    .main-content .table { font-size: .88rem; }
+    .main-content .card-body form .text-md-end, .main-content form .text-md-end { text-align: left !important; }
+    .main-content .row { --bs-gutter-x: 1rem; }
+    .main-content .modal-dialog { margin: .75rem; }
+    .main-content .card-header, .main-content .card-body, .main-content .card-footer { padding-left: 1rem; padding-right: 1rem; }
+    .main-content .d-flex { min-width: 0; }
 }
 
-/* --- 필터 Collapse 토글 (모바일에서만 표시) --- */
-.filter-collapse-toggle { display: none; }
-@media (max-width: 767.98px) {
-    .filter-collapse-toggle {
-        display: flex !important; align-items: center; justify-content: center; gap: 6px;
-        font-size: .82rem;
-    }
-}
-@media (min-width: 768px) {
-    .filter-collapse-body {
-        display: block !important; height: auto !important; overflow: visible !important;
-    }
-}
-
-/* --- Stat 카드 모바일 --- */
-@media (max-width: 767.98px) {
-    .stat-cards-row .col-md-2 { flex: 0 0 33.333%; max-width: 33.333%; }
-    .stat-cards-row .stat-num, .stat-num { font-size: 1.3rem; }
-    /* 금액 숫자 줄바꿈 방지 + 자동 축소 */
-    .main-content .card-body .fw-bold.fs-5,
-    .main-content .card-body .stat-num,
-    .main-content .kpi-value,
-    .main-content [class*="stat"] .fw-bold {
-        font-size: clamp(0.68rem, 2.5vw, 1.2rem) !important;
-        word-break: keep-all;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        line-height: 1.3;
-    }
-    /* KPI 라벨도 축소 */
-    .main-content .kpi-label,
-    .main-content .card-body .text-muted.small,
-    .main-content .card-body small.text-muted {
-        font-size: .68rem !important;
-        line-height: 1.2;
-    }
-    /* form-select 최소 너비 보장 (텍스트 잘림 방지) */
-    .main-content .form-select {
-        min-width: 0;
-        text-overflow: ellipsis;
-    }
-    .filter-bar .form-select,
-    .filter-collapse-body .form-select {
-        font-size: .82rem;
-    }
-}
-
-/* --- 상세 페이지 Info 카드 모바일 --- */
-@media (max-width: 575.98px) {
-    .info-card .row .col-md-3 { flex: 0 0 50%; max-width: 50%; }
-}
-
-/* --- 폼 페이지 아이템 테이블 (가로 스크롤 보장) --- */
-@media (max-width: 767.98px) {
-    .main-content form .table-responsive {
-        overflow-x: auto !important;
-        -webkit-overflow-scrolling: touch;
-        margin: 0 -12px; padding: 0 12px;
-    }
-    .btn-add-item { width: 100%; }
-}
-
-/* --- 대시보드 KPI/탭 모바일 --- */
-@media (max-width: 767.98px) {
-    .kpi-row { flex-wrap: wrap; gap: .25rem; }
-    .kpi-chip { font-size: .65rem; padding: .15rem .4rem; }
-    .cmd-hero .nav-row { gap: .3rem; }
-    .cmd-hero .nav-row .btn { font-size: .68rem; padding: .25rem .45rem; }
-    .act-tabs {
-        overflow-x: auto; flex-wrap: nowrap;
-        -webkit-overflow-scrolling: touch; scrollbar-width: none;
-    }
-    .act-tabs::-webkit-scrollbar { display: none; }
-    .act-tabs .nav-link { flex-shrink: 0; }
-    .cal-cell { min-height: 36px; }
-    .cal-day { font-size: .65rem; }
-}
-
-/* --- 타임라인 패널 반응형 --- */
-@media (max-width: 767.98px) {
-    #timelinePanel {
-        width: 100% !important; height: 85vh !important;
-        top: auto !important; bottom: 0 !important; right: 0 !important;
-        border-radius: 16px 16px 0 0;
-    }
-}
-
-/* --- 트리형 테이블 모바일 카드 변환 (.tree-card-table) --- */
+/* ═══════════════════════════════════════════════════════
+   TABLET (≤1199px): 테이블 카드 변환 + 트리 카드
+   ═══════════════════════════════════════════════════════ */
 @media (max-width: 1199.98px) {
-    /* 래퍼 overflow 해제 */
-    .main-content .table-responsive:has(.tree-card-table) {
-        overflow-x: visible !important;
-    }
-    /* 테이블 자체를 블록화 */
-    .main-content .tree-card-table {
+
+    /* --- 테이블 → 카드 변환 (mobile-stack-table) --- */
+    .main-content table.mobile-stack-table {
         display: block !important;
-        border: 0 !important;
+        width: 100% !important;
         min-width: 0 !important;
-        table-layout: auto !important;
+        border: 0 !important;
+    }
+    .main-content table.mobile-stack-table thead { display: none !important; }
+    .main-content table.mobile-stack-table colgroup,
+    .main-content table.mobile-stack-table col { display: none !important; }
+    .main-content table.mobile-stack-table tbody {
+        display: block !important;
         width: 100% !important;
     }
-    .main-content .tree-card-table > thead {
-        display: none !important;
+    .main-content .table-responsive:has(.mobile-stack-table) { overflow-x: visible !important; }
+    .main-content .collapse .table-responsive { overflow: hidden !important; }
+    .main-content .collapse.show .table-responsive:has(.mobile-stack-table) {
+        overflow-x: visible !important; overflow-y: visible !important;
     }
+
+    /* 카드 행 */
+    .main-content table.mobile-stack-table > tbody > tr {
+        display: block !important;
+        width: 100% !important;
+        border: 1px solid #e2e8f0;
+        border-left: 4px solid #2563eb;
+        border-radius: 10px;
+        background: #fff;
+        padding: 10px 6px 10px 10px !important;
+        margin-bottom: 8px;
+        box-shadow: 0 2px 6px rgba(0,0,0,.06);
+        overflow: hidden;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .main-content table.mobile-stack-table > tbody > tr:hover,
+    .main-content table.mobile-stack-table > tbody > tr:active,
+    .main-content .table-hover > tbody > tr:hover {
+        background: #fff !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,.06) !important;
+    }
+    .main-content table.mobile-stack-table > tbody > tr::after { content: none !important; }
+
+    /* 셀: 인라인 흐름 + 폭 제한 전부 해제 */
+    .main-content table.mobile-stack-table > tbody > tr > td {
+        display: inline !important;
+        border: 0 !important;
+        padding: 1px 4px 1px 0 !important;
+        text-align: left !important;
+        font-size: .82rem;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        overflow: visible !important;
+        width: auto !important;
+        max-width: none !important;
+        min-width: 0 !important;
+    }
+    /* th/td 인라인 스타일 width 전부 무시 */
+    .main-content table.mobile-stack-table th[style],
+    .main-content table.mobile-stack-table td[style] {
+        width: auto !important;
+        max-width: none !important;
+        min-width: 0 !important;
+    }
+    .main-content table.mobile-stack-table > tbody > tr > td::before { content: none; }
+    .main-content table.mobile-stack-table > tbody > tr > td:empty { display: none !important; }
+    /* 조달내역 세부품목 헤더 텍스트 노드 숨기기 */
+    .main-content table.mobile-stack-table > tbody {
+        font-size: 0;
+        line-height: 0;
+    }
+    .main-content table.mobile-stack-table > tbody > tr {
+        font-size: .82rem;
+        line-height: 1.5;
+    }
+    /* Bootstrap --bs-table-bg 배경색 제거 */
+    .main-content table.mobile-stack-table,
+    .main-content table.mobile-stack-table > tbody > tr,
+    .main-content table.mobile-stack-table > tbody > tr > td {
+        --bs-table-bg: transparent !important;
+        --bs-table-striped-bg: transparent !important;
+        --bs-table-hover-bg: transparent !important;
+        --bs-table-active-bg: transparent !important;
+        background-color: transparent;
+    }
+    .main-content table.mobile-stack-table > tbody > tr {
+        background: #fff !important;
+    }
+
+    /* colspan / 빈 상태 행 */
+    .main-content table.mobile-stack-table > tbody > tr > td[colspan],
+    .main-content table.mobile-stack-table > tbody > tr > td.mobile-full-row {
+        display: block !important;
+        width: 100% !important;
+        text-align: center !important;
+        padding: 12px 0 !important;
+        color: #94a3b8;
+        word-break: keep-all !important;
+        overflow-wrap: normal !important;
+    }
+
+    /* 카드 내 버튼 */
+    .main-content table.mobile-stack-table td .btn { white-space: nowrap !important; }
+    .main-content table.mobile-stack-table td form { display: inline; }
+
+    /* --- 트리형 카드 (tree-card-table) --- */
+    .main-content .table-responsive:has(.tree-card-table) { overflow-x: visible !important; }
+    .main-content .tree-card-table {
+        display: block !important; border: 0 !important;
+        min-width: 0 !important; width: 100% !important;
+    }
+    .main-content .tree-card-table > thead { display: none !important; }
     .main-content .tree-card-table > tbody {
-        display: flex !important;
-        flex-direction: column;
-        gap: 8px;
+        display: flex !important; flex-direction: column; gap: 8px;
     }
-    /* 메인 행: 카드 스타일 */
     .main-content .tree-card-table > tbody > tr:not(.collapse):not(.collapsing) {
         display: block !important;
         border: 1px solid #e2e8f0;
         border-left: 4px solid #2563eb;
-        border-radius: 12px;
+        border-radius: 10px;
         background: #fff;
-        padding: 12px 14px !important;
-        margin-bottom: 0;
-        box-shadow: 0 1px 4px rgba(0,0,0,.05);
+        padding: 10px 6px 10px 10px !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,.06);
+        overflow: hidden;
+    }
+    .main-content .tree-card-table > tbody > tr:not(.collapse):not(.collapsing):hover {
+        background: #fff !important; box-shadow: 0 2px 6px rgba(0,0,0,.06) !important;
     }
     .main-content .tree-card-table > tbody > tr:not(.collapse):not(.collapsing) > td {
         display: inline !important;
@@ -911,343 +685,366 @@ html.sb-collapsed .sidebar-quick-btn,
         white-space: normal !important;
         overflow: visible !important;
         max-width: none !important;
+        min-width: 0 !important;
+        width: auto !important;
         text-align: left !important;
-        font-size: .85rem;
-        vertical-align: middle;
+        font-size: .82rem;
     }
-    /* 빈 td 숨김 */
+    .main-content .tree-card-table > tbody > tr:not(.collapse):not(.collapsing) > td[style] {
+        width: auto !important;
+        max-width: none !important;
+    }
     .main-content .tree-card-table > tbody > tr:not(.collapse):not(.collapsing) > td:empty {
         display: none !important;
     }
-    /* collapse/서브행: 풀너비 블록 */
+    .main-content .tree-card-table,
+    .main-content .tree-card-table > tbody > tr,
+    .main-content .tree-card-table > tbody > tr > td {
+        --bs-table-bg: transparent !important;
+        --bs-table-striped-bg: transparent !important;
+        --bs-table-hover-bg: transparent !important;
+        background-color: transparent;
+    }
+    .main-content .tree-card-table > tbody > tr:not(.collapse):not(.collapsing) {
+        background: #fff !important;
+    }
+    .main-content .tree-card-table .collapse table.mobile-stack-table,
+    .main-content .tree-card-table .collapse table.mobile-stack-table > tbody,
+    .main-content .tree-card-table .collapse table.mobile-stack-table > tbody > tr,
+    .main-content .tree-card-table .collapse table.mobile-stack-table > tbody > tr > td {
+        --bs-table-bg: transparent !important;
+        background-color: transparent !important;
+    }
+    .main-content .tree-card-table .collapse table.mobile-stack-table > tbody > tr {
+        background: #fafbfc !important;
+    }
+    /* 서브행 */
     .main-content .tree-card-table > tbody > tr.collapse,
     .main-content .tree-card-table > tbody > tr.collapsing {
+        display: block !important; width: 100% !important;
+        border: 0 !important; padding: 0 !important;
+        margin-top: -4px; margin-bottom: 4px;
+    }
+    .main-content .tree-card-table > tbody > tr.collapse:not(.show) { display: none !important; }
+    .main-content .tree-card-table > tbody > tr.collapse > td,
+    .main-content .tree-card-table > tbody > tr.collapsing > td,
+    .main-content table.tree-card-table > tbody > tr.collapse.show > td[colspan],
+    .main-content table.mobile-stack-table > tbody > tr.collapse > td,
+    .main-content table.mobile-stack-table > tbody > tr.collapse.show > td[colspan] {
         display: block !important;
         width: 100% !important;
         max-width: 100% !important;
         min-width: 0 !important;
+        padding: 4px 0 8px !important;
         border: 0 !important;
-        padding: 0 !important;
-        margin-top: -4px;
-        margin-bottom: 4px;
+        box-sizing: border-box !important;
     }
-    .main-content .tree-card-table > tbody > tr.collapse:not(.show) {
-        display: none !important;
-    }
-    .main-content .tree-card-table > tbody > tr.collapse > td,
-    .main-content .tree-card-table > tbody > tr.collapsing > td {
-        display: block !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        padding: 0 4px 8px !important;
-        border: 0 !important;
-    }
-    /* 서브테이블도 카드형으로 — mobile-stack-table JS가 자동 적용 */
-    .main-content .tree-card-table .table-responsive {
-        overflow-x: visible !important;
-    }
-    /* 서브테이블 카드 — 라벨+데이터 블록형 */
+    .main-content .tree-card-table .table-responsive { overflow-x: visible !important; }
+
+    /* 서브 테이블: 라벨+값 한 줄 */
     .main-content .tree-card-table .collapse table.mobile-stack-table {
         border: 0 !important;
+        display: block !important;
+        width: 100% !important;
     }
-    .main-content .tree-card-table .collapse table.mobile-stack-table tbody tr {
+    .main-content .tree-card-table .collapse table.mobile-stack-table > tbody {
+        display: block !important;
+        width: 100% !important;
+    }
+    .main-content .tree-card-table .collapse table.mobile-stack-table > tbody > tr {
         border: 1px solid #e2e8f0;
         border-left: 3px solid #94a3b8;
         border-radius: 10px;
         background: #fafbfc;
-        padding: 10px 12px;
-        margin-bottom: 6px;
+        padding: 12px 12px;
+        margin-bottom: 8px;
         box-shadow: none;
+        overflow: hidden;
     }
-    .main-content .tree-card-table .collapse table.mobile-stack-table tbody tr::after {
-        content: none;
-    }
-    .main-content .tree-card-table .collapse table.mobile-stack-table td {
+    .main-content .tree-card-table .collapse table.mobile-stack-table > tbody > tr::after { content: none; }
+    .main-content .tree-card-table .collapse table.mobile-stack-table > tbody > tr > td {
         display: block !important;
         padding: 2px 0 !important;
+        font-size: .82rem;
     }
-    .main-content .tree-card-table .collapse table.mobile-stack-table td::before {
-        content: attr(data-label) !important;
-        display: block;
+    .main-content .tree-card-table .collapse table.mobile-stack-table > tbody > tr > td:empty { display: none !important; }
+    .main-content .tree-card-table .collapse table.mobile-stack-table > tbody > tr > td::before {
+        content: attr(data-label) " ";
+        display: inline;
         color: #94a3b8;
-        font-weight: 700;
-        font-size: .62rem;
-        text-transform: uppercase;
-        letter-spacing: .03em;
-        margin-bottom: 0;
+        font-weight: 600;
+        font-size: .72rem;
+        margin-right: 4px;
+        white-space: nowrap;
     }
-}
+    .main-content .tree-card-table .collapse table.mobile-stack-table > tbody > tr > td[data-label=""]::before { display: none; }
 
-/* --- 모바일 클릭 가능 행 인디케이터 --- */
-@media (max-width: 1199.98px) {
-    .main-content table.mobile-stack-table tbody tr.clickable-row {
-        position: relative; cursor: pointer;
+    /* --- 자재 테이블 불필요 컬럼 숨기기 --- */
+    .main-content table.mat-order-table.mobile-stack-table > tbody > tr > td:nth-child(2) { font-weight: 700 !important; }
+    .main-content table.mat-order-table.mobile-stack-table > tbody > tr > td:last-child {
+        display: block !important; padding-top: 4px !important;
+        border-top: 1px solid #f1f5f9; margin-top: 4px;
     }
-}
-
-/* ═══ 글로벌 자동 모바일 테이블 카드 변환 (2026-03-23) ═══ */
-/* mobile-stack-table / tree-card-table / no-stack-table 미적용 일반 테이블 자동 변환 */
-@media (max-width: 767.98px) {
-    /* 편집 테이블, 이미 처리된 테이블, 모달 내부 테이블 제외 */
-    .main-content .table:not(.mobile-stack-table):not(.tree-card-table):not(.no-stack-table):not(.contract-item-table):not(.modal .table) {
-        width: 100% !important;
-        min-width: 0 !important;
-        border: 0 !important;
-    }
-    .main-content .table:not(.mobile-stack-table):not(.tree-card-table):not(.no-stack-table):not(.contract-item-table):not(.modal .table) > thead {
-        display: none;
-    }
-    .main-content .table:not(.mobile-stack-table):not(.tree-card-table):not(.no-stack-table):not(.contract-item-table):not(.modal .table) > tbody > tr {
-        display: block;
-        border: 1px solid #e2e8f0;
-        border-left: 4px solid #2563eb;
-        border-radius: 12px;
-        background: #fff;
-        padding: 10px 14px;
-        margin-bottom: 8px;
-        box-shadow: 0 1px 4px rgba(0,0,0,.04);
-    }
-    .main-content .table:not(.mobile-stack-table):not(.tree-card-table):not(.no-stack-table):not(.contract-item-table):not(.modal .table) > tbody > tr > td {
-        display: block;
-        border: 0 !important;
-        padding: 3px 0 !important;
-        text-align: left !important;
-        font-size: .84rem;
-        white-space: normal !important;
-        word-break: break-word;
-        overflow: visible !important;
-        max-width: none !important;
-    }
-    .main-content .table:not(.mobile-stack-table):not(.tree-card-table):not(.no-stack-table):not(.contract-item-table):not(.modal .table) > tbody > tr > td::before {
-        content: attr(data-label);
-        display: inline-block;
-        color: #94a3b8;
-        font-weight: 700;
-        font-size: .65rem;
-        text-transform: uppercase;
-        letter-spacing: .03em;
-        margin-right: 6px;
-        min-width: 60px;
-    }
-    .main-content .table:not(.mobile-stack-table):not(.tree-card-table):not(.no-stack-table):not(.contract-item-table):not(.modal .table) > tbody > tr > td:empty {
-        display: none;
+    .main-content table.mat-order-table.mobile-stack-table > tbody > tr > td:nth-child(3),
+    .main-content table.mat-order-table.mobile-stack-table > tbody > tr > td:nth-child(4),
+    .main-content table.mat-order-table.mobile-stack-table > tbody > tr > td:nth-child(5),
+    .main-content table.mat-order-table.mobile-stack-table > tbody > tr > td:nth-child(7),
+    .main-content table.mat-order-table.mobile-stack-table > tbody > tr > td:nth-child(9),
+    .main-content table.mat-order-table.mobile-stack-table > tbody > tr > td:nth-child(10),
+    .main-content table.mat-order-table.mobile-stack-table > tbody > tr > td:nth-child(11),
+    .main-content table.mat-order-table.mobile-stack-table > tbody > tr > td:nth-child(12) {
+        display: none !important;
     }
 
-    /* 편집 테이블 (contract-item-table, no-stack-table 등)은 가로 스크롤 */
-    .main-content .table-responsive:has(.contract-item-table),
-    .main-content .table-responsive:has(.no-stack-table) {
+    /* --- 특수 테이블: 가로 스크롤 유지 --- */
+    .ilv-grid-wrap,
+    .main-content .table-responsive:has(.ilv-table),
+    .main-content .table-responsive:has(#heatmapTable),
+    .main-content .table-responsive:has(#diffTable),
+    .main-content .table-responsive:has(#measureTable),
+    .main-content .table-responsive:has(#bomTable),
+    .main-content .table-responsive:has(#itemsTable),
+    .main-content .table-responsive:has(#editItemsTable),
+    .main-content .table-responsive:has(.ilv-grid),
+    .main-content .table-responsive:has(.pivot-tbl) {
         overflow-x: auto !important;
         -webkit-overflow-scrolling: touch;
     }
-    .contract-item-table {
-        min-width: 580px !important;
-        font-size: .78rem;
-    }
-    .contract-item-table th,
-    .contract-item-table td {
-        padding: .35rem .5rem !important;
-        font-size: .78rem;
-    }
-    .contract-item-table .form-control,
-    .contract-item-table .form-select {
-        font-size: .78rem;
-        min-height: 32px;
-        padding: .25rem .4rem;
-    }
-    .contract-item-table .btn {
-        font-size: .7rem;
-        padding: .2rem .45rem;
-        min-height: 28px;
-    }
 
-    /* 모바일 버튼: 텍스트 줄바꿈 절대 금지 + 내용에 맞게 자동 사이즈 */
-    .main-content .btn {
-        white-space: nowrap !important;
-        width: auto !important;
-        min-height: 36px;
+    .main-content .d-flex.gap-2 { flex-wrap: wrap; }
+
+    /* --- 계약관리 tree-wrap 서브영역 --- */
+    .tree-wrap {
+        padding: 0 !important;
+        --bs-gutter-x: 0.5rem !important;
+        --bs-gutter-y: 0.5rem !important;
     }
-    /* 카드 내 버튼 */
-    .main-content table.mobile-stack-table td .btn,
-    .main-content table.mobile-stack-table td form .btn {
-        white-space: nowrap !important;
-        font-size: .75rem;
-        padding: .3rem .5rem;
-        min-height: 30px;
-    }
-    /* mat-order-table 모바일 카드형 전환 */
-    .main-content table.mat-order-table.mobile-stack-table tbody tr {
-        display: flex !important;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 4px 8px;
+    .tree-wrap .card { margin-bottom: 8px; }
+    .tree-wrap .card-header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 4px !important;
         padding: 8px 10px !important;
+        font-size: .72rem !important;
+        white-space: normal !important;
     }
-    /* 체크박스: 왼쪽 상단 */
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(1) {
-        flex: 0 0 24px;
-        order: 0;
+    .tree-wrap .card-header .small,
+    .tree-wrap .card-header span {
+        white-space: normal !important;
+        line-height: 1.5;
     }
-    /* 자재명: 메인 텍스트 */
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(2) {
-        flex: 1 1 auto;
-        font-weight: 700;
-        font-size: .82rem !important;
-        order: 1;
+    .tree-wrap .card-header .badge {
+        font-size: .6rem !important;
+        margin: 1px 2px !important;
+        padding: .15em .4em !important;
     }
-    /* 발주상태 뱃지 */
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(8) {
-        flex: 0 0 auto;
-        order: 2;
+    .tree-wrap .card-body { padding: 0 !important; }
+    /* collapse 내 bg-light 패딩 축소 */
+    .main-content .tree-card-table td.p-3.bg-light,
+    .main-content .tree-card-table td.p-3 {
+        padding: 6px 4px !important;
     }
-    /* 수량 */
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(6) {
-        order: 3;
-        flex: 0 0 auto;
+    /* contract-subtable 서브 테이블 카드 라벨+값 간격 */
+    .main-content .contract-subtable.mobile-stack-table > tbody > tr > td {
+        padding: 2px 0 !important;
+        display: block !important;
     }
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(6)::before {
-        content: '수량 ' !important;
-        display: inline !important;
+    .main-content .contract-subtable.mobile-stack-table > tbody > tr > td::before {
+        content: attr(data-label) " ";
+        display: inline;
         color: #94a3b8;
-        font-size: .65rem;
-    }
-    /* 관리 버튼: 풀 너비 */
-    .main-content table.mat-order-table.mobile-stack-table td:last-child {
-        flex: 0 0 100%;
-        order: 10;
-        display: flex !important;
-        gap: 6px;
-        padding-top: 4px !important;
-        border-top: 1px solid #f1f5f9;
-        margin-top: 2px;
-    }
-    .main-content table.mat-order-table.mobile-stack-table td:last-child .btn {
-        flex: 1;
-        text-align: center;
-        font-size: .72rem;
-        min-height: 32px;
-    }
-    .main-content table.mat-order-table.mobile-stack-table td:last-child form {
-        flex: 1;
-    }
-    .main-content table.mat-order-table.mobile-stack-table td:last-child form .btn {
-        width: 100%;
-    }
-    /* 불필요 컬럼 숨기기 (품번/품명/규격/가용재고/외주상태/발주일/입고예정/입고확인) */
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(3),
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(4),
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(5),
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(7),
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(9),
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(10),
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(11),
-    .main-content table.mat-order-table.mobile-stack-table td:nth-child(12) {
-        display: none !important;
-    }
-    /* 카드 클릭 화살표 제거 (체크박스 행이라 불필요) */
-    .main-content table.mat-order-table.mobile-stack-table tbody tr::after {
-        content: none !important;
-    }
-
-    /* 모달 내 테이블도 간소화 */
-    .modal .table {
-        font-size: .8rem;
-    }
-    .modal .table th,
-    .modal .table td {
-        padding: .3rem .5rem !important;
-        font-size: .8rem;
-    }
-
-    /* 챗봇 하단 입력바 모바일 최적화 */
-    .chat-panel-footer {
-        padding: 8px;
-        gap: 6px;
-    }
-    .chat-panel-footer .form-control {
-        font-size: .95rem;
-        min-height: 42px;
-    }
-    .chat-panel-footer .btn {
-        min-height: 42px;
-        padding: .4rem .8rem;
-        font-size: .95rem;
+        font-weight: 600;
+        font-size: .68rem;
+        margin-right: 4px;
         white-space: nowrap;
     }
-
-    /* 페이지 히어로 액션 버튼 모바일 */
-    .page-hero .d-flex.gap-2 {
-        flex-wrap: wrap !important;
-        gap: .35rem !important;
-    }
-    .page-hero .btn {
-        font-size: .72rem !important;
-        padding: .3rem .55rem !important;
-        min-height: 34px;
-    }
-
-    /* 계약상세 우선순위/담당자/설계기준 섹션 */
-    .main-content .card .d-flex.justify-content-between {
-        flex-wrap: wrap;
-        gap: .5rem;
-    }
-
-    /* pagination 모바일 */
-    .pagination {
-        flex-wrap: wrap;
-        gap: 2px;
-    }
-    .pagination .page-link {
-        font-size: .8rem;
-        padding: .3rem .55rem;
-        min-height: 34px;
-        display: flex;
-        align-items: center;
-    }
-
-    /* 통계 카드 row 모바일: 2열 또는 3열 그리드 */
-    .stat-cards-row {
-        display: flex !important;
-        flex-wrap: wrap !important;
-        gap: .5rem !important;
-    }
-    .stat-cards-row > [class*="col-"] {
-        flex: 0 0 calc(33.333% - .5rem) !important;
-        max-width: calc(33.333% - .5rem) !important;
-    }
-
-    /* 탭/pill 가로 스크롤 */
-    .nav-tabs, .nav-pills {
-        flex-wrap: nowrap !important;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-    }
-    .nav-tabs::-webkit-scrollbar,
-    .nav-pills::-webkit-scrollbar {
+    .main-content .contract-subtable.mobile-stack-table > tbody > tr > td[data-label=""]::before {
         display: none;
     }
-    .nav-tabs .nav-link,
-    .nav-pills .nav-link {
-        flex-shrink: 0;
-        white-space: nowrap;
-        font-size: .82rem;
-        padding: .4rem .7rem;
+    .main-content .contract-subtable.mobile-stack-table > tbody > tr {
+        padding: 10px 12px !important;
     }
-
-    /* 필터 영역 compact */
-    .filter-collapse-body .row > [class*="col-"] {
-        margin-bottom: .5rem;
+    /* 우선순위 리스트 카드형 */
+    .priority-section-card .mobile-stack-table > tbody > tr.priority-row {
+        border-left-width: 4px !important;
+        border-left-style: solid !important;
     }
+    .priority-row-manual { border-left-color: #dc3545 !important; }
+    .priority-row-danger { border-left-color: #ef4444 !important; }
+    .priority-row-warning { border-left-color: #f59e0b !important; }
+    .priority-row-info { border-left-color: #0ea5e9 !important; }
+    .priority-row-muted { border-left-color: #94a3b8 !important; }
+    .priority-section-card .mobile-stack-table > tbody > tr.priority-row {
+        box-shadow: none !important;
+    }
+}
 
-    /* 배지/상태칩 줄바꿈 방지 */
-    .badge, .status-chip, .wf-badge, .mv-badge {
+/* ═══════════════════════════════════════════════════════
+   MOBILE (≤767px): 폰트/버튼/폼/카드 최적화
+   ═══════════════════════════════════════════════════════ */
+@media (max-width: 767.98px) {
+
+    /* 전역 폰트 .82rem */
+    .main-content { font-size: .82rem; }
+    .main-content h2 { font-size: 1.15rem; }
+    .main-content h3 { font-size: 1rem; }
+    .main-content h4 { font-size: .92rem; }
+    .main-content h5 { font-size: .88rem; }
+    .main-content .card-header { font-size: .82rem; }
+    .main-content p, .main-content td, .main-content th,
+    .main-content label, .main-content li { font-size: .82rem; }
+
+    /* 버튼: 통일 + 줄바꿈 금지 */
+    .main-content .btn {
         white-space: nowrap !important;
-        font-size: .7rem;
+        font-size: .8rem; padding: .35rem .6rem; min-height: 36px;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .main-content .btn-sm { font-size: .75rem; padding: .25rem .5rem; min-height: 32px; }
+    .main-content .btn-xs { font-size: .72rem; padding: .2rem .4rem; min-height: 28px; }
+    .main-content .btn-group .btn { font-size: .75rem; padding: .3rem .55rem; }
+
+    /* 폼 */
+    .main-content .form-control,
+    .main-content .form-select { min-height: 38px; font-size: .82rem; }
+    .main-content .form-select { min-width: 0; text-overflow: ellipsis; }
+
+    /* 배지: 카드 안에서 안 튀어나감 */
+    .main-content .badge, .main-content .status-chip,
+    .main-content .wf-badge, .main-content .mv-badge {
+        white-space: nowrap !important;
+        font-size: .68rem !important;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: inline-block;
+        vertical-align: middle;
+        padding: .2em .5em !important;
     }
 
-    /* 모바일 d-flex gap 조정 */
-    .main-content .d-flex.gap-3 {
-        gap: .5rem !important;
+    /* 모바일 메뉴 */
+    .mobile-menu-btn { top: 10px; left: 10px; padding: .45rem .7rem; font-size: .92rem; }
+    .main-content { padding: 60px 12px 16px !important; }
+
+    /* 히어로 */
+    .page-hero { padding: 1rem 1.2rem; border-radius: .75rem; }
+    .page-hero h2, .page-hero h3 { font-size: 1.1rem; }
+    .page-hero .hero-sub { font-size: .72rem; }
+    .page-hero .hero-eyebrow { font-size: .58rem; }
+    .page-hero .d-flex.gap-2,
+    .page-hero .d-flex.flex-wrap { gap: .35rem !important; flex-wrap: wrap !important; }
+    .page-hero .btn { font-size: .78rem; padding: .35rem .6rem; flex: 1 1 auto; text-align: center; }
+
+    /* 필터 */
+    .filter-collapse-toggle {
+        display: flex !important; align-items: center; justify-content: center;
+        gap: 6px; font-size: .82rem;
+    }
+    .filter-collapse-body .row > [class*="col-"] { margin-bottom: .5rem; }
+    .filter-bar .form-select, .filter-collapse-body .form-select { font-size: .82rem; }
+
+    /* KPI */
+    .stat-cards-row .col-md-2 { flex: 0 0 33.333%; max-width: 33.333%; }
+    .main-content .card-body .fw-bold.fs-5,
+    .main-content .card-body .stat-num,
+    .main-content .kpi-value,
+    .main-content [class*="stat"] .fw-bold {
+        font-size: clamp(0.68rem, 2.5vw, 1.2rem) !important;
+        word-break: keep-all; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
+    }
+    .main-content .kpi-label, .main-content small.text-muted { font-size: .68rem !important; }
+
+    /* 탭 */
+    .nav-tabs, .nav-pills {
+        flex-wrap: nowrap !important; overflow-x: auto;
+        -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+    .nav-tabs::-webkit-scrollbar, .nav-pills::-webkit-scrollbar { display: none; }
+    .nav-tabs .nav-link, .nav-pills .nav-link {
+        flex-shrink: 0; white-space: nowrap; font-size: .8rem; padding: .4rem .7rem;
+    }
+
+    /* 대시보드 */
+    .kpi-row { flex-wrap: wrap; gap: .25rem; }
+    .kpi-chip { font-size: .65rem; padding: .15rem .4rem; }
+    .cmd-hero .nav-row { gap: .3rem; }
+    .cmd-hero .nav-row .btn { font-size: .68rem; padding: .25rem .45rem; }
+    .act-tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    .act-tabs::-webkit-scrollbar { display: none; }
+    .act-tabs .nav-link { flex-shrink: 0; }
+    .cal-cell { min-height: 36px; }
+    .cal-day { font-size: .65rem; }
+
+    /* 간격 */
+    .main-content .mb-4 { margin-bottom: .75rem !important; }
+    .main-content .mb-3 { margin-bottom: .5rem !important; }
+    .main-content .g-3, .main-content .gx-3 { --bs-gutter-x: .75rem; --bs-gutter-y: .75rem; }
+    .main-content .d-flex.gap-2 { flex-wrap: wrap; }
+    .main-content .d-flex.gap-3 { gap: .5rem !important; }
+    .main-content .btn-group, .main-content .input-group { flex-wrap: wrap; }
+
+    /* Pagination */
+    .pagination { flex-wrap: wrap; gap: 2px; }
+    .pagination .page-link { font-size: .8rem; padding: .3rem .55rem; min-height: 34px; }
+
+    /* 챗봇 */
+    #chatbotPanel {
+        width: 100%; height: 85vh;
+        top: auto; bottom: -100vh; right: 0;
+        border-left: none; border-top: 1px solid #e2e8f0;
+        border-radius: 16px 16px 0 0; transition: bottom .25s ease;
+    }
+    #chatbotPanel.open { bottom: 0; right: 0; }
+    .chat-panel-footer .form-control { font-size: .95rem; min-height: 42px; }
+    .chat-panel-footer .btn { min-height: 42px; font-size: .95rem; white-space: nowrap; }
+
+    /* 타임라인 */
+    #timelinePanel {
+        width: 100% !important; height: 85vh !important;
+        top: auto !important; bottom: 0 !important; right: 0 !important;
+        border-radius: 16px 16px 0 0;
+    }
+
+    /* 체크박스 터치 */
+    .main-content .form-check-input { width: 20px; height: 20px; min-width: 20px; }
+
+    /* 편집 테이블: 가로 스크롤 유지 */
+    .main-content .table-responsive:has(.contract-item-table) {
+        overflow-x: auto !important; -webkit-overflow-scrolling: touch;
+    }
+    .contract-item-table { min-width: 580px !important; font-size: .78rem; }
+    .contract-item-table th, .contract-item-table td { padding: .35rem .5rem !important; }
+    .contract-item-table .form-control, .contract-item-table .form-select { font-size: .78rem; min-height: 32px; }
+    .contract-item-table .btn { font-size: .7rem; padding: .2rem .45rem; min-height: 28px; }
+
+    /* 모달 테이블 */
+    .modal .table { font-size: .8rem; }
+    .modal .table th, .modal .table td { padding: .3rem .5rem !important; }
+
+    /* 터치 하이라이트 제거 */
+    .main-content a, .main-content button, .main-content .btn,
+    .main-content [role="button"], .main-content tr[onclick],
+    .main-content tr.clickable-row { -webkit-tap-highlight-color: transparent; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   SMALL MOBILE (≤575px)
+   ═══════════════════════════════════════════════════════ */
+@media (max-width: 575.98px) {
+    .main-content h2 { font-size: 1.05rem; }
+    .main-content .card-body { padding: .75rem; }
+    .page-hero { padding: .85rem 1rem; }
+    .page-hero h2, .page-hero h3 { font-size: 1rem; }
+    .info-card .row .col-md-3 { flex: 0 0 50%; max-width: 50%; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   DESKTOP ONLY (≥768px): 필터 항상 열림
+   ═══════════════════════════════════════════════════════ */
+@media (min-width: 768px) {
+    .filter-collapse-body {
+        display: block !important; height: auto !important; overflow: visible !important;
     }
 }
 

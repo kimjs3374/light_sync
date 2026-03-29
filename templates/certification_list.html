@@ -4,28 +4,81 @@
 {% block content %}
 <div class="container-fluid py-3">
 
-  {# ── 상단 통계 ── #}
+  {# ── 상단 통계 (클릭 시 상태 필터) ── #}
   <div class="row g-2 mb-3">
-    <div class="col"><div class="card text-center p-2"><div class="fw-bold fs-5">{{ stats.total }}</div><small class="text-muted">전체</small></div></div>
-    <div class="col"><div class="card text-center p-2 border-success"><div class="fw-bold fs-5 text-success">{{ stats.ok }}</div><small class="text-muted">정상</small></div></div>
-    <div class="col"><div class="card text-center p-2 border-warning"><div class="fw-bold fs-5 text-warning">{{ stats.warning }}</div><small class="text-muted">30일 이내</small></div></div>
-    <div class="col"><div class="card text-center p-2 border-danger"><div class="fw-bold fs-5 text-danger">{{ stats.critical }}</div><small class="text-muted">7일 이내</small></div></div>
-    <div class="col"><div class="card text-center p-2 bg-danger bg-opacity-10"><div class="fw-bold fs-5 text-danger">{{ stats.expired }}</div><small class="text-muted">만료</small></div></div>
+    <div class="col"><a href="?cert_type={{ filters.cert_type }}&q={{ filters.q }}" class="card text-center p-2 text-decoration-none {{ 'border-primary border-2' if not filters.status }}"><div class="fw-bold fs-5">{{ stats.total }}</div><small class="text-muted">전체</small></a></div>
+    <div class="col"><a href="?status=ok&cert_type={{ filters.cert_type }}&q={{ filters.q }}" class="card text-center p-2 text-decoration-none border-success {{ 'border-2' if filters.status == 'ok' }}"><div class="fw-bold fs-5 text-success">{{ stats.ok }}</div><small class="text-muted">정상</small></a></div>
+    <div class="col"><a href="?status=warning&cert_type={{ filters.cert_type }}&q={{ filters.q }}" class="card text-center p-2 text-decoration-none border-warning {{ 'border-2' if filters.status == 'warning' }}"><div class="fw-bold fs-5 text-warning">{{ stats.warning }}</div><small class="text-muted">30일 이내</small></a></div>
+    <div class="col"><a href="?status=critical&cert_type={{ filters.cert_type }}&q={{ filters.q }}" class="card text-center p-2 text-decoration-none border-danger {{ 'border-2' if filters.status == 'critical' }}"><div class="fw-bold fs-5 text-danger">{{ stats.critical }}</div><small class="text-muted">7일 이내</small></a></div>
+    <div class="col"><a href="?status=expired&cert_type={{ filters.cert_type }}&q={{ filters.q }}" class="card text-center p-2 text-decoration-none bg-danger bg-opacity-10 {{ 'border-danger border-2' if filters.status == 'expired' }}"><div class="fw-bold fs-5 text-danger">{{ stats.expired }}</div><small class="text-muted">만료</small></a></div>
   </div>
 
-  {# ── 필터 + 등록 ── #}
+  {# ── 필터 + 검색 + 등록 ── #}
   <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-    <h5 class="mb-0 me-auto" style="white-space:nowrap">인증서 관리</h5>
-    <form class="d-flex gap-2" method="GET">
+    <h5 class="mb-0" style="white-space:nowrap">인증서 관리</h5>
+    <form class="d-flex gap-2 me-auto" method="GET">
+      <input type="hidden" name="status" value="{{ filters.status }}">
       <select name="cert_type" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
         <option value="">전체 유형</option>
         {% for code, label in cert_types %}
           <option value="{{ code }}" {{ 'selected' if filters.cert_type == code }}>{{ label }}</option>
         {% endfor %}
       </select>
+      <div class="input-group input-group-sm" style="width:220px">
+        <input type="text" name="q" class="form-control" placeholder="인증서명/번호/모델 검색" value="{{ filters.q }}" autocomplete="off">
+        <button class="btn btn-outline-secondary" type="submit">검색</button>
+      </div>
+      {% if filters.q or filters.cert_type or filters.status %}
+        <a href="{{ url_for('certification.cert_list') }}" class="btn btn-sm btn-outline-secondary" style="white-space:nowrap">초기화</a>
+      {% endif %}
     </form>
+    {% if 'certification' in session.get('writable_menus', []) or session.get('role') == 'admin' or session.get('user_group') == '임원진' %}
+    <a href="{{ url_for('certification.cert_template') }}" class="btn btn-sm btn-outline-success" style="white-space:nowrap">템플릿 다운로드</a>
+    <button type="button" class="btn btn-sm btn-outline-primary" style="white-space:nowrap" data-bs-toggle="modal" data-bs-target="#importModal">엑셀 임포트</button>
     <a href="{{ url_for('certification.cert_create') }}" class="btn btn-sm btn-primary" style="white-space:nowrap">+ 인증서 등록</a>
+    {% endif %}
   </div>
+
+  {# ── 임포트 모달 ── #}
+  <div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <form method="POST" action="{{ url_for('certification.cert_import') }}" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="modal-header py-2">
+            <h6 class="modal-title">엑셀 임포트</h6>
+            <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label small fw-bold">엑셀 파일 선택</label>
+              <input type="file" name="import_file" class="form-control form-control-sm" accept=".xlsx,.xls" required>
+            </div>
+            <div class="alert alert-info py-2 small mb-0">
+              <strong>지원 시트:</strong><br>
+              &bull; <b>인증서</b> 시트 — 인증유형, 인증서명, 인증번호, 발급기관, 발급일, 만료일, 대상제품, 알림일수, 비고<br>
+              &bull; <b>고효율인증</b> 시트 — 인증번호, 만료일, 형식, 모델명, 비고<br>
+              <span class="text-muted">템플릿 다운로드 후 양식에 맞춰 작성하세요.</span>
+            </div>
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+            <button type="submit" class="btn btn-sm btn-primary">임포트</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# ── 검색결과 안내 ── #}
+  {% if filters.q or filters.status or filters.cert_type %}
+  <div class="small text-muted mb-2">
+    {% if filters.q %}<span class="badge bg-light text-dark border me-1">검색: {{ filters.q }}</span>{% endif %}
+    {% if filters.cert_type %}<span class="badge bg-light text-dark border me-1">유형: {{ filters.cert_type }}</span>{% endif %}
+    {% if filters.status %}<span class="badge bg-light text-dark border me-1">상태: {{ {'expired':'만료','critical':'7일 이내','warning':'30일 이내','ok':'정상'}[filters.status] }}</span>{% endif %}
+    — {{ pagination.total }}건
+  </div>
+  {% endif %}
 
   {# ── 목록 테이블 ── #}
   <div class="table-responsive">
@@ -68,19 +121,23 @@
             {% endif %}
           </td>
           <td style="white-space:nowrap">
-            {% if c.file_path %}
+            {% if c.file_path and c.file_path.startswith('http') %}
+              <a href="{{ c.file_path }}" target="_blank" class="btn btn-xs btn-outline-info" title="인증서 PDF 보기">📄 인증서</a>
+            {% elif c.file_path %}
               <a href="{{ url_for('static', filename=c.file_path) }}" target="_blank" class="btn btn-xs btn-outline-secondary">📄</a>
             {% else %}
               -
             {% endif %}
           </td>
           <td style="white-space:nowrap">
+            {% if 'certification' in session.get('writable_menus', []) or session.get('role') == 'admin' or session.get('user_group') == '임원진' %}
             <a href="{{ url_for('certification.cert_edit', cert_id=c.id) }}" class="btn btn-xs btn-outline-primary">수정</a>
             <form method="POST" action="{{ url_for('certification.cert_delete', cert_id=c.id) }}" class="d-inline"
                   onsubmit="return confirm('비활성화 하시겠습니까?')">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-xs btn-outline-danger">삭제</button>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% else %}
@@ -96,7 +153,7 @@
     <ul class="pagination pagination-sm justify-content-center">
       {% for p in range(1, pagination.total_pages + 1) %}
         <li class="page-item {{ 'active' if p == pagination.page }}">
-          <a class="page-link" href="?page={{ p }}&cert_type={{ filters.cert_type }}">{{ p }}</a>
+          <a class="page-link" href="?page={{ p }}&cert_type={{ filters.cert_type }}&status={{ filters.status }}&q={{ filters.q }}">{{ p }}</a>
         </li>
       {% endfor %}
     </ul>

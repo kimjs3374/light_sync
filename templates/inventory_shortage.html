@@ -1,0 +1,203 @@
+{% extends 'base.html' %}
+{% set active_menu_key = 'inventory' %}
+
+{% block content %}
+<style>
+    .shortage-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; white-space: nowrap; text-transform: uppercase; letter-spacing: .03em; background: #f8fafc; position: sticky; top: 0; z-index: 1; }
+    .shortage-table td { vertical-align: middle; white-space: nowrap; font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+    .shortage-table tbody tr { cursor: pointer; transition: background .12s, box-shadow .12s; }
+    .shortage-table tbody tr:hover { background: #eef2ff; box-shadow: inset 3px 0 0 #2563eb; }
+    .stat-card-sh { border: none; border-radius: 12px; transition: transform .15s; }
+    .stat-card-sh:hover { transform: translateY(-2px); }
+    .stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
+    .stat-label { font-size: .78rem; color: #64748b; margin-top: 2px; }
+    .badge-status { font-size: .72rem; padding: 3px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
+    .filter-bar { background: #f8fafc; border-radius: 10px; padding: 10px 14px; }
+    @media (max-width: 767.98px) {
+        .stat-num { font-size: 1.4rem; }
+    }
+    @media (max-width: 1199.98px) {
+        .main-content .table { min-width: 0 !important; table-layout: auto !important; }
+    }
+</style>
+
+{# ═══ Hero Header ═══ #}
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Inventory Shortage</div>
+            <h2>부족자재 현황</h2>
+            <div class="hero-sub">BOM 소요량 vs 현재고</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('inventory.inventory_items') }}" class="btn btn-outline-light btn-sm" style="white-space:nowrap;">재고현황</a>
+            <a href="{{ url_for('inventory.consume_form') }}" class="btn btn-outline-light btn-sm" style="white-space:nowrap;">소진등록</a>
+        </div>
+    </div>
+</div>
+
+{# ═══ KPI 카드 ═══ #}
+{% set total_shortage_amount = items | sum(attribute='shortage') %}
+{% set urgent_count = items | selectattr('shortage', 'gt', 0) | list | length %}
+{% set cat_count = categories | length %}
+{% set total_shortage_cost = namespace(val=0) %}
+{% for it in items %}
+    {% set total_shortage_cost.val = total_shortage_cost.val + (it.shortage * (it.unit_price or 0)) %}
+{% endfor %}
+<div class="row g-3 mb-4 mg-fade" style="animation-delay:.05s">
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-sh shadow-sm text-center py-3" style="border-left:3px solid #ef4444;">
+            <div class="stat-num" style="color:#ef4444;">{{ items | length }}</div>
+            <div class="stat-label">부족 품목수</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-sh shadow-sm text-center py-3" style="border-left:3px solid #dc2626;">
+            <div class="stat-num" style="color:#dc2626;">
+                {% set urgent = [] %}
+                {% for it in items %}
+                    {% if it.stock_qty is not none and it.needed_total > 0 and (it.stock_qty / it.needed_total * 100) < 50 %}
+                        {% if urgent.append(1) %}{% endif %}
+                    {% endif %}
+                {% endfor %}
+                {{ urgent | length }}
+            </div>
+            <div class="stat-label">긴급 (50%미만)</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-sh shadow-sm text-center py-3" style="border-left:3px solid #3b82f6;">
+            <div class="stat-num" style="color:#3b82f6;">{{ cat_count }}</div>
+            <div class="stat-label">카테고리수</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-sh shadow-sm text-center py-3" style="border-left:3px solid #f59e0b;">
+            <div class="stat-num" style="color:#f59e0b; font-size:1.4rem;">{{ fmt_money(total_shortage_cost.val) }}<span style="font-size:.7rem;color:#64748b;">원</span></div>
+            <div class="stat-label">총부족금액</div>
+        </div>
+    </div>
+</div>
+
+{# ═══ 검색/필터 ═══ #}
+<div class="filter-bar mb-3 mg-fade" style="animation-delay:.1s">
+    <form method="GET" class="row g-2 align-items-end">
+        <div class="col-md-3 col-6">
+            <input type="text" name="q" class="form-control form-control-sm" placeholder="품명/품번 검색" value="{{ q }}">
+        </div>
+        <div class="col-md-2 col-4">
+            <select name="category" class="form-select form-select-sm">
+                <option value="">전체 카테고리</option>
+                {% for c in categories %}
+                <option value="{{ c }}" {{ 'selected' if category == c }}>{{ c }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="form-check" style="margin-top:4px;">
+                <input type="checkbox" class="form-check-input" name="exclude_processing" id="excludeProcessing" value="1" {{ 'checked' if exclude_processing }}>
+                <label class="form-check-label" for="excludeProcessing" style="font-size:.82rem; white-space:nowrap;">가공발주 제외</label>
+            </div>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;">검색</button>
+            <a href="{{ request.path }}" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">초기화</a>
+        </div>
+    </form>
+</div>
+
+{# ═══ 부족자재 테이블 ═══ #}
+<div class="card border-0 shadow-sm mg-fade" style="border-radius:12px; overflow:hidden; animation-delay:.15s">
+    <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-2">
+            <strong>부족자재 목록</strong>
+            <span class="badge bg-danger" style="font-size:.72rem; white-space:nowrap;">{{ items | length }}건</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 shortage-table mobile-stack-table align-middle" style="table-layout:fixed; white-space:nowrap; font-size:.82rem;">
+                <colgroup>
+                    <col style="width:4%">
+                    <col style="width:9%">
+                    <col style="width:18%">
+                    <col style="width:14%">
+                    <col style="width:10%">
+                    <col style="width:9%">
+                    <col style="width:9%">
+                    <col style="width:9%">
+                    <col style="width:18%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="text-center">No</th>
+                        <th>품번</th>
+                        <th>품명</th>
+                        <th>규격</th>
+                        <th>카테고리</th>
+                        <th class="text-end">BOM소요</th>
+                        <th class="text-end">현재고</th>
+                        <th class="text-end">부족분</th>
+                        <th>부족률</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for it in items %}
+                    {% set pct = ((it.stock_qty / it.needed_total * 100) | int) if it.needed_total > 0 else 0 %}
+                    {% set pct = [pct, 100] | min %}
+                    <tr class="clickable-row" data-href="{{ url_for('item.item_detail', item_id=it['item_id']) if it['item_id'] else '#' }}">
+                        <td class="text-center" data-label="No">{{ loop.index }}</td>
+                        <td data-label="품번" style="overflow:hidden; text-overflow:ellipsis; max-width:0;">
+                            <span style="font-family:var(--mg-mono); font-size:.78rem;">{{ it.item_code or '-' }}</span>
+                        </td>
+                        <td data-label="품명" style="overflow:hidden; text-overflow:ellipsis; max-width:0;">
+                            <a href="{{ url_for('item.item_detail', item_id=it['item_id']) if it['item_id'] else '#' }}" style="color:#0f172a; text-decoration:none; font-weight:600;">{{ it.item_name }}</a>
+                            {% if it.contracts_info %}
+                            <br><small class="text-muted" style="font-size:.7rem; white-space:nowrap;">{{ it.contracts_info }}</small>
+                            {% endif %}
+                        </td>
+                        <td data-label="규격" style="overflow:hidden; text-overflow:ellipsis; max-width:0; color:#64748b; font-size:.78rem;">{{ it.item_spec or '-' }}</td>
+                        <td data-label="카테고리">
+                            {% if it.category %}
+                            <span class="badge-status" style="background:#f1f5f9; color:#475569;">{{ it.category }}</span>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td data-label="BOM소요" class="text-end">{{ fmt_money(it.needed_total) }}</td>
+                        <td data-label="현재고" class="text-end">{{ fmt_money(it.stock_qty) }}</td>
+                        <td data-label="부족분" class="text-end text-danger fw-bold">-{{ fmt_money(it.shortage) }}</td>
+                        <td data-label="부족률">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="progress flex-grow-1" style="height:6px; border-radius:3px; background:#fee2e2;">
+                                    <div class="progress-bar {% if pct < 30 %}bg-danger{% elif pct < 70 %}bg-warning{% else %}bg-success{% endif %}"
+                                         role="progressbar" style="width:{{ pct }}%; border-radius:3px;"
+                                         aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+                                <span style="font-size:.72rem; font-weight:600; min-width:32px; text-align:right; white-space:nowrap;
+                                    {% if pct < 30 %}color:#dc2626{% elif pct < 70 %}color:#d97706{% else %}color:#16a34a{% endif %}">{{ pct }}%</span>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="9" class="text-center text-muted py-4">부족자재가 없습니다.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ═══ clickable-row JS ═══ #}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.shortage-table .clickable-row').forEach(function(row) {
+        row.addEventListener('click', function(e) {
+            var interactive = e.target.closest('a, button, input, select, textarea, label, form');
+            if (interactive) return;
+            var href = row.dataset.href;
+            if (href) window.location.href = href;
+        });
+    });
+});
+</script>
+
+{% endblock %}

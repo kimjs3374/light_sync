@@ -75,6 +75,7 @@
                                         <td>
                                             <div id="spec_container_{{ item.id }}" class="spec-box"
                                                  data-category="{{ item.category or c.item_group }}"
+                                                 data-model="{{ item.model_name or '' }}"
                                                  data-spec='{{ (item.item_spec or {}) | tojson | e }}'></div>
                                         </td>
                                         <td class="text-center">
@@ -232,6 +233,7 @@
 {% set history_post_action = 'add_sales_comment' %}
 {% set history_board_id = 'sales-history-board' %}
 {% set history_default_filter = 'all' %}
+{% set history_write_scope = 'sales' %}
 {% set history_offcanvas_id = 'salesHistoryOffcanvas' %}
 {% include 'components/history_offcanvas.html' %}
 
@@ -319,7 +321,42 @@ function specInput(name, value, formId) {
     return `<label class="small fw-bold d-block mb-0">${meta.label}</label><input type="${meta.type || 'text'}" name="${n}" class="form-control form-control-sm" value="${v}"${formAttr}>`;
 }
 
-function renderSpec(container, category, specData = {}, formId = '') {
+function renderSpec(container, category, specData = {}, formId = '', bomOptions = null, totalQty = 0) {
+    let html = '';
+
+    // ★ BOM 옵션별 수량 배분
+    if (bomOptions && Object.keys(bomOptions).length) {
+        const breakdown = specData.bom_breakdown || [];
+        const optKeys = Object.keys(bomOptions);
+
+        html += '<div class="mb-2 p-2 border rounded bg-white" id="bomBreakdownArea_' + container.id + '">';
+        html += '<div class="d-flex justify-content-between align-items-center mb-1">';
+        html += '<span class="small fw-bold text-primary">BOM 옵션 배분</span>';
+        html += '<span class="badge bg-secondary bom-total-badge" style="white-space:nowrap">0/' + totalQty + '대</span></div>';
+        html += '<table class="table table-sm table-bordered mb-1" style="font-size:.75rem;"><thead class="table-light"><tr>';
+        optKeys.forEach(k => { html += '<th style="white-space:nowrap">' + k + '</th>'; });
+        html += '<th style="width:70px">수량</th><th style="width:40px"></th></tr></thead>';
+        html += '<tbody class="bom-breakdown-body">';
+        breakdown.forEach((row, idx) => {
+            html += '<tr>';
+            optKeys.forEach(k => {
+                const vals = bomOptions[k];
+                const cur = row[k] || '';
+                html += '<td><select class="form-select form-select-sm py-0 bom-bd-sel" data-key="' + k + '"' +
+                    (formId ? ' form="' + formId + '"' : '') + '><option value="">-</option>' +
+                    vals.map(v => '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + v + '</option>').join('') +
+                    '</select></td>';
+            });
+            html += '<td><input type="number" class="form-control form-control-sm py-0 text-end bom-bd-qty" value="' + (row.qty || 0) + '" min="0"' +
+                (formId ? ' form="' + formId + '"' : '') + '></td>';
+            html += '<td class="text-center"><button type="button" class="btn btn-sm text-danger p-0 bom-bd-del" style="font-size:.7rem;">X</button></td></tr>';
+        });
+        html += '</tbody></table>';
+        html += '<button type="button" class="btn btn-outline-secondary btn-xs bom-bd-add" style="white-space:nowrap;font-size:.7rem">+ 추가</button>';
+        html += '</div>';
+    }
+
+    // 협의내용 (기존)
     const schema = SALES_SPEC_SCHEMA[category] || {};
     const fields = [...(schema.required || [])];
     const cond = schema.conditional_required || {};
@@ -328,28 +365,118 @@ function renderSpec(container, category, specData = {}, formId = '') {
         if (currentVal === rule.equals) (rule.fields || []).forEach(f => fields.push(f));
     });
     const unique = [...new Set(fields)];
-    container.innerHTML = unique.length
-        ? `<div class="spec-grid">${unique.map(f => `<div>${specInput(f, specData[f], formId)}</div>`).join('')}</div>`
-        : '<span class="text-muted small">스펙 없음</span>';
+    if (unique.length) {
+        html += `<div class="spec-grid">${unique.map(f => `<div>${specInput(f, specData[f], formId)}</div>`).join('')}</div>`;
+    }
 
-    container.querySelectorAll('input[type="checkbox"], select').forEach(el => {
-        el.addEventListener('change', () => {
-            const latest = {};
-            container.querySelectorAll('[name^="spec_"]').forEach(i => {
-                latest[i.name.replace('spec_', '')] = i.type === 'checkbox' ? i.checked : i.value;
+    container.innerHTML = html || '<span class="text-muted small">스펙 없음</span>';
+
+    // BOM 배분 이벤트
+    if (bomOptions && Object.keys(bomOptions).length) {
+        const optKeys = Object.keys(bomOptions);
+
+        function updateTotal() {
+            let sum = 0;
+            container.querySelectorAll('.bom-bd-qty').forEach(inp => { sum += parseInt(inp.value) || 0; });
+            const badge = container.querySelector('.bom-total-badge');
+            if (badge) {
+                badge.textContent = sum + '/' + totalQty + '대';
+                badge.className = 'badge ' + (sum === totalQty ? 'bg-success' : sum > totalQty ? 'bg-danger' : 'bg-warning text-dark') + ' bom-total-badge';
+                badge.style.whiteSpace = 'nowrap';
+            }
+        }
+
+        container.querySelectorAll('.bom-bd-qty').forEach(inp => inp.addEventListener('input', updateTotal));
+
+        container.querySelectorAll('.bom-bd-del').forEach(btn => {
+            btn.addEventListener('click', () => {
+                btn.closest('tr').remove();
+                updateTotal();
             });
-            renderSpec(container, category, latest, formId);
+        });
+
+        container.querySelector('.bom-bd-add')?.addEventListener('click', () => {
+            const tbody = container.querySelector('.bom-breakdown-body');
+            const tr = document.createElement('tr');
+            let cells = '';
+            optKeys.forEach(k => {
+                const vals = bomOptions[k];
+                cells += '<td><select class="form-select form-select-sm py-0 bom-bd-sel" data-key="' + k + '"' +
+                    (formId ? ' form="' + formId + '"' : '') + '><option value="">-</option>' +
+                    vals.map(v => '<option value="' + v + '">' + v + '</option>').join('') + '</select></td>';
+            });
+            cells += '<td><input type="number" class="form-control form-control-sm py-0 text-end bom-bd-qty" value="0" min="0"' +
+                (formId ? ' form="' + formId + '"' : '') + '></td>';
+            cells += '<td class="text-center"><button type="button" class="btn btn-sm text-danger p-0 bom-bd-del" style="font-size:.7rem">X</button></td>';
+            tr.innerHTML = cells;
+            tbody.appendChild(tr);
+            tr.querySelector('.bom-bd-qty').addEventListener('input', updateTotal);
+            tr.querySelector('.bom-bd-del').addEventListener('click', () => { tr.remove(); updateTotal(); });
+        });
+
+        updateTotal();
+    }
+
+    // 협의내용 change 이벤트 (기존)
+    container.querySelectorAll('.spec-grid input[type="checkbox"], .spec-grid select').forEach(el => {
+        el.addEventListener('change', () => {
+            const latest = collectSpecData(container, bomOptions);
+            renderSpec(container, category, latest, formId, bomOptions, totalQty);
         });
     });
 }
 
-document.querySelectorAll('[id^="spec_container_"]').forEach(container => {
+function collectSpecData(container, bomOptions) {
+    const data = {};
+    // 일반 스펙
+    container.querySelectorAll('.spec-grid [name^="spec_"]').forEach(i => {
+        data[i.name.replace('spec_', '')] = i.type === 'checkbox' ? i.checked : i.value;
+    });
+    // BOM 배분
+    if (bomOptions) {
+        const optKeys = Object.keys(bomOptions);
+        const rows = [];
+        container.querySelectorAll('.bom-breakdown-body tr').forEach(tr => {
+            const row = {};
+            tr.querySelectorAll('.bom-bd-sel').forEach(sel => { row[sel.dataset.key] = sel.value; });
+            const qtyInput = tr.querySelector('.bom-bd-qty');
+            row.qty = parseInt(qtyInput?.value) || 0;
+            if (row.qty > 0) rows.push(row);
+        });
+        data.bom_breakdown = rows;
+    }
+    return data;
+}
+
+// BOM option_schema 로드 후 renderSpec 호출
+document.querySelectorAll('[id^="spec_container_"]').forEach(async container => {
     const category = container.dataset.category;
+    const modelName = container.dataset.model;
     const itemId = (container.id || '').replace('spec_container_', '');
     const formId = `sales_form_${itemId}`;
     let spec = {};
     try { spec = JSON.parse(container.dataset.spec || '{}'); } catch (e) {}
-    renderSpec(container, category, spec, formId);
+
+    // 수량 가져오기
+    const qtyText = container.closest('tr')?.querySelector('td .small.text-muted')?.textContent || '';
+    const qtyMatch = qtyText.match(/(\d+)\s*EA/i);
+    const totalQty = qtyMatch ? parseInt(qtyMatch[1]) : 0;
+
+    let bomOptions = null;
+    if (modelName) {
+        try {
+            const resp = await fetch('/api/sales/bom-options/' + encodeURIComponent(modelName));
+            const data = await resp.json();
+            if (data.options) {
+                bomOptions = Object.assign({}, data.options);
+                // 색온도: 모델명에 3000K/3K 포함 시에만 표시, 아니면 제거 (기본 5700K)
+                if (bomOptions['색온도'] && !/3000K|3K/i.test(modelName)) {
+                    delete bomOptions['색온도'];
+                }
+            }
+        } catch (e) {}
+    }
+    renderSpec(container, category, spec, formId, bomOptions, totalQty);
 });
 
 document.querySelectorAll('form[id^="sales_form_"]').forEach(form => {
@@ -361,10 +488,24 @@ document.querySelectorAll('form[id^="sales_form_"]').forEach(form => {
         const itemId = itemIdInput ? itemIdInput.value : '';
         const container = document.getElementById(`spec_container_${itemId}`);
         const payload = {};
-        (container || form).querySelectorAll('[name^="spec_"]').forEach(el => {
+        // 일반 스펙
+        (container || form).querySelectorAll('.spec-grid [name^="spec_"]').forEach(el => {
             const key = el.name.replace('spec_', '');
             payload[key] = el.type === 'checkbox' ? el.checked : el.value;
         });
+        // BOM 배분
+        const bdBody = container ? container.querySelector('.bom-breakdown-body') : null;
+        if (bdBody) {
+            const rows = [];
+            bdBody.querySelectorAll('tr').forEach(tr => {
+                const row = {};
+                tr.querySelectorAll('.bom-bd-sel').forEach(sel => { row[sel.dataset.key] = sel.value; });
+                const qInp = tr.querySelector('.bom-bd-qty');
+                row.qty = parseInt(qInp?.value) || 0;
+                if (row.qty > 0) rows.push(row);
+            });
+            if (rows.length) payload.bom_breakdown = rows;
+        }
         payloadInput.value = JSON.stringify(payload);
 
         const row = document.querySelector(`button[form="${form.id}"]`)?.closest('tr');

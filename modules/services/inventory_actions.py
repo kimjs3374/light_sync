@@ -53,24 +53,15 @@ def get_dashboard_data(db):
 
     total_items = len(items)
     total_stock_value = 0
-    total_available_value = 0
-    total_reserved_value = 0
     low_stock_count = 0
     low_stock_items = []
     cat_summary = {}
 
     for item in items:
         stock = item.stock_qty or 0
-        reserved = item.reserved_qty or 0
-        available = max(0, stock - reserved)
         price = item.last_unit_price or 0
         stock_val = stock * price
-        available_val = available * price
-        reserved_val = reserved * price
-
         total_stock_value += stock_val
-        total_available_value += available_val
-        total_reserved_value += reserved_val
 
         safety = item.safety_stock or 0
         if safety > 0 and stock < safety:
@@ -89,13 +80,10 @@ def get_dashboard_data(db):
         if cat not in cat_summary:
             cat_summary[cat] = {
                 'category': cat,
-                'count': 0, 'total_stock': 0, 'reserved': 0,
-                'available': 0, 'value': 0,
+                'count': 0, 'total_stock': 0, 'value': 0,
             }
         cat_summary[cat]['count'] += 1
         cat_summary[cat]['total_stock'] += stock
-        cat_summary[cat]['reserved'] += reserved
-        cat_summary[cat]['available'] += available
         cat_summary[cat]['value'] += stock_val
 
     recent_movements = db.query(StockMovement).order_by(
@@ -110,8 +98,6 @@ def get_dashboard_data(db):
     return {
         'total_items': total_items,
         'total_stock_value': total_stock_value,
-        'total_available_value': total_available_value,
-        'total_reserved_value': total_reserved_value,
         'low_stock_count': low_stock_count,
         'low_stock_items': low_stock_items,
         'cat_summary': cat_list,
@@ -150,10 +136,8 @@ def get_bom_stock_data(db, q, bom_id):
                 item = db.query(Item).filter(Item.icube_item_cd == bi.item_code).first()
 
             stock_qty = (item.stock_qty or 0) if item else 0
-            reserved_qty = (item.reserved_qty or 0) if item else 0
-            available = stock_qty - reserved_qty
             needed = bi.quantity or 0
-            can_make = int(available / needed) if needed > 0 else 999999
+            can_make = int(stock_qty / needed) if needed > 0 else 999999
 
             if needed > 0:
                 if min_producible is None or can_make < min_producible:
@@ -163,10 +147,9 @@ def get_bom_stock_data(db, q, bom_id):
                 'bom_item': bi,
                 'item': item,
                 'stock_qty': stock_qty,
-                'reserved_qty': reserved_qty,
-                'available': available,
+                'available': stock_qty,
                 'needed': needed,
-                'enough': available >= needed,
+                'enough': stock_qty >= needed,
                 'can_make': can_make,
             })
 
@@ -181,11 +164,19 @@ def get_bom_stock_data(db, q, bom_id):
 
 
 def search_bom_headers(db, q):
-    """BOM 제품명 자동완성 결과 리스트."""
+    """BOM 제품명 자동완성 결과 리스트 (별칭 포함)."""
+    from modules.models import BomModelAlias
+
+    # 별칭에서도 검색
+    alias_bom_ids = db.query(BomModelAlias.bom_id).filter(
+        BomModelAlias.alias_name.ilike(f'%{q}%')
+    ).subquery()
+
     results = db.query(BomHeader).filter(
         BomHeader.is_active == True,
         or_(BomHeader.product_name.ilike(f'%{q}%'),
-            BomHeader.product_code.ilike(f'%{q}%'))
+            BomHeader.product_code.ilike(f'%{q}%'),
+            BomHeader.id.in_(alias_bom_ids))
     ).limit(15).all()
     return [{
         'id': r.id,
@@ -541,7 +532,7 @@ def build_inventory_export_excel(db):
     ws = wb.active
     ws.title = '재고현황'
 
-    headers = ['품번', '품명', '규격', '분류', '총재고', '예약', '가용재고', '안전재고', '단가', '재고금액', '상태']
+    headers = ['품번', '품명', '규격', '분류', '재고', '안전재고', '단가', '재고금액', '상태']
     header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
     header_font = Font(color='FFFFFF', bold=True, size=10)
     thin_border = Border(
@@ -557,8 +548,6 @@ def build_inventory_export_excel(db):
 
     for r, item in enumerate(items, 2):
         stock = item.stock_qty or 0
-        reserved = item.reserved_qty or 0
-        available = max(0, stock - reserved)
         safety = item.safety_stock or 0
         price = item.last_unit_price or 0
         value = stock * price
@@ -572,7 +561,7 @@ def build_inventory_export_excel(db):
             item.item_name or '',
             item.item_spec or '',
             item.category or '',
-            stock, reserved, available, safety,
+            stock, safety,
             price, value, status,
         ]
         for col, val in enumerate(row_data, 1):
@@ -583,11 +572,11 @@ def build_inventory_export_excel(db):
                 cell.number_format = '#,##0'
                 cell.alignment = Alignment(horizontal='right')
 
-    widths = [12, 30, 20, 10, 10, 10, 10, 10, 12, 15, 8]
+    widths = [12, 30, 20, 10, 10, 10, 12, 15, 8]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    ws.auto_filter.ref = f'A1:K{len(items) + 1}'
+    ws.auto_filter.ref = f'A1:I{len(items) + 1}'
 
     output = io.BytesIO()
     wb.save(output)
@@ -681,3 +670,303 @@ def get_category_list(db):
     return [r[0] for r in db.query(distinct(Item.category)).filter(
         Item.category.isnot(None), Item.category != ''
     ).order_by(Item.category).all()]
+
+
+# ── 부족자재 / BOM 분해 / 소진등록 ───────────────────────────────
+
+try:
+    from modules.contract_filters import DONE_STATUSES
+except ImportError:
+    DONE_STATUSES = ('입금완료', '변경완료', '취소')
+
+from modules.models import (
+    Contract, ContractItem, StockConsumption, StockConsumptionItem,
+)
+
+try:
+    from modules.models import ProcessingOrderItem
+except ImportError:
+    ProcessingOrderItem = None
+
+from modules.services.inventory_utils import record_stock_movement
+
+
+def get_shortage_data(db, category=None, q=None, exclude_processing=True):
+    """전체 활성 계약의 BOM 소요 vs 현재고 → 부족자재 목록.
+
+    Returns:
+        list[dict]: [{item, item_name, item_code, category,
+                      needed_total, stock_qty, shortage, contracts_info}]
+    """
+    # 1) 활성 계약 조회 (입금완료/변경완료/취소 제외, 예외처리 제외)
+    contracts = db.query(Contract).filter(
+        Contract.payment_status.notin_(DONE_STATUSES),
+        Contract.is_excluded.isnot(True),
+    ).all()
+
+    # 2) 가공발주로 이미 처리된 bom_item_id 수집
+    processing_bom_item_ids = set()
+    if exclude_processing and ProcessingOrderItem is not None:
+        rows = db.query(ProcessingOrderItem.bom_item_id).filter(
+            ProcessingOrderItem.bom_item_id.isnot(None),
+        ).all()
+        processing_bom_item_ids = {r[0] for r in rows}
+
+    # 3) 계약품목 순회 → BOM 매칭 → 필요량 합산 (item_id 기준)
+    # needed_map: {item_id: {'needed': float, 'contracts': [{contract_name, model_name, qty}]}}
+    needed_map = {}
+
+    for contract in contracts:
+        contract_items = db.query(ContractItem).filter(
+            ContractItem.contract_id == contract.id,
+        ).all()
+        for ci in contract_items:
+            if not ci.model_name:
+                continue
+            # BOM 매칭: product_code 또는 product_name
+            bom = db.query(BomHeader).filter(
+                BomHeader.is_active == True,
+                or_(
+                    BomHeader.product_code == ci.model_name,
+                    BomHeader.product_name.ilike(f'%{ci.model_name}%'),
+                )
+            ).first()
+            if not bom:
+                continue
+
+            ci_qty = ci.quantity or 0
+            if ci_qty <= 0:
+                continue
+
+            # BomItem 순회
+            bom_items = db.query(BomItem).filter(BomItem.bom_id == bom.id).all()
+            for bi in bom_items:
+                # 가공발주 제외
+                if exclude_processing and bi.id in processing_bom_item_ids:
+                    continue
+
+                item_id = bi.item_id
+                if not item_id:
+                    continue
+
+                per_unit = bi.quantity or 0
+                total_needed = per_unit * ci_qty
+
+                if item_id not in needed_map:
+                    needed_map[item_id] = {'needed': 0, 'contracts': []}
+                needed_map[item_id]['needed'] += total_needed
+                needed_map[item_id]['contracts'].append({
+                    'contract_name': contract.contract_name,
+                    'model_name': ci.model_name,
+                    'qty': ci_qty,
+                })
+
+    if not needed_map:
+        return []
+
+    # 4) Item 일괄 조회
+    items = db.query(Item).filter(Item.id.in_(list(needed_map.keys()))).all()
+    items_map = {item.id: item for item in items}
+
+    # 5) 부족분 계산 + 필터
+    result = []
+    for item_id, info in needed_map.items():
+        item = items_map.get(item_id)
+        if not item:
+            continue
+
+        stock_qty = item.stock_qty or 0
+        needed_total = info['needed']
+        shortage = needed_total - stock_qty
+
+        if shortage <= 0:
+            continue
+
+        # 카테고리 필터
+        if category and (item.category or '') != category:
+            continue
+
+        # 검색 필터
+        if q:
+            q_lower = q.lower()
+            searchable = f"{item.item_name or ''} {item.icube_item_cd or ''} {item.item_spec or ''}".lower()
+            if q_lower not in searchable:
+                continue
+
+        result.append({
+            'item': item,
+            'item_name': item.item_name or '',
+            'item_code': item.icube_item_cd or '',
+            'category': item.category or '',
+            'needed_total': needed_total,
+            'stock_qty': stock_qty,
+            'shortage': shortage,
+            'contracts_info': info['contracts'],
+        })
+
+    # 부족분 큰 순으로 정렬
+    result.sort(key=lambda x: x['shortage'], reverse=True)
+    return result
+
+
+def get_bom_breakdown(db, bom_id, quantity, option_filter=None):
+    """BOM 기준 소요자재 분해 (소진등록 미리보기 API용).
+
+    Args:
+        db: SQLAlchemy session
+        bom_id: BomHeader.id
+        quantity: 완제품 수량
+        option_filter: dict or None — 옵션 필터 (예: {"렌즈":"20도"})
+
+    Returns:
+        list[dict]: [{item_id, item_name, item_code, item_spec,
+                      per_unit, total_qty, stock_qty, bom_item_id}]
+    """
+    from modules.services.bom_actions import match_option_filter
+
+    bom = db.query(BomHeader).get(bom_id)
+    if not bom:
+        return []
+
+    bom_items = db.query(BomItem).filter(BomItem.bom_id == bom.id).all()
+
+    result = []
+    for bi in bom_items:
+        # 옵션 필터 적용
+        if not match_option_filter(bi.option_filter, option_filter):
+            continue
+        item = None
+        if bi.item_id:
+            item = db.query(Item).get(bi.item_id)
+        elif bi.item_code:
+            item = db.query(Item).filter(Item.icube_item_cd == bi.item_code).first()
+
+        # 미연결 BOM 부품 → Item 자동 생성 + BomItem 연결
+        if not item and bi.item_name:
+            item = _auto_create_item_from_bom(db, bi)
+
+        per_unit = bi.quantity or 0
+        total_qty = per_unit * (quantity or 0)
+        stock_qty = (item.stock_qty or 0) if item else 0
+
+        result.append({
+            'item_id': item.id if item else None,
+            'item_name': (item.item_name if item else bi.item_name) or '',
+            'item_code': (item.icube_item_cd if item else bi.item_code) or '',
+            'item_spec': (item.item_spec if item else bi.item_spec) or '',
+            'per_unit': per_unit,
+            'total_qty': total_qty,
+            'stock_qty': stock_qty,
+            'bom_item_id': bi.id,
+        })
+
+    return result
+
+
+def _auto_create_item_from_bom(db, bom_item):
+    """BOM 부품에서 Item 자동 생성 + BomItem.item_id 연결.
+
+    item_id와 item_code 모두 없는 BOM 부품을 위해 Item 레코드를 생성합니다.
+    이름+규격 중복 검사로 동일 품목 재생성 방지.
+    """
+    # 동일 이름+규격 기존 Item 검색
+    q = db.query(Item).filter(Item.item_name == bom_item.item_name)
+    if bom_item.item_spec:
+        q = q.filter(Item.item_spec == bom_item.item_spec)
+    existing = q.first()
+
+    if existing:
+        # 기존 Item에 연결
+        bom_item.item_id = existing.id
+        if bom_item.item_code and not existing.icube_item_cd:
+            existing.icube_item_cd = bom_item.item_code
+        db.flush()
+        return existing
+
+    # 새 Item 생성
+    new_item = Item(
+        item_name=bom_item.item_name,
+        item_spec=bom_item.item_spec or '',
+        icube_item_cd=bom_item.item_code or None,
+        unit=bom_item.unit or 'EA',
+        manufacturer=bom_item.supplier or '',
+        stock_qty=0,
+        safety_stock=0,
+        is_active=True,
+    )
+    db.add(new_item)
+    db.flush()
+
+    bom_item.item_id = new_item.id
+    logger.info(f"Auto-created Item #{new_item.id} '{new_item.item_name}' from BomItem #{bom_item.id}")
+    return new_item
+
+
+def register_consumption(db, model_name, quantity, bom_id, tx_date,
+                         project_id, contract_item_id, items_data,
+                         note, created_by):
+    """소진 등록 실행.
+
+    Args:
+        db: SQLAlchemy session
+        model_name: 완제품 모델명
+        quantity: 완제품 수량
+        bom_id: BomHeader.id
+        tx_date: 거래일자 (date)
+        project_id: 현장 ID
+        contract_item_id: 계약품목 ID
+        items_data: [{item_id, bom_item_id, required_qty, consumed_qty, note}]
+        note: 비고
+        created_by: 등록자명
+
+    Returns:
+        StockConsumption 객체
+    """
+    # 1) StockConsumption 생성
+    consumption = StockConsumption(
+        model_name=model_name,
+        quantity=quantity,
+        bom_id=bom_id,
+        tx_date=tx_date,
+        project_id=project_id,
+        contract_item_id=contract_item_id,
+        note=note,
+        created_by=created_by,
+    )
+    db.add(consumption)
+    db.flush()  # id 확보
+
+    # 2) items_data 순회: 재고 차감 + StockConsumptionItem 생성
+    for item_data in items_data:
+        item_id = item_data.get('item_id')
+        consumed_qty = item_data.get('consumed_qty', 0)
+
+        if not item_id or consumed_qty == 0:
+            continue
+
+        # 재고 변동 기록 (음수 재고 허용)
+        movement = record_stock_movement(
+            db, item_id,
+            movement_type='OUT_CONSUMPTION',
+            quantity=-abs(consumed_qty),
+            reference_type='stock_consumption',
+            reference_id=consumption.id,
+            model_name=model_name,
+            project_id=project_id,
+            tx_date=tx_date,
+            created_by=created_by,
+        )
+
+        # StockConsumptionItem 생성
+        sci = StockConsumptionItem(
+            consumption_id=consumption.id,
+            item_id=item_id,
+            bom_item_id=item_data.get('bom_item_id'),
+            required_qty=item_data.get('required_qty', 0),
+            consumed_qty=consumed_qty,
+            movement_id=movement.id if movement else None,
+            note=item_data.get('note', ''),
+        )
+        db.add(sci)
+
+    return consumption

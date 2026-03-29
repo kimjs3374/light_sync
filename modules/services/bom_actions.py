@@ -24,7 +24,7 @@ from modules.models import (
     BomHeader, BomItem, Contract, ContractItem, Project,
     PurchaseOrder, PurchaseOrderItem, MaterialOrder,
     Receiving, ReceivingItem, ReceivingHistory, Item,
-    Vendor,
+    Vendor, BomModelAlias,
 )
 from modules.utils import safe_int
 
@@ -34,6 +34,90 @@ logger = logging.getLogger(__name__)
 # ===================================================================
 # 유틸리티
 # ===================================================================
+
+# item_spec_json(영문 키) → BOM option_filter(한국어 키) 매핑
+SPEC_TO_OPTION_KEY = {
+    'lens_angle': '렌즈',
+    'color_temp': '색온도',
+    'body_type': '형태',
+    'reflector': '반사판',
+}
+
+# BOM option_filter에서 사용되는 한국어 키 (직접 저장 시 패스스루)
+BOM_OPTION_KEYS = {'렌즈', '색온도', '바이저'}
+
+
+def translate_spec_to_option(spec_dict):
+    """item_spec_json → BOM option_filter 키 변환.
+
+    영문 키(lens_angle)는 한국어(렌즈)로, 한국어 키는 패스스루.
+    색온도 미지정 시 5700K 기본값 적용.
+    """
+    if not spec_dict:
+        return {}
+    result = {}
+    for k, v in spec_dict.items():
+        if k in SPEC_TO_OPTION_KEY:
+            result[SPEC_TO_OPTION_KEY[k]] = v
+        elif k in BOM_OPTION_KEYS:
+            result[k] = v
+    # 색온도 기본값: 미지정이면 5700K
+    if '색온도' not in result:
+        result['색온도'] = '5700K'
+    return result
+
+
+def match_option_filter(item_option_json, selected_options):
+    """BomItem.option_filter vs 선택된 옵션 매칭 (공통 함수).
+
+    - item_option_json=None → 공통부품, 항상 True
+    - selected_options 비어있음 → 전체 포함
+    - 키가 일치하고 값이 다르면 False
+    """
+    if not item_option_json:
+        return True
+    if not selected_options:
+        return True
+    try:
+        item_opts = json.loads(item_option_json) if isinstance(item_option_json, str) else item_option_json
+        for k, v in item_opts.items():
+            if k in selected_options and selected_options[k] != v:
+                return False
+        return True
+    except (json.JSONDecodeError, TypeError):
+        return True
+
+
+def find_bom_by_model_name(db, model_name):
+    """모델명으로 BOM 찾기 (별칭 우선, 기존 로직 fallback).
+
+    1순위: bom_model_aliases.alias_name 정확매칭
+    2순위: BomHeader.product_code 정확매칭
+    3순위: BomHeader.product_name ILIKE (기존 fallback)
+    """
+    if not model_name:
+        return None
+    # 1순위: 별칭 테이블
+    alias = db.query(BomModelAlias).filter(
+        BomModelAlias.alias_name == model_name
+    ).first()
+    if alias:
+        bom = db.query(BomHeader).get(alias.bom_id)
+        if bom and bom.is_active:
+            return bom
+    # 2순위: product_code 정확 매칭
+    bom = db.query(BomHeader).filter(
+        BomHeader.is_active == True,
+        BomHeader.product_code == model_name,
+    ).first()
+    if bom:
+        return bom
+    # 3순위: product_name 부분 매칭 (기존 fallback)
+    return db.query(BomHeader).filter(
+        BomHeader.is_active == True,
+        BomHeader.product_name.ilike(f'%{model_name}%'),
+    ).first()
+
 
 def parse_option_filter_text(v):
     """옵션조건 텍스트를 JSON 문자열로 변환.
@@ -619,44 +703,25 @@ def calculate_material_requirement(db, contract_id):
 
     requirement = []
     for ci in selected_contract.items:
-        # BOM 매칭: 품목 카테고리/모델명으로 검색
-        bom = None
-        if ci.model_name:
-            bom = db.query(BomHeader).filter(
-                BomHeader.is_active == True,
-                (BomHeader.product_name.ilike(f'%{ci.model_name}%')) |
-                (BomHeader.product_code.ilike(f'%{ci.model_name}%'))
-            ).first()
+        # BOM 매칭: 별칭 우선 → product_code → ILIKE fallback
+        bom = find_bom_by_model_name(db, ci.model_name)
         if not bom and ci.category:
-            bom = db.query(BomHeader).filter(
-                BomHeader.is_active == True,
-                (BomHeader.product_name.ilike(f'%{ci.category}%')) |
-                (BomHeader.product_code.ilike(f'%{ci.category}%'))
-            ).first()
+            bom = find_bom_by_model_name(db, ci.category)
 
         if bom:
-            # 슈퍼BOM: 협의내용(item_spec_json)에서 선택된 옵션으로 필터링
+            # 슈퍼BOM: 협의내용(item_spec_json) → 옵션 키 변환 → 필터링
             selected_options = {}
             if ci.item_spec_json:
                 try:
-                    selected_options = json.loads(ci.item_spec_json) if isinstance(ci.item_spec_json, str) else ci.item_spec_json
+                    raw = json.loads(ci.item_spec_json) if isinstance(ci.item_spec_json, str) else ci.item_spec_json
+                    selected_options = translate_spec_to_option(raw)
                 except (json.JSONDecodeError, TypeError):
                     pass
 
             for bi in bom.bom_items:
-                # 옵션 필터 적용
-                if bi.option_filter and selected_options:
-                    try:
-                        item_opts = json.loads(bi.option_filter)
-                        skip = False
-                        for k, v in item_opts.items():
-                            if k in selected_options and selected_options[k] != v:
-                                skip = True
-                                break
-                        if skip:
-                            continue
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+                # 공통 옵션 필터 적용
+                if not match_option_filter(bi.option_filter, selected_options):
+                    continue
 
                 needed = (bi.quantity or 0) * (ci.quantity or 0)
 

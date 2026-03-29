@@ -262,8 +262,8 @@
                         <div class="d-flex align-items-center gap-3" style="min-width:0;">
                             <div class="upcoming-date">{{ item.date.strftime('%d') }}</div>
                             <div style="min-width:0;">
-                                <div class="upcoming-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item.project_name }}</div>
-                                <div class="upcoming-meta">{{ item.project_no }} · {{ item.contract_name }}</div>
+                                <div class="upcoming-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item.contract_name or item.project_name }}</div>
+                                <div class="upcoming-meta">{{ item.project_name }}{% if item.project_no %} · {{ item.project_no }}{% endif %}</div>
                             </div>
                         </div>
                         <span class="badge text-bg-{% if item.dday is not none and item.dday <= 3 %}danger{% elif item.dday is not none and item.dday <= 7 %}warning{% else %}primary{% endif %}" style="white-space:nowrap;">
@@ -304,7 +304,8 @@
                                     <div class="tl-time">{{ item.created_at.strftime('%m/%d %H:%M') if item.created_at else '-' }}</div>
                                 </div>
                                 <div class="tl-content">{{ item.content }}</div>
-                                <a href="{{ item.detail_url }}" class="tl-link">상세 보기 →</a>
+                                {% set scope_labels = {'design':'설계관리','contract':'계약관리','sales':'영업관리','material':'자재관리','production':'생산관리','delivery':'납품관리','common':'코멘트'} %}
+                                <a href="{{ item.detail_url }}" class="tl-link"><span class="tl-scope-badge">{{ scope_labels.get(item.scope, '상세') }}</span> 바로가기 →</a>
                             </div>
                         </div>
                         {% else %}

@@ -68,8 +68,8 @@
                         {{ item.day }}
                     </div>
                     <div class="pd-upcoming-info">
-                        <div class="pd-upcoming-name">{{ item.project_name }}</div>
-                        <div class="pd-upcoming-sub">{{ item.contract_name }} · {{ item.date_str }}</div>
+                        <div class="pd-upcoming-name">{{ item.contract_name or item.project_name }}</div>
+                        <div class="pd-upcoming-sub">{{ item.project_name }} · {{ item.date_str }}</div>
                     </div>
                     {% if item.dday is not none %}
                     <span class="pd-dday {% if item.dday <= 3 %}pd-dday-red{% elif item.dday <= 7 %}pd-dday-yellow{% else %}pd-dday-blue{% endif %}">
@@ -107,13 +107,14 @@
                 <div class="pd-card {% if card.is_urgent %}pd-urgent{% endif %} {% if card.is_priority %}pd-priority{% endif %}" data-card-id="{{ col.key }}_{{ card.contract_item_id }}" data-col-key="{{ col.key }}">
                     <div class="pd-card-header">
                         {% if card.is_priority %}<span class="pd-star">★</span>{% endif %}
-                        <span class="pd-card-name">{{ card.project_name }}</span>
+                        <span class="pd-card-name">{{ card.contract_name or card.project_name }}</span>
                         {% if card.dday is not none %}
                         <span class="pd-dday {% if card.dday <= 3 %}pd-dday-red{% elif card.dday <= 7 %}pd-dday-yellow{% else %}pd-dday-blue{% endif %}">
                             {% if card.dday < 0 %}D+{{ -card.dday }}{% elif card.dday == 0 %}D-Day{% else %}D-{{ card.dday }}{% endif %}
                         </span>
                         {% endif %}
                     </div>
+                    <div class="pd-card-sub">{{ card.project_name }}</div>
                     <div class="pd-card-item">{{ card.category }} {{ card.model_name }} x{{ card.quantity }}</div>
 
                     {% if col.key == 'negotiation' %}

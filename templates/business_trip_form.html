@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}{{ '출장 수정' if trip else '출장 등록' }}{% endblock %}
+
+{% block content %}
+<div class="container py-3" style="max-width:750px">
+  <h5 class="mb-3">{{ '출장 수정' if trip else '출장 등록' }}</h5>
+
+  <form method="POST" id="tripForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card mb-3">
+      <div class="card-header py-2"><strong>기본 정보</strong></div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label small fw-bold">출장제목 (목적 요약) <span class="text-danger">*</span></label>
+            <input type="text" name="title" class="form-control form-control-sm" required
+                   placeholder="예: 에이밍 조정 및 현장 점검"
+                   value="{{ trip.title if trip else '' }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-bold">출장장소 <span class="text-danger">*</span></label>
+            <input type="text" name="destination" class="form-control form-control-sm" required
+                   placeholder="예: 서울 강남구 OO체육관"
+                   value="{{ trip.destination if trip else '' }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-bold">출발일 <span class="text-danger">*</span></label>
+            <input type="date" name="departure_date" class="form-control form-control-sm" required
+                   value="{{ trip.departure_date.strftime('%Y-%m-%d') if trip and trip.departure_date else '' }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-bold">출발시간</label>
+            <input type="time" name="departure_time" class="form-control form-control-sm"
+                   value="{{ trip.departure_date.strftime('%H:%M') if trip and trip.departure_date else '08:00' }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-bold">복귀일</label>
+            <input type="date" name="return_date" class="form-control form-control-sm"
+                   value="{{ trip.return_date.strftime('%Y-%m-%d') if trip and trip.return_date else '' }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-bold">복귀시간</label>
+            <input type="time" name="return_time" class="form-control form-control-sm"
+                   value="{{ trip.return_date.strftime('%H:%M') if trip and trip.return_date else '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold">이동수단</label>
+            <select name="vehicle" class="form-select form-select-sm">
+              <option value="">선택</option>
+              {% for v in vehicle_choices %}
+              <option value="{{ v }}" {{ 'selected' if trip and trip.vehicle == v }}>{{ v }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold">상태</label>
+            <select name="status" class="form-select form-select-sm">
+              {% for code, label in status_choices %}
+              <option value="{{ code }}" {{ 'selected' if trip and trip.status == code }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-bold">출장목적 상세</label>
+            <textarea name="purpose" class="form-control form-control-sm" rows="2"
+                      placeholder="상세 목적을 입력하세요">{{ trip.purpose if trip and trip.purpose else '' }}</textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-bold">비고</label>
+            <textarea name="note" class="form-control form-control-sm" rows="2"
+                      placeholder="추가 메모사항">{{ trip.note if trip and trip.note else '' }}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── 출장인원 ── #}
+    <div class="card mb-3">
+      <div class="card-header py-2 d-flex align-items-center">
+        <strong class="me-auto">출장인원</strong>
+        <button type="button" class="btn btn-xs btn-outline-primary" onclick="addMemberRow()" style="white-space:nowrap">+ 인원추가</button>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width:200px">직원 선택</th>
+              <th>이름</th>
+              <th style="width:100px">직급</th>
+              <th style="width:100px">부서</th>
+              <th style="width:50px"></th>
+            </tr>
+          </thead>
+          <tbody id="memberTableBody">
+            {% if trip and trip.members %}
+              {% for m in trip.members %}
+              <tr>
+                <td>
+                  <select class="form-select form-select-sm user-select" onchange="fillMember(this)">
+                    <option value="">직접입력</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}" data-name="{{ u.full_name }}" data-pos="{{ u.position or '' }}" data-dept="{{ u.user_group or '' }}"
+                      {{ 'selected' if m.user_id == u.id }}>{{ u.full_name }} {{ u.position or '' }}</option>
+                    {% endfor %}
+                  </select>
+                  <input type="hidden" name="member_user_id" value="{{ m.user_id or '' }}">
+                </td>
+                <td><input type="text" name="member_name" class="form-control form-control-sm" value="{{ m.user_name }}" required></td>
+                <td><input type="text" name="member_position" class="form-control form-control-sm" value="{{ m.position or '' }}"></td>
+                <td><input type="text" name="member_department" class="form-control form-control-sm" value="{{ m.department or '' }}"></td>
+                <td><button type="button" class="btn btn-xs btn-outline-danger" onclick="this.closest('tr').remove()">X</button></td>
+              </tr>
+              {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-sm btn-primary">{{ '수정' if trip else '등록' }}</button>
+      <a href="{{ url_for('business_trip.trip_list') }}" class="btn btn-sm btn-outline-secondary">취소</a>
+    </div>
+  </form>
+</div>
+
+<script>
+const USERS = [
+  {% for u in users %}
+  {id:{{ u.id }}, name:"{{ u.full_name }}", pos:"{{ u.position or '' }}", dept:"{{ u.user_group or '' }}"},
+  {% endfor %}
+];
+
+function addMemberRow(userId, name, pos, dept) {
+  const tbody = document.getElementById('memberTableBody');
+  const tr = document.createElement('tr');
+  const opts = USERS.map(u =>
+    `<option value="${u.id}" data-name="${u.name}" data-pos="${u.pos}" data-dept="${u.dept}" ${u.id===(userId||0)?'selected':''}>${u.name} ${u.pos}</option>`
+  ).join('');
+  tr.innerHTML = `
+    <td>
+      <select class="form-select form-select-sm user-select" onchange="fillMember(this)">
+        <option value="">직접입력</option>${opts}
+      </select>
+      <input type="hidden" name="member_user_id" value="${userId||''}">
+    </td>
+    <td><input type="text" name="member_name" class="form-control form-control-sm" value="${name||''}" required></td>
+    <td><input type="text" name="member_position" class="form-control form-control-sm" value="${pos||''}"></td>
+    <td><input type="text" name="member_department" class="form-control form-control-sm" value="${dept||''}"></td>
+    <td><button type="button" class="btn btn-xs btn-outline-danger" onclick="this.closest('tr').remove()">X</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function fillMember(sel) {
+  const tr = sel.closest('tr');
+  const opt = sel.selectedOptions[0];
+  tr.querySelector('[name=member_user_id]').value = sel.value;
+  if (sel.value) {
+    tr.querySelector('[name=member_name]').value = opt.dataset.name || '';
+    tr.querySelector('[name=member_position]').value = opt.dataset.pos || '';
+    tr.querySelector('[name=member_department]').value = opt.dataset.dept || '';
+  }
+}
+</script>
+{% endblock %}

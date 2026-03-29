@@ -13,3 +13,5 @@ from .inventory_entities import *    # noqa: F401,F403
 from .financial_entities import *    # noqa: F401,F403
 from .auth_entities import *         # noqa: F401,F403
 from .misc_entities import *         # noqa: F401,F403
+from .tool_entities import *         # noqa: F401,F403
+from .document_entities import *     # noqa: F401,F403

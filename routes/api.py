@@ -18,7 +18,7 @@ from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from flask import render_template, session
 
-from modules.history_board import append_history_log, get_project_history_context, mark_history_read
+from modules.history_board import append_history_log, get_project_history_context, mark_history_read, get_user_display_name
 from modules.models import Project, ProductCatalog, G2bProcurement, HistoryLog
 from modules.services.g2b_procurement_sync import sync_daily, sync_bulk
 
@@ -729,7 +729,8 @@ def history_add_comment(project_id):
             return jsonify({'ok': False, 'error': '현장 없음'}), 404
 
         action = request.form.get('action', 'add_chat')
-        user_name = session.get('full_name', '사용자')
+        user_name = get_user_display_name()
+        write_scope = request.form.get('write_scope', 'common')
 
         # 멘션 파싱
         mentions_raw = request.form.get('mentions_json', '[]')
@@ -744,12 +745,12 @@ def history_add_comment(project_id):
         if files:
             attachments = _upload_history_files(files, project_id)
 
-        if action == 'add_chat':
+        if action in ('add_chat', 'add_sales_comment'):
             msg = (request.form.get('chat_message') or '').strip()
             if not msg and not attachments:
                 return jsonify({'ok': False, 'error': '내용을 입력하세요'}), 400
             log = append_history_log(db, project_id=project.id, user_name=user_name,
-                               content=msg or '(첨부파일)', scope='common', kind='comment')
+                               content=msg or '(첨부파일)', scope=write_scope, kind='comment')
             if mentions:
                 log.mentions_json = json.dumps(mentions, ensure_ascii=False)
             if attachments:
@@ -764,7 +765,7 @@ def history_add_comment(project_id):
             # 독립 코멘트로 저장 — 답글 먼저, 원글인용 아래
             formatted = f'[대댓글] 답글:{msg}\n---원글---\n{origin}'
             log = append_history_log(db, project_id=project.id, user_name=user_name,
-                               content=formatted, scope='common', kind='comment')
+                               content=formatted, scope=write_scope, kind='comment')
             if mentions:
                 log.mentions_json = json.dumps(mentions, ensure_ascii=False)
             if attachments:
@@ -790,9 +791,9 @@ def history_delete_comment(project_id):
         if not log or log.project_id != project_id:
             return jsonify({'ok': False, 'error': '로그를 찾을 수 없음'}), 404
 
-        user_name = session.get('full_name', '')
+        user_full_name = session.get('full_name', '')
         is_admin = session.get('role') == 'admin'
-        if not is_admin and log.user_name != user_name:
+        if not is_admin and not (log.user_name or '').startswith(user_full_name):
             return jsonify({'ok': False, 'error': '본인 작성 코멘트만 삭제할 수 있습니다'}), 403
 
         # 대댓글도 함께 삭제

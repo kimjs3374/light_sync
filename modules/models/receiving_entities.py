@@ -47,6 +47,7 @@ class ReceivingItem(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     receiving_id = Column(Integer, ForeignKey('receivings.id'), nullable=False)
     po_item_id = Column(Integer, ForeignKey('purchase_order_items.id'), nullable=True)
+    item_cd = Column(String(50), nullable=True)
     item_name = Column(String(300), nullable=False)
     item_spec = Column(String(500), nullable=True)
     received_qty = Column(Float, default=0)
@@ -73,3 +74,18 @@ class ReceivingHistory(Base):
     total_amount = Column(Float, default=0)
     remark = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
+
+
+class ReceivingPhotoPost(Base):
+    """입고사진 피드 게시물"""
+    __tablename__ = 'receiving_photo_posts'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    content = Column(Text, nullable=False)
+    vendor_name = Column(String(200), nullable=True)
+    po_no = Column(String(20), nullable=True)
+    photos_json = Column(Text, nullable=True)  # JSON: [{file_name, file_path, file_size}]
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+    author = relationship("User", foreign_keys=[created_by])

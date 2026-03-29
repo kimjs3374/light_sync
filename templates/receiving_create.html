@@ -29,10 +29,10 @@
                     <input type="hidden" name="vendor_id" value="{{ po.vendor_id }}">
                     <input type="text" class="form-control form-control-sm bg-light" value="{{ po.vendor.name }}" readonly>
                     {% else %}
-                    <div data-vendor-autocomplete>
-                        <input type="hidden" name="vendor_id" id="vendorId">
-                        <input type="text" class="form-control form-control-sm" id="vendorSearch" placeholder="거래처 검색..." autocomplete="off">
-                    </div>
+                    <input type="hidden" name="vendor_id" id="vendorId">
+                    <input type="text" class="form-control form-control-sm" id="vendorSearch"
+                           placeholder="거래처 검색..." autocomplete="off"
+                           data-vendor-autocomplete data-vendor-id-target="vendorId">
                     {% endif %}
                 </div>
                 <div class="col-md-4">
@@ -99,6 +99,7 @@
                             <td>{{ loop.index }}</td>
                             <td>
                                 <input type="hidden" name="po_item_id[]" value="{{ pi.id }}">
+                                <input type="hidden" name="item_cd[]" value="{{ pi.item_code or '' }}">
                                 <input type="text" name="item_name[]" class="form-control form-control-sm" value="{{ pi.item_name }}" readonly>
                             </td>
                             <td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="{{ pi.item_spec or '' }}" readonly></td>
@@ -129,14 +130,21 @@
                         </tr>
                         {% endif %}
                     </tbody>
-                    <tfoot>
-                        <tr class="table-light">
-                            <td colspan="{{ 7 if not po else 6 }}" class="text-end fw-bold">합계</td>
-                            <td class="text-end fw-bold" id="totalAmount">0</td>
-                            <td colspan="2"></td>
-                        </tr>
-                    </tfoot>
                 </table>
+            </div>
+            <div style="max-width:280px;margin-left:auto;margin-top:12px;padding:0 12px 12px;">
+                <div class="d-flex justify-content-between py-1" style="font-size:.85rem;color:#64748b;">
+                    <span>공급가액</span>
+                    <strong id="totalAmount" style="color:#0f172a;">0</strong>
+                </div>
+                <div class="d-flex justify-content-between py-1" style="font-size:.85rem;color:#64748b;">
+                    <span>부가세 (10%)</span>
+                    <span id="taxAmount">0</span>
+                </div>
+                <div class="d-flex justify-content-between py-2 mt-1" style="border-top:2px solid #0f172a;font-size:1rem;">
+                    <strong>합계</strong>
+                    <strong id="grandTotal" style="color:#2563eb;font-size:1.1rem;">0</strong>
+                </div>
             </div>
         </div>
     </div>
@@ -171,7 +179,10 @@
             if (cell) { cell.textContent = amt.toLocaleString(); }
             total += amt;
         });
+        var tax = Math.round(total * 0.1);
         document.getElementById('totalAmount').textContent = total.toLocaleString();
+        document.getElementById('taxAmount').textContent = tax.toLocaleString();
+        document.getElementById('grandTotal').textContent = (total + tax).toLocaleString();
     }
 
     // --- 품목 자동완성 (직접입고 전용) ---

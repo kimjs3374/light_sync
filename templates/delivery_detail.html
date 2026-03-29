@@ -506,6 +506,7 @@
 {% set history_post_url = url_for('delivery.delivery_detail', project_id=project.id) %}
 {% set history_board_id = 'delivery-history-board-detail' %}
 {% set history_default_filter = 'delivery' %}
+{% set history_write_scope = 'delivery' %}
 {% set history_offcanvas_id = 'deliveryHistoryOffcanvas' %}
 {% include 'components/history_offcanvas.html' %}
 {% endblock %}

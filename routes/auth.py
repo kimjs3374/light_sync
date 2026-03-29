@@ -496,6 +496,25 @@ def update_position(user_id):
     return jsonify({'ok': True})
 
 
+@auth_bp.route('/admin/update_user_group/<int:user_id>', methods=['POST'])
+@admin_required
+def update_user_group(user_id):
+    new_group = (request.form.get('user_group') or '').strip()
+    if not new_group:
+        return jsonify({'ok': False, 'error': '그룹명 필요'}), 400
+    with get_db() as db:
+        gp = db.query(GroupPermission).filter_by(group_name=new_group).first()
+        if not gp:
+            return jsonify({'ok': False, 'error': '존재하지 않는 그룹'}), 400
+        user = db.get(User, user_id)
+        if not user:
+            return jsonify({'ok': False, 'error': '사용자 없음'}), 404
+        user.user_group = new_group
+        user.extra_menus = None
+        db.commit()
+    return jsonify({'ok': True})
+
+
 @auth_bp.route('/toggle_delete_approver/<int:user_id>', methods=['POST'])
 @admin_required
 def toggle_delete_approver(user_id):

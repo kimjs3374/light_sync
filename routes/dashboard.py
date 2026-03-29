@@ -33,6 +33,7 @@ from modules.dashboard_utils import (
     build_month_calendar,
     build_auto_alert_items,
     build_dashboard_priority_items,
+    history_detail_link,
 )
 
 dashboard_bp = Blueprint('dashboard', __name__)
@@ -237,6 +238,7 @@ def dashboard_view():
         for log in recent_logs:
             project = log.project
             content = log.content or ''
+            scope = log.log_scope or 'common'
             timeline_items.append(
                 {
                     'id': log.id,
@@ -245,7 +247,8 @@ def dashboard_view():
                     'project_name': (project.short_name or project.temp_name) if project else '알 수 없는 현장',
                     'project_no': project.project_no if project else '-',
                     'content': content,
-                    'detail_url': project_detail_link(project) if project else url_for('project.contract_list'),
+                    'scope': scope,
+                    'detail_url': history_detail_link(project, scope) if project else url_for('project.contract_list'),
                     'is_issue': ('이슈' in content) or ('긴급' in content),
                     'is_system': '시스템' in (log.user_name or ''),
                 }

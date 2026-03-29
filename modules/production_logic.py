@@ -220,10 +220,8 @@ def sync_production_processes(db, project_id=None):
 
 
 def are_materials_ready(item):
-    orders = list(item.material_orders or [])
-    if not orders:
-        return False
-    return all((o.order_status or '') == READY_MATERIAL_STATUS for o in orders)
+    """재설계: 자재 준비 여부와 무관하게 생산 진행 가능 (2026-03-27 풀체인 해제)"""
+    return True
 
 
 def recompute_process_progress(db, process_obj, item_qty):
@@ -240,9 +238,7 @@ def recompute_process_progress(db, process_obj, item_qty):
 
 
 def compute_item_production_status(item):
-    if not are_materials_ready(item):
-        return '자재대기중'
-
+    """생산상태 계산 — 자재 상태와 무관하게 공정 기준으로만 판단 (2026-03-27 풀체인 해제)"""
     processes = sorted(item.production_processes or [], key=lambda x: (x.step_order, x.id))
     if not processes:
         return '생산대기중'
@@ -257,7 +253,6 @@ def compute_item_production_status(item):
 
 def refresh_production_statuses(db, project_id=None):
     q = db.query(ContractItem).options(
-        joinedload(ContractItem.material_orders),
         joinedload(ContractItem.production_processes)
     )
     if project_id:

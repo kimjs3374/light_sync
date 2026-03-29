@@ -21,25 +21,31 @@ MENU_REGISTRY = OrderedDict([
     ("sales",          {"label": "협의관리",   "group": "영업부", "endpoint": "sales.sales_list"}),
     ("quotation",      {"label": "견적관리",   "group": "영업부", "endpoint": "quotation.quotation_list"}),
     ("delivery",       {"label": "납품관리",   "group": "영업부", "endpoint": "delivery.delivery_management"}),
-    # --- 관리부 ---
-    ("item",           {"label": "품목관리",   "group": "관리부", "endpoint": "item.item_list"}),
-    ("material",       {"label": "자재관리",   "group": "관리부", "endpoint": "material.material_management"}),
+    # --- 관리부 (구매/재무) ---
     ("vendor",         {"label": "거래처관리", "group": "관리부", "endpoint": "vendor.vendor_list"}),
     ("purchase_order", {"label": "발주관리",   "group": "관리부", "endpoint": "purchase_order.po_list"}),
     ("processing_order", {"label": "가공발주", "group": "관리부", "endpoint": "processing_order.fo_list"}),
     ("receiving",      {"label": "입고관리",   "group": "관리부", "endpoint": "receiving.receiving_list"}),
-    ("bom",            {"label": "BOM관리",   "group": "관리부", "endpoint": "bom.bom_list"}),
     ("financial",      {"label": "매출/수금",  "group": "관리부", "endpoint": "financial.financial_dashboard"}),
-    ("inventory",      {"label": "재고관리",  "group": "관리부", "endpoint": "inventory.inventory_dashboard"}),
+    # --- 자재/재고 ---
+    ("item",           {"label": "품목관리",   "group": "자재/재고", "endpoint": "item.item_list"}),
+    ("bom",            {"label": "BOM관리",   "group": "자재/재고", "endpoint": "bom.bom_list"}),
+    ("material",       {"label": "자재관리",   "group": "자재/재고", "endpoint": "material.material_management"}),
+    ("inventory",      {"label": "재고관리",  "group": "자재/재고", "endpoint": "inventory.inventory_dashboard"}),
     # --- 공통메뉴 (여러 부서 공통) ---
     ("procurement",    {"label": "조달내역",   "group": "공통메뉴",   "endpoint": "procurement.procurement_list"}),
     ("procurement_summary", {"label": "납품집계", "group": "공통메뉴",   "endpoint": "procurement.procurement_summary"}),
     ("warranty",       {"label": "하자관리",   "group": "공통메뉴",   "endpoint": "warranty.dashboard"}),
+    ("receiving_photo", {"label": "입고사진",  "group": "공통메뉴",   "endpoint": "receiving_photo.feed"}),
     ("photos",         {"label": "사진관리",   "group": "공통메뉴",   "endpoint": "photos.photo_list"}),
     ("drawing",        {"label": "도면관리",   "group": "공통메뉴",   "endpoint": "drawing.drawings_index"}),
+    ("catalog",        {"label": "제품목록",     "group": "영업부", "endpoint": "catalog.catalog_list"}),
     ("illuminance",    {"label": "조도검증",   "group": "영업부", "endpoint": "illuminance.index"}),
     ("lighting_layout",{"label": "조명배치도", "group": "영업부", "endpoint": "lighting_layout.layout_list"}),
     ("certification",  {"label": "인증서관리", "group": "관리부", "endpoint": "certification.cert_list"}),
+    ("business_trip",  {"label": "출장관리",   "group": "공통메뉴", "endpoint": "business_trip.trip_list"}),
+    ("tools",          {"label": "공구관리",   "group": "공통메뉴", "endpoint": "tools.tool_list"}),
+    ("documents",      {"label": "서류관리",   "group": "영업부", "endpoint": "document.document_list"}),
     # --- 생산부 ---
     ("production",     {"label": "생산관리",   "group": "생산부", "endpoint": "production.production_main"}),
     # --- 시스템 (admin only) ---
@@ -56,6 +62,7 @@ GROUP_ICONS = {
     "워크보드": "📊",
     "영업부": "💼",
     "관리부": "📋",
+    "자재/재고": "📦",
     "공통메뉴": "🔗",
     "생산부": "🏭",
     "시스템": "⚙️",
@@ -64,10 +71,10 @@ GROUP_ICONS = {
 # 부서별 기본 메뉴 (GroupPermission 초기값 세팅용)
 # 형식: "menu_key:r" (읽기전용) / "menu_key:rw" (읽기+쓰기) / "menu_key" (레거시=rw)
 DEFAULT_GROUP_MENUS = {
-    "영업부": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,illuminance:rw,item:r,material:r,bom:r,inventory:r,procurement:rw,procurement_summary:r,warranty:rw,photos:rw,drawing:rw,production:r",
-    "관리부": "project:r,contract:r,delivery:r,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,certification:rw,procurement:r,procurement_summary:r,warranty:rw,photos:rw,drawing:r,production:r",
-    "생산부": "contract:r,sales:r,delivery:r,material:r,inventory:r,warranty:rw,photos:rw,drawing:r,production:rw",
-    "임원진": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,illuminance:rw,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,procurement:rw,procurement_summary:rw,warranty:rw,photos:rw,drawing:rw,production:rw,certification:rw",
+    "영업부": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,catalog:r,illuminance:rw,item:r,material:r,bom:r,inventory:r,procurement:rw,procurement_summary:r,warranty:rw,photos:rw,drawing:rw,production:r,receiving_photo:rw,business_trip:rw",
+    "관리부": "project:r,contract:r,delivery:r,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,certification:rw,procurement:r,procurement_summary:r,warranty:rw,photos:rw,drawing:r,production:r,receiving_photo:rw,business_trip:rw,tools:r",
+    "생산부": "contract:r,sales:r,delivery:r,material:r,inventory:r,warranty:rw,photos:rw,drawing:r,production:rw,receiving_photo:rw,business_trip:rw,tools:rw",
+    "임원진": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,catalog:rw,illuminance:rw,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,procurement:rw,procurement_summary:rw,warranty:rw,photos:rw,drawing:rw,production:rw,certification:rw,receiving_photo:rw,business_trip:rw,tools:rw",
 }
 
 

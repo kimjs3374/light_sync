@@ -12,7 +12,7 @@ from modules.models import (
     Item, Vendor,
 )
 from sqlalchemy import func, desc, or_
-from modules.history_board import append_history_log, get_project_history_context
+from modules.history_board import append_history_log, get_project_history_context, get_user_display_name
 from modules.contract_filters import active_contract_filter
 from modules.priority_utils import (
     append_due_priority_reason,
@@ -222,33 +222,12 @@ def sync_material_orders_for_contract_item(db, contract, item):
                     order.order_status = po_status
                     continue
 
-                # 재고 판단: BomItem에 연결된 Item의 가용재고 비교
-                linked_item = db.query(Item).get(bi.item_id) if bi.item_id else None
-                if linked_item:
-                    available = max(0, (linked_item.stock_qty or 0) - (linked_item.reserved_qty or 0))
-                    if needed <= available:
-                        order.order_status = '재고이용'
-                        linked_item.reserved_qty = (linked_item.reserved_qty or 0) + needed
-                    else:
-                        if available > 0:
-                            linked_item.reserved_qty = (linked_item.reserved_qty or 0) + available
-                        order.order_status = '발주대기'
+                # 풀체인 해제: 예약 없이 PO 상태만으로 판단 (2026-03-27)
+                order.order_status = '발주대기'
                 continue
 
             # 신규 MO 생성
             new_status = po_status or '발주대기'
-
-            # 재고 판단 (신규 MO)
-            if not po_status:
-                linked_item = db.query(Item).get(bi.item_id) if bi.item_id else None
-                if linked_item:
-                    available = max(0, (linked_item.stock_qty or 0) - (linked_item.reserved_qty or 0))
-                    if needed <= available:
-                        new_status = '재고이용'
-                        linked_item.reserved_qty = (linked_item.reserved_qty or 0) + needed
-                    else:
-                        if available > 0:
-                            linked_item.reserved_qty = (linked_item.reserved_qty or 0) + available
 
             db.add(MaterialOrder(
                 project_id=contract.project_id,
@@ -356,7 +335,7 @@ ACTION_HANDLERS = {
 def material_management():
 
     with get_db() as db:
-        current_user = session.get('full_name') or '사용자'
+        current_user = get_user_display_name()
 
         if request.method == 'POST' and request.form.get('action') == 'sync_material_orders':
             sync_material_orders(db)
@@ -526,7 +505,7 @@ def material_management():
 def material_detail(project_id):
 
     with get_db() as db:
-        current_user = session.get('full_name') or '사용자'
+        current_user = get_user_display_name()
 
         p = db.query(Project).options(
             joinedload(Project.contracts).joinedload(Contract.items)

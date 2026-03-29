@@ -90,6 +90,37 @@
     </div>
     {% endif %}
 
+    {# --- 매칭 모델명 (별칭) --- #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+            <strong>매칭 모델명</strong>
+            <span class="badge bg-info" style="white-space:nowrap" id="aliasCount">{{ aliases|length }}개</span>
+        </div>
+        <div class="card-body py-2">
+            <div id="aliasTags" class="d-flex flex-wrap gap-1 mb-2">
+                {% for a in aliases %}
+                <span class="badge bg-light text-dark border d-inline-flex align-items-center"
+                      style="white-space:nowrap; font-size:.78rem;" data-alias-id="{{ a.id }}">
+                    {{ a.alias_name }}
+                    {% if a.alias_type == 'manual' %}
+                    <button type="button" class="btn-close ms-1" style="font-size:.5rem;"
+                            onclick="removeAlias({{ a.id }}, '{{ a.alias_name }}')"></button>
+                    {% endif %}
+                </span>
+                {% endfor %}
+                {% if not aliases %}
+                <span class="text-muted small" id="noAliasMsg">등록된 별칭이 없습니다.</span>
+                {% endif %}
+            </div>
+            <div class="d-flex gap-2">
+                <input type="text" id="newAliasInput" class="form-control form-control-sm"
+                       placeholder="계약 모델명 입력 (예: ARENA(M)-400)" style="max-width:300px;">
+                <button type="button" class="btn btn-outline-primary btn-xs" style="white-space:nowrap;"
+                        onclick="addAlias()">추가</button>
+            </div>
+        </div>
+    </div>
+
     {# --- BOM 품목 테이블 --- #}
     {% set can_see_price = session.get('role') == 'admin' or session.get('position') in ['팀장', '부장', '이사', '상무', '전무', '부사장', '사장', '대표'] %}
     {% set has_opts = option_schema is not none and option_schema %}
@@ -473,6 +504,85 @@
         recalcPrices();
     })();
 })();
+
+/* --- 별칭 관리 --- */
+function _aliasToast(msg, type) {
+    // base.html에 showToast 없으면 alert fallback
+    if (typeof showToast === 'function') { showToast(msg, type); }
+    else { alert(msg); }
+}
+
+function _updateAliasCount() {
+    var tags = document.querySelectorAll('#aliasTags .badge');
+    var el = document.getElementById('aliasCount');
+    if (el) el.textContent = tags.length + '개';
+    var noMsg = document.getElementById('noAliasMsg');
+    if (noMsg && tags.length > 0) noMsg.remove();
+}
+
+async function addAlias() {
+    var input = document.getElementById('newAliasInput');
+    var name = input.value.trim();
+    if (!name) return;
+    try {
+        var resp = await fetch('/bom/{{ bom.id }}/alias', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({alias_name: name})
+        });
+        var data = await resp.json();
+        if (resp.ok) {
+            var noMsg = document.getElementById('noAliasMsg');
+            if (noMsg) noMsg.remove();
+            var tag = document.createElement('span');
+            tag.className = 'badge bg-light text-dark border d-inline-flex align-items-center';
+            tag.style.cssText = 'white-space:nowrap; font-size:.78rem;';
+            tag.setAttribute('data-alias-id', data.id);
+            tag.innerHTML = data.alias_name +
+                ' <button type="button" class="btn-close ms-1" style="font-size:.5rem;"' +
+                ' onclick="removeAlias(' + data.id + ', \'' + data.alias_name.replace(/'/g, "\\'") + '\')"></button>';
+            document.getElementById('aliasTags').appendChild(tag);
+            input.value = '';
+            _updateAliasCount();
+            _aliasToast('별칭이 추가되었습니다.', 'success');
+        } else {
+            _aliasToast(data.error || '등록 실패', 'danger');
+        }
+    } catch(e) {
+        _aliasToast('네트워크 오류', 'danger');
+    }
+}
+
+async function removeAlias(id, name) {
+    if (!confirm('"' + name + '" 별칭을 삭제하시겠습니까?')) return;
+    try {
+        var resp = await fetch('/bom/{{ bom.id }}/alias/' + id, {method: 'DELETE'});
+        if (resp.ok) {
+            var tag = document.querySelector('#aliasTags [data-alias-id="' + id + '"]');
+            if (tag) tag.remove();
+            _updateAliasCount();
+            var remaining = document.querySelectorAll('#aliasTags .badge');
+            if (remaining.length === 0) {
+                var noMsg = document.createElement('span');
+                noMsg.className = 'text-muted small';
+                noMsg.id = 'noAliasMsg';
+                noMsg.textContent = '등록된 별칭이 없습니다.';
+                document.getElementById('aliasTags').appendChild(noMsg);
+            }
+            _aliasToast('별칭이 삭제되었습니다.', 'success');
+        } else {
+            var data = await resp.json();
+            _aliasToast(data.error || '삭제 실패', 'danger');
+        }
+    } catch(e) {
+        _aliasToast('네트워크 오류', 'danger');
+    }
+}
+
+// Enter 키로 별칭 추가
+document.getElementById('newAliasInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); addAlias(); }
+});
 </script>
 
 {% endblock %}

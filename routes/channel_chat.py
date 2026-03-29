@@ -22,15 +22,17 @@ logger = logging.getLogger(__name__)
 channel_chat_bp = Blueprint("channel_chat", __name__, url_prefix="/channel-chat")
 
 CHANNEL_URL = "http://127.0.0.1:8788"
-REPLY_TIMEOUT = 180  # 최대 대기 초 (60→180)
+REPLY_TIMEOUT = 600  # 최대 대기 초 (180→600, 10분)
 POLL_WAIT = 10       # 롱폴링 1회 대기 초
 MAX_HISTORY = 30     # 최대 메시지 수 (15회 대화)
 
 # 응답 대기 저장소: { request_id: {"reply": str|None, "event": Event, "created": float} }
 _pending = {}
+# 늦은 응답 저장소: pending 만료 후 도착한 응답 (다음 poll 시 전달)
+_late_replies = {}
 
 
-def _cleanup_old(max_age=300):
+def _cleanup_old(max_age=900):
     now = time.time()
     expired = [k for k, v in _pending.items() if now - v.get("created", 0) > max_age]
     for k in expired:
@@ -80,32 +82,60 @@ def _append_history(session_id, user_text, reply_text):
     _save_history(session_id, history)
 
 
+def _save_reply_to_history(entry, reply_text):
+    """channel_reply 수신 시 즉시 히스토리 저장 (페이지 이동으로 폴링 끊김 대비)."""
+    session_id = entry.get("session_id", "")
+    user_text = entry.get("user_text", "")
+    if session_id and user_text:
+        _append_history(session_id, user_text, reply_text)
+        entry["_history_saved"] = True
+
+
 # ── Channel 응답 수신 (Channel reply tool → Flask) ─────────────────────
 @channel_chat_bp.route("/channel-reply", methods=["POST"])
 def channel_reply():
-    """Channel 서버의 reply tool이 호출하는 콜백. CSRF 면제 (app.py)."""
+    """Channel 서버의 reply tool이 호출하는 콜백. CSRF 면제 (app.py).
+    partial=true 이면 중간 메시지 (폴링 계속), false/생략이면 최종 답변."""
     data = request.get_json(silent=True) or {}
     req_id = data.get("request_id", "")
     text = data.get("text", "")
+    is_partial = data.get("partial", False)
 
-    logger.info(f"[channel] channel-reply called: req_id={req_id[:8]}, pending_keys={list(_pending.keys())[:5]}")
-    if req_id in _pending:
-        _pending[req_id]["reply"] = text
-        _pending[req_id]["event"].set()
-        logger.info(f"[channel] reply matched: {req_id[:8]}")
+    label = "partial" if is_partial else "final"
+    logger.info(f"[channel] channel-reply ({label}): req_id={req_id[:8]}, pending_keys={list(_pending.keys())[:5]}")
+
+    # pending 매칭 (정확한 request_id)
+    entry = _pending.get(req_id)
+
+    # fallback: request_id 불일치 시 미응답 pending 매칭
+    if not entry:
+        for pid, pdata in _pending.items():
+            if pdata.get("reply") is None and not pdata["event"].is_set():
+                entry = pdata
+                logger.info(f"[channel] reply fallback matched: {req_id[:8]} → {pid[:8]}")
+                break
+
+    if entry:
+        if is_partial:
+            # 중간 메시지 → 큐에 추가, 폴링 계속
+            entry.setdefault("partial_replies", []).append(text)
+            entry["event"].set()
+            logger.info(f"[channel] partial reply queued: {req_id[:8]}")
+        else:
+            # 최종 답변
+            entry["reply"] = text
+            entry["event"].set()
+            _save_reply_to_history(entry, text)
+            logger.info(f"[channel] final reply matched: {req_id[:8]}")
         return jsonify({"ok": True})
 
-    # request_id가 없어도 최근 pending 중 아직 미응답인 것에 매칭 시도
-    # (타이밍 이슈로 request_id 불일치 시 fallback)
-    for pid, pdata in _pending.items():
-        if pdata.get("reply") is None and not pdata["event"].is_set():
-            pdata["reply"] = text
-            pdata["event"].set()
-            logger.info(f"[channel] reply fallback matched: {req_id[:8]} → {pid[:8]}")
-            return jsonify({"ok": True, "fallback": True})
-
-    logger.warning(f"[channel] unknown request_id: {req_id[:8]}...")
-    return jsonify({"ok": False, "reason": "unknown request_id"}), 404
+    # pending이 만료됐더라도 보관 (늦은 응답 구제)
+    _late_replies[req_id] = {"text": text, "created": time.time()}
+    if len(_late_replies) > 5:
+        oldest = min(_late_replies, key=lambda k: _late_replies[k]["created"])
+        _late_replies.pop(oldest, None)
+    logger.warning(f"[channel] late reply saved: {req_id[:8]}... (pending expired)")
+    return jsonify({"ok": True, "late": True})
 
 
 # ── Channel 서버 상태 확인 ────────────────────────────────────────────
@@ -210,18 +240,30 @@ def chat_poll():
     req_id = body.get("request_id", "")
 
     if req_id not in _pending:
+        # 늦은 응답이 있으면 구제
+        if req_id in _late_replies:
+            reply = _late_replies.pop(req_id)["text"]
+            return jsonify({"status": "done", "reply": reply})
         return jsonify({"status": "not_found"}), 404
 
     entry = _pending[req_id]
     elapsed = time.time() - entry["created"]
 
-    # 이미 응답 도착
+    # 중간 메시지가 있으면 먼저 전달 (폴링 계속)
+    partials = entry.get("partial_replies", [])
+    if partials:
+        text = partials.pop(0)
+        # 더 이상 partial이 없으면 event 리셋 (다음 롱폴링 대기를 위해)
+        if not partials and entry["reply"] is None:
+            entry["event"].clear()
+        return jsonify({"status": "partial", "reply": text, "elapsed": int(elapsed)})
+
+    # 최종 응답 도착
     if entry["reply"] is not None:
         reply = entry["reply"]
-        user_text = entry.get("user_text", "")
-        session_id = entry.get("session_id", "")
         _pending.pop(req_id, None)
-        _append_history(session_id, user_text, reply)
+        if not entry.get("_history_saved"):
+            _append_history(entry.get("session_id", ""), entry.get("user_text", ""), reply)
         return jsonify({"status": "done", "reply": reply})
 
     # 타임아웃 초과
@@ -231,12 +273,20 @@ def chat_poll():
 
     # 롱폴링 대기 (최대 POLL_WAIT초)
     got = entry["event"].wait(timeout=POLL_WAIT)
+
+    # 대기 후 partial 확인
+    partials = entry.get("partial_replies", [])
+    if partials:
+        text = partials.pop(0)
+        if not partials and entry["reply"] is None:
+            entry["event"].clear()
+        return jsonify({"status": "partial", "reply": text, "elapsed": int(elapsed)})
+
     if got and entry["reply"] is not None:
         reply = entry["reply"]
-        user_text = entry.get("user_text", "")
-        session_id = entry.get("session_id", "")
         _pending.pop(req_id, None)
-        _append_history(session_id, user_text, reply)
+        if not entry.get("_history_saved"):
+            _append_history(entry.get("session_id", ""), entry.get("user_text", ""), reply)
         return jsonify({"status": "done", "reply": reply})
 
     # 아직 대기중 — 경과 시간 알려줌

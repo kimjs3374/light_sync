@@ -319,6 +319,7 @@
                 {% set history_post_url = url_for('production.production_detail', project_id=project.id) %}
                 {% set history_board_id = 'production-history-board-detail' %}
                 {% set history_default_filter = 'production' %}
+{% set history_write_scope = 'production' %}
                 {% include 'components/history_board.html' %}
             </div>
         </div>

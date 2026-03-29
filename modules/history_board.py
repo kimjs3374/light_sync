@@ -1,8 +1,16 @@
 import datetime
 import json
 
+from flask import session
 from sqlalchemy import func
 from modules.models import HistoryLog, HistoryReadMark
+
+
+def get_user_display_name(fallback='사용자'):
+    """세션에서 이름+직급 형식 반환 (예: 김정수 차장)"""
+    name = session.get('full_name', fallback)
+    pos = session.get('position', '')
+    return f"{name} {pos}" if pos else name
 
 
 # drawing → design으로 통합, technical → 미사용 (하자AS 별도 PDCA 예정)

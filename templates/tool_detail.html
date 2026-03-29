@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+{% block title %}{{ tool.tool_name }} — 공구 상세{% endblock %}
+
+{% block content %}
+{% set writable = 'tools' in session.get('writable_menus', []) or session.get('role') == 'admin' %}
+<style>
+  .checkout-card{border-radius:var(--mg-radius);border:1px solid var(--mg-border);padding:.75rem;margin-bottom:.5rem;background:var(--mg-surface)}
+  .checkout-card .co-name{font-weight:700;font-size:.88rem}
+  .checkout-card .co-meta{font-size:.78rem;color:var(--mg-muted);margin-top:.2rem}
+  .checkout-card .co-meta span+span::before{content:"·";margin:0 .3rem;color:var(--mg-subtle)}
+  .history-item{border-left:3px solid var(--mg-border);padding:.5rem .75rem;margin-bottom:.4rem;font-size:.82rem}
+  .history-item.is-out{border-left-color:var(--mg-warning)}
+  .history-item.is-return{border-left-color:var(--mg-success)}
+  .info-th{width:100px;white-space:nowrap;font-size:.82rem}
+</style>
+
+<div class="container py-3" style="max-width:750px">
+
+  {# ── 헤더 ── #}
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <a href="{{ url_for('tools.tool_list') }}" class="btn btn-sm btn-outline-secondary" style="white-space:nowrap">&lt; 목록</a>
+    <h5 class="mb-0 me-auto" style="white-space:nowrap">공구 상세</h5>
+    {% if writable %}
+    <button type="button" class="btn btn-sm btn-outline-primary" style="white-space:nowrap" data-bs-toggle="modal" data-bs-target="#editToolModal">수정</button>
+    <form method="POST" action="{{ url_for('tools.tool_delete', tool_id=tool.id) }}" class="d-inline"
+          onsubmit="return confirm('정말 삭제하시겠습니까?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-outline-danger" style="white-space:nowrap">삭제</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {# ── 기본 정보 ── #}
+  <div class="card mb-3 shadow-sm">
+    <div class="card-header py-2"><strong>기본 정보</strong></div>
+    <div class="card-body">
+      <table class="table table-sm table-borderless mb-0">
+        <tr>
+          <th class="text-muted info-th">공구명</th>
+          <td class="fw-bold">{{ tool.tool_name }}</td>
+        </tr>
+        <tr>
+          <th class="text-muted info-th">카테고리</th>
+          <td>{{ tool.category or '-' }}</td>
+        </tr>
+        <tr>
+          <th class="text-muted info-th">소속팀</th>
+          <td>{{ tool.team or '-' }}</td>
+        </tr>
+        <tr>
+          <th class="text-muted info-th">수량</th>
+          <td style="font-family:var(--mg-mono)">
+            <span class="{{ 'text-danger fw-bold' if tool.available_qty == 0 else 'text-success fw-bold' }}">{{ tool.available_qty }}</span>
+            <span class="text-muted">/ {{ tool.total_qty }}</span>
+            <small class="text-muted ms-1">(가용/전체)</small>
+          </td>
+        </tr>
+        <tr>
+          <th class="text-muted info-th">현재위치</th>
+          <td>{{ tool.current_location or '-' }}</td>
+        </tr>
+        <tr>
+          <th class="text-muted info-th">상태</th>
+          <td>
+            {% if tool.status == '보관중' %}
+            <span class="badge bg-success">보관중</span>
+            {% elif tool.status == '사용중' %}
+            <span class="badge bg-warning text-dark">사용중</span>
+            {% elif tool.status == '점검중' %}
+            <span class="badge bg-info">점검중</span>
+            {% elif tool.status == '폐기' %}
+            <span class="badge bg-secondary">폐기</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% if tool.note %}
+        <tr>
+          <th class="text-muted info-th">비고</th>
+          <td style="white-space:pre-line">{{ tool.note }}</td>
+        </tr>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+
+  {# ── 현재 불출 현황 ── #}
+  {% if active_checkouts %}
+  <div class="card mb-3 shadow-sm border-warning">
+    <div class="card-header py-2 bg-warning bg-opacity-10">
+      <strong>현재 불출 현황 ({{ active_checkouts|length }}건)</strong>
+    </div>
+    <div class="card-body p-2">
+      {% for c in active_checkouts %}
+      <div class="checkout-card">
+        <div class="d-flex align-items-center gap-2">
+          <span class="co-name flex-grow-1">{{ c.checkout_user_name }}</span>
+          <span class="badge bg-warning text-dark" style="white-space:nowrap">불출중</span>
+        </div>
+        {% if c.purpose %}
+        <div class="co-meta" style="margin-top:.3rem">용도: {{ c.purpose }}</div>
+        {% endif %}
+        <div class="co-meta">
+          <span>{{ c.location or '미지정' }}</span>
+          <span>{{ c.checkout_at.strftime('%m-%d %H:%M') if c.checkout_at else '' }}</span>
+          {% if c.expected_return_at %}
+          <span>반납예정 {{ c.expected_return_at.strftime('%m-%d %H:%M') }}</span>
+          {% endif %}
+        </div>
+        {% if writable %}
+        <div class="mt-2">
+          <button type="button" class="btn btn-xs btn-success" style="white-space:nowrap"
+                  onclick="openReturnModal({{ c.id }}, '{{ c.checkout_user_name }}')">반납처리</button>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── 불출 버튼 ── #}
+  {% if writable and tool.available_qty > 0 %}
+  <div class="mb-3">
+    <button type="button" class="btn btn-sm btn-primary w-100" data-bs-toggle="modal" data-bs-target="#checkoutModal">
+      + 불출하기
+    </button>
+  </div>
+  {% elif writable and tool.available_qty == 0 %}
+  <div class="mb-3">
+    <button type="button" class="btn btn-sm btn-secondary w-100" disabled>
+      가용 수량 없음
+    </button>
+  </div>
+  {% endif %}
+
+  {# ── 불출/반납 이력 ── #}
+  <div class="card mb-3 shadow-sm">
+    <div class="card-header py-2"><strong>불출/반납 이력</strong></div>
+    <div class="card-body p-2">
+      {% for h in history %}
+      <div class="history-item {{ 'is-out' if h.status == '불출' else 'is-return' }}">
+        <div class="d-flex align-items-center gap-2">
+          {% if h.status == '불출' %}
+          <span class="badge bg-warning text-dark" style="white-space:nowrap;font-size:.7rem">불출</span>
+          {% else %}
+          <span class="badge bg-success" style="white-space:nowrap;font-size:.7rem">반납</span>
+          {% endif %}
+          <span class="fw-bold">{{ h.checkout_user_name }}</span>
+          <span class="text-muted ms-auto" style="font-size:.75rem;white-space:nowrap">
+            {{ h.checkout_at.strftime('%m-%d %H:%M') if h.checkout_at else '' }}
+            {% if h.return_at %}
+             → {{ h.return_at.strftime('%m-%d %H:%M') }}
+            {% endif %}
+          </span>
+        </div>
+        <div style="font-size:.78rem;color:var(--mg-muted);margin-top:.15rem">
+          {% if h.location %}<span>{{ h.location }}</span>{% endif %}
+          {% if h.purpose %}<span>{{ ' · ' if h.location }}{{ h.purpose }}</span>{% endif %}
+          {% if h.return_note %}<span> · {{ h.return_note }}</span>{% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="text-center text-muted py-3" style="font-size:.85rem">이력이 없습니다.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <a href="{{ url_for('tools.tool_list') }}" class="btn btn-sm btn-outline-secondary">목록으로</a>
+</div>
+
+{# ── 불출 모달 ── #}
+{% if writable %}
+<div class="modal fade" id="checkoutModal" tabindex="-1">
+  <div class="modal-dialog modal-fullscreen-sm-down">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('tools.tool_checkout', tool_id=tool.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="user_name" id="coUserName" value="">
+        <div class="modal-header py-2">
+          <h6 class="modal-title fw-bold">공구 불출</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold" style="font-size:.82rem">불출자 <span class="text-danger">*</span></label>
+            <select name="user_id" id="coUserId" class="form-select form-select-sm" required
+                    onchange="document.getElementById('coUserName').value=this.options[this.selectedIndex].text">
+              <option value="">선택</option>
+              {% for u in users %}
+              <option value="{{ u.id }}">{{ u.full_name }}{% if u.department %} ({{ u.department }}){% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold" style="font-size:.82rem">용도</label>
+            <input type="text" name="purpose" class="form-control form-control-sm" placeholder="사용 용도 또는 현장명">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold" style="font-size:.82rem">불출 위치</label>
+            <input type="text" name="location" class="form-control form-control-sm" placeholder="현장명 또는 장소">
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label fw-bold" style="font-size:.82rem">불출일시</label>
+              <input type="datetime-local" name="checkout_at" class="form-control form-control-sm" id="coDatetime">
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-bold" style="font-size:.82rem">반납예정</label>
+              <input type="datetime-local" name="expected_return_at" class="form-control form-control-sm">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
+          <button type="submit" class="btn btn-sm btn-primary" style="white-space:nowrap">불출 등록</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── 반납 모달 ── #}
+<div class="modal fade" id="returnModal" tabindex="-1">
+  <div class="modal-dialog modal-fullscreen-sm-down modal-sm">
+    <div class="modal-content">
+      <form method="POST" id="returnForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header py-2">
+          <h6 class="modal-title fw-bold">반납 처리 — <span id="returnUserName"></span></h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold" style="font-size:.82rem">반납 위치</label>
+            <input type="text" name="return_location" class="form-control form-control-sm" value="사무실">
+          </div>
+          <div class="mb-2">
+            <label class="form-label fw-bold" style="font-size:.82rem">반납 메모</label>
+            <textarea name="return_note" class="form-control form-control-sm" rows="2" placeholder="상태, 특이사항 등"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
+          <button type="submit" class="btn btn-sm btn-success" style="white-space:nowrap">반납 확인</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── 수정 모달 ── #}
+<div class="modal fade" id="editToolModal" tabindex="-1">
+  <div class="modal-dialog modal-fullscreen-sm-down">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('tools.tool_edit', tool_id=tool.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header py-2">
+          <h6 class="modal-title fw-bold">공구 수정</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold" style="font-size:.82rem">공구명 <span class="text-danger">*</span></label>
+            <input type="text" name="tool_name" class="form-control form-control-sm" required value="{{ tool.tool_name }}">
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label fw-bold" style="font-size:.82rem">카테고리</label>
+              <input type="text" name="category" class="form-control form-control-sm" value="{{ tool.category or '' }}">
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-bold" style="font-size:.82rem">소속팀</label>
+              <select name="team" class="form-select form-select-sm">
+                <option value="">선택</option>
+                <option value="생산1팀" {{ 'selected' if tool.team == '생산1팀' }}>생산1팀</option>
+                <option value="생산2팀" {{ 'selected' if tool.team == '생산2팀' }}>생산2팀</option>
+              </select>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label fw-bold" style="font-size:.82rem">수량</label>
+              <input type="number" name="total_qty" class="form-control form-control-sm" value="{{ tool.total_qty }}" min="1">
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-bold" style="font-size:.82rem">보관위치</label>
+              <input type="text" name="current_location" class="form-control form-control-sm" value="{{ tool.current_location or '' }}">
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label fw-bold" style="font-size:.82rem">비고</label>
+            <textarea name="note" class="form-control form-control-sm" rows="2">{{ tool.note or '' }}</textarea>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
+          <button type="submit" class="btn btn-sm btn-primary" style="white-space:nowrap">저장</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+// 불출 모달 열릴 때 현재 시각 세팅
+document.getElementById('checkoutModal')?.addEventListener('show.bs.modal', function() {
+  var now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  document.getElementById('coDatetime').value = now.toISOString().slice(0,16);
+});
+
+// 반납 모달
+function openReturnModal(checkoutId, userName) {
+  document.getElementById('returnForm').action = '/tools/checkout/' + checkoutId + '/return';
+  document.getElementById('returnUserName').textContent = userName;
+  new bootstrap.Modal(document.getElementById('returnModal')).show();
+}
+</script>
+{% endblock %}
