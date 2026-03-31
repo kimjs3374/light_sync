@@ -149,9 +149,9 @@
           </td>
           <td style="white-space:nowrap">
             {% if c.file_path and c.file_path.startswith('http') %}
-              <a href="{{ c.file_path }}" target="_blank" class="btn btn-xs btn-outline-info" title="인증서 PDF 보기">📄</a>
+              <a href="{{ c.file_path }}" target="_blank" class="btn btn-xs btn-outline-info" title="인증서 파일 보기">📄</a>
             {% elif c.file_path %}
-              <a href="{{ url_for('static', filename=c.file_path) }}" target="_blank" class="btn btn-xs btn-outline-secondary" title="파일 보기">📄</a>
+              <a href="{{ url_for('certification.cert_file', cert_id=c.id) }}" target="_blank" class="btn btn-xs btn-outline-info" title="인증서 파일 보기">📄</a>
             {% else %}
               -
             {% endif %}

@@ -1,32 +1,36 @@
 import datetime
 import io
 import os
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, send_file, abort, Response
 from sqlalchemy import and_
+from werkzeug.utils import secure_filename
 from modules.auth_decorators import login_required, admin_required, menu_required
 from modules.db_context import get_db
 from modules.utils import safe_int, parse_date
 from modules.pagination import make_pagination
+from modules.storage_adapter import upload_bytes, download_bytes, is_storage_enabled
 from modules.models import (
     Certification, CERT_TYPE_CHOICES, Notification, User,
 )
 
 cert_bp = Blueprint("certification", __name__)
 
-UPLOAD_SUBDIR = 'certifications'
-
 
 def _save_cert_file(file_obj):
-    """인증서 파일 저장 → 상대경로 반환"""
+    """인증서 파일 → Supabase Storage 업로드, storage_path 반환"""
     if not file_obj or not file_obj.filename:
         return None
-    upload_dir = os.path.join(current_app.static_folder, 'uploads', UPLOAD_SUBDIR)
-    os.makedirs(upload_dir, exist_ok=True)
-    ts = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-    safe_name = file_obj.filename.replace(' ', '_')
-    fname = f"{ts}_{safe_name}"
-    file_obj.save(os.path.join(upload_dir, fname))
-    return f"uploads/{UPLOAD_SUBDIR}/{fname}"
+    data = file_obj.read()
+    if not data:
+        return None
+    ext = os.path.splitext(secure_filename(file_obj.filename))[1].lower() or '.pdf'
+    ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    safe_name = secure_filename(file_obj.filename)
+    storage_path = f"storage/certifications/{ts}_{safe_name}"
+    ok, err = upload_bytes(storage_path, data, file_obj.mimetype or 'application/pdf')
+    if not ok:
+        raise RuntimeError(f'파일 업로드 실패: {err}')
+    return storage_path
 
 
 # -------------------------------------------------------------------
@@ -160,6 +164,31 @@ def cert_edit(cert_id):
             return redirect(url_for('certification.cert_list'))
 
     return render_template('certification_form.html', cert=cert, cert_types=CERT_TYPE_CHOICES)
+
+
+@cert_bp.route('/certifications/<int:cert_id>/file')
+@menu_required('certification')
+def cert_file(cert_id):
+    """인증서 파일 다운로드 (Supabase Storage 프록시)"""
+    with get_db() as db:
+        cert = db.query(Certification).get(cert_id)
+        if not cert or not cert.file_path:
+            abort(404)
+        # Supabase Storage 경로 (storage/certifications/...)
+        data = download_bytes(cert.file_path)
+        if not data:
+            # 레거시 로컬 경로 fallback (uploads/certifications/...)
+            local_path = os.path.join(current_app.static_folder, cert.file_path)
+            if os.path.exists(local_path):
+                return send_file(local_path)
+            abort(404)
+        ext = os.path.splitext(cert.file_path)[1].lower().lstrip('.')
+        mime_map = {'pdf': 'application/pdf', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+                    'png': 'image/png', 'webp': 'image/webp'}
+        mime = mime_map.get(ext, 'application/octet-stream')
+        return Response(data, mimetype=mime, headers={
+            'Content-Disposition': f'inline; filename="{os.path.basename(cert.file_path)}"'
+        })
 
 
 @cert_bp.route('/certifications/<int:cert_id>/delete', methods=['POST'])
