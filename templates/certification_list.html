@@ -6,8 +6,16 @@
 @media (max-width: 1199.98px) {
     .main-content .table { min-width: 0 !important; table-layout: auto !important; }
 }
+.cert-type-badge { font-size:.68rem; white-space:nowrap; padding:2px 6px; }
 </style>
 {% endblock %}
+
+{% set CERT_SHORT = {
+  '고효율인증':'고효율', '성능인증':'성능', '녹색기술인증':'녹색기술',
+  '환경표지':'환경', '조달우수제품':'조달우수', '혁신제품':'혁신',
+  'MAS계약':'MAS', '직접생산증명':'직접생산', 'G-PASS':'G-PASS',
+  '중소기업확인서':'중소기업', '단체표준':'단체표준'
+} %}
 
 {% block content %}
 <div class="container-fluid py-3">
@@ -90,17 +98,17 @@
 
   {# ── 목록 테이블 ── #}
   <div class="table-responsive">
-    <table class="table table-hover align-middle no-stack-table tree-card-table" style="font-size:0.82rem;table-layout:fixed;min-width:780px;">
+    <table class="table table-hover align-middle no-stack-table tree-card-table" style="font-size:0.82rem;">
       <colgroup>
-        <col style="width:70px">
-        <col>
+        <col style="width:46px">
+        <col style="width:22%">
+        <col style="width:110px">
         <col style="width:120px">
-        <col style="width:100px">
-        <col style="width:90px">
-        <col style="width:96px">
-        <col style="width:68px">
-        <col style="width:55px">
-        <col style="width:90px">
+        <col style="width:80px">
+        <col style="width:92px">
+        <col style="width:72px">
+        <col style="width:36px">
+        <col style="width:88px">
       </colgroup>
       <thead class="table-light" style="white-space:nowrap">
         <tr>
@@ -118,7 +126,7 @@
       <tbody>
         {% for c in certs %}
         <tr class="{{ 'table-danger' if c.expiry_status == 'expired' else 'table-warning' if c.expiry_status in ('critical','warning') else '' }}">
-          <td style="white-space:nowrap"><span class="badge bg-secondary">{{ c.cert_type }}</span></td>
+          <td style="white-space:nowrap"><span class="badge bg-secondary cert-type-badge" title="{{ c.cert_type }}">{{ CERT_SHORT.get(c.cert_type, c.cert_type) }}</span></td>
           <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0">{{ c.cert_name }}</td>
           <td style="white-space:nowrap">{{ c.cert_no or '-' }}</td>
           <td style="white-space:nowrap">{{ c.product_model or '-' }}</td>
@@ -141,9 +149,9 @@
           </td>
           <td style="white-space:nowrap">
             {% if c.file_path and c.file_path.startswith('http') %}
-              <a href="{{ c.file_path }}" target="_blank" class="btn btn-xs btn-outline-info" title="인증서 PDF 보기">📄 인증서</a>
+              <a href="{{ c.file_path }}" target="_blank" class="btn btn-xs btn-outline-info" title="인증서 PDF 보기">📄</a>
             {% elif c.file_path %}
-              <a href="{{ url_for('static', filename=c.file_path) }}" target="_blank" class="btn btn-xs btn-outline-secondary">📄</a>
+              <a href="{{ url_for('static', filename=c.file_path) }}" target="_blank" class="btn btn-xs btn-outline-secondary" title="파일 보기">📄</a>
             {% else %}
               -
             {% endif %}
