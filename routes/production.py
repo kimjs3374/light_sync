@@ -13,6 +13,7 @@ from modules.models import (
     Project,
     Contract,
     ContractItem,
+    BusinessTrip,
 )
 from modules.production_logic import (
     sync_production_processes,
@@ -108,6 +109,19 @@ def production_display():
 
         today_leaves = get_leave_events_for_date(today)
 
+        today_dt = datetime.datetime.combine(today, datetime.time.min)
+        today_trips = (
+            db.query(BusinessTrip)
+            .options(joinedload(BusinessTrip.members))
+            .filter(
+                BusinessTrip.status.in_(['예정', '진행중']),
+                BusinessTrip.departure_date <= datetime.datetime.combine(today, datetime.time.max),
+                BusinessTrip.return_date >= today_dt,
+            )
+            .order_by(BusinessTrip.departure_date)
+            .all()
+        )
+
         return render_template(
             'production_display.html',
             today=today,
@@ -117,6 +131,7 @@ def production_display():
             column_meta=column_meta,
             schedule=schedule,
             today_leaves=today_leaves,
+            today_trips=today_trips,
         )
 
 
@@ -166,7 +181,7 @@ def production_management():
         due_filter = (request.args.get('due') or 'all').strip()
         sort_by = (request.args.get('sort') or 'due_asc').strip()
         page = safe_int(request.args.get('page'), 1)
-        per_page = safe_int(request.args.get('per_page'), 20)
+        per_page = safe_int(request.args.get('per_page'), 50)
 
         data = get_production_management_data(db, q, status_filter, due_filter, sort_by, page, per_page)
 

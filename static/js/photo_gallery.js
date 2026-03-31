@@ -88,6 +88,18 @@ function filterSites(q) {
     history.replaceState(null, '', url);
 }
 
+/* ── 모바일 현장 검색 ── */
+function filterMobileSites(q) {
+    const needle = (q || '').toLowerCase();
+    const sel = document.getElementById('mobileSiteSelect');
+    if (!sel) return;
+    Array.from(sel.options).forEach(opt => {
+        if (!opt.value) return; // placeholder
+        const name = (opt.dataset.name || opt.textContent || '').toLowerCase();
+        opt.hidden = needle ? !name.includes(needle) : false;
+    });
+}
+
 /* ── 사진 로드 ── */
 async function loadPhotos(siteId) {
     renderSkeletons();

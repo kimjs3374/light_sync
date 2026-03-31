@@ -1,16 +1,15 @@
 {% extends 'base.html' %}
 {% block head %}
 <style>
-.doc-table th{font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;background:#f8fafc;position:sticky;top:0;z-index:1}
-.doc-table td{font-size:.85rem;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
-.doc-table tbody tr{cursor:pointer;transition:background .12s}
-.doc-table tbody tr:hover{background:#eef2ff!important;box-shadow:inset 3px 0 0 var(--mg-primary)}
 .stat-card-doc{border:none;border-radius:12px;transition:transform .15s}
 .stat-card-doc:hover{transform:translateY(-2px)}
 .stat-num{font-size:1.8rem;font-weight:700;line-height:1.1}
 .stat-label{font-size:.78rem;color:#64748b;margin-top:2px}
 .req-no-link{font-family:'JetBrains Mono',monospace;font-size:.78rem;font-weight:600;color:var(--mg-primary);text-decoration:none}
 .req-no-link:hover{text-decoration:underline}
+@media (max-width:1199.98px) {
+    .main-content .table { min-width:0!important; table-layout:auto!important; }
+}
 </style>
 {% endblock %}
 
@@ -121,75 +120,74 @@
         </div>
     </div>
 
-    <div class="filter-bar mb-3 mg-fade" style="animation-delay:.08s">
-        <form method="GET" class="row g-2 align-items-end">
+    <form class="card border-0 shadow-sm mb-4 mg-fade" method="GET" style="animation-delay:.08s">
+        <div class="card-body row g-2 align-items-end">
             <div class="col-md-4 col-8">
+                <label class="small fw-bold">검색</label>
                 <input type="text" name="q" class="form-control form-control-sm"
                        placeholder="사업명, 납품요구번호, 수요기관 검색" value="{{ q }}">
             </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm">검색</button>
+            <div class="col-12 col-md-3 text-md-end">
                 <a href="{{ url_for('document.document_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
-            </div>
-        </form>
-    </div>
-
-    <div class="card border-0 shadow-sm mg-fade" style="border-radius:12px;overflow:hidden;animation-delay:.1s">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-sm table-hover mb-0 doc-table">
-                    <colgroup>
-                        <col style="width:170px">
-                        <col>
-                        <col style="width:130px">
-                        <col style="width:110px">
-                        <col style="width:100px">
-                        <col style="width:60px">
-                        <col style="width:110px">
-                    </colgroup>
-                    <thead>
-                        <tr>
-                            <th class="ps-3">납품요구번호</th>
-                            <th>사업명</th>
-                            <th>수요기관</th>
-                            <th class="text-end">품대계</th>
-                            <th>납품기한</th>
-                            <th class="text-center">품목</th>
-                            <th class="text-center">상태</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in items %}
-                        <tr onclick="location.href='{{ url_for('document.document_detail', req_no=item.req_no) }}'">
-                            <td class="ps-3">
-                                <a href="{{ url_for('document.document_detail', req_no=item.req_no) }}"
-                                   class="req-no-link">{{ item.req_no }}</a>
-                            </td>
-                            <td title="{{ item.business_name }}">{{ item.business_name }}</td>
-                            <td>{{ item.demand_org }}</td>
-                            <td class="text-end fw-bold" style="font-family:'JetBrains Mono',monospace;font-size:.8rem;">{{ fmt_money(item.supply_amount) }}</td>
-                            <td>
-                                {% if item.delivery_due %}
-                                {{ item.delivery_due.strftime('%Y-%m-%d') }}
-                                {% else %}-{% endif %}
-                            </td>
-                            <td class="text-center">
-                                <span class="badge bg-light text-dark border" style="font-size:.72rem;">{{ item.item_count }}건</span>
-                            </td>
-                            <td class="text-center">
-                                <span class="badge-status" style="background:{{ item.status_color }};color:{{ item.status_text_color }};">{{ item.status }}</span>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                        {% if not items %}
-                        <tr>
-                            <td colspan="7" class="text-center text-muted py-4">조달내역이 없습니다.</td>
-                        </tr>
-                        {% endif %}
-                    </tbody>
-                </table>
+                <button type="submit" class="btn btn-primary btn-sm fw-bold">검색</button>
             </div>
         </div>
+    </form>
+
+    <div class="table-responsive mg-fade" style="animation-delay:.1s">
+        <table class="table table-hover align-middle no-stack-table procurement-tree-table tree-card-table" style="font-size:0.82rem;table-layout:fixed;min-width:880px;">
+            <colgroup>
+                <col style="width:160px">    {# 납품요구번호 #}
+                <col style="min-width:0">    {# 사업명 — 남은 공간 차지 #}
+                <col style="width:120px">    {# 수요기관 #}
+                <col style="width:110px">    {# 품대계 #}
+                <col style="width:95px">     {# 납품기한 #}
+                <col style="width:55px">     {# 품목 #}
+                <col style="width:100px">    {# 상태 #}
+            </colgroup>
+            <thead class="table-light" style="white-space:nowrap">
+                <tr>
+                    <th>납품요구번호</th>
+                    <th>사업명</th>
+                    <th>수요기관</th>
+                    <th class="text-end">품대계</th>
+                    <th>납품기한</th>
+                    <th class="text-center">품목</th>
+                    <th class="text-center">상태</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr role="button" onclick="location.href='{{ url_for('document.document_detail', req_no=item.req_no) }}'">
+                    <td style="white-space:nowrap">
+                        <a href="{{ url_for('document.document_detail', req_no=item.req_no) }}"
+                           class="req-no-link">{{ item.req_no }}</a>
+                    </td>
+                    <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="{{ item.business_name }}">{{ item.business_name }}</td>
+                    <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0"><small>{{ item.demand_org }}</small></td>
+                    <td class="text-end fw-bold" style="white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:.8rem;">{{ fmt_money(item.supply_amount) }}</td>
+                    <td style="white-space:nowrap">
+                        <small>{% if item.delivery_due %}{{ item.delivery_due.strftime('%Y-%m-%d') }}{% else %}-{% endif %}</small>
+                    </td>
+                    <td class="text-center" style="white-space:nowrap">
+                        {% if item.item_count > 1 %}
+                            <span class="badge bg-secondary" style="font-size:.72rem;white-space:nowrap;">{{ item.item_count }}건</span>
+                        {% else %}
+                            1
+                        {% endif %}
+                    </td>
+                    <td class="text-center" style="white-space:nowrap">
+                        <span class="badge-status" style="background:{{ item.status_color }};color:{{ item.status_text_color }};white-space:nowrap;">{{ item.status }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not items %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-4">조달내역이 없습니다.</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
     </div>
 </div>
 {% endblock %}

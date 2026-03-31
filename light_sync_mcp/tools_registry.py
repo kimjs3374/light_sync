@@ -26,6 +26,9 @@ from .tools import (
     illuminance,
     employee,
     processing_order,
+    business_trip,
+    document,
+    tool_mgmt,
 )
 from .resources import magnatech
 
@@ -55,4 +58,7 @@ def register_all(mcp: FastMCP):
     illuminance.register(mcp)
     employee.register(mcp)
     processing_order.register(mcp)
+    business_trip.register(mcp)
+    document.register(mcp)
+    tool_mgmt.register(mcp)
     magnatech.register(mcp)

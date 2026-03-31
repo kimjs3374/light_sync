@@ -155,7 +155,7 @@ def po_list():
     q = (request.args.get('q') or '').strip()
     status = (request.args.get('status') or '').strip()
     page = safe_int(request.args.get('page'), 1)
-    per_page = 20
+    per_page = 50
 
     with get_db() as db:
         query = db.query(PurchaseOrder).join(Vendor).options(
@@ -196,7 +196,7 @@ def po_list():
             )
         history_count = hist_query.count() if not status else 0
         hist_page = safe_int(request.args.get('hp'), 1)
-        hist_per_page = 30
+        hist_per_page = 50
         hist_offset = (hist_page - 1) * hist_per_page
         history_orders = hist_query.order_by(desc(PurchaseOrderHistory.order_date)) \
                                    .offset(hist_offset).limit(hist_per_page).all() if not status else []

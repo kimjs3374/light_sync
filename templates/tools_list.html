@@ -9,6 +9,9 @@
   .tool-card .tool-meta{font-size:.78rem;color:var(--mg-muted);margin-top:.25rem}
   .tool-card .tool-meta span+span::before{content:"·";margin:0 .35rem;color:var(--mg-subtle)}
   .stat-num{font-weight:800;font-size:1.15rem;font-family:var(--mg-mono)}
+  @media (max-width: 1199.98px) {
+    .main-content .table { min-width: 0 !important; table-layout: auto !important; }
+  }
 </style>
 
 <div class="container-fluid py-3">
@@ -57,14 +60,22 @@
   {# ── 데스크톱 테이블 ── #}
   <div class="d-none d-md-block">
     <div class="table-responsive">
-      <table class="table table-sm table-hover align-middle mb-0">
-        <thead class="table-light">
+      <table class="table table-hover align-middle no-stack-table tree-card-table" style="font-size:0.82rem;table-layout:fixed;min-width:780px;">
+        <colgroup>
+          <col style="width:70px">
+          <col>
+          <col style="width:80px">
+          <col style="width:120px">
+          <col style="width:100px">
+          <col style="width:180px">
+        </colgroup>
+        <thead class="table-light" style="white-space:nowrap">
           <tr>
-            <th style="white-space:nowrap">상태</th>
+            <th>상태</th>
             <th>공구명</th>
-            <th style="white-space:nowrap">소속팀</th>
-            <th style="white-space:nowrap">수량 (가용/전체)</th>
-            <th style="white-space:nowrap">현재위치</th>
+            <th>소속팀</th>
+            <th>수량 (가용/전체)</th>
+            <th>현재위치</th>
             <th>비고</th>
           </tr>
         </thead>
@@ -90,7 +101,7 @@
               <span class="{{ 'text-danger fw-bold' if t.available_qty == 0 else '' }}">{{ t.available_qty }}</span> / {{ t.total_qty }}
             </td>
             <td style="white-space:nowrap">{{ t.current_location or '-' }}</td>
-            <td><span class="text-truncate d-inline-block" style="max-width:180px">{{ t.note or '' }}</span></td>
+            <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0">{{ t.note or '' }}</td>
           </tr>
           {% else %}
           <tr><td colspan="6" class="text-center text-muted py-4">등록된 공구가 없습니다.</td></tr>

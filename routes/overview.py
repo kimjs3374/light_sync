@@ -41,7 +41,7 @@ def _calc_entry(proj):
     production_pct = round(production_done / total_items * 100) if total_items else 0
     delivery_pct = round(delivery_done / total_deliveries * 100) if total_deliveries else 0
 
-    phases = [sales_pct, material_pct, production_pct, delivery_pct]
+    phases = [sales_pct, production_pct, delivery_pct]
     overall_pct = round(sum(phases) / len(phases)) if phases else 0
 
     return {
@@ -49,7 +49,6 @@ def _calc_entry(proj):
         'total_items': total_items,
         'total_deliveries': total_deliveries,
         'sales_pct': sales_pct,
-        'material_pct': material_pct,
         'production_pct': production_pct,
         'delivery_pct': delivery_pct,
         'overall_pct': overall_pct,
@@ -63,7 +62,7 @@ def project_overview():
     progress_filter = request.args.get('progress', 'all')   # all/not_started/in_progress/completed
     sort_by = request.args.get('sort', 'id_desc')           # id_desc/pct_asc/pct_desc
     page = safe_int(request.args.get('page'), 1)
-    per_page = 20
+    per_page = safe_int(request.args.get('per_page'), 50)
 
     with get_db() as db:
         from modules.contract_filters import active_contract_filter
@@ -125,7 +124,8 @@ def project_overview():
     return render_template(
         'project_overview.html',
         entries=entries,
-        filters={'search': search, 'progress': progress_filter, 'sort': sort_by},
+        filters={'search': search, 'progress': progress_filter, 'sort': sort_by, 'show_done': '1' if show_done else ''},
         pagination=pagination,
         stats=stats,
+        today=datetime.date.today(),
     )

@@ -7,6 +7,7 @@ from modules.db_context import get_db
 from modules.utils import safe_int, parse_date
 from modules.pagination import make_pagination
 from modules.activity import log_activity
+from modules.kakaowork_notifier import send_group_notification
 from modules.models import (
     BusinessTrip, BusinessTripMember, User, DashboardSetting,
     TRIP_STATUS_CHOICES, VEHICLE_CHOICES,
@@ -82,7 +83,7 @@ def _save_members(db, trip, form):
 @menu_required('business_trip')
 def trip_list():
     page = safe_int(request.args.get('page'), 1)
-    per_page = 20
+    per_page = 50
     status_filter = request.args.get('status', '').strip()
     search = request.args.get('search', '').strip()
 
@@ -160,6 +161,28 @@ def trip_create():
                          ref_type='BusinessTrip', ref_id=trip.id,
                          user_name=session.get('full_name'))
             db.commit()
+
+            # 카카오워크 그룹채팅 알림
+            member_labels = [
+                f"{m.user_name} {m.position}".strip() if m.position else m.user_name
+                for m in trip.members if m.user_name
+            ]
+            creator_user = db.query(User).get(session['user_id'])
+            creator_label = session.get('full_name', '-')
+            if creator_user and creator_user.position:
+                creator_label = f"{creator_user.full_name} {creator_user.position}"
+            dep_str = trip.departure_date.strftime('%Y-%m-%d %H:%M') if trip.departure_date else '-'
+            ret_str = trip.return_date.strftime('%Y-%m-%d %H:%M') if trip.return_date else '-'
+            notify_text = (
+                f"[출장등록] {trip.title}\n"
+                f"목적지: {trip.destination}\n"
+                f"출발: {dep_str}\n"
+                f"귀환: {ret_str}\n"
+                f"차량: {trip.vehicle or '-'}\n"
+                f"인원: {', '.join(member_labels) or '-'}\n"
+                f"등록자: {creator_label}"
+            )
+            send_group_notification(notify_text)
 
             flash('출장이 등록되었습니다.', 'success')
             return redirect(url_for('business_trip.trip_list'))

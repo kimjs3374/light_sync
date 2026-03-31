@@ -83,7 +83,7 @@ def sales_list():
     q = (request.args.get('q') or '').strip().lower()
     show_done = request.args.get('show_done', '') == '1'
     page = safe_int(request.args.get('page'), 1)
-    per_page = safe_int(request.args.get('per_page'), 20)
+    per_page = safe_int(request.args.get('per_page'), 50)
 
     with get_db() as db:
         base_query = db.query(Project).filter(Project.is_contracted == True)

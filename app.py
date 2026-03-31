@@ -52,6 +52,7 @@ from routes.tools import tools_bp
 from routes.document import document_bp
 from routes.app_api import app_api_bp
 from modules.pagination import pagination_query
+from modules.scheduler import init_scheduler
 
 # =====================================================================
 # App 생성 및 설정
@@ -435,6 +436,15 @@ def sync_g2b_cli(mode, start_year, no_auto_contract):
                + (f", 오류 {result['errors']}건" if result.get('errors') else ''))
     if auto_result['created']:
         click.echo(f"[G2B] 자동계약: {auto_result['created']}건 생성, {auto_result['skipped']}건 스킵")
+
+
+# =====================================================================
+# 백그라운드 스케줄러 (출장 상태 자동 업데이트 등)
+# - 개발: Werkzeug reloader 자식 프로세스에서만 실행 (이중 실행 방지)
+# - 운영: gunicorn 프로세스에서 바로 실행
+# =====================================================================
+if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    init_scheduler(app)
 
 
 if __name__ == '__main__':

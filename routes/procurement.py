@@ -200,7 +200,7 @@ def procurement_list():
     org = (request.args.get('org') or '').strip()
     status_filter = (request.args.get('status') or '').strip()
     page = safe_int(request.args.get('page'), 1)
-    per_page = safe_int(request.args.get('per_page'), 30)
+    per_page = safe_int(request.args.get('per_page'), 50)
 
     with get_db() as db:
         # --- 필터 조건 빌드 (공통) ---

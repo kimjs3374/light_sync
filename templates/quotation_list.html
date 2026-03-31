@@ -6,7 +6,7 @@
     .stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
     .stat-label { font-size: .78rem; color: #64748b; margin-top: 2px; }
     .qt-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; white-space: nowrap; text-transform: uppercase; letter-spacing: .03em; background: #f8fafc; position: sticky; top: 0; z-index: 1; }
-    .qt-table td { vertical-align: middle; white-space: nowrap; font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+    .qt-table td { vertical-align: middle; font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
     .qt-table tbody tr { cursor: pointer; transition: background .12s, box-shadow .12s; }
     .qt-table tbody tr:hover { background: #eef2ff; box-shadow: inset 3px 0 0 #2563eb; }
     .qt-no-link { font-weight: 700; color: #0f172a; text-decoration: none; font-family: var(--mg-mono); font-size: .82rem; }
@@ -16,6 +16,9 @@
     .td-project { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
     @media (max-width: 767.98px) {
         .stat-num { font-size: 1.4rem; }
+    }
+    @media (max-width: 1199.98px) {
+        .main-content .table { min-width: 0 !important; table-layout: auto !important; }
     }
 </style>
 
@@ -85,16 +88,25 @@
 <div class="card border-0 shadow-sm" style="border-radius:12px;overflow:hidden;">
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 qt-table">
-                <thead>
-                    <tr style="background:#f8fafc;">
-                        <th class="ps-3" style="width:120px">견적번호</th>
-                        <th style="width:95px">견적일</th>
-                        <th style="width:120px">수급자</th>
+            <table class="table table-hover align-middle no-stack-table tree-card-table qt-table" style="font-size:0.82rem;table-layout:fixed;min-width:780px;">
+                <colgroup>
+                    <col style="width:120px">
+                    <col style="width:95px">
+                    <col style="width:120px">
+                    <col>
+                    {% if not hide_financial %}<col style="width:120px">{% endif %}
+                    <col style="width:75px">
+                    <col style="width:55px">
+                </colgroup>
+                <thead class="table-light" style="white-space:nowrap">
+                    <tr>
+                        <th class="ps-3">견적번호</th>
+                        <th>견적일</th>
+                        <th>수급자</th>
                         <th>건명</th>
-                        {% if not hide_financial %}<th style="width:120px" class="text-end">합계금액</th>{% endif %}
-                        <th style="width:75px">상태</th>
-                        <th style="width:55px">PDF</th>
+                        {% if not hide_financial %}<th class="text-end">합계금액</th>{% endif %}
+                        <th>상태</th>
+                        <th>PDF</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -103,7 +115,7 @@
                         <td class="ps-3"><a href="{{ url_for('quotation.quotation_detail', quote_id=qt.id) }}" class="qt-no-link">{{ qt.quote_no }}</a></td>
                         <td>{{ qt.quote_date.strftime('%Y-%m-%d') if qt.quote_date else '-' }}</td>
                         <td><strong>{{ qt.customer_name or '-' }}</strong></td>
-                        <td class="td-project">{{ qt.project_name or '-' }}</td>
+                        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0">{{ qt.project_name or '-' }}</td>
                         {% if not hide_financial %}<td class="text-end fw-bold" style="color:#0f172a;">{{ fmt_money(qt.total_amount) }}</td>{% endif %}
                         <td>
                             {% if qt.status == '작성중' %}

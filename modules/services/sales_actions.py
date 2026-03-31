@@ -7,6 +7,7 @@ from modules.models import (
     CONTRACT_ITEM_SPEC_SCHEMA,
 )
 from modules.history_board import append_history_log
+from modules.kakaowork_notifier import send_group_notification
 from modules.spec_utils import BOOLEAN_SPEC_FIELDS
 
 
@@ -149,17 +150,33 @@ def handle_update_sales_item(db, project, form, current_user, **ctx):
         changed_lines.append(f"납품예정일: {old_planned_delivery or '-'} → {contract.desired_delivery_date or '-'}")
 
     if changed_lines:
+        log_content = (
+            f"[협의관리] {current_user}님이 협의내용 수정\n"
+            f"대상: {item.category}/{item.model_name}({item.quantity})\n"
+            + "\n".join(changed_lines)
+        )
         append_history_log(
             db,
             project_id=project.id,
             user_name='시스템 🤖',
-            content=(
-                f"[협의관리] {current_user}님이 협의내용 수정\n"
-                f"대상: {item.category}/{item.model_name}({item.quantity})\n"
-                + "\n".join(changed_lines)
-            ),
+            content=log_content,
             scope='sales'
         )
+
+        # 카카오워크 그룹채팅 알림
+        project_name = project.temp_name or project.short_name or f"현장#{project.id}"
+        detail_url = f"https://work.mgnt.kr/sales_management/{project.id}"
+        notify_text = (
+            f"[협의변경]\n"
+            f"{project_name}\n"
+            f"\n"
+            f"품목: {item.category} / {item.model_name} ({item.quantity})\n"
+            + "\n".join(changed_lines) + f"\n수정자: {current_user}\n"
+            f"\n"
+            f"{detail_url}"
+        )
+        send_group_notification(notify_text)
+
         return {'flash': ('협의내용이 저장되었습니다.', 'success')}
     return {'flash': ('저장되었습니다. (변경값 없음)', 'success')}
 

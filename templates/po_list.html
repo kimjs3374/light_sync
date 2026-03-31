@@ -5,8 +5,8 @@
     .stat-card-po:hover { transform: translateY(-2px); }
     .stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
     .stat-label { font-size: .78rem; color: #64748b; margin-top: 2px; }
-    .po-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; white-space: nowrap; text-transform: uppercase; letter-spacing: .03em; background: #f8fafc; position: sticky; top: 0; z-index: 1; }
-    .po-table td { vertical-align: middle; white-space: nowrap; font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+    .po-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; letter-spacing: .03em; position: sticky; top: 0; z-index: 1; }
+    .po-table td { font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
     .po-table tbody tr { cursor: pointer; transition: background .12s, box-shadow .12s; }
     .po-table tbody tr:hover { background: #eef2ff; box-shadow: inset 3px 0 0 #2563eb; }
     .po-no-link { font-weight: 700; color: #0f172a; text-decoration: none; font-family: var(--mg-mono); font-size: .82rem; }
@@ -70,8 +70,7 @@
 
 {# ─── 검색/필터 ─── #}
 <div class="filter-bar mb-3">
-    <button class="btn btn-outline-secondary btn-sm w-100 mb-2 filter-collapse-toggle d-xl-none" type="button" data-bs-toggle="collapse" data-bs-target="#filterBody">검색 필터 펼치기/접기</button>
-    <div class="collapse show filter-collapse-body" id="filterBody">
+    <div class="filter-collapse-body" id="filterBody">
     <form method="GET" class="row g-2 align-items-end">
         <div class="col-md-4 col-8">
             <input type="text" name="q" class="form-control form-control-sm" placeholder="발주번호 또는 거래처명 검색" value="{{ filters.q }}">
@@ -103,17 +102,27 @@
 <div class="card border-0 shadow-sm" style="border-radius:12px;overflow:hidden;">
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 po-table">
-                <thead>
-                    <tr style="background:#f8fafc;">
-                        <th class="ps-3" style="width:110px">발주번호</th>
-                        <th style="width:90px">발주일</th>
-                        <th style="width:140px" class="po-col-contract">계약</th>
+            <table class="table table-hover align-middle no-stack-table tree-card-table mb-0 po-table" style="font-size:0.82rem;table-layout:fixed;min-width:880px;">
+                <colgroup>
+                    <col style="width:110px">
+                    <col style="width:90px">
+                    <col style="width:140px">
+                    <col>
+                    <col style="width:75px">
+                    {% if not hide_financial %}<col style="width:100px">{% endif %}
+                    <col style="width:55px">
+                    <col style="width:50px">
+                </colgroup>
+                <thead class="table-light" style="white-space:nowrap">
+                    <tr>
+                        <th class="ps-3">발주번호</th>
+                        <th>발주일</th>
+                        <th class="po-col-contract">계약</th>
                         <th>거래처</th>
-                        <th style="width:75px">상태</th>
-                        {% if not hide_financial %}<th style="width:100px" class="text-end">합계</th>{% endif %}
-                        <th style="width:55px">발송</th>
-                        <th style="width:50px"></th>
+                        <th>상태</th>
+                        {% if not hide_financial %}<th class="text-end">합계</th>{% endif %}
+                        <th>발송</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -125,10 +134,10 @@
                         data-date="{{ po.po_date.strftime('%Y-%m-%d') if po.po_date else '' }}">
                         <td class="ps-3"><a href="{{ url_for('purchase_order.po_detail', po_id=po.id) }}" class="po-no-link">{{ po.po_no }}</a></td>
                         <td>{{ po.po_date.strftime('%Y-%m-%d') if po.po_date else '-' }}</td>
-                        <td class="po-col-contract text-truncate" style="max-width:140px;">
+                        <td class="po-col-contract" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0">
                             <small>{{ po.contract.contract_name if po.contract else '-' }}</small>
                         </td>
-                        <td><strong>{{ po.vendor.name if po.vendor else '-' }}</strong></td>
+                        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0"><strong>{{ po.vendor.name if po.vendor else '-' }}</strong></td>
                         <td>
                             {% if po.status == '작성중' %}
                                 <span class="badge-status" style="background:#fef3c7;color:#92400e;">{{ po.status }}</span>

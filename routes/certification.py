@@ -36,7 +36,7 @@ def _save_cert_file(file_obj):
 @menu_required('certification')
 def cert_list():
     page = safe_int(request.args.get('page'), 1)
-    per_page = 20
+    per_page = 50
     cert_type_filter = request.args.get('cert_type', '').strip()
     status_filter = request.args.get('status', '').strip()
     search_q = request.args.get('q', '').strip()

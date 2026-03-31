@@ -1,57 +1,7 @@
 {% if priority_projects is defined and priority_projects %}
 {% set priority_dom_id = priority_section_id|default('priority_section_panel') %}
-<style>
-    .priority-section-card .table {
-        border-collapse: collapse;
-    }
-    @media (min-width: 1200px) {
-        .priority-section-card .table { table-layout: fixed; }
-    }
-    .priority-section-card th,
-    .priority-section-card td {
-        vertical-align: middle;
-        border-left: 0 !important;
-        border-right: 0 !important;
-        padding-top: .72rem;
-        padding-bottom: .72rem;
-    }
-    .priority-section-card thead th {
-        background: #f8fafc !important;
-        color: #334155 !important;
-        border-top: 0 !important;
-        border-bottom: 1px solid #e2e8f0 !important;
-    }
-    .priority-section-card tbody td {
-        border-top: 1px solid #eef2f7 !important;
-        border-bottom: 1px solid #eef2f7 !important;
-    }
-    .priority-section-card .priority-meta {
-        font-size: .85rem;
-        line-height: 1.45;
-    }
-    .priority-row-manual {
-        background: #fff1f2;
-        box-shadow: inset 4px 0 0 #dc3545;
-    }
-    .priority-row-danger {
-        background: #fff7f7;
-        box-shadow: inset 4px 0 0 #ef4444;
-    }
-    .priority-row-warning {
-        background: #fffbeb;
-        box-shadow: inset 4px 0 0 #f59e0b;
-    }
-    .priority-row-info {
-        background: #f0f9ff;
-        box-shadow: inset 4px 0 0 #0ea5e9;
-    }
-    .priority-row-muted {
-        background: #f8fafc;
-        box-shadow: inset 4px 0 0 #94a3b8;
-    }
-</style>
 
-<div class="card border-0 shadow-sm mb-4 priority-section-card">
+<div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-white d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
         <div>
             <div class="fw-bold text-danger">🔥 {{ priority_section_title|default('우선순위 리스트') }}</div>
@@ -62,90 +12,41 @@
             <button class="btn btn-sm btn-outline-secondary"
                     type="button"
                     data-bs-toggle="collapse"
-                    data-bs-target="#{{ priority_dom_id }}"
-                    aria-expanded="false"
-                    aria-controls="{{ priority_dom_id }}">
+                    data-bs-target="#{{ priority_dom_id }}">
                 열기/닫기
             </button>
         </div>
     </div>
     <div class="collapse" id="{{ priority_dom_id }}">
-    <div class="table-responsive">
-        <table class="table align-middle mb-0 mobile-stack-table">
-            <thead class="text-center small">
-                <tr>
-                    <th style="width:70px;">트리</th>
-                    <th style="width:120px;">관리번호</th>
-                    <th style="width:28%;">현장명</th>
-                    <th style="width:26%;">우선 사유</th>
-                    <th style="width:110px;">D-Day</th>
-                    <th style="width:90px;">이동</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in priority_projects %}
-                <tr class="priority-row priority-row-{{ item.tone|default('muted') }}">
-                    <td class="text-center">
-                        <button class="btn btn-sm btn-outline-secondary"
-                                type="button"
-                                data-bs-toggle="collapse"
-                                data-bs-target="#priority_tree_{{ item.project_id }}_{{ loop.index }}"
-                                aria-expanded="false"
-                                aria-controls="priority_tree_{{ item.project_id }}_{{ loop.index }}">
-                            ▼
-                        </button>
-                    </td>
-                    <td class="text-center"><b>{{ item.project_no }}</b></td>
-                    <td>
-                        <a href="{{ item.detail_url }}" class="text-dark text-decoration-none fw-bold">{{ item.title }}</a>
-                        {% if item.subtitle %}
-                        <div class="small text-muted mt-1">{{ item.subtitle }}</div>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <div class="d-flex flex-wrap gap-1">
-                            {% for reason in item.reasons %}
-                            <span class="badge {{ reason.css_class }}">{{ reason.label }}{% if reason.detail %} · {{ reason.detail }}{% endif %}</span>
-                            {% endfor %}
-                        </div>
-                    </td>
-                    <td class="text-center">
+        <div class="card-body p-0">
+            {% for item in priority_projects %}
+            <div class="d-flex align-items-start gap-2 px-3 py-2 border-bottom" style="font-size:.82rem;{% if item.tone|default('') == 'manual' %}background:#fff1f2;border-left:4px solid #dc3545!important;{% elif item.tone|default('') == 'danger' %}background:#fff7f7;border-left:4px solid #ef4444!important;{% elif item.tone|default('') == 'warning' %}background:#fffbeb;border-left:4px solid #f59e0b!important;{% elif item.tone|default('') == 'info' %}background:#f0f9ff;border-left:4px solid #0ea5e9!important;{% else %}background:#f8fafc;border-left:4px solid #94a3b8!important;{% endif %}">
+                <div style="min-width:0;flex:1;">
+                    <div class="d-flex align-items-center flex-wrap gap-1">
+                        <b>{{ item.project_no }}</b>
+                        <a href="{{ item.detail_url }}" class="text-dark text-decoration-none fw-bold" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:350px;">{{ item.title }}</a>
                         {% if item.dday is not none %}
-                        <span class="badge {% if item.dday < 0 %}bg-danger{% elif item.dday == 0 %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">
-                            {% if item.dday < 0 %}
-                                D+{{ -item.dday }}
-                            {% elif item.dday == 0 %}
-                                D-Day
-                            {% else %}
-                                D-{{ item.dday }}
-                            {% endif %}
+                        <span class="badge {% if item.dday < 0 %}bg-danger{% elif item.dday == 0 %}bg-warning text-dark{% elif item.dday <= 7 %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}" style="font-size:.65rem;white-space:nowrap;">
+                            {% if item.dday < 0 %}D+{{ -item.dday }}{% elif item.dday == 0 %}D-Day{% else %}D-{{ item.dday }}{% endif %}
                         </span>
-                        {% else %}
-                        <span class="text-muted small">-</span>
                         {% endif %}
-                    </td>
-                    <td class="text-center">
-                        <a href="{{ item.detail_url }}" class="btn btn-sm btn-outline-dark">상세</a>
-                    </td>
-                </tr>
-                <tr class="collapse" id="priority_tree_{{ item.project_id }}_{{ loop.index }}">
-                    <td colspan="6" class="bg-light p-3">
-                        <div class="priority-meta">
-                            {% if item.override_note %}
-                            <div class="small fw-bold text-danger mb-2">수동 메모: {{ item.override_note }}</div>
-                            {% endif %}
-                            {% for meta in item.meta_lines %}
-                                {% if not (item.override_note and '수동 사유:' in meta) %}
-                                <div class="text-muted mb-1">• {{ meta }}</div>
-                                {% endif %}
-                            {% endfor %}
-                        </div>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+                    </div>
+                    {% if item.subtitle %}
+                    <div class="small text-muted">{{ item.subtitle }}</div>
+                    {% endif %}
+                    <div class="d-flex flex-wrap gap-1 mt-1">
+                        {% for reason in item.reasons %}
+                        <span class="badge {{ reason.css_class }}" style="font-size:.65rem;white-space:nowrap;">{{ reason.label }}{% if reason.detail %} · {{ reason.detail }}{% endif %}</span>
+                        {% endfor %}
+                    </div>
+                    {% if item.override_note %}
+                    <div class="small text-danger mt-1">📌 {{ item.override_note }}</div>
+                    {% endif %}
+                </div>
+                <a href="{{ item.detail_url }}" class="btn btn-xs btn-outline-dark flex-shrink-0" style="white-space:nowrap;">바로가기</a>
+            </div>
+            {% endfor %}
+        </div>
     </div>
 </div>
 {% endif %}

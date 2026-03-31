@@ -469,12 +469,18 @@
     document.querySelectorAll('.confirm-btn').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
-            var itemId = this.dataset.itemId;
-            var cell = this.closest('.confirm-cell');
+            var btn = this;
+            var itemId = btn.dataset.itemId;
+            var cell = btn.closest('.confirm-cell');
+            btn.disabled = true;
+            btn.textContent = '처리중...';
             fetch('/processing-order/' + foId + '/confirm-item/' + itemId, {
                 method: 'POST',
                 headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/json'},
-            }).then(function(r) { return r.json(); }).then(function(d) {
+            }).then(function(r) {
+                if (!r.ok) throw new Error('서버 오류 ' + r.status);
+                return r.json();
+            }).then(function(d) {
                 if (d.ok) {
                     if (d.confirmed) {
                         cell.innerHTML = '<span class="text-success fw-bold">✓ ' + d.confirmed_at + '</span>';
@@ -482,7 +488,15 @@
                         cell.innerHTML = '<button class="btn btn-success btn-xs confirm-btn" style="white-space:nowrap;" data-item-id="' + itemId + '">입고확인</button>';
                     }
                     if (d.fo_status === '입고완료') location.reload();
+                } else {
+                    alert(d.error || '입고확인 처리 중 오류가 발생했습니다.');
+                    btn.disabled = false;
+                    btn.textContent = '입고확인';
                 }
+            }).catch(function(err) {
+                alert('입고확인 실패: ' + err.message);
+                btn.disabled = false;
+                btn.textContent = '입고확인';
             });
         });
     });

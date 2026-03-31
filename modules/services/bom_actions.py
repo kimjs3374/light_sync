@@ -88,30 +88,70 @@ def match_option_filter(item_option_json, selected_options):
         return True
 
 
-def find_bom_by_model_name(db, model_name):
-    """모델명으로 BOM 찾기 (별칭 우선, 기존 로직 fallback).
+def _normalize_model_name(model_name):
+    """G2B 모델명 정규화 — (M), (D), (X), (H), (3000K) 등 괄호 접미사 제거."""
+    import re
+    return re.sub(r'\([^)]*\)', '', model_name).strip()
 
-    1순위: bom_model_aliases.alias_name 정확매칭
-    2순위: BomHeader.product_code 정확매칭
-    3순위: BomHeader.product_name ILIKE (기존 fallback)
+
+def _extract_model_candidates(model_name):
+    """G2B 전체 제품명에서 매칭 후보 모델명 추출.
+
+    G2B 형식: "LED투광등기구, 매그나텍, ARENA(M)-600, 600W"
+    → 후보: ["ARENA(M)-600", "ARENA-600", "LED투광등기구, 매그나텍, ARENA(M)-600, 600W"]
     """
-    if not model_name:
-        return None
-    # 1순위: 별칭 테이블
+    import re
+    candidates = []
+    # 쉼표로 분리된 토큰 중 모델코드 패턴 추출 (영문+숫자+하이픈)
+    if ',' in model_name:
+        for token in model_name.split(','):
+            token = token.strip()
+            # 모델코드 패턴: 영문으로 시작, 하이픈+숫자 포함 (예: ARENA-600, BATOO-1000, MT-FL-300A)
+            if re.match(r'^[A-Z].*-\d', token, re.IGNORECASE):
+                candidates.append(token)
+                normalized = _normalize_model_name(token)
+                if normalized != token:
+                    candidates.append(normalized)
+    # 전체 문자열 자체도 후보 (별칭에 전체명이 등록된 경우 대비)
+    candidates.append(model_name)
+    normalized_full = _normalize_model_name(model_name)
+    if normalized_full != model_name:
+        candidates.append(normalized_full)
+    return candidates
+
+
+def _try_find_bom(db, name):
+    """단일 이름으로 별칭→product_code 2단계 검색."""
     alias = db.query(BomModelAlias).filter(
-        BomModelAlias.alias_name == model_name
+        BomModelAlias.alias_name == name
     ).first()
     if alias:
         bom = db.query(BomHeader).get(alias.bom_id)
         if bom and bom.is_active:
             return bom
-    # 2순위: product_code 정확 매칭
     bom = db.query(BomHeader).filter(
         BomHeader.is_active == True,
-        BomHeader.product_code == model_name,
+        BomHeader.product_code == name,
     ).first()
     if bom:
         return bom
+    return None
+
+
+def find_bom_by_model_name(db, model_name):
+    """모델명으로 BOM 찾기 (별칭 우선, G2B 파싱 + 정규화 fallback).
+
+    1순위: 원본 model_name → 별칭/product_code 정확매칭
+    2순위: G2B 전체명 파싱 → 모델코드 토큰 추출 → 별칭/product_code 매칭
+    3순위: BomHeader.product_name ILIKE (기존 fallback)
+    """
+    if not model_name:
+        return None
+    # 1~2순위: 후보 목록 순회 (원본 → G2B 파싱 토큰 → 정규화)
+    for candidate in _extract_model_candidates(model_name):
+        bom = _try_find_bom(db, candidate)
+        if bom:
+            return bom
     # 3순위: product_name 부분 매칭 (기존 fallback)
     return db.query(BomHeader).filter(
         BomHeader.is_active == True,

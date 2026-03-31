@@ -95,16 +95,25 @@
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0" style="font-size:0.85rem;">
-                    <thead class="table-light">
+                <table class="table table-hover align-middle no-stack-table tree-card-table mb-0" style="font-size:0.82rem;table-layout:fixed;min-width:780px;">
+                    <colgroup>
+                        <col style="width:32px">
+                        <col style="width:130px">
+                        <col style="width:90px">
+                        <col style="width:110px">
+                        <col style="width:60px">
+                        {% if can_see_price %}<col style="width:100px">{% endif %}
+                        <col style="width:60px">
+                    </colgroup>
+                    <thead class="table-light" style="white-space:nowrap">
                         <tr>
-                            <th style="width:32px" class="text-center"><input type="checkbox" id="checkAll"></th>
-                            <th style="width:130px">제품코드</th>
-                            <th style="width:90px">제품군</th>
-                            <th style="width:110px">인증번호</th>
-                            <th style="width:60px" class="text-center">부품수</th>
-                            {% if can_see_price %}<th style="width:100px" class="text-end">총 금액</th>{% endif %}
-                            <th style="width:60px">상태</th>
+                            <th class="text-center"><input type="checkbox" id="checkAll"></th>
+                            <th>제품코드</th>
+                            <th>제품군</th>
+                            <th>인증번호</th>
+                            <th class="text-center">부품수</th>
+                            {% if can_see_price %}<th class="text-end">총 금액</th>{% endif %}
+                            <th>상태</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -113,9 +122,9 @@
                             <td class="text-center" onclick="event.stopPropagation();">
                                 <input type="checkbox" name="bom_ids" value="{{ bom.id }}" class="bom-check">
                             </td>
-                            <td data-label="제품코드"><a href="{{ url_for('bom.bom_detail', bom_id=bom.id) }}" class="text-primary fw-bold text-decoration-none text-nowrap" style="overflow:hidden;text-overflow:ellipsis;max-width:130px;display:inline-block;" onclick="event.stopPropagation();">{{ bom.product_code }}</a></td>
+                            <td data-label="제품코드" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0"><a href="{{ url_for('bom.bom_detail', bom_id=bom.id) }}" class="text-primary fw-bold text-decoration-none" onclick="event.stopPropagation();">{{ bom.product_code }}</a></td>
                             <td data-label="제품군"><span class="badge bg-light text-dark border text-nowrap">{{ bom.product_category or '-' }}</span></td>
-                            <td data-label="인증번호" class="text-nowrap" style="overflow:hidden;text-overflow:ellipsis;max-width:110px;">{{ bom.certification_no or '-' }}</td>
+                            <td data-label="인증번호" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0">{{ bom.certification_no or '-' }}</td>
                             <td data-label="부품수" class="text-center"><span class="badge bg-secondary">{{ bom._item_count }}</span></td>
                             {% if can_see_price %}<td data-label="총금액" class="text-end text-nowrap">{{ '{:,.0f}'.format(bom._total_amount) if bom._total_amount else '-' }}</td>{% endif %}
                             <td data-label="상태">

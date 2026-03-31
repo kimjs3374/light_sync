@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -50,6 +51,7 @@ class DeliverySplit(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     delivery_id = Column(Integer, ForeignKey('deliveries.id'), nullable=False)
+    contract_item_id = Column(Integer, ForeignKey('contract_items.id'), nullable=True)
 
     split_no = Column(Integer, default=1)
     quantity = Column(Integer, default=0)
@@ -61,6 +63,25 @@ class DeliverySplit(Base):
     note = Column(Text, nullable=True)
 
     delivery = relationship("Delivery", back_populates="splits")
+    contract_item = relationship("ContractItem")
+    split_items = relationship("DeliverySplitItem", back_populates="split", cascade="all, delete-orphan")
+
+
+class DeliverySplitItem(Base):
+    """회차별 모델(품목)별 수량 — 1회차에 여러 모델 동시 납품"""
+    __tablename__ = 'delivery_split_items'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    split_id = Column(Integer, ForeignKey('delivery_splits.id', ondelete='CASCADE'), nullable=False)
+    contract_item_id = Column(Integer, ForeignKey('contract_items.id', ondelete='CASCADE'), nullable=False)
+    quantity = Column(Integer, default=0)
+
+    __table_args__ = (
+        UniqueConstraint('split_id', 'contract_item_id', name='uq_split_item'),
+    )
+
+    split = relationship("DeliverySplit", back_populates="split_items")
+    contract_item = relationship("ContractItem")
 
 
 class DeliveryPhoto(Base):

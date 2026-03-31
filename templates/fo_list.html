@@ -5,8 +5,8 @@
     .stat-card-fo:hover { transform: translateY(-2px); }
     .stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
     .stat-label { font-size: .78rem; color: #64748b; margin-top: 2px; }
-    .fo-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; white-space: nowrap; text-transform: uppercase; letter-spacing: .03em; background: #f8fafc; position: sticky; top: 0; z-index: 1; }
-    .fo-table td { vertical-align: middle; white-space: nowrap; font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+    .fo-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; letter-spacing: .03em; position: sticky; top: 0; z-index: 1; }
+    .fo-table td { font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
     .fo-table tbody tr { cursor: pointer; transition: background .12s, box-shadow .12s; }
     .fo-table tbody tr:hover { background: #eef2ff; box-shadow: inset 3px 0 0 #2563eb; }
     .fo-no-link { font-weight: 700; color: #0f172a; text-decoration: none; font-family: var(--mg-mono); font-size: .82rem; }
@@ -78,8 +78,7 @@
 
 {# ─── 검색/필터 ─── #}
 <div class="filter-bar mb-3">
-    <button class="btn btn-outline-secondary btn-sm w-100 mb-2 filter-collapse-toggle d-xl-none" type="button" data-bs-toggle="collapse" data-bs-target="#filterBody">검색 필터 펼치기/접기</button>
-    <div class="collapse show filter-collapse-body" id="filterBody">
+    <div class="filter-collapse-body" id="filterBody">
     <form method="GET" class="row g-2 align-items-end">
         <div class="col-md-3 col-6">
             <input type="text" name="q" class="form-control form-control-sm" placeholder="발주번호, 업체명, 품목명 검색" value="{{ filters.q }}">
@@ -119,18 +118,29 @@
 <div class="card border-0 shadow-sm" style="border-radius:12px;overflow:hidden;">
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 fo-table">
-                <thead>
-                    <tr style="background:#f8fafc;">
-                        <th class="ps-3" style="width:110px">발주번호</th>
-                        <th style="width:85px">발주일</th>
+            <table class="table table-hover align-middle no-stack-table tree-card-table mb-0 fo-table" style="font-size:0.82rem;table-layout:fixed;min-width:880px;">
+                <colgroup>
+                    <col style="width:110px">
+                    <col style="width:85px">
+                    <col>
+                    <col style="width:120px">
+                    <col style="width:70px">
+                    <col style="width:70px">
+                    {% if not hide_financial %}<col style="width:100px">{% endif %}
+                    <col style="width:85px">
+                    <col style="width:36px">
+                </colgroup>
+                <thead class="table-light" style="white-space:nowrap">
+                    <tr>
+                        <th class="ps-3">발주번호</th>
+                        <th>발주일</th>
                         <th>현장</th>
-                        <th style="width:120px">가공업체</th>
-                        <th style="width:70px">유형</th>
-                        <th style="width:70px">상태</th>
-                        {% if not hide_financial %}<th style="width:100px" class="text-end">합계</th>{% endif %}
-                        <th style="width:85px">납기</th>
-                        <th style="width:36px" class="text-center">📎</th>
+                        <th>가공업체</th>
+                        <th>유형</th>
+                        <th>상태</th>
+                        {% if not hide_financial %}<th class="text-end">합계</th>{% endif %}
+                        <th>납기</th>
+                        <th class="text-center">📎</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -148,8 +158,8 @@
                         data-date="{{ fo.fo_date.strftime('%Y-%m-%d') if fo.fo_date else '' }}">
                         <td class="ps-3"><a href="{{ url_for('processing_order.fo_detail', fo_id=fo.id) }}" class="fo-no-link">{{ fo.fo_no }}</a></td>
                         <td>{{ fo.fo_date.strftime('%Y-%m-%d') if fo.fo_date else '-' }}</td>
-                        <td><strong>{{ fo.project.temp_name if fo.project else (fo.contract.contract_name if fo.contract else '-') }}</strong></td>
-                        <td class="text-truncate" style="max-width:120px;">{{ fo.vendor.name if fo.vendor else '-' }}</td>
+                        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0"><strong>{{ fo.project.temp_name if fo.project else (fo.contract.contract_name if fo.contract else '-') }}</strong></td>
+                        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0">{{ fo.vendor.name if fo.vendor else '-' }}</td>
                         <td>
                             {% if fo.processing_type == '사급가공' %}
                                 <span class="badge-status" style="background:#fef3c7;color:#92400e;">사급</span>

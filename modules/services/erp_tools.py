@@ -94,11 +94,26 @@ ALL_TOOLS = [
     # 가공발주 (2)
     ("get_processing_orders",   "가공발주 목록",       "전체"),
     ("get_processing_order_detail", "가공발주 상세",   "전체"),
+    # 출장관리 (2)
+    ("get_business_trips",      "출장 일정 목록",      "전체"),
+    ("get_business_trip_detail", "출장 상세",          "전체"),
+    # 서류관리 (2)
+    ("get_document_list",       "서류 패키지 목록",    "전체"),
+    ("get_document_detail",     "서류 패키지 상세",    "관리부/임원진"),
+    # 공구관리 (1)
+    ("get_tools_list",          "공구 목록",           "전체"),
+    # 재고 소진 (1)
+    ("get_inventory_consumption","소진 이력",          "전체"),
+    # 입고 상세 (1)
+    ("get_receiving_detail",    "입고 상세",           "전체"),
+    # 대시보드 (1)
+    ("get_dashboard_summary",   "전체 현황 요약",      "전체"),
 ]
 
 RESTRICTED_TOOLS = {
     "get_revenue_summary", "get_financial_overview",
     "get_unpaid_invoices", "get_tax_invoices",
+    "get_document_detail",
 }
 
 

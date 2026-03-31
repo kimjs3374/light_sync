@@ -1,4 +1,4 @@
-"""FR-07: 조달/발주 도메인 Tools (4개)"""
+"""FR-07: 조달/발주 도메인 Tools (5개)"""
 import json
 from typing import Optional
 
@@ -95,19 +95,30 @@ def register(mcp: FastMCP):
     @mcp.tool()
     def get_receiving_history(
         vendor_id: Optional[int] = None,
+        project_id: Optional[int] = None,
+        status: Optional[str] = None,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
         limit: int = 50,
     ) -> str:
         """입고 이력 조회. 입고일, 거래처별 입고 내역을 반환합니다.
+        status: 검수대기 / 검수완료 / 반품
+        project_id: 계약(현장) 기준 필터
         date_from / date_to: YYYY-MM-DD 형식
         """
-        from modules.models.entities import Receiving
+        from modules.models.receiving_entities import Receiving
         session = get_session()
         try:
             q = session.query(Receiving)
             if vendor_id:
                 q = q.filter(Receiving.vendor_id == vendor_id)
+            if project_id:
+                from modules.models.entities import Contract
+                contract_ids = [c.id for c in session.query(Contract.id).filter(Contract.project_id == project_id).all()]
+                if contract_ids:
+                    q = q.filter(Receiving.contract_id.in_(contract_ids))
+            if status:
+                q = q.filter(Receiving.status == status)
             if date_from:
                 q = q.filter(Receiving.rcv_date >= date_from)
             if date_to:
@@ -133,6 +144,57 @@ def register(mcp: FastMCP):
                     "items": items,
                 })
             return json.dumps(result, ensure_ascii=False)
+        finally:
+            session.close()
+
+    @mcp.tool()
+    def get_receiving_detail(
+        rcv_id: Optional[int] = None,
+        rcv_no: Optional[str] = None,
+    ) -> str:
+        """입고 상세 조회. 입고 품목, 발주서 연결, 가공발주 연결 정보를 포함합니다.
+        ★ 특정 입고건의 상세 내역 확인 시 사용.
+        rcv_id 또는 rcv_no 중 하나는 필수.
+        """
+        from modules.models.receiving_entities import Receiving
+        session = get_session()
+        try:
+            if rcv_id:
+                rcv = session.get(Receiving, rcv_id)
+            elif rcv_no:
+                rcv = session.query(Receiving).filter(Receiving.rcv_no == rcv_no).first()
+            else:
+                return "rcv_id 또는 rcv_no가 필요합니다."
+
+            if not rcv:
+                return "입고 정보를 찾을 수 없습니다."
+
+            items = [{
+                "item_name": _s(i.item_name),
+                "item_spec": _s(i.item_spec),
+                "item_cd": _s(i.item_cd),
+                "received_qty": float(i.received_qty or 0),
+                "unit": _s(i.unit),
+                "unit_price": int(i.unit_price or 0),
+                "amount": int(i.amount or 0),
+                "note": _s(i.note),
+            } for i in rcv.items]
+
+            return json.dumps({
+                "id": rcv.id,
+                "rcv_no": _s(rcv.rcv_no),
+                "rcv_date": _sd(rcv.rcv_date),
+                "status": _s(rcv.status),
+                "vendor_name": _s(rcv.vendor.vendor_name) if rcv.vendor else "",
+                "po_no": _s(rcv.purchase_order.po_no) if rcv.purchase_order else "",
+                "fo_no": _s(rcv.processing_order.fo_no) if rcv.processing_order else "",
+                "note": _s(rcv.note),
+                "total_amount": sum(i["amount"] for i in items),
+                "item_count": len(items),
+                "items": items,
+                "created_by": _s(rcv.creator.full_name) if rcv.creator else "",
+                "created_at": _sd(rcv.created_at),
+            }, ensure_ascii=False)
         finally:
             session.close()
 

@@ -50,7 +50,7 @@ def bom_list():
     q = (request.args.get('q') or '').strip()
     category = (request.args.get('category') or '').strip()
     page = safe_int(request.args.get('page'), 1)
-    per_page = 20
+    per_page = 50
 
     with get_db() as db:
         query = db.query(BomHeader)

@@ -55,7 +55,7 @@ def vendor_list():
     q = (request.args.get('q') or '').strip()
     use_yn = (request.args.get('use_yn') or '').strip()
     page = safe_int(request.args.get('page'), 1)
-    per_page = safe_int(request.args.get('per_page'), 30)
+    per_page = safe_int(request.args.get('per_page'), 50)
 
     with get_db() as db:
         query = db.query(Vendor)

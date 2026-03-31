@@ -1,35 +1,14 @@
 {% extends 'base.html' %}
-
 {% block content %}
-<style>
-    .delivery-board .table { table-layout: fixed; border-collapse: collapse; }
-    .delivery-board th, .delivery-board td { vertical-align: middle; padding-top: .62rem; padding-bottom: .62rem; border-left: 0 !important; border-right: 0 !important; }
-    .delivery-board thead th { background: #f8fafc !important; color: #334155 !important; border-top: 0 !important; border-bottom: 1px solid #e2e8f0 !important; }
-    .delivery-board tbody td { border-top: 1px solid #eef2f7 !important; border-bottom: 1px solid #eef2f7 !important; }
-    .delivery-main-row:hover { background: #f8fafc !important; }
-    .delivery-board > .table { min-width: 920px; }
-    .delivery-subtable { min-width: 860px; }
-    .delivery-subtable .clickable-item-row { cursor: pointer; }
-    .delivery-subtable .clickable-item-row:hover { background: #f1f5f9; }
 
-    @media (max-width: 1199.98px) {
-        .delivery-board > .table,
-        .delivery-subtable {
-            min-width: 0 !important;
-            table-layout: auto !important;
-        }
-    }
-
-    @media (max-width: 767.98px) {
-        .delivery-header-actions,
-        .delivery-header-actions .btn {
-            width: 100%;
-        }
-        .delivery-header-actions form {
-            width: 100%;
-        }
-    }
-</style>
+{# --- 상태 뱃지 매크로 --- #}
+{% macro dlv_badge(status) %}
+    {%- if status == 'done' %}<span class="badge bg-success" style="white-space:nowrap;">납품완료</span>
+    {%- elif status == 'in_progress' %}<span class="badge bg-warning text-dark" style="white-space:nowrap;">진행중</span>
+    {%- elif status == 'coordinating' %}<span class="badge bg-info text-dark" style="white-space:nowrap;">협의중</span>
+    {%- else %}<span class="badge bg-secondary" style="white-space:nowrap;">대기</span>
+    {%- endif %}
+{% endmacro %}
 
 <div class="page-hero mg-fade">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
@@ -48,124 +27,212 @@
     </div>
 </div>
 
+{# --- 통계 카드 --- #}
 <div class="row g-3 mb-3 mg-fade" style="animation-delay:.05s">
-    <div class="col-md-2 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">전체 현장</small><div class="fw-bold fs-5">{{ stats.total_projects }}</div></div></div></div>
-    <div class="col-md-2 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">조회 현장</small><div class="fw-bold fs-5">{{ stats.filtered_projects }}</div></div></div></div>
-    <div class="col-md-2 col-6"><div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">납품건</small><div class="fw-bold fs-5">{{ stats.total_deliveries }}</div></div></div></div>
-    <div class="col-md-2 col-6"><div class="card border-0 shadow-sm border-start border-4 border-secondary"><div class="card-body py-2"><small class="text-muted">납품대기</small><div class="fw-bold fs-5 text-secondary">{{ stats.waiting }}</div></div></div></div>
-    <div class="col-md-2 col-6"><div class="card border-0 shadow-sm border-start border-4 border-warning"><div class="card-body py-2"><small class="text-muted">진행중</small><div class="fw-bold fs-5 text-warning">{{ stats.working }}</div></div></div></div>
-    <div class="col-md-2 col-6"><div class="card border-0 shadow-sm border-start border-4 border-success"><div class="card-body py-2"><small class="text-muted">납품완료</small><div class="fw-bold fs-5 text-success">{{ stats.done }}</div></div></div></div>
-</div>
-
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-body">
-        <button class="btn btn-outline-secondary btn-sm w-100 mb-2 filter-collapse-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#filterBody">검색 필터 펼치기/접기</button>
-        <form class="collapse show filter-collapse-body" id="filterBody" method="GET">
-            <div class="row g-2 align-items-end">
-                <div class="col-md-4">
-                    <label class="small fw-bold">검색</label>
-                    <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/계약명">
-                </div>
-                <div class="col-md-2">
-                    <label class="small fw-bold">납품상태</label>
-                    <select class="form-select" name="status">
-                        <option value="all" {% if filters.status=='all' %}selected{% endif %}>전체</option>
-                        {% for code, label in status_labels.items() %}
-                        <option value="{{ code }}" {% if filters.status==code %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="small fw-bold">정렬</label>
-                    <select class="form-select" name="sort">
-                        <option value="due_asc" {% if filters.sort=='due_asc' %}selected{% endif %}>납기 빠른순</option>
-                        <option value="due_desc" {% if filters.sort=='due_desc' %}selected{% endif %}>납기 늦은순</option>
-                        <option value="created_desc" {% if filters.sort=='created_desc' %}selected{% endif %}>생성 최신순</option>
-                    </select>
-                </div>
-                <div class="col-12 col-md-auto d-flex align-items-center justify-content-end gap-3 mobile-actions">
-                    <label class="form-check-label small" style="white-space:nowrap">
-                        <input type="checkbox" class="form-check-input" name="show_done" value="1"
-                               {{ 'checked' if filters.show_done == '1' }} onchange="this.form.submit()"> 완료건 포함
-                    </label>
-                    <div>
-                        <a href="{{ url_for('delivery.delivery_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
-                        <button class="btn btn-primary btn-sm fw-bold">검색</button>
-                    </div>
-                </div>
-            </div>
-        </form>
+    <div class="col-md-2 col-6">
+        <div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">전체 현장</small><div class="fw-bold fs-5">{{ stats.total_projects }}</div></div></div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card border-0 shadow-sm"><div class="card-body py-2"><small class="text-muted">조회 현장</small><div class="fw-bold fs-5">{{ stats.filtered_projects }}</div></div></div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-primary"><div class="card-body py-2"><small class="text-muted">납품건</small><div class="fw-bold fs-5 text-primary">{{ stats.total_deliveries }}</div></div></div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-secondary"><div class="card-body py-2"><small class="text-muted">납품대기</small><div class="fw-bold fs-5 text-secondary">{{ stats.waiting }}</div></div></div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-warning"><div class="card-body py-2"><small class="text-muted">진행중</small><div class="fw-bold fs-5 text-warning">{{ stats.working }}</div></div></div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-success"><div class="card-body py-2"><small class="text-muted">납품완료</small><div class="fw-bold fs-5 text-success">{{ stats.done }}</div></div></div>
     </div>
 </div>
 
+{# --- 검색/필터 --- #}
+<form class="card border-0 shadow-sm mb-4" method="GET">
+    <div class="filter-collapse-body" id="filterBody">
+    <div class="card-body row g-2 align-items-end">
+        <div class="col-md-4">
+            <label class="small fw-bold">검색</label>
+            <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호 / 현장명 / 계약명">
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="small fw-bold">납품상태</label>
+            <select class="form-select" name="status">
+                <option value="all" {% if filters.status=='all' %}selected{% endif %}>전체</option>
+                {% for code, label in status_labels.items() %}
+                <option value="{{ code }}" {% if filters.status==code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="small fw-bold">정렬</label>
+            <select class="form-select" name="sort">
+                <option value="due_asc" {% if filters.sort=='due_asc' %}selected{% endif %}>납기 빠른순</option>
+                <option value="due_desc" {% if filters.sort=='due_desc' %}selected{% endif %}>납기 늦은순</option>
+                <option value="created_desc" {% if filters.sort=='created_desc' %}selected{% endif %}>생성 최신순</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-4 text-md-end d-flex align-items-center justify-content-end gap-3">
+            <label class="form-check-label small" style="white-space:nowrap">
+                <input type="checkbox" class="form-check-input" name="show_done" value="1"
+                       {{ 'checked' if filters.show_done == '1' }} onchange="this.form.submit()"> 완료건 포함
+            </label>
+            <div>
+                <a href="{{ url_for('delivery.delivery_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+                <button class="btn btn-primary btn-sm fw-bold">검색</button>
+            </div>
+            {% if stats.filtered_projects != stats.total_projects %}
+            <span class="text-muted small">{{ stats.filtered_projects }}건 검색됨</span>
+            {% endif %}
+        </div>
+    </div>
+    </div>
+</form>
+
 {% include 'components/priority_section.html' %}
 
-<div class="table-responsive delivery-board">
-    <table class="table shadow-sm align-middle no-stack-table tree-card-table">
-        <thead class="text-center small">
+{# --- 메인 테이블 (조달내역 스타일) --- #}
+<style>
+@media (max-width: 1199.98px) {
+    .main-content .table { min-width: 0 !important; table-layout: auto !important; }
+}
+</style>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle no-stack-table procurement-tree-table tree-card-table" style="font-size:0.82rem;table-layout:fixed;min-width:980px;">
+        <colgroup>
+            <col style="width:100px">     {# 관리번호 #}
+            <col style="width:100px">     {# 납품기한 #}
+            <col style="width:68px">      {# D-Day #}
+            <col style="min-width:0">     {# 현장명 — 남은 공간 #}
+            <col style="width:90px">      {# 상태 #}
+            <col style="width:130px">     {# 수량 (계획/완료/잔여) #}
+            <col style="width:100px">     {# 진행률 #}
+            <col style="width:60px">      {# 납품건수 #}
+            <col style="width:80px">      {# 최근회차 #}
+        </colgroup>
+        <thead class="table-light" style="white-space:nowrap">
             <tr>
-                <th style="width: 70px;">트리</th>
-                <th style="width: 120px;">관리번호</th>
-                <th style="width: 110px;">D-Day</th>
+                <th>관리번호</th>
+                <th>납품기한</th>
+                <th class="text-center">D-Day</th>
                 <th>현장명</th>
-                <th style="width: 160px;">납품건수</th>
+                <th class="text-center">상태</th>
+                <th class="text-center">계획/완료/잔여</th>
+                <th class="text-center">진행률</th>
+                <th class="text-center">납품건</th>
+                <th class="text-center">최근회차</th>
             </tr>
         </thead>
         <tbody>
             {% for p in projects %}
-            <tr class="delivery-main-row bg-white">
-                <td class="text-center">
-                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#tree_{{ p.id }}">▼</button>
-                </td>
-                <td class="text-center"><b>{{ p.project_no }}</b></td>
-                <td class="text-center small">
-                    {% if p._dday is none %}
-                        -
-                    {% elif p._dday < 0 %}
-                        <span class="badge bg-danger">D+{{ -p._dday }}</span>
-                    {% elif p._dday == 0 %}
-                        <span class="badge bg-warning text-dark">D-Day</span>
-                    {% else %}
-                        <span class="badge bg-info text-dark">D-{{ p._dday }}</span>
+            {% set total_planned = namespace(v=0) %}
+            {% set total_delivered = namespace(v=0) %}
+            {% set worst_status = namespace(v='done') %}
+            {% set latest_split_info = namespace(v='-') %}
+            {% for d in p._matched_deliveries %}
+                {% set total_planned.v = total_planned.v + (d.planned_total_qty or 0) %}
+                {% set total_delivered.v = total_delivered.v + (d.delivered_total_qty or 0) %}
+                {% if d.delivery_status == 'waiting' %}{% set worst_status.v = 'waiting' %}
+                {% elif d.delivery_status in ['coordinating', 'in_progress'] and worst_status.v != 'waiting' %}{% set worst_status.v = d.delivery_status %}
+                {% endif %}
+                {% if d._latest_split %}
+                    {% set latest_split_info.v = (d._latest_split.split_no|string) ~ '차' %}
+                {% endif %}
+            {% endfor %}
+            {% set remain = total_planned.v - total_delivered.v %}
+            {% set pct = ((total_delivered.v / total_planned.v * 100)|round(0)|int) if total_planned.v > 0 else 0 %}
+
+            <tr role="button" data-bs-toggle="collapse" data-bs-target="#dlv-detail-{{ p.id }}"
+                class="{% if remain <= 0 and total_planned.v > 0 %}{% elif p._dday is not none and p._dday < 0 %}table-danger{% elif p._dday is not none and p._dday <= 7 %}table-warning{% endif %}">
+                <td style="white-space:nowrap"><b>{{ p.project_no }}</b></td>
+                <td style="white-space:nowrap"><small>{% set due_date = namespace(v=none) %}{% for c in p.contracts %}{% if c.delivery_due_date %}{% if due_date.v is none or c.delivery_due_date < due_date.v %}{% set due_date.v = c.delivery_due_date %}{% endif %}{% endif %}{% endfor %}{{ due_date.v.strftime('%Y-%m-%d') if due_date.v else '-' }}</small></td>
+                <td class="text-center" style="white-space:nowrap">
+                    {% if p._dday is none %}-
+                    {% elif p._dday < 0 %}<span class="badge bg-danger">D+{{ -p._dday }}</span>
+                    {% elif p._dday == 0 %}<span class="badge bg-warning text-dark">D-Day</span>
+                    {% elif p._dday <= 7 %}<span class="badge bg-warning text-dark">D-{{ p._dday }}</span>
+                    {% else %}<span class="badge bg-info text-dark">D-{{ p._dday }}</span>
                     {% endif %}
                 </td>
-                <td class="ps-3 fw-bold text-dark">
-                    <a href="{{ url_for('delivery.delivery_detail', project_id=p.id) }}" class="text-dark text-decoration-none">{{ p.temp_name }}</a>
+                <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="{{ p.temp_name or '' }}">
+                    <a href="{{ url_for('delivery.delivery_detail', project_id=p.id) }}" class="text-dark text-decoration-none fw-bold" onclick="event.stopPropagation()">{{ p.temp_name or '-' }}</a>
                 </td>
-                <td class="text-center"><span class="badge bg-primary">{{ p._matched_deliveries|length }}</span></td>
+                <td class="text-center" style="white-space:nowrap">
+                    {{ dlv_badge(worst_status.v) }}
+                </td>
+                <td class="text-center" style="white-space:nowrap">
+                    <span class="text-muted">{{ total_planned.v }}</span> / <span class="fw-bold">{{ total_delivered.v }}</span>
+                    {% if remain > 0 %} / <span class="text-danger fw-bold">{{ remain }}</span>{% endif %}
+                </td>
+                <td style="white-space:nowrap">
+                    <div class="d-flex align-items-center gap-1">
+                        <div class="progress flex-fill" style="height:6px;">
+                            <div class="progress-bar {% if pct >= 100 %}bg-success{% elif pct >= 50 %}bg-primary{% else %}bg-secondary{% endif %}" style="width:{{ [pct,100]|min }}%;"></div>
+                        </div>
+                        <span class="small fw-bold {% if pct >= 100 %}text-success{% else %}text-muted{% endif %}" style="width:32px;text-align:right;">{{ pct }}%</span>
+                    </div>
+                </td>
+                <td class="text-center" style="white-space:nowrap">
+                    <span class="badge bg-primary">{{ p._matched_deliveries|length }}건</span>
+                </td>
+                <td class="text-center small" style="white-space:nowrap">{{ latest_split_info.v }}</td>
             </tr>
 
-            <tr class="collapse show" id="tree_{{ p.id }}">
-                <td colspan="5" class="p-3 bg-light">
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover mb-0 text-center delivery-subtable" style="font-size: 0.85rem;">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width:40%;">계약명</th><th style="width:20%;">납품상태</th><th style="width:20%;">계획/완료 수량</th><th style="width:20%;">최근 회차</th>
+            {# --- 계약별 상세 (접히는 행) --- #}
+            <tr class="collapse" id="dlv-detail-{{ p.id }}">
+                <td colspan="9" class="p-0">
+                    <div class="bg-light p-3" style="font-size:0.82rem;">
+                        <div class="mb-2 d-flex justify-content-between align-items-center">
+                            <span><strong>{{ p.temp_name }}</strong> · {{ p.project_no }} · 계약 {{ p.contracts|length }}건</span>
+                            <a href="{{ url_for('delivery.delivery_detail', project_id=p.id) }}" class="btn btn-outline-primary btn-xs">상세 관리</a>
+                        </div>
+                        <table class="table table-sm table-bordered mb-0 bg-white" style="font-size:0.82rem;">
+                            <thead>
+                                <tr class="table-secondary">
+                                    <th>계약명</th>
+                                    <th class="text-center" style="width:80px;">상태</th>
+                                    <th class="text-center" style="width:100px;">계획</th>
+                                    <th class="text-center" style="width:100px;">완료</th>
+                                    <th class="text-center" style="width:80px;">잔여</th>
+                                    <th class="text-center" style="width:80px;">진행률</th>
+                                    <th class="text-center" style="width:120px;">최근 회차</th>
+                                    <th class="text-center" style="width:80px;">담당</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for d in p._matched_deliveries %}
+                                {% set d_remain = (d.planned_total_qty or 0) - (d.delivered_total_qty or 0) %}
+                                {% set d_pct = ((d.delivered_total_qty or 0) / (d.planned_total_qty or 1) * 100)|round(0)|int if (d.planned_total_qty or 0) > 0 else 0 %}
                                 <tr class="clickable-item-row" data-href="{{ url_for('delivery.delivery_detail', project_id=p.id) }}#delivery-{{ d.id }}">
-                                    <td class="text-start" style="max-width: 70ch; word-break: keep-all; white-space: normal;">
-                                        {{ (d.contract.contract_name if d.contract else '-')[:70] }}{% if d.contract and d.contract.contract_name and (d.contract.contract_name|length > 70) %}...{% endif %}
+                                    <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="{{ d.contract.contract_name if d.contract else '-' }}">
+                                        {{ (d.contract.contract_name if d.contract else '-') }}
                                     </td>
-                                    <td>
-                                        <span class="badge {% if d.delivery_status == 'done' %}bg-success{% elif d.delivery_status == 'in_progress' %}bg-warning text-dark{% elif d.delivery_status == 'coordinating' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
-                                            {{ status_labels.get(d.delivery_status, d.delivery_status) }}
-                                        </span>
+                                    <td class="text-center" style="white-space:nowrap">{{ dlv_badge(d.delivery_status) }}</td>
+                                    <td class="text-center">{{ d.planned_total_qty or 0 }}EA</td>
+                                    <td class="text-center fw-bold">{{ d.delivered_total_qty or 0 }}EA</td>
+                                    <td class="text-center {% if d_remain > 0 %}text-danger fw-bold{% elif d_remain <= 0 and (d.planned_total_qty or 0) > 0 %}text-success fw-bold{% endif %}">
+                                        {% if d_remain > 0 %}{{ d_remain }}EA{% elif (d.planned_total_qty or 0) > 0 %}완납{% else %}-{% endif %}
                                     </td>
-                                    <td>{{ d.planned_total_qty or 0 }} / {{ d.delivered_total_qty or 0 }}</td>
-                                    <td>
+                                    <td class="text-center">
+                                        <div class="d-flex align-items-center gap-1">
+                                            <div class="progress flex-fill" style="height:4px;">
+                                                <div class="progress-bar {% if d_pct >= 100 %}bg-success{% else %}bg-primary{% endif %}" style="width:{{ [d_pct,100]|min }}%;"></div>
+                                            </div>
+                                            <span class="small">{{ d_pct }}%</span>
+                                        </div>
+                                    </td>
+                                    <td class="text-center small" style="white-space:nowrap">
                                         {% if d._latest_split %}
                                             {{ d._latest_split.split_no }}차 · {{ d._latest_split.confirmed_date or d._latest_split.scheduled_date or '-' }}
-                                        {% else %}
-                                            -
-                                        {% endif %}
+                                        {% else %}-{% endif %}
                                     </td>
+                                    <td class="text-center small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0" title="{{ d.contact_name or '미지정' }}">{{ d.contact_name or '미지정' }}</td>
                                 </tr>
                                 {% else %}
-                                <tr><td colspan="4" class="text-center text-muted">조회된 납품건이 없습니다.</td></tr>
+                                <tr><td colspan="9" class="text-center text-muted">조회된 납품건이 없습니다.</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -173,7 +240,7 @@
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="5" class="text-center py-5 text-muted">조회된 현장이 없습니다.</td></tr>
+            <tr><td colspan="9" class="text-center text-muted py-4">조회된 현장이 없습니다.</td></tr>
             {% endfor %}
         </tbody>
     </table>

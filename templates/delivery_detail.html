@@ -100,6 +100,12 @@
                         <span class="badge bg-light text-dark border">{{ d.contact_phone or '-' }}</span>
                         <span class="badge bg-light text-dark border">계획 {{ d.planned_total_qty or 0 }}EA</span>
                         <span class="badge bg-light text-dark border">완료 {{ d.delivered_total_qty or 0 }}EA</span>
+                        {% set total_remain = (d.planned_total_qty or 0) - (d.delivered_total_qty or 0) %}
+                        {% if total_remain > 0 %}
+                        <span class="badge bg-danger">잔여 {{ total_remain }}EA</span>
+                        {% elif (d.planned_total_qty or 0) > 0 %}
+                        <span class="badge bg-success">완납</span>
+                        {% endif %}
                         {% if d._latest_split %}
                         <span class="badge bg-light text-dark border">최근 {{ d._latest_split.split_no }}차 · {{ d._latest_split.confirmed_date or d._latest_split.scheduled_date or '-' }}</span>
                         {% endif %}
@@ -119,14 +125,47 @@
                     <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#assignOwnerModal{{ d.id }}">담당자 지정</button>
                     {% endif %}
                     <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#addSplit{{ d.id }}">회차 추가</button>
-                    <a href="{{ url_for('photos.photo_list', project_id=project.id) }}" class="btn btn-sm btn-outline-success">사진관리</a>
                 </div>
             </div>
 
             <div class="card-body">
+                {# 모델별 진행률 요약 #}
+                {% if d._item_stats %}
+                <div class="row g-2 mb-3">
+                    {% for cid, ist in d._item_stats.items() %}
+                    {% set ci = ist.item %}
+                    {% set ip = ((ist.delivered / ist.planned * 100)|round(0)|int) if ist.planned > 0 else 0 %}
+                    {% set remain = ist.planned - ist.delivered %}
+                    <div class="col-md-6 col-lg-4">
+                        <div class="p-2 bg-light border rounded">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <div class="d-flex align-items-center gap-1" style="min-width:0;">
+                                    <span class="badge bg-dark" style="white-space:nowrap;">{{ ci.category if ci else '?' }}</span>
+                                    <span class="small fw-bold text-truncate">{{ ci.model_name if ci else '-' }}</span>
+                                </div>
+                                <span class="small fw-bold {% if ip >= 100 %}text-success{% else %}text-muted{% endif %}" style="white-space:nowrap;">{{ ip }}%</span>
+                            </div>
+                            <div class="progress" style="height:4px;">
+                                <div class="progress-bar {% if ip >= 100 %}bg-success{% else %}bg-primary{% endif %}" style="width:{{ [ip,100]|min }}%;"></div>
+                            </div>
+                            <div class="d-flex justify-content-between mt-1">
+                                <span class="small text-muted">계획 {{ ist.planned }}EA</span>
+                                <span class="small {% if ist.delivered >= ist.planned and ist.planned > 0 %}text-success fw-bold{% else %}text-muted{% endif %}">완료 {{ ist.delivered }}EA</span>
+                                {% if remain > 0 %}
+                                <span class="small text-danger fw-bold">잔여 {{ remain }}EA</span>
+                                {% elif remain <= 0 and ist.planned > 0 %}
+                                <span class="small text-success fw-bold">완납</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
                 <div class="dlv-progress-wrap mb-3">
                     <div class="d-flex justify-content-between align-items-center small text-muted mb-1">
-                        <span>납품 진행률</span>
+                        <span>전체 진행률</span>
                         <span class="fw-bold">{{ progress_percent|round(1) }}%</span>
                     </div>
                     <div class="progress" style="height: 8px;">
@@ -134,206 +173,175 @@
                     </div>
                 </div>
 
-                <div class="row g-3">
-                    <div class="col-xl-7">
-                        <div class="card border-0 bg-light h-100">
-                            <div class="card-header bg-transparent fw-bold d-flex justify-content-between align-items-center">
-                                <span>분할납품 운영</span>
-                                <span class="small text-muted fw-normal">{{ d.splits|length }}개 회차</span>
+                {# 회차별 카드 — 각 회차에 모델별 수량 인라인 표시 #}
+                <div class="d-flex flex-column gap-2">
+                    {% for s in d.splits|sort(attribute='split_no') %}
+                    {% set split_base_date = s.confirmed_date or s.scheduled_date %}
+                    <div class="split-card {% if split_base_date and split_base_date < today and s.status not in ['done', '완료'] %}is-overdue{% elif split_base_date == today %}is-today{% endif %}">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div class="d-flex align-items-center flex-wrap gap-1">
+                                <strong class="me-1">{{ s.split_no or loop.index }}차</strong>
+                                <span class="badge {% if s.status in ['done', '완료'] %}bg-success{% elif s.status in ['coordinating', '진행'] %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{% if s.status in ['done', '완료'] %}완료{% elif s.status in ['coordinating', '진행'] %}진행{% else %}예정{% endif %}</span>
+                                <span class="badge bg-dark">{{ s.quantity or 0 }}EA</span>
+                                {% if split_base_date == today %}<span class="badge bg-primary">오늘</span>{% endif %}
+                                {% if split_base_date and split_base_date < today and s.status not in ['done', '완료'] %}<span class="badge bg-danger">지연</span>{% endif %}
                             </div>
-                            <div class="card-body p-2">
-                                <div class="d-flex flex-column gap-2">
-                                    {% for s in d.splits|sort(attribute='split_no') %}
-                                    {% set split_base_date = s.confirmed_date or s.scheduled_date %}
-                                    <div class="split-card {% if d._overdue_split_count and split_base_date and split_base_date < today and s.status not in ['done', '완료'] %}is-overdue{% elif split_base_date == today %}is-today{% endif %}">
-                                        <div class="d-flex justify-content-between align-items-start gap-2">
-                                            <div class="d-flex align-items-center flex-wrap gap-1">
-                                                <strong class="me-1">{{ s.split_no or loop.index }}차</strong>
-                                                <span class="badge {% if s.status in ['done', '완료'] %}bg-success{% elif s.status in ['coordinating', '진행'] %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-                                                    {% if s.status in ['done', '완료'] %}완료{% elif s.status in ['coordinating', '진행'] %}진행{% else %}예정{% endif %}
-                                                </span>
-                                                {% if split_base_date == today %}<span class="badge bg-primary">오늘</span>{% endif %}
-                                                {% if split_base_date and split_base_date < today and s.status not in ['done', '완료'] %}<span class="badge bg-danger">지연</span>{% endif %}
-                                            </div>
-                                            <div class="d-flex gap-1 flex-shrink-0">
-                                                <button class="btn btn-xs btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editSplit{{ s.id }}">수정</button>
-                                                <form method="POST" class="m-0" onsubmit="return confirm('해당 회차를 삭제할까요?')">
-                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                                    <input type="hidden" name="action" value="delete_split">
-                                                    <input type="hidden" name="split_id" value="{{ s.id }}">
-                                                    <button class="btn btn-xs btn-outline-danger">삭제</button>
-                                                </form>
-                                            </div>
-                                        </div>
+                            <div class="d-flex gap-1 flex-shrink-0">
+                                <button class="btn btn-xs btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editSplit{{ s.id }}">수정</button>
+                                <form method="POST" class="m-0" onsubmit="return confirm('해당 회차를 삭제할까요?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <input type="hidden" name="action" value="delete_split">
+                                    <input type="hidden" name="split_id" value="{{ s.id }}">
+                                    <button class="btn btn-xs btn-outline-danger">삭제</button>
+                                </form>
+                            </div>
+                        </div>
 
-                                        <div class="row g-2 mt-2">
-                                            <div class="col-4"><small class="text-muted d-block">수량</small><strong class="font-mono">{{ s.quantity or 0 }} EA</strong></div>
-                                            <div class="col-4"><small class="text-muted d-block">예정일</small><strong>{{ s.scheduled_date.strftime('%Y-%m-%d') if s.scheduled_date else '-' }}</strong></div>
-                                            <div class="col-4"><small class="text-muted d-block">확정일</small><strong>{{ s.confirmed_date.strftime('%Y-%m-%d') if s.confirmed_date else '-' }}</strong></div>
-                                            <div class="col-4"><small class="text-muted d-block">상차완료</small><strong>{{ s.loading_done_at.strftime('%m/%d %H:%M') if s.loading_done_at else '-' }}</strong></div>
-                                            <div class="col-4"><small class="text-muted d-block">납품완료</small><strong>{{ s.delivered_done_at.strftime('%m/%d %H:%M') if s.delivered_done_at else '-' }}</strong></div>
-                                            <div class="col-4"><small class="text-muted d-block">상태</small><strong>{% if s.status in ['done', '완료'] %}완료{% elif s.status in ['coordinating', '진행'] %}진행{% else %}예정{% endif %}</strong></div>
-                                        </div>
+                        {# 모델별 수량 인라인 #}
+                        {% if s.split_items %}
+                        <div class="d-flex flex-wrap gap-1 mt-2">
+                            {% for si in s.split_items %}
+                            <span class="badge bg-light text-dark border">{{ si.contract_item.category if si.contract_item else '?' }} {{ si.contract_item.model_name if si.contract_item else '' }} <strong>{{ si.quantity }}EA</strong></span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
 
-                                        {% if s.note %}
-                                        <div class="mt-2 p-2 bg-white border rounded small text-muted" style="white-space:pre-wrap;"><b>메모</b> {{ s.note }}</div>
-                                        {% endif %}
+                        <div class="row g-2 mt-2">
+                            <div class="col-3"><small class="text-muted d-block">예정일</small><strong>{{ s.scheduled_date.strftime('%Y-%m-%d') if s.scheduled_date else '-' }}</strong></div>
+                            <div class="col-3"><small class="text-muted d-block">확정일</small><strong>{{ s.confirmed_date.strftime('%Y-%m-%d') if s.confirmed_date else '-' }}</strong></div>
+                            <div class="col-3"><small class="text-muted d-block">상차완료</small><strong>{{ s.loading_done_at.strftime('%m/%d %H:%M') if s.loading_done_at else '-' }}</strong></div>
+                            <div class="col-3"><small class="text-muted d-block">납품완료</small><strong>{{ s.delivered_done_at.strftime('%m/%d %H:%M') if s.delivered_done_at else '-' }}</strong></div>
+                        </div>
+                        {% if s.note %}
+                        <div class="mt-2 p-2 bg-light border rounded small text-muted" style="white-space:pre-wrap;"><b>메모</b> {{ s.note }}</div>
+                        {% endif %}
 
-                                        <div class="collapse mt-2" id="editSplit{{ s.id }}">
-                                            <div class="p-2 bg-white border rounded">
-                                                <form method="POST" class="row g-2">
-                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                                    <input type="hidden" name="action" value="update_split">
-                                                    <input type="hidden" name="split_id" value="{{ s.id }}">
-                                                    <div class="col-md-2">
-                                                        <label class="form-label small fw-bold text-muted">회차</label>
-                                                        <input class="form-control form-control-sm" type="number" name="split_no" value="{{ s.split_no or 1 }}">
-                                                    </div>
-                                                    <div class="col-md-2">
-                                                        <label class="form-label small fw-bold text-muted">수량</label>
-                                                        <input class="form-control form-control-sm" type="number" name="quantity" value="{{ s.quantity or 0 }}">
-                                                    </div>
-                                                    <div class="col-md-2">
-                                                        <label class="form-label small fw-bold text-muted">예정일</label>
-                                                        <input class="form-control form-control-sm" type="date" name="scheduled_date" value="{{ s.scheduled_date.strftime('%Y-%m-%d') if s.scheduled_date else '' }}">
-                                                    </div>
-                                                    <div class="col-md-2">
-                                                        <label class="form-label small fw-bold text-muted">확정일</label>
-                                                        <input class="form-control form-control-sm" type="date" name="confirmed_date" value="{{ s.confirmed_date.strftime('%Y-%m-%d') if s.confirmed_date else '' }}">
-                                                    </div>
-                                                    <div class="col-md-2">
-                                                        <label class="form-label small fw-bold text-muted">상차완료</label>
-                                                        <input class="form-control form-control-sm" type="datetime-local" name="loading_done_at" value="{{ s.loading_done_at.strftime('%Y-%m-%dT%H:%M') if s.loading_done_at else '' }}">
-                                                    </div>
-                                                    <div class="col-md-2">
-                                                        <label class="form-label small fw-bold text-muted">납품완료</label>
-                                                        <input class="form-control form-control-sm" type="datetime-local" name="delivered_done_at" value="{{ s.delivered_done_at.strftime('%Y-%m-%dT%H:%M') if s.delivered_done_at else '' }}">
-                                                    </div>
-                                                    <div class="col-md-3">
-                                                        <label class="form-label small fw-bold text-muted">상태</label>
-                                                        <select class="form-select form-select-sm" name="status">
-                                                            <option value="waiting" {% if s.status in ['waiting', '예정'] %}selected{% endif %}>예정</option>
-                                                            <option value="coordinating" {% if s.status in ['coordinating', '진행'] %}selected{% endif %}>진행</option>
-                                                            <option value="done" {% if s.status in ['done', '완료'] %}selected{% endif %}>완료</option>
-                                                        </select>
-                                                    </div>
-                                                    <div class="col-md-9">
-                                                        <label class="form-label small fw-bold text-muted">메모</label>
-                                                        <input class="form-control form-control-sm" name="note" value="{{ s.note or '' }}" placeholder="운송/현장 특이사항">
-                                                    </div>
-                                                    <div class="col-12 text-end">
-                                                        <button class="btn btn-sm btn-primary fw-bold">회차 저장</button>
-                                                    </div>
-                                                </form>
+                        {# 수정 폼 — 모델별 수량 입력 #}
+                        <div class="collapse mt-2" id="editSplit{{ s.id }}">
+                            <div class="p-2 bg-light border rounded">
+                                <form method="POST" class="row g-2">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <input type="hidden" name="action" value="update_split">
+                                    <input type="hidden" name="split_id" value="{{ s.id }}">
+                                    {% if d.contract and d.contract.items %}
+                                    <div class="col-12">
+                                        <label class="form-label small fw-bold text-muted">모델별 수량</label>
+                                        <div class="row g-1">
+                                            {% for ci in d.contract.items %}
+                                            {% set existing_qty = 0 %}
+                                            {% for si in s.split_items if si.contract_item_id == ci.id %}{% set existing_qty = si.quantity %}{% endfor %}
+                                            {% set ci_remain = (ci.quantity or 0) - (d._item_stats[ci.id].delivered if ci.id in d._item_stats else 0) %}
+                                            <div class="col-md-4 col-lg-3">
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text small" style="font-size:.75rem;white-space:nowrap;" title="{{ ci.category }} {{ ci.model_name or '' }} (잔여 {{ ci_remain }}EA)">{{ ci.category[:2] }} {{ (ci.model_name or '')[:12] }}</span>
+                                                    <input type="number" class="form-control form-control-sm" name="item_qty_{{ ci.id }}" value="{{ existing_qty }}" min="0" placeholder="0">
+                                                </div>
+                                                <div class="small text-muted" style="font-size:.65rem;">계획 {{ ci.quantity or 0 }} / 잔여 <span class="{% if ci_remain > 0 %}text-danger fw-bold{% else %}text-success{% endif %}">{{ ci_remain }}</span></div>
                                             </div>
+                                            {% endfor %}
                                         </div>
                                     </div>
-                                    {% else %}
-                                    <div class="text-center text-muted p-3 border border-dashed rounded">등록된 분할납품 회차가 없습니다. 회차 추가로 일정부터 잡아주세요.</div>
-                                    {% endfor %}
-                                </div>
-
-                                <div class="collapse mt-3" id="addSplit{{ d.id }}">
-                                    <div class="p-3 bg-white border rounded">
-                                        <div class="d-flex justify-content-between align-items-center mb-2">
-                                            <h6 class="fw-bold text-dark m-0">새 회차 추가</h6>
-                                            <span class="small text-muted">현재 {{ d.splits|length }}개 회차</span>
-                                        </div>
-                                        <form method="POST" class="row g-2">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                            <input type="hidden" name="action" value="add_split">
-                                            <input type="hidden" name="delivery_id" value="{{ d.id }}">
-                                            <div class="col-md-2">
-                                                <label class="form-label small fw-bold text-muted">회차</label>
-                                                <input class="form-control form-control-sm" type="number" name="split_no" min="1" value="{{ (d.splits|length) + 1 }}">
-                                            </div>
-                                            <div class="col-md-2">
-                                                <label class="form-label small fw-bold text-muted">수량</label>
-                                                <input class="form-control form-control-sm" type="number" name="quantity" min="0" value="0">
-                                            </div>
-                                            <div class="col-md-2">
-                                                <label class="form-label small fw-bold text-muted">예정일</label>
-                                                <input class="form-control form-control-sm" type="date" name="scheduled_date">
-                                            </div>
-                                            <div class="col-md-2">
-                                                <label class="form-label small fw-bold text-muted">확정일</label>
-                                                <input class="form-control form-control-sm" type="date" name="confirmed_date">
-                                            </div>
-                                            <div class="col-md-2">
-                                                <label class="form-label small fw-bold text-muted">상태</label>
-                                                <select class="form-select form-select-sm" name="status">
-                                                    <option value="waiting">예정</option>
-                                                    <option value="coordinating">진행</option>
-                                                    <option value="done">완료</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-2 d-grid align-items-end">
-                                                <button class="btn btn-sm btn-primary fw-bold">추가 저장</button>
-                                            </div>
-                                            <div class="col-12">
-                                                <label class="form-label small fw-bold text-muted">메모</label>
-                                                <input class="form-control form-control-sm" name="note" placeholder="운송/현장 특이사항 메모">
-                                            </div>
-                                        </form>
+                                    {% endif %}
+                                    <div class="col-md-2">
+                                        <label class="form-label small fw-bold text-muted">회차</label>
+                                        <input class="form-control form-control-sm" type="number" name="split_no" value="{{ s.split_no or 1 }}">
                                     </div>
-                                </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small fw-bold text-muted">예정일</label>
+                                        <input class="form-control form-control-sm" type="date" name="scheduled_date" value="{{ s.scheduled_date.strftime('%Y-%m-%d') if s.scheduled_date else '' }}">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small fw-bold text-muted">확정일</label>
+                                        <input class="form-control form-control-sm" type="date" name="confirmed_date" value="{{ s.confirmed_date.strftime('%Y-%m-%d') if s.confirmed_date else '' }}">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small fw-bold text-muted">상차완료</label>
+                                        <input class="form-control form-control-sm" type="datetime-local" name="loading_done_at" value="{{ s.loading_done_at.strftime('%Y-%m-%dT%H:%M') if s.loading_done_at else '' }}">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small fw-bold text-muted">납품완료</label>
+                                        <input class="form-control form-control-sm" type="datetime-local" name="delivered_done_at" value="{{ s.delivered_done_at.strftime('%Y-%m-%dT%H:%M') if s.delivered_done_at else '' }}">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small fw-bold text-muted">상태</label>
+                                        <select class="form-select form-select-sm" name="status">
+                                            <option value="waiting" {% if s.status in ['waiting', '예정'] %}selected{% endif %}>예정</option>
+                                            <option value="coordinating" {% if s.status in ['coordinating', '진행'] %}selected{% endif %}>진행</option>
+                                            <option value="done" {% if s.status in ['done', '완료'] %}selected{% endif %}>완료</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-10">
+                                        <label class="form-label small fw-bold text-muted">메모</label>
+                                        <input class="form-control form-control-sm" name="note" value="{{ s.note or '' }}" placeholder="운송/현장 특이사항">
+                                    </div>
+                                    <div class="col-12 text-end">
+                                        <button class="btn btn-sm btn-primary fw-bold">회차 저장</button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
                     </div>
+                    {% else %}
+                    <div class="text-center text-muted p-3 border border-dashed rounded">등록된 납품 회차가 없습니다. 회차 추가로 일정부터 잡아주세요.</div>
+                    {% endfor %}
+                </div>
 
-                    <div class="col-xl-5">
-                        <div class="card border-0 bg-light h-100">
-                            <div class="card-header bg-transparent fw-bold d-flex justify-content-between align-items-center">
-                                <span>사진 증빙</span>
-                                <span class="small text-muted fw-normal">총 {{ d.photos|length }}건</span>
-                            </div>
-                            <div class="card-body p-2">
-                                <div class="row g-2 mb-3">
-                                    <div class="col-6"><div class="kpi-mini-card"><small class="text-muted d-block">{{ photo_type_labels.get('production_done', '제작완료') }}</small><strong class="font-mono">{{ d._photo_counts['production_done'] if d._photo_counts is defined else 0 }}</strong></div></div>
-                                    <div class="col-6"><div class="kpi-mini-card"><small class="text-muted d-block">{{ photo_type_labels.get('loading', '상차') }}</small><strong class="font-mono">{{ d._photo_counts['loading'] if d._photo_counts is defined else 0 }}</strong></div></div>
-                                    <div class="col-6"><div class="kpi-mini-card"><small class="text-muted d-block">{{ photo_type_labels.get('delivery_done', '납품완료') }}</small><strong class="font-mono">{{ d._photo_counts['delivery_done'] if d._photo_counts is defined else 0 }}</strong></div></div>
-                                    <div class="col-6"><div class="kpi-mini-card"><small class="text-muted d-block">전체 사진</small><strong class="font-mono">{{ d.photos|length }}</strong></div></div>
-                                </div>
-
-                                {% if d._needs_done_photo %}
-                                <div class="alert alert-warning border-0 py-2 px-3 mb-3">
-                                    <div class="fw-bold small">완료 사진 확인 필요</div>
-                                    <div class="small text-muted">계획 수량은 충족했지만 납품완료 사진이 없어 최종 완료 판단이 지연될 수 있습니다.</div>
-                                </div>
-                                {% endif %}
-
-                                {% if d.photos %}
-                                <div class="photo-gallery-grid">
-                                    {% for ph in d.photos|reverse %}
-                                        {% if loop.index <= 6 %}
-                                        <a href="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" target="_blank" class="photo-thumb-card text-decoration-none">
-                                            <div class="photo-thumb-frame">
-                                                <img src="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" alt="{{ ph.file_name }}">
-                                            </div>
-                                            <div class="pt-1 px-1">
-                                                <div class="d-flex flex-wrap gap-1 mb-1">
-                                                    <span class="badge bg-light text-dark border">{{ ph._photo_type_label or ph.photo_type }}</span>
-                                                    <span class="badge bg-light text-secondary border">{{ ('#' ~ ph.split_id) if ph.split_id else '공통' }}</span>
-                                                </div>
-                                                <div class="small fw-semibold text-dark text-truncate">{{ ph.file_name }}</div>
-                                                <div class="small text-muted">{{ ph.uploaded_by or '-' }}</div>
-                                            </div>
-                                        </a>
-                                        {% endif %}
+                {# 새 회차 추가 폼 — 모델별 수량 동시 입력 #}
+                <div class="collapse mt-3" id="addSplit{{ d.id }}">
+                    <div class="p-3 bg-white border rounded">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-bold text-dark m-0">새 회차 추가</h6>
+                            <span class="small text-muted">현재 {{ d.splits|length }}개 회차</span>
+                        </div>
+                        <form method="POST" class="row g-2">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <input type="hidden" name="action" value="add_split">
+                            <input type="hidden" name="delivery_id" value="{{ d.id }}">
+                            {% if d.contract and d.contract.items %}
+                            <div class="col-12">
+                                <label class="form-label small fw-bold text-muted">모델별 납품수량</label>
+                                <div class="row g-1">
+                                    {% for ci in d.contract.items %}
+                                    {% set ci_remain = (ci.quantity or 0) - (d._item_stats[ci.id].delivered if ci.id in d._item_stats else 0) %}
+                                    <div class="col-md-4 col-lg-3">
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text small" style="font-size:.75rem;white-space:nowrap;" title="{{ ci.category }} {{ ci.model_name or '' }} (잔여 {{ ci_remain }}EA)">{{ ci.category[:2] }} {{ (ci.model_name or '')[:12] }}</span>
+                                            <input type="number" class="form-control form-control-sm" name="item_qty_{{ ci.id }}" value="0" min="0" placeholder="{{ ci_remain }}">
+                                        </div>
+                                        <div class="small text-muted" style="font-size:.65rem;">계획 {{ ci.quantity or 0 }} / 잔여 <span class="{% if ci_remain > 0 %}text-danger fw-bold{% else %}text-success{% endif %}">{{ ci_remain }}</span></div>
+                                    </div>
                                     {% endfor %}
                                 </div>
-                                {% if d.photos|length > 6 %}
-                                <div class="small text-muted mt-2">최근 6건만 표시. 전체 사진은 사진관리에서 확인하세요.</div>
-                                {% endif %}
-                                {% else %}
-                                <div class="text-center text-muted p-3 border border-dashed rounded">업로드된 사진이 없습니다. 증빙을 등록해 주세요.</div>
-                                {% endif %}
-
-                                <div class="mt-3">
-                                    <a href="{{ url_for('photos.photo_list', project_id=project.id) }}" class="btn btn-sm btn-success fw-bold">사진관리 페이지로</a>
-                                </div>
                             </div>
-                        </div>
+                            {% endif %}
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold text-muted">회차</label>
+                                <input class="form-control form-control-sm" type="number" name="split_no" min="1" value="{{ (d.splits|length) + 1 }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold text-muted">예정일</label>
+                                <input class="form-control form-control-sm" type="date" name="scheduled_date">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold text-muted">확정일</label>
+                                <input class="form-control form-control-sm" type="date" name="confirmed_date">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold text-muted">상태</label>
+                                <select class="form-select form-select-sm" name="status">
+                                    <option value="waiting">예정</option>
+                                    <option value="coordinating">진행</option>
+                                    <option value="done">완료</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2 d-grid align-items-end">
+                                <button class="btn btn-sm btn-primary fw-bold">추가 저장</button>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-bold text-muted">메모</label>
+                                <input class="form-control form-control-sm" name="note" placeholder="운송/현장 특이사항 메모">
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -351,7 +359,7 @@
         <div class="dlv-side-sticky d-flex flex-column gap-3">
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
-                    <span>오늘의 운영 포인트</span>
+                    <span>운영 포인트</span>
                     <span class="small text-muted fw-normal">빠른 현황</span>
                 </div>
                 <div class="card-body">
@@ -364,59 +372,68 @@
                 </div>
             </div>
 
+            {# 사진 증빙 — 사이드바로 이동 #}
+            {% for d in project.deliveries %}
+            {% if d.photos %}
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
-                    <span>체크 필요 항목</span>
-                    <span class="small text-muted fw-normal">리스크 요약</span>
+                    <span>사진 증빙</span>
+                    <span class="small text-muted fw-normal">{{ d.contract.contract_name[:20] if d.contract else '-' }} · {{ d.photos|length }}건</span>
                 </div>
-                <div class="card-body">
-                    {% if not summary.overdue_splits and not summary.unassigned and not summary.done_photo_missing %}
-                    <div class="alert alert-success border-0 py-2 px-3 mb-0">
-                        <div class="fw-bold small">특이사항 없음</div>
-                        <div class="small text-muted">현재 기준으로 급한 리스크가 보이지 않습니다.</div>
+                <div class="card-body p-2">
+                    <div class="row g-1 mb-2">
+                        <div class="col-3"><div class="kpi-mini-card"><small class="text-muted d-block" style="font-size:.65rem;">제작완료</small><strong class="font-mono" style="font-size:.85rem;">{{ d._photo_counts['production_done'] if d._photo_counts is defined else 0 }}</strong></div></div>
+                        <div class="col-3"><div class="kpi-mini-card"><small class="text-muted d-block" style="font-size:.65rem;">상차</small><strong class="font-mono" style="font-size:.85rem;">{{ d._photo_counts['loading'] if d._photo_counts is defined else 0 }}</strong></div></div>
+                        <div class="col-3"><div class="kpi-mini-card"><small class="text-muted d-block" style="font-size:.65rem;">납품완료</small><strong class="font-mono" style="font-size:.85rem;">{{ d._photo_counts['delivery_done'] if d._photo_counts is defined else 0 }}</strong></div></div>
+                        <div class="col-3"><div class="kpi-mini-card"><small class="text-muted d-block" style="font-size:.65rem;">기타</small><strong class="font-mono" style="font-size:.85rem;">{{ d._photo_counts['etc'] if d._photo_counts is defined else 0 }}</strong></div></div>
                     </div>
+                    {% if d._needs_done_photo %}
+                    <div class="alert alert-warning border-0 py-1 px-2 mb-2 small"><strong>완료 사진 필요</strong></div>
                     {% endif %}
+                    <div class="photo-gallery-grid">
+                        {% for ph in d.photos|reverse %}
+                            {% if loop.index <= 4 %}
+                            <a href="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" target="_blank" class="photo-thumb-card text-decoration-none">
+                                <div class="photo-thumb-frame">
+                                    <img src="{{ url_for('delivery.view_delivery_photo', photo_id=ph.id) }}" alt="{{ ph.file_name }}">
+                                </div>
+                                <div class="pt-1 px-1">
+                                    <span class="badge bg-light text-dark border" style="font-size:.65rem;">{{ ph._photo_type_label or ph.photo_type }}</span>
+                                </div>
+                            </a>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    <a href="{{ url_for('photos.photo_list', project_id=project.id) }}" class="btn btn-sm btn-outline-success fw-bold w-100 mt-2">사진관리</a>
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
 
+            {# 체크 필요 항목 #}
+            {% if summary.overdue_splits or summary.unassigned or summary.done_photo_missing %}
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white fw-bold">체크 필요</div>
+                <div class="card-body py-2">
                     {% if summary.overdue_splits %}
                     <div class="alert alert-danger border-0 py-2 px-3 mb-2">
-                        <div class="fw-bold small">지연 회차 {{ summary.overdue_splits }}건</div>
-                        <div class="small text-muted">
-                            {% for d in project.deliveries %}
-                                {% if d._overdue_split_count %}
-                                &bull; {{ (d.contract.contract_name if d.contract else '미연결 계약')[:34] }} · {{ d._overdue_split_count }}건<br>
-                                {% endif %}
-                            {% endfor %}
-                        </div>
+                        <div class="fw-bold small">지연 {{ summary.overdue_splits }}건</div>
+                        <div class="small text-muted">{% for d in project.deliveries %}{% if d._overdue_split_count %}&bull; {{ (d.contract.contract_name if d.contract else '-')[:30] }} · {{ d._overdue_split_count }}건<br>{% endif %}{% endfor %}</div>
                     </div>
                     {% endif %}
-
                     {% if summary.unassigned %}
                     <div class="alert alert-warning border-0 py-2 px-3 mb-2">
-                        <div class="fw-bold small">담당자 미지정 {{ summary.unassigned }}건</div>
-                        <div class="small text-muted">
-                            {% for d in project.deliveries %}
-                                {% if d._is_unassigned %}
-                                &bull; {{ (d.contract.contract_name if d.contract else '미연결 계약')[:34] }}<br>
-                                {% endif %}
-                            {% endfor %}
-                        </div>
+                        <div class="fw-bold small">미지정 {{ summary.unassigned }}건</div>
                     </div>
                     {% endif %}
-
                     {% if summary.done_photo_missing %}
                     <div class="alert alert-info border-0 py-2 px-3 mb-0">
                         <div class="fw-bold small">완료사진 필요 {{ summary.done_photo_missing }}건</div>
-                        <div class="small text-muted">
-                            {% for d in project.deliveries %}
-                                {% if d._needs_done_photo %}
-                                &bull; {{ (d.contract.contract_name if d.contract else '미연결 계약')[:34] }}<br>
-                                {% endif %}
-                            {% endfor %}
-                        </div>
                     </div>
                     {% endif %}
                 </div>
             </div>
+            {% endif %}
         </div>
     </div>
 </div>

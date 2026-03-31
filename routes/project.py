@@ -135,7 +135,7 @@ def project_list():
     due_filter = request.args.get('due', 'all')
     sort_by = request.args.get('sort', 'created_desc')
     page = safe_int(request.args.get('page'), 1)
-    per_page = safe_int(request.args.get('per_page'), 20)
+    per_page = safe_int(request.args.get('per_page'), 50)
 
     with get_db() as db:
         today = datetime.date.today()
@@ -278,7 +278,7 @@ def contract_list():
     show_done = request.args.get('show_done', '') == '1'
     sort_by = request.args.get('sort', 'due_asc')
     page = safe_int(request.args.get('page'), 1)
-    per_page = safe_int(request.args.get('per_page'), 20)
+    per_page = safe_int(request.args.get('per_page'), 50)
 
     with get_db() as db:
         # 하위 계약/품목/원본자재까지 선로드

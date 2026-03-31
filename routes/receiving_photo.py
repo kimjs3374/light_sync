@@ -47,7 +47,7 @@ def _parse_photos(raw):
 @menu_required('receiving_photo')
 def feed():
     page = safe_int(request.args.get('page'), 1)
-    per_page = 20
+    per_page = 50
 
     with get_db() as db:
         query = db.query(ReceivingPhotoPost).order_by(desc(ReceivingPhotoPost.created_at))

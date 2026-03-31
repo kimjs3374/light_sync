@@ -252,16 +252,59 @@ def compute_item_production_status(item):
 
 
 def refresh_production_statuses(db, project_id=None):
+    from modules.kakaowork_notifier import notify_production_complete, notify_site_complete
+
     q = db.query(ContractItem).options(
-        joinedload(ContractItem.production_processes)
+        joinedload(ContractItem.production_processes),
+        joinedload(ContractItem.contract),
     )
     if project_id:
         q = q.join(Contract).filter(Contract.project_id == project_id)
 
+    # 품목별 상태 변경 감지 + 알림 대상 수집
+    newly_completed = []  # (project_id, item)
     for item in q.all():
+        old_status = (item.status_prod or '').strip()
         target = compute_item_production_status(item)
-        if (item.status_prod or '').strip() != target:
+        if old_status != target:
             item.status_prod = target
+            if target == '생산완료' and old_status != '생산완료':
+                newly_completed.append(item)
+
+    # 알림 발송 (non-blocking)
+    if newly_completed:
+        _send_production_complete_notifications(db, newly_completed, notify_production_complete, notify_site_complete)
+
+
+def _send_production_complete_notifications(db, completed_items, notify_item_fn, notify_site_fn):
+    """생산완료 알림 발송 — 품목 단위 + 현장 전체 완료 감지"""
+    from modules.models import Project
+
+    # 프로젝트별 그룹핑
+    project_items = {}
+    for item in completed_items:
+        pid = item.contract.project_id if item.contract else None
+        if pid:
+            project_items.setdefault(pid, []).append(item)
+
+    for pid, items in project_items.items():
+        project = db.query(Project).get(pid)
+        project_name = (project.temp_name or project.short_name or f'현장 #{pid}') if project else f'현장 #{pid}'
+
+        # 품목 단위 알림
+        for item in items:
+            notify_item_fn(project_name, item.model_name or '-', int(item.quantity or 0), item.category or '')
+
+        # 현장 전체 완료 체크: 해당 프로젝트의 모든 품목이 생산완료인지
+        all_items = (
+            db.query(ContractItem)
+            .join(Contract)
+            .filter(Contract.project_id == pid)
+            .all()
+        )
+        if all_items and all((ci.status_prod or '').strip() == '생산완료' for ci in all_items):
+            summary = [{'model_name': ci.model_name or '-', 'quantity': int(ci.quantity or 0)} for ci in all_items]
+            notify_site_fn(project_name, summary)
 
 
 def can_start_process(item, process_obj):

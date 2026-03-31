@@ -123,7 +123,7 @@ def inventory_items():
 @login_required
 def audit_list():
     page = safe_int(request.args.get('page'), 1)
-    per_page = 20
+    per_page = 50
 
     with get_db() as db:
         query = db.query(StockAudit).order_by(desc(StockAudit.audit_date), desc(StockAudit.id))
@@ -783,7 +783,7 @@ def consumption_history():
     date_from = (request.args.get('date_from') or '').strip()
     date_to = (request.args.get('date_to') or '').strip()
     page = safe_int(request.args.get('page'), 1)
-    per_page = 30
+    per_page = 50
 
     with get_db() as db:
         from modules.models import Project

@@ -140,12 +140,13 @@ def receiving_list():
     q = (request.args.get('q') or '').strip()
     status = (request.args.get('status') or '').strip()
     page = safe_int(request.args.get('page'), 1)
-    per_page = 20
+    per_page = 50
 
     with get_db() as db:
+        from modules.models import ProcessingOrder as _FO
         query = db.query(Receiving).join(Vendor).outerjoin(
             ReceivingItem, ReceivingItem.receiving_id == Receiving.id
-        )
+        ).outerjoin(_FO, _FO.id == Receiving.fo_id)
 
         if q:
             # 공백으로 분리해서 AND 조건: "태영스텐 10t" → *태영스텐* AND *10t*
@@ -215,6 +216,8 @@ def receiving_list():
                 'vendor_name': rcv.vendor.name if rcv.vendor else '',
                 'po_no': rcv.purchase_order.po_no if rcv.purchase_order else '',
                 'po_id': rcv.po_id,
+                'fo_no': rcv.processing_order.fo_no if getattr(rcv, 'processing_order', None) else '',
+                'fo_id': rcv.fo_id,
                 'status': rcv.status,
                 'detail_rows': detail_rows,
             })
@@ -237,7 +240,7 @@ def receiving_list():
                 )
         history_count = hist_query.count() if not status else 0
         hist_page = safe_int(request.args.get('hp'), 1)
-        hist_per_page = 30
+        hist_per_page = 50
         hist_offset = (hist_page - 1) * hist_per_page
         history_raw = hist_query.order_by(desc(ReceivingHistory.receive_date)) \
                                 .offset(hist_offset).limit(hist_per_page).all() if not status else []
@@ -475,9 +478,20 @@ def receiving_create():
                         note=f'직접입고 {rcv.rcv_no}',
                     )
 
-            # 발주서 상태 업데이트
+            # 발주서 상태 업데이트 + po_item.in_confirmed 동기화
             if po_id:
                 _update_po_status_on_receiving(db, po_id)
+                # 발주 품목별 입고 완료 여부 반영
+                po_obj = db.query(PurchaseOrder).options(joinedload(PurchaseOrder.items)).get(po_id)
+                if po_obj:
+                    now_dt = datetime.datetime.now()
+                    for po_item in po_obj.items:
+                        total_rcv = db.query(func.coalesce(func.sum(ReceivingItem.received_qty), 0)).filter(
+                            ReceivingItem.po_item_id == po_item.id,
+                        ).scalar() or 0
+                        if total_rcv >= (po_item.quantity or 0) and not po_item.in_confirmed:
+                            po_item.in_confirmed = True
+                            po_item.in_confirmed_at = now_dt
 
             log_activity(db, '입고관리', 'create', f'{rcv.rcv_no} 입고 등록 ({vendor.name})', ref_type='Receiving', ref_id=rcv.id)
             db.commit()

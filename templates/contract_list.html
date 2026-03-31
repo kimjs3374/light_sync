@@ -2,84 +2,13 @@
 
 {% block content %}
 <style>
-    .contract-board .table {
-        table-layout: fixed;
-        border-collapse: collapse;
-    }
-    .contract-board th, .contract-board td {
-        vertical-align: middle;
-        padding-top: .62rem;
-        padding-bottom: .62rem;
-        border-left: 0 !important;
-        border-right: 0 !important;
-    }
-    .contract-board thead th {
-        background: #f8fafc !important;
-        color: #334155 !important;
-        border-top: 0 !important;
-        border-bottom: 1px solid #e2e8f0 !important;
-    }
-    .contract-board tbody td {
-        border-top: 1px solid #eef2f7 !important;
-        border-bottom: 1px solid #eef2f7 !important;
-    }
-    .contract-main-row {
-        transition: background-color .15s ease;
-    }
-    .contract-main-row:hover {
-        background: #f8fafc !important;
-    }
-    .row-urgent {
-        background: #fff1f2 !important;
-    }
-    .row-inspection {
-        background: #f0f9ff !important;
-    }
-    .row-both {
-        background: linear-gradient(90deg, #fff1f2 0%, #f0f9ff 100%) !important;
-    }
-    .tree-wrap {
-        border-radius: .6rem;
-    }
-    .contract-board > .table {
-        min-width: 920px;
-    }
-    .contract-subtable {
-        min-width: 860px;
-    }
-    .contract-subtable .clickable-item-row {
-        cursor: pointer;
-    }
-    .contract-subtable .clickable-item-row:hover {
-        background: #f1f5f9;
-    }
-
-    @media (max-width: 991.98px) {
-        .contract-board > .table {
-            min-width: 860px;
-            font-size: .86rem;
-        }
-        .contract-subtable {
-            min-width: 780px;
-        }
-    }
-
+    .row-urgent { background: #fff1f2 !important; }
+    .row-inspection { background: #f0f9ff !important; }
+    .row-both { background: linear-gradient(90deg, #fff1f2 0%, #f0f9ff 100%) !important; }
+    .contract-subtable .clickable-item-row { cursor: pointer; }
+    .contract-subtable .clickable-item-row:hover { background: #f1f5f9; }
     @media (max-width: 1199.98px) {
-        .contract-board > .table,
-        .contract-subtable {
-            min-width: 0 !important;
-            table-layout: auto !important;
-        }
-    }
-
-    @media (max-width: 767.98px) {
-        .contract-header-actions,
-        .contract-header-actions .btn {
-            width: 100%;
-        }
-        .contract-board .card-header {
-            gap: .5rem;
-        }
+        .main-content .table { min-width: 0 !important; table-layout: auto !important; }
     }
 </style>
 
@@ -108,192 +37,185 @@
     <div class="col-md-2 col-6"><div class="card border-0 shadow-sm border-start border-4 border-dark"><div class="card-body py-2"><small class="text-muted">긴급건</small><div class="fw-bold fs-5">{{ stats.urgent }}</div></div></div></div>
 </div>
 
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-body">
-        <button class="btn btn-outline-secondary btn-sm w-100 mb-2 filter-collapse-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#filterBody">검색 필터 펼치기/접기</button>
-        <form class="collapse show filter-collapse-body" id="filterBody" method="GET">
-            <div class="row g-2 align-items-end">
-                <div class="col-md-4">
-                    <label class="small fw-bold">검색</label>
-                    <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/약칭/모델명">
-                </div>
-                <div class="col-md-2">
-                    <label class="small fw-bold">납기</label>
-                    <select class="form-select" name="due">
-                        <option value="all" {% if filters.due=='all' %}selected{% endif %}>전체</option>
-                        <option value="overdue" {% if filters.due=='overdue' %}selected{% endif %}>지연(D+)</option>
-                        <option value="week" {% if filters.due=='week' %}selected{% endif %}>7일 이내</option>
-                        <option value="twoweek" {% if filters.due=='twoweek' %}selected{% endif %}>14일 이내</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="small fw-bold">전문검수</label>
-                    <select class="form-select" name="inspection">
-                        <option value="all" {% if filters.inspection=='all' %}selected{% endif %}>전체</option>
-                        <option value="yes" {% if filters.inspection=='yes' %}selected{% endif %}>있음</option>
-                        <option value="no" {% if filters.inspection=='no' %}selected{% endif %}>없음</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="small fw-bold">긴급</label>
-                    <select class="form-select" name="urgent">
-                        <option value="all" {% if filters.urgent=='all' %}selected{% endif %}>전체</option>
-                        <option value="yes" {% if filters.urgent=='yes' %}selected{% endif %}>긴급만</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="small fw-bold">정렬</label>
-                    <select class="form-select" name="sort">
-                        <option value="due_asc" {% if filters.sort=='due_asc' %}selected{% endif %}>납기임박순</option>
-                        <option value="due_desc" {% if filters.sort=='due_desc' %}selected{% endif %}>납기여유순</option>
-                        <option value="created_desc" {% if filters.sort=='created_desc' %}selected{% endif %}>최신등록순</option>
-                    </select>
-                </div>
-                <div class="col-12 d-flex align-items-center justify-content-end gap-3 mobile-actions">
-                    <label class="form-check-label small" style="white-space:nowrap">
-                        <input type="checkbox" class="form-check-input" name="show_done" value="1"
-                               {{ 'checked' if filters.show_done == '1' }} onchange="this.form.submit()"> 완료건 포함
-                    </label>
-                    <div>
-                        <a href="{{ url_for('project.contract_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
-                        <button class="btn btn-primary btn-sm fw-bold">검색</button>
-                    </div>
-                </div>
+<form class="card border-0 shadow-sm mb-4" method="GET">
+    <div class="filter-collapse-body" id="filterBody">
+    <div class="card-body row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="small fw-bold">검색</label>
+            <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/약칭/모델명">
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="small fw-bold">납기</label>
+            <select class="form-select" name="due">
+                <option value="all" {% if filters.due=='all' %}selected{% endif %}>전체</option>
+                <option value="overdue" {% if filters.due=='overdue' %}selected{% endif %}>지연(D+)</option>
+                <option value="week" {% if filters.due=='week' %}selected{% endif %}>7일 이내</option>
+                <option value="twoweek" {% if filters.due=='twoweek' %}selected{% endif %}>14일 이내</option>
+            </select>
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="small fw-bold">전문검수</label>
+            <select class="form-select" name="inspection">
+                <option value="all" {% if filters.inspection=='all' %}selected{% endif %}>전체</option>
+                <option value="yes" {% if filters.inspection=='yes' %}selected{% endif %}>있음</option>
+                <option value="no" {% if filters.inspection=='no' %}selected{% endif %}>없음</option>
+            </select>
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="small fw-bold">긴급</label>
+            <select class="form-select" name="urgent">
+                <option value="all" {% if filters.urgent=='all' %}selected{% endif %}>전체</option>
+                <option value="yes" {% if filters.urgent=='yes' %}selected{% endif %}>긴급만</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-3 text-md-end d-flex align-items-center justify-content-end gap-3">
+            <label class="form-check-label small" style="white-space:nowrap">
+                <input type="checkbox" class="form-check-input" name="show_done" value="1"
+                       {{ 'checked' if filters.show_done == '1' }} onchange="this.form.submit()"> 완료건 포함
+            </label>
+            <div>
+                <a href="{{ url_for('project.contract_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+                <button class="btn btn-primary btn-sm fw-bold">검색</button>
             </div>
-        </form>
+        </div>
     </div>
-</div>
+    </div>
+</form>
 
 {% include 'components/priority_section.html' %}
 
-<div class="table-responsive contract-board">
-    <table class="table shadow-sm align-middle no-stack-table tree-card-table">
-        <thead class="text-center small">
+<div class="table-responsive">
+    <table class="table table-hover align-middle no-stack-table procurement-tree-table tree-card-table" style="font-size:0.82rem;table-layout:fixed;min-width:1000px;">
+        <colgroup>
+            <col style="width:100px">     {# 관리번호 #}
+            <col style="width:88px">      {# 계약일 #}
+            <col style="min-width:0">     {# 현장명 — 나머지 공간 #}
+            <col style="width:88px">      {# 납품기한 #}
+            <col style="width:62px">      {# D-Day #}
+            <col style="width:130px">     {# 상세품목 #}
+            <col style="width:62px">      {# 검수 #}
+            <col style="width:46px">      {# 계약수 #}
+            <col style="width:46px">      {# 품목수 #}
+        </colgroup>
+        <thead class="table-light" style="white-space:nowrap">
             <tr>
-                <th style="width: 70px;">트리</th>
-                <th style="width: 120px;">관리번호</th>
-                <th style="width: 110px;">계약일</th>
-                <th>현장명(약칭)</th>
-                <th style="width: 160px;">상세품목</th>
-                <th style="width: 100px;">검수여부</th>
+                <th>관리번호</th>
+                <th>계약일</th>
+                <th>현장명</th>
+                <th>납품기한</th>
+                <th class="text-center">D-Day</th>
+                <th class="text-center">상세품목</th>
+                <th class="text-center">검수</th>
+                <th class="text-center">계약</th>
+                <th class="text-center">품목</th>
             </tr>
         </thead>
         <tbody>
             {% for p in projects %}
-            <tr class="contract-main-row
-                       {% if p.is_urgent_project and p.has_inspection %}row-both{% elif p.is_urgent_project %}row-urgent{% elif p.has_inspection %}row-inspection{% else %}bg-white{% endif %}">
-                <td class="text-center">
-                    <button class="btn btn-sm btn-outline-secondary"
-                            type="button"
-                            data-bs-toggle="collapse"
-                            data-bs-target="#tree_{{ p.id }}"
-                            aria-expanded="true"
-                            aria-controls="tree_{{ p.id }}">▼</button>
+            {% set p_dday = namespace(v=none) %}
+            {% set total_items = namespace(v=0) %}
+            {% for c in p.contracts %}
+                {% if c.delivery_due_date %}
+                    {% set cd = (c.delivery_due_date - today).days %}
+                    {% if p_dday.v is none or cd < p_dday.v %}{% set p_dday.v = cd %}{% endif %}
+                {% endif %}
+                {% set total_items.v = total_items.v + (c.items|length) %}
+            {% endfor %}
+
+            <tr role="button" data-bs-toggle="collapse" data-bs-target="#ct-detail-{{ p.id }}"
+                class="{% if p.is_urgent_project and p.has_inspection %}row-both{% elif p.is_urgent_project %}row-urgent{% elif p.has_inspection %}row-inspection{% elif p_dday.v is not none and p_dday.v < 0 %}table-danger{% elif p_dday.v is not none and p_dday.v <= 7 %}table-warning{% endif %}">
+                <td style="white-space:nowrap"><b>{{ p.project_no }}</b></td>
+                <td style="white-space:nowrap">{{ p.primary_contract.contract_date if p.primary_contract else '-' }}</td>
+                <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="{{ p.temp_name or '' }}">
+                    <a href="{{ url_for('project.contract_detail', project_id=p.id) }}" class="text-dark text-decoration-none fw-bold" onclick="event.stopPropagation()">{{ p.temp_name }}</a>
+                    {% if p.is_urgent_project %}<span class="badge bg-danger ms-1" style="white-space:nowrap;">긴급</span>{% endif %}
                 </td>
-                <td class="text-center"><b>{{ p.project_no }}</b></td>
-                <td class="text-center small">{{ p.primary_contract.contract_date if p.primary_contract else '-' }}</td>
-                <td class="ps-3 fw-bold text-dark">
-                    <a href="{{ url_for('project.contract_detail', project_id=p.id) }}" class="text-dark text-decoration-none">
-                        <span class="text-muted small">▼</span> {{ p.temp_name }}
-                    </a>
-                    {% if p.short_name %}<small class="badge bg-light text-dark border ms-2">{{ p.short_name }}</small>{% endif %}
-                    {% if p.is_urgent_project %}<small class="badge bg-danger ms-1">긴급</small>{% endif %}
-                </td>
-                <td class="text-center">
-                    {% for grp in p.item_groups %}
-                        <span class="badge bg-secondary me-1">{{ grp }}</span>
-                    {% endfor %}
-                </td>
-                <td class="text-center">
-                    {% if p.has_inspection %}
-                        <span class="badge bg-info text-dark">기관검수</span>
+                <td style="white-space:nowrap"><small>{% set p_due_date = namespace(v=none) %}{% for c in p.contracts %}{% if c.delivery_due_date %}{% if p_due_date.v is none or c.delivery_due_date < p_due_date.v %}{% set p_due_date.v = c.delivery_due_date %}{% endif %}{% endif %}{% endfor %}{{ p_due_date.v.strftime('%Y-%m-%d') if p_due_date.v else '-' }}</small></td>
+                <td class="text-center" style="white-space:nowrap">
+                    {% if p_dday.v is none %}-
+                    {% elif p_dday.v < 0 %}<span class="badge bg-danger">D+{{ -p_dday.v }}</span>
+                    {% elif p_dday.v == 0 %}<span class="badge bg-warning text-dark">D-Day</span>
+                    {% elif p_dday.v <= 7 %}<span class="badge bg-warning text-dark">D-{{ p_dday.v }}</span>
+                    {% else %}<span class="badge bg-info text-dark">D-{{ p_dday.v }}</span>
                     {% endif %}
                 </td>
+                <td class="text-center" style="white-space:nowrap">
+                    {% for grp in p.item_groups %}
+                    <span class="badge bg-secondary">{{ grp }}</span>
+                    {% endfor %}
+                </td>
+                <td class="text-center" style="white-space:nowrap">
+                    {% if p.has_inspection %}<span class="badge bg-info text-dark">기관검수</span>{% else %}-{% endif %}
+                </td>
+                <td class="text-center" style="white-space:nowrap"><span class="badge bg-primary">{{ p.contracts|length }}</span></td>
+                <td class="text-center" style="white-space:nowrap">{{ total_items.v }}</td>
             </tr>
 
-            <tr class="collapse show" id="tree_{{ p.id }}">
-                <td colspan="6" class="p-3 bg-light">
-                    <div class="row g-3 tree-wrap">
+            {# 계약별 상세 (접히는 행) #}
+            <tr class="collapse" id="ct-detail-{{ p.id }}">
+                <td colspan="9" class="p-0">
+                    <div class="bg-light p-3" style="font-size:0.82rem;">
+                        <div class="mb-2 d-flex justify-content-between align-items-center">
+                            <span><strong>{{ p.temp_name }}</strong> · {{ p.project_no }} · 계약 {{ p.contracts|length }}건</span>
+                            <a href="{{ url_for('project.contract_detail', project_id=p.id) }}" class="btn btn-outline-primary btn-xs">상세 관리</a>
+                        </div>
                         {% for c in p.contracts %}
                         {% set c_dday = ((c.delivery_due_date - today).days) if c.delivery_due_date else none %}
-                        <div class="col-12">
-                            <div class="card border-secondary shadow-sm 
-                                {% if c.is_prof_inspection %}bg-info-subtle border-info{% endif %} 
-                                {% if c.is_urgent_prod %}bg-danger-subtle border-danger{% endif %}">
-                                
-                                <div class="card-header py-1 bg-secondary text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                    <span class="small fw-bold">계약건 {{ loop.index }}: {{ c.contract_name }}
-                                        <span class="badge bg-dark ms-1">{{ c.item_group }}</span>
-                                        <span class="badge bg-light text-dark ms-2">계약일 {{ c.contract_date or '-' }}</span>
-                                        <span class="badge bg-light text-dark ms-1">납품기일 {{ c.delivery_due_date or '-' }}</span>
-                                        <span class="badge ms-1 {% if c_dday is none %}bg-secondary{% elif c_dday < 0 %}bg-danger{% elif c_dday == 0 %}bg-warning text-dark{% elif c_dday <= 7 %}bg-danger-subtle text-danger border border-danger{% elif c_dday <= 14 %}bg-warning-subtle text-warning border border-warning{% else %}bg-primary-subtle text-primary border border-primary{% endif %}">
-                                            {% if c_dday is none %}-
-                                            {% elif c_dday < 0 %}D+{{ -c_dday }}
-                                            {% elif c_dday == 0 %}D-Day
-                                            {% else %}D-{{ c_dday }}
-                                            {% endif %}
-                                        </span>
-                                    </span>
-                                    <div>
-                                        {% if c.is_prof_inspection %}<span class="badge bg-primary me-1">전문검수대상</span>{% endif %}
-                                        {% if c.is_urgent_prod %}<span class="badge bg-warning text-dark fw-bold">🚨 긴급제작</span>{% endif %}
-                                    </div>
-                                </div>
-                                <div class="card-body p-0 bg-white">
-                                    <div class="table-responsive">
-                                        <table class="table table-sm table-hover mb-0 text-center contract-subtable" style="font-size: 0.85rem;">
-                                            <thead class="table-light">
-                                                <tr>
-                                                    <th style="width: 15%;">품목구분</th>
-                                                    <th style="width: 24%;">모델명</th>
-                                                    <th style="width: 7%;">수량</th>
-                                                    <th style="width: 8%;">계약일</th>
-                                                    <th style="width: 9%;">납품기일</th>
-                                                    <th style="width: 7%;">디데이</th>
-                                                    <th style="width: 9%;">영업단계</th>
-                                                    <th style="width: 9%;">관리단계</th>
-                                                    <th style="width: 9%;">생산단계</th>
-                                                    <th style="width: 10%;">납품희망일</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {% for item in c.items %}
-                                                <tr class="clickable-item-row"
-                                                    data-href="{{ url_for('project.contract_detail', project_id=p.id) }}#contract-{{ c.id }}">
-                                                    <td>{{ item.category }}</td>
-                                                    <td><b>{{ item.model_name }}</b></td>
-                                                    <td>{{ item.quantity }}</td>
-                                                    <td>{{ c.contract_date or '-' }}</td>
-                                                    <td>{{ c.delivery_due_date or '-' }}</td>
-                                                    <td>
-                                                        {% if c_dday is none %}
-                                                            <span class="text-muted">-</span>
-                                                        {% elif c_dday < 0 %}
-                                                            <span class="text-danger fw-bold">D+{{ -c_dday }}</span>
-                                                        {% elif c_dday == 0 %}
-                                                            <span class="text-warning fw-bold">D-Day</span>
-                                                        {% else %}
-                                                            <span class="{% if c_dday <= 7 %}text-danger{% elif c_dday <= 14 %}text-warning{% else %}text-primary{% endif %} fw-bold">D-{{ c_dday }}</span>
-                                                        {% endif %}
-                                                    </td>
-                                                    <td><span class="badge bg-light text-primary border border-primary">{{ item.status_sales }}</span></td>
-                                                    <td><span class="badge bg-light text-success border border-success">{{ item.status_admin }}</span></td>
-                                                    <td><span class="badge bg-light text-danger border border-danger">{{ item.status_prod }}</span></td>
-                                                    <td>{{ c.desired_delivery_date or '-' }}</td>
-                                                </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
+                        <div class="mb-2">
+                            <div class="d-flex flex-wrap gap-1 align-items-center mb-1">
+                                <strong>{{ c.contract_name }}</strong>
+                                <span class="badge bg-dark">{{ c.item_group }}</span>
+                                <span class="badge bg-light text-dark border">계약일 {{ c.contract_date or '-' }}</span>
+                                <span class="badge bg-light text-dark border">납기 {{ c.delivery_due_date or '-' }}</span>
+                                {% if c_dday is not none %}
+                                <span class="badge {% if c_dday < 0 %}bg-danger{% elif c_dday == 0 %}bg-warning text-dark{% elif c_dday <= 7 %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">
+                                    {% if c_dday < 0 %}D+{{ -c_dday }}{% elif c_dday == 0 %}D-Day{% else %}D-{{ c_dday }}{% endif %}
+                                </span>
+                                {% endif %}
+                                {% if c.is_prof_inspection %}<span class="badge bg-primary">전문검수</span>{% endif %}
+                                {% if c.is_urgent_prod %}<span class="badge bg-warning text-dark fw-bold">긴급제작</span>{% endif %}
                             </div>
+                            <table class="table table-sm table-bordered mb-2 bg-white" style="font-size:0.82rem;">
+                                <thead>
+                                    <tr class="table-secondary">
+                                        <th style="width:14%;">품목구분</th>
+                                        <th style="width:22%;">모델명</th>
+                                        <th class="text-center" style="width:7%;">수량</th>
+                                        <th class="text-center" style="width:7%;">D-Day</th>
+                                        <th class="text-center" style="width:10%;">영업단계</th>
+                                        <th class="text-center" style="width:10%;">관리단계</th>
+                                        <th class="text-center" style="width:10%;">생산단계</th>
+                                        <th class="text-center" style="width:10%;">납품희망일</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in c.items %}
+                                    <tr class="clickable-item-row" data-href="{{ url_for('project.contract_detail', project_id=p.id) }}#contract-{{ c.id }}">
+                                        <td>{{ item.category }}</td>
+                                        <td><b>{{ item.model_name }}</b></td>
+                                        <td class="text-center">{{ item.quantity }}</td>
+                                        <td class="text-center">
+                                            {% if c_dday is none %}<span class="text-muted">-</span>
+                                            {% elif c_dday < 0 %}<span class="text-danger fw-bold">D+{{ -c_dday }}</span>
+                                            {% elif c_dday == 0 %}<span class="text-warning fw-bold">D-Day</span>
+                                            {% else %}<span class="{% if c_dday <= 7 %}text-danger{% elif c_dday <= 14 %}text-warning{% else %}text-primary{% endif %} fw-bold">D-{{ c_dday }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center"><span class="badge bg-light text-primary border border-primary" style="white-space:nowrap;">{{ item.status_sales }}</span></td>
+                                        <td class="text-center"><span class="badge bg-light text-success border border-success" style="white-space:nowrap;">{{ item.status_admin }}</span></td>
+                                        <td class="text-center"><span class="badge bg-light text-danger border border-danger" style="white-space:nowrap;">{{ item.status_prod }}</span></td>
+                                        <td class="text-center">{{ c.desired_delivery_date or '-' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
                         {% endfor %}
                     </div>
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="6" class="text-center py-5 text-muted">등록된 계약 현장이 없습니다.</td></tr>
+            <tr><td colspan="9" class="text-center text-muted py-4">등록된 계약 현장이 없습니다.</td></tr>
             {% endfor %}
         </tbody>
     </table>
@@ -307,7 +229,6 @@ document.addEventListener('DOMContentLoaded', function () {
         row.addEventListener('click', function (e) {
             const interactive = e.target.closest('a, button, input, select, textarea, label, form');
             if (interactive) return;
-
             const href = row.dataset.href;
             if (href) window.location.href = href;
         });

@@ -1,38 +1,11 @@
 {% extends 'base.html' %}
 
 {% block content %}
+
 <style>
-    .material-list-board .table { table-layout: fixed; border-collapse: collapse; }
-    .material-list-board thead th { background: #f8fafc !important; border-bottom: 1px solid #e2e8f0 !important; }
-    .material-list-board th, .material-list-board td { vertical-align: middle; border-left: 0 !important; border-right: 0 !important; }
-    .material-list-board tbody td { border-top: 1px solid #eef2f7 !important; border-bottom: 1px solid #eef2f7 !important; }
-    .material-list-board .clickable-item-row { cursor: pointer; }
-    .material-list-board .clickable-item-row:hover { background: #f1f5f9; }
-
-    @media (max-width: 1199.98px) {
-        .material-list-board > .table,
-        .material-list-board .table {
-            min-width: 0 !important;
-            table-layout: auto !important;
-        }
-    }
-
-    @media (max-width: 991.98px) {
-        .material-list-board > .table {
-            min-width: 860px;
-            font-size: .86rem;
-        }
-    }
-
-    @media (max-width: 767.98px) {
-        .material-header-actions,
-        .material-header-actions .btn {
-            width: 100%;
-        }
-        .material-header-actions form {
-            width: 100%;
-        }
-    }
+@media (max-width: 1199.98px) {
+    .main-content .table { min-width: 0 !important; table-layout: auto !important; }
+}
 </style>
 
 <div class="page-hero mg-fade">
@@ -59,139 +32,182 @@
     <div class="col-md-3 col-6"><div class="card border-0 shadow-sm border-start border-4 border-primary"><div class="card-body py-2"><small class="text-muted">조회 자재건</small><div class="fw-bold fs-5 text-primary">{{ stats.filtered_orders }}</div></div></div></div>
 </div>
 
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-body">
-        <button class="btn btn-outline-secondary btn-sm w-100 mb-2 filter-collapse-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#filterBody">검색 필터 펼치기/접기</button>
-        <form class="collapse show filter-collapse-body" id="filterBody" method="GET">
-            <div class="row g-2 align-items-end">
-                <div class="col-md-5">
-                    <label class="small fw-bold">검색</label>
-                    <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/계약명/모델/자재명">
-                </div>
-                <div class="col-md-3">
-                    <label class="small fw-bold">발주상태</label>
-                    <select class="form-select" name="status">
-                        <option value="all" {% if filters.status=='all' %}selected{% endif %}>전체</option>
-                        <option value="발주대기" {% if filters.status=='발주대기' %}selected{% endif %}>발주대기</option>
-                        <option value="발주완료" {% if filters.status=='발주완료' %}selected{% endif %}>발주완료</option>
-                        <option value="입고완료" {% if filters.status=='입고완료' %}selected{% endif %}>입고완료</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="small fw-bold">외주여부</label>
-                    <select class="form-select" name="outsource">
-                        <option value="all" {% if filters.outsource=='all' %}selected{% endif %}>전체</option>
-                        <option value="yes" {% if filters.outsource=='yes' %}selected{% endif %}>외주만</option>
-                        <option value="no" {% if filters.outsource=='no' %}selected{% endif %}>일반만</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="small fw-bold">정렬</label>
-                    <select class="form-select" name="sort">
-                        <option value="due_asc" {% if filters.sort=='due_asc' %}selected{% endif %}>납기 빠른순</option>
-                        <option value="due_desc" {% if filters.sort=='due_desc' %}selected{% endif %}>납기 늦은순</option>
-                        <option value="created_desc" {% if filters.sort=='created_desc' %}selected{% endif %}>생성 최신순</option>
-                    </select>
-                </div>
-                <div class="col-12 col-md-auto d-flex align-items-center justify-content-end gap-3 mobile-actions">
-                    <label class="form-check-label small" style="white-space:nowrap">
-                        <input type="checkbox" class="form-check-input" name="show_done" value="1"
-                               {{ 'checked' if filters.show_done == '1' }} onchange="this.form.submit()"> 완료건 포함
-                    </label>
-                    <div>
-                        <a href="{{ url_for('material.material_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
-                        <button class="btn btn-primary btn-sm fw-bold">검색</button>
-                    </div>
-                </div>
-            </div>
-        </form>
+{# --- 검색/필터 --- #}
+<form class="card border-0 shadow-sm mb-4" method="GET">
+    <div class="filter-collapse-body" id="filterBody">
+    <div class="card-body row g-2 align-items-end">
+        <div class="col-md-4">
+            <label class="small fw-bold">검색</label>
+            <input type="text" class="form-control" name="q" value="{{ filters.q }}" placeholder="관리번호/현장명/계약명/모델/자재명">
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="small fw-bold">발주상태</label>
+            <select class="form-select" name="status">
+                <option value="all" {% if filters.status=='all' %}selected{% endif %}>전체</option>
+                <option value="발주대기" {% if filters.status=='발주대기' %}selected{% endif %}>발주대기</option>
+                <option value="발주완료" {% if filters.status=='발주완료' %}selected{% endif %}>발주완료</option>
+                <option value="입고완료" {% if filters.status=='입고완료' %}selected{% endif %}>입고완료</option>
+            </select>
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="small fw-bold">외주여부</label>
+            <select class="form-select" name="outsource">
+                <option value="all" {% if filters.outsource=='all' %}selected{% endif %}>전체</option>
+                <option value="yes" {% if filters.outsource=='yes' %}selected{% endif %}>외주만</option>
+                <option value="no" {% if filters.outsource=='no' %}selected{% endif %}>일반만</option>
+            </select>
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="small fw-bold">정렬</label>
+            <select class="form-select" name="sort">
+                <option value="due_asc" {% if filters.sort=='due_asc' %}selected{% endif %}>납기 빠른순</option>
+                <option value="due_desc" {% if filters.sort=='due_desc' %}selected{% endif %}>납기 늦은순</option>
+                <option value="created_desc" {% if filters.sort=='created_desc' %}selected{% endif %}>생성 최신순</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-2 text-md-end d-flex align-items-center justify-content-end gap-2">
+            <label class="form-check-label small" style="white-space:nowrap">
+                <input type="checkbox" class="form-check-input" name="show_done" value="1"
+                       {{ 'checked' if filters.show_done == '1' }} onchange="this.form.submit()"> 완료건
+            </label>
+            <a href="{{ url_for('material.material_management') }}" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap">초기화</a>
+            <button class="btn btn-primary btn-sm fw-bold" style="white-space:nowrap">검색</button>
+        </div>
     </div>
-</div>
+    </div>
+</form>
 
 {% include 'components/priority_section.html' %}
 
-<div class="table-responsive material-list-board">
-    <table class="table shadow-sm align-middle no-stack-table tree-card-table">
-        <thead class="text-center small">
+{# --- 상태 뱃지 매크로 --- #}
+{% macro purchase_badge(ps) %}
+    {%- if ps == '입고완료' %}<span class="badge bg-success" style="white-space:nowrap">입고완료</span>
+    {%- elif ps == '입고진행중' %}<span class="badge bg-warning text-dark" style="white-space:nowrap">입고진행중</span>
+    {%- elif ps == '발주완료' %}<span class="badge bg-primary" style="white-space:nowrap">발주완료</span>
+    {%- elif ps == '발주진행중' %}<span class="badge bg-info text-dark" style="white-space:nowrap">발주진행중</span>
+    {%- else %}<span class="badge bg-secondary" style="white-space:nowrap">{{ ps or '자재확인중' }}</span>
+    {%- endif %}
+{% endmacro %}
+
+{# --- 메인 테이블 --- #}
+<div class="table-responsive">
+    <table class="table table-hover align-middle no-stack-table procurement-tree-table tree-card-table" style="font-size:0.82rem;table-layout:fixed;min-width:900px;">
+        <colgroup>
+            <col style="width:100px">     {# 관리번호 #}
+            <col style="width:100px">     {# 납품기한 #}
+            <col style="width:68px">      {# D-Day #}
+            <col style="width:80px">      {# 상태 #}
+            <col style="min-width:0">     {# 현장명 — 남은 공간 #}
+            <col style="width:60px">      {# 자재건 #}
+            <col style="width:70px">      {# 발주대기 #}
+            <col style="width:70px">      {# 발주완료 #}
+            <col style="width:70px">      {# 입고완료 #}
+        </colgroup>
+        <thead class="table-light" style="white-space:nowrap">
             <tr>
-                <th style="width:70px;">트리</th>
-                <th style="width:120px;">관리번호</th>
+                <th>관리번호</th>
+                <th>납품기한</th>
+                <th class="text-center">D-Day</th>
+                <th>상태</th>
                 <th>현장명</th>
-                <th style="width:170px;">계약건 수</th>
-                <th style="width:160px;">조회 자재건</th>
+                <th class="text-center">자재건</th>
+                <th class="text-center">발주대기</th>
+                <th class="text-center">발주완료</th>
+                <th class="text-center">입고완료</th>
             </tr>
         </thead>
         <tbody>
             {% for p in projects %}
-            <tr class="bg-white">
-                <td class="text-center">
-                    <button class="btn btn-sm btn-outline-secondary"
-                            type="button"
-                            data-bs-toggle="collapse"
-                            data-bs-target="#mat_tree_{{ p.id }}"
-                            aria-expanded="true"
-                            aria-controls="mat_tree_{{ p.id }}">▼</button>
-                </td>
-                <td class="text-center"><b>{{ p.project_no }}</b></td>
-                <td class="ps-3 fw-bold text-dark">
-                    <a href="{{ url_for('material.material_detail', project_id=p.id) }}" class="text-dark text-decoration-none">{{ p.temp_name }}</a>
-                    {% set ps = p._purchase_status or '자재확인중' %}
-                    <span class="badge ms-1
-                        {% if ps == '입고완료' %}bg-success
-                        {% elif ps == '입고진행중' %}bg-warning text-dark
-                        {% elif ps == '발주완료' %}bg-primary
-                        {% elif ps == '발주진행중' %}bg-info text-dark
-                        {% else %}bg-secondary
-                        {% endif %}">
-                        {{ ps }}
-                    </span>
-                </td>
-                <td class="text-center">{{ p.contracts|length }}</td>
-                <td class="text-center">
-                    {% set ns = namespace(cnt=0) %}
-                    {% for c in p.contracts %}
-                        {% for item in c._matched_items %}
-                            {% set ns.cnt = ns.cnt + (item._matched_orders|length) %}
-                        {% endfor %}
+            {% set ns = namespace(total=0, waiting=0, ordered=0, received=0) %}
+            {% for c in p.contracts %}
+                {% for item in c._matched_items %}
+                    {% for o in item._matched_orders %}
+                        {% set ns.total = ns.total + 1 %}
+                        {% if o.order_status == '발주대기' %}{% set ns.waiting = ns.waiting + 1 %}
+                        {% elif o.order_status == '발주완료' %}{% set ns.ordered = ns.ordered + 1 %}
+                        {% elif o.order_status == '입고완료' %}{% set ns.received = ns.received + 1 %}
+                        {% endif %}
                     {% endfor %}
-                    <span class="badge bg-primary">{{ ns.cnt }}</span>
+                {% endfor %}
+            {% endfor %}
+
+            {% set p_due = namespace(date=none, dday=none) %}
+            {% for c in p.contracts %}
+                {% if c.delivery_due_date %}
+                    {% set cd = (c.delivery_due_date - today).days %}
+                    {% if p_due.dday is none or cd < p_due.dday %}{% set p_due.dday = cd %}{% set p_due.date = c.delivery_due_date %}{% endif %}
+                {% endif %}
+            {% endfor %}
+            <tr role="button" data-bs-toggle="collapse" data-bs-target="#mat-detail-{{ p.id }}"
+                class="{% if p_due.dday is not none and p_due.dday < 0 %}table-danger{% elif p_due.dday is not none and p_due.dday <= 7 %}table-warning{% endif %}">
+                <td style="white-space:nowrap"><b>{{ p.project_no }}</b></td>
+                <td style="white-space:nowrap"><small>{{ p_due.date.strftime('%Y-%m-%d') if p_due.date else '-' }}</small></td>
+                <td class="text-center" style="white-space:nowrap">
+                    {% if p_due.dday is none %}-
+                    {% elif p_due.dday < 0 %}<span class="badge bg-danger">D+{{ -p_due.dday }}</span>
+                    {% elif p_due.dday == 0 %}<span class="badge bg-warning text-dark">D-Day</span>
+                    {% elif p_due.dday <= 7 %}<span class="badge bg-warning text-dark">D-{{ p_due.dday }}</span>
+                    {% else %}<span class="badge bg-info text-dark">D-{{ p_due.dday }}</span>
+                    {% endif %}
+                </td>
+                <td style="white-space:nowrap">
+                    {% set ps = p._purchase_status or '자재확인중' %}
+                    {{ purchase_badge(ps) }}
+                </td>
+                <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="{{ p.temp_name }}">
+                    <a href="{{ url_for('material.material_detail', project_id=p.id) }}" class="text-dark text-decoration-none fw-bold" onclick="event.stopPropagation()">{{ p.temp_name }}</a>
+                </td>
+                <td class="text-center" style="white-space:nowrap">
+                    {% if ns.total > 0 %}<span class="badge bg-primary">{{ ns.total }}</span>{% else %}-{% endif %}
+                </td>
+                <td class="text-center" style="white-space:nowrap">
+                    {% if ns.waiting > 0 %}<span class="badge bg-secondary">{{ ns.waiting }}</span>{% else %}<span class="text-muted">-</span>{% endif %}
+                </td>
+                <td class="text-center" style="white-space:nowrap">
+                    {% if ns.ordered > 0 %}<span class="badge bg-info text-dark">{{ ns.ordered }}</span>{% else %}<span class="text-muted">-</span>{% endif %}
+                </td>
+                <td class="text-center" style="white-space:nowrap">
+                    {% if ns.received > 0 %}<span class="badge bg-success">{{ ns.received }}</span>{% else %}<span class="text-muted">-</span>{% endif %}
                 </td>
             </tr>
 
-            <tr class="collapse show" id="mat_tree_{{ p.id }}">
-                <td colspan="5" class="p-3 bg-light">
-                    <div class="row g-2">
+            {# --- 품목 상세 (접히는 행, 기본 접힘) --- #}
+            <tr class="collapse" id="mat-detail-{{ p.id }}">
+                <td colspan="9" class="p-0">
+                    <div class="bg-light p-3" style="font-size:0.82rem;">
                         {% for c in p.contracts %}
                             {% if c._matched_items %}
-                            <div class="col-12">
-                                <div class="card border-secondary shadow-sm">
-                                    <div class="card-header py-1 bg-secondary text-white d-flex justify-content-between flex-wrap gap-2">
-                                        <span class="small fw-bold">{{ c.contract_name }}</span>
-                                        <span class="badge bg-light text-dark">{{ c._matched_items|length }}개 품목</span>
-                                    </div>
-                                    <div class="table-responsive">
-                                        <table class="table table-sm mb-0 text-center" style="font-size:.85rem; min-width:860px;">
-                                            <thead class="table-light">
-                                                <tr>
-                                                    <th>품목군</th><th>모델명</th><th>자재건수</th><th>발주대기</th><th>발주완료</th><th>입고완료</th><th>외주건</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {% for item in c._matched_items %}
-                                                <tr class="clickable-item-row" data-href="{{ url_for('material.material_detail', project_id=p.id) }}">
-                                                    <td>{{ item.category }}</td>
-                                                    <td class="text-start">{{ item.model_name }}</td>
-                                                    <td>{{ item._matched_orders|length }}</td>
-                                                    <td>{{ item._matched_orders|selectattr('order_status', 'equalto', '발주대기')|list|length }}</td>
-                                                    <td>{{ item._matched_orders|selectattr('order_status', 'equalto', '발주완료')|list|length }}</td>
-                                                    <td>{{ item._matched_orders|selectattr('order_status', 'equalto', '입고완료')|list|length }}</td>
-                                                    <td>{{ item._matched_orders|selectattr('is_outsourcing', 'equalto', true)|list|length }}</td>
-                                                </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                            <div class="{% if not loop.first %}mt-2{% endif %}">
+                                <div class="mb-1">
+                                    <strong>{{ c.contract_name }}</strong>
+                                    <span class="badge bg-light text-dark ms-1" style="font-size:.7rem">{{ c._matched_items|length }}개 품목</span>
                                 </div>
+                                <table class="table table-sm table-bordered mb-0 bg-white" style="font-size:0.82rem;">
+                                    <thead>
+                                        <tr class="table-secondary">
+                                            <th>품목군</th>
+                                            <th>모델명</th>
+                                            <th class="text-center" style="width:70px;">자재건</th>
+                                            <th class="text-center" style="width:70px;">발주대기</th>
+                                            <th class="text-center" style="width:70px;">발주완료</th>
+                                            <th class="text-center" style="width:70px;">입고완료</th>
+                                            <th class="text-center" style="width:60px;">외주</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for item in c._matched_items %}
+                                        <tr class="clickable-item-row" data-href="{{ url_for('material.material_detail', project_id=p.id) }}">
+                                            <td style="white-space:nowrap">{{ item.category }}</td>
+                                            <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="{{ item.model_name }}">{{ item.model_name }}</td>
+                                            <td class="text-center">{{ item._matched_orders|length }}</td>
+                                            <td class="text-center">{{ item._matched_orders|selectattr('order_status', 'equalto', '발주대기')|list|length }}</td>
+                                            <td class="text-center">{{ item._matched_orders|selectattr('order_status', 'equalto', '발주완료')|list|length }}</td>
+                                            <td class="text-center">{{ item._matched_orders|selectattr('order_status', 'equalto', '입고완료')|list|length }}</td>
+                                            <td class="text-center">{{ item._matched_orders|selectattr('is_outsourcing', 'equalto', true)|list|length }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
                             </div>
                             {% endif %}
                         {% endfor %}
@@ -199,7 +215,7 @@
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="5" class="text-center py-5 text-muted">조회된 현장이 없습니다.</td></tr>
+            <tr><td colspan="9" class="text-center py-5 text-muted">조회된 현장이 없습니다.</td></tr>
             {% endfor %}
         </tbody>
     </table>
@@ -207,12 +223,12 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('.clickable-item-row').forEach((row) => {
+    document.querySelectorAll('.clickable-item-row').forEach(function (row) {
+        row.style.cursor = 'pointer';
         row.addEventListener('click', function (e) {
-            const interactive = e.target.closest('a, button, input, select, textarea, label, form');
+            var interactive = e.target.closest('a, button, input, select, textarea, label, form');
             if (interactive) return;
-
-            const href = row.dataset.href;
+            var href = row.dataset.href;
             if (href) window.location.href = href;
         });
     });

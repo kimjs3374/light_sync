@@ -33,8 +33,11 @@ class Receiving(Base):
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
+    fo_id = Column(Integer, ForeignKey('processing_orders.id'), nullable=True)   # 가공발주 연결
+
     vendor = relationship("Vendor")
     purchase_order = relationship("PurchaseOrder", foreign_keys=[po_id])
+    processing_order = relationship("ProcessingOrder", foreign_keys=[fo_id])
     contract = relationship("Contract", foreign_keys=[contract_id])
     creator = relationship("User", foreign_keys=[created_by])
     items = relationship("ReceivingItem", back_populates="receiving", cascade="all, delete-orphan", order_by="ReceivingItem.id")
@@ -47,6 +50,7 @@ class ReceivingItem(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     receiving_id = Column(Integer, ForeignKey('receivings.id'), nullable=False)
     po_item_id = Column(Integer, ForeignKey('purchase_order_items.id'), nullable=True)
+    fo_item_id = Column(Integer, ForeignKey('processing_order_items.id'), nullable=True)
     item_cd = Column(String(50), nullable=True)
     item_name = Column(String(300), nullable=False)
     item_spec = Column(String(500), nullable=True)

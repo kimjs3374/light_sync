@@ -183,7 +183,7 @@ def catalog_list():
     price_source = request.args.get('price_source', '')
     method = request.args.get('method', '')
     page = safe_int(request.args.get('page'), 1)
-    per_page = safe_int(request.args.get('per_page'), 30)
+    per_page = safe_int(request.args.get('per_page'), 50)
 
     with get_db() as db:
         query = db.query(ProductCatalog)

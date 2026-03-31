@@ -366,17 +366,17 @@ def sync_bulk(db, start_year=2020, end_year=None):
 
 def auto_create_contracts(db, since_date=None):
     """
-    G2B 동기화 후 호출: 최근 동기화된(since_date 이후) G2B 건 중
-    아직 ERP Contract에 연동되지 않은 건만 자동 생성.
+    G2B 동기화 후 호출: 아직 ERP Contract에 연동되지 않은 G2B 건 자동 생성.
 
-    - since_date 미지정 시: 오늘 기준 7일 이내 수집건만 대상
     - cntrct_dlvr_req_no 기준 그룹핑
     - 이미 Contract.g2b_contract_no로 연결된 건은 skip
     - 취소건(prdct_amt=0 AND prdct_qty=0) 제외
-    - Project: status='G2B자동', is_contracted=True, project_no=YYYY-NNN
+    - ★ 계약일/납기 기준 6개월 컷오프 (과거 건 유입 완전 차단)
+    - ★ 계약일/납기가 NULL인 건도 제외
+    - Project: status='G2B자동', is_contracted=True, project_no=G-YYYY-NNNN
     """
-    if since_date is None:
-        since_date = datetime.date.today() - datetime.timedelta(days=7)
+    # 자동생성 컷오프: 계약일 기준 6개월 이내만 대상 (과거 유령 건 차단)
+    cutoff_date = datetime.date.today() - datetime.timedelta(days=180)
 
     # 1) 이미 연동된 g2b_contract_no 목록 수집
     existing_g2b_nos = set()
@@ -386,10 +386,11 @@ def auto_create_contracts(db, since_date=None):
     ).all():
         existing_g2b_nos.add(no)
 
-    # 2) 최근 수집된 G2B 건만 대상 (created_at 기준)
-    since_dt = datetime.datetime.combine(since_date, datetime.time.min)
+    # 2) 미연동 G2B 건 조회 (계약일 6개월 이내 + NOT NULL만)
     all_g2b = db.query(G2bProcurement).filter(
-        G2bProcurement.created_at >= since_dt,
+        G2bProcurement.cntrct_dlvr_req_no.notin_(existing_g2b_nos),
+        G2bProcurement.cntrct_dlvr_req_date.isnot(None),
+        G2bProcurement.cntrct_dlvr_req_date >= cutoff_date,
     ).order_by(
         G2bProcurement.cntrct_dlvr_req_no,
         G2bProcurement.prdct_sno,
@@ -419,11 +420,24 @@ def auto_create_contracts(db, since_date=None):
             skipped_count += 1
             continue
 
-        # 대표 정보 (첫 번째 레코드 기준)
         rep = valid_items[0]
         contract_name = rep.cntrct_dlvr_req_nm or f'G2B-{req_no}'
         contract_date = rep.cntrct_dlvr_req_date
         delivery_due_date = rep.dlvr_tmlmt_date
+
+        # 납기가 6개월 이상 경과한 건은 skip (이미 완료된 과거 건)
+        if delivery_due_date and delivery_due_date < cutoff_date:
+            skipped_count += 1
+            logger.info(f"[G2B조달] 납기경과 스킵: {req_no} 납기={delivery_due_date} ({contract_name})")
+            continue
+
+        # 납기 NULL이면 계약일+1년 추정, 그마저도 경과했으면 skip
+        if not delivery_due_date and contract_date:
+            estimated_end = contract_date + datetime.timedelta(days=365)
+            if estimated_end < cutoff_date:
+                skipped_count += 1
+                logger.info(f"[G2B조달] 납기없음+계약일경과 스킵: {req_no} ({contract_name})")
+                continue
 
         # 3) Project 채번 (G-YYYY-NNNN) — 설계번호(YYYY-NNN)와 분리
         prefix = f'G-{year}-'
@@ -476,6 +490,7 @@ def auto_create_contracts(db, since_date=None):
         created_count += 1
 
     logger.info(
-        f"[G2B조달] 자동계약생성: 신규 {created_count}건, 스킵 {skipped_count}건"
+        f"[G2B조달] 자동계약생성: 신규 {created_count}건, 스킵 {skipped_count}건 "
+        f"(컷오프: {cutoff_date} 이후 계약만 대상)"
     )
     return {'created': created_count, 'skipped': skipped_count}

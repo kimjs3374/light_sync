@@ -13,6 +13,7 @@ from modules.models import (
     Project, User, HistoryLog, Contract, ContractItem, Drawing,
     DashboardNotice, Delivery, MaterialOrder,
     PurchaseOrder, PurchaseOrderItem,
+    BusinessTrip, BusinessTripMember,
 )
 from modules.services.dashboard_actions import (
     get_dashboard_setting_int,
@@ -422,6 +423,20 @@ def dashboard_view():
         leave_by_date = get_leave_events_for_month(today.year, today.month)
         today_leaves = get_leave_events_for_date(today)
 
+        # 오늘 출장 중인 인원
+        today_dt = datetime.datetime.combine(today, datetime.time.min)
+        today_trips = (
+            db.query(BusinessTrip)
+            .options(joinedload(BusinessTrip.members))
+            .filter(
+                BusinessTrip.status.in_(['예정', '진행중']),
+                BusinessTrip.departure_date <= datetime.datetime.combine(today, datetime.time.max),
+                BusinessTrip.return_date >= today_dt,
+            )
+            .order_by(BusinessTrip.departure_date)
+            .all()
+        )
+
         # calendar_weeks에 연차 정보 주입
         for week in calendar_weeks:
             for cell in week:
@@ -449,6 +464,7 @@ def dashboard_view():
             calendar_month_label=f"{today.year}.{today.month:02d}",
             calendar_weekdays=['일', '월', '화', '수', '목', '금', '토'],
             today_leaves=today_leaves,
+            today_trips=today_trips,
             dashboard_priority=dashboard_priority,
             kanban={
                 '영업/설계': kanban['영업/설계'],

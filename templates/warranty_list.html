@@ -56,7 +56,7 @@
     background: var(--mg-primary); border-color: var(--mg-primary); color: #fff;
 }
 @media (max-width: 1199.98px) {
-    .wl-table { min-width: 0 !important; table-layout: auto !important; }
+    .main-content .table { min-width: 0 !important; table-layout: auto !important; }
 }
 </style>
 {% endblock %}
@@ -113,8 +113,7 @@
 
 {# ═══ 필터 바 ═══ #}
 <div class="filter-bar-wl mb-3 mg-fade" style="animation-delay:.08s">
-<button class="btn btn-outline-secondary btn-sm w-100 mb-2 filter-collapse-toggle d-xl-none" type="button" data-bs-toggle="collapse" data-bs-target="#filterBody">검색 필터 펼치기/접기</button>
-<div class="collapse show filter-collapse-body" id="filterBody">
+<div class="filter-collapse-body" id="filterBody">
 <form method="GET">
     <div class="row g-2 align-items-end">
         <div class="col-12 col-md-4 col-lg-3">
@@ -171,7 +170,7 @@
 
 {# ═══ 보증 목록 테이블 ═══ #}
 <div class="card shadow-sm border-0 mg-fade warranty-board" style="animation-delay:.1s">
-    <table class="table table-sm table-hover wl-table mb-0 mobile-stack-table" style="font-size:0.82rem;table-layout:fixed;">
+    <table class="table table-hover align-middle no-stack-table tree-card-table wl-table" style="font-size:0.82rem;table-layout:fixed;min-width:780px;">
         <colgroup>
             <col style="min-width:0">        {# 계약명 — 남은 공간 차지 #}
             <col style="width:70px">         {# 품목 #}
@@ -182,14 +181,14 @@
             <col style="width:68px">         {# D-day #}
             <col style="width:58px">         {# A/S건 #}
         </colgroup>
-        <thead>
+        <thead class="table-light" style="white-space:nowrap">
             <tr>
                 <th>계약명</th>
                 <th>품목</th>
                 <th>모델명</th>
                 <th>보증유형</th>
-                <th style="white-space:nowrap;">보증시작</th>
-                <th style="white-space:nowrap;">보증만료</th>
+                <th>보증시작</th>
+                <th>보증만료</th>
                 <th>D-day</th>
                 <th>A/S건</th>
             </tr>
@@ -198,7 +197,7 @@
             {% for w in warranties %}
             {% set dday = (w.warranty_end - today).days if w.warranty_end else none %}
             <tr data-href="{{ url_for('warranty.case_create') }}?warranty_id={{ w.id }}" style="cursor:pointer;">
-                <td>
+                <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0">
                     <a href="{{ url_for('warranty.case_create') }}?warranty_id={{ w.id }}" class="site-link">
                         {{ w.contract_name|default('-') }}
                     </a>

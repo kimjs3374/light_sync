@@ -29,7 +29,9 @@ from modules.models import (
     Drawing, DrawingVersion,
     ProcessingOrder, ProcessingOrderItem, ProcessingOrderFile,
     FO_STATUS_CHOICES, FO_TYPE_CHOICES,
+    Receiving, ReceivingItem,
 )
+from routes.receiving import _generate_rcv_no
 from modules.services.email_sender import send_email_with_attachments
 from modules.activity import log_activity
 
@@ -211,7 +213,7 @@ def fo_list():
         query = query.order_by(desc(ProcessingOrder.fo_date), desc(ProcessingOrder.id))
 
         total = query.count()
-        per_page = 30
+        per_page = 50
         orders = query.offset((page - 1) * per_page).limit(per_page).all()
         pagination = make_pagination(page, per_page, total)
 
@@ -612,6 +614,34 @@ def fo_confirm_item(fo_id, item_id):
         if all_confirmed and fo.status != '입고완료':
             fo.status = '입고완료'
             _append_fo_history(fo, '전체 입고 완료 → 상태변경', session.get('full_name', ''))
+            # 입고관리 Receiving 자동 생성 (중복 방지)
+            existing_rcv = db.query(Receiving).filter(Receiving.fo_id == fo.id).first()
+            if not existing_rcv:
+                rcv_no = _generate_rcv_no(db)
+                new_rcv = Receiving(
+                    rcv_no=rcv_no,
+                    rcv_date=now.date(),
+                    vendor_id=fo.vendor_id,
+                    fo_id=fo.id,
+                    contract_id=fo.contract_id,
+                    status='검수완료',
+                    note=f'가공발주 {fo.fo_no} 입고확인 자동생성',
+                    created_by=session.get('user_id'),
+                )
+                db.add(new_rcv)
+                db.flush()
+                for i in fo.items:
+                    db.add(ReceivingItem(
+                        receiving_id=new_rcv.id,
+                        fo_item_id=i.id,
+                        item_name=i.item_name,
+                        item_spec=i.item_spec or '',
+                        received_qty=i.quantity or 0,
+                        unit=i.unit or '',
+                        unit_price=i.unit_price or 0,
+                        amount=i.amount or 0,
+                    ))
+                _append_fo_history(fo, f'입고관리 등록: {rcv_no}', session.get('full_name', ''))
 
         fo.updated_at = now
         db.commit()

@@ -14,13 +14,16 @@
     </div>
 </div>
 
-<!-- 모바일: 현장 선택 드롭다운 -->
+<!-- 모바일: 현장 검색 + 선택 -->
 <div class="mobile-site-select-wrap">
+    <input type="text" class="form-control form-control-sm mb-1" id="mobileSearchInput"
+           placeholder="현장명 검색..." oninput="filterMobileSites(this.value)">
     <select class="form-select form-select-sm" id="mobileSiteSelect"
             onchange="selectSite(this.value, this.options[this.selectedIndex].text)">
         <option value="">-- 현장을 선택하세요 --</option>
         {% for site in sites %}
         <option value="{{ site.id }}"
+                data-name="{{ site.site_name|lower }}"
                 {% if selected and selected.id == site.id %}selected{% endif %}>
             {{ site.site_name }} ({{ site.contract_no or '-' }})
         </option>

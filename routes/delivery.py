@@ -12,7 +12,7 @@ from modules.history_board import append_history_log, get_project_history_contex
 from modules.activity import log_activity
 from modules.db_context import get_db
 from modules.contract_filters import active_contract_filter
-from modules.models import Project, Contract, User, Delivery, DeliveryPhoto
+from modules.models import Project, Contract, ContractItem, User, Delivery, DeliverySplit, DeliverySplitItem, DeliveryPhoto
 from modules.storage_adapter import download_bytes
 from modules.priority_utils import (
     append_due_priority_reason,
@@ -107,12 +107,12 @@ def delivery_management():
                     db,
                     project_id=first_project.id,
                     user_name="시스템",
-                    content=f"{current_user} executed delivery sync.",
+                    content=f"{current_user} 전체 납품 동기화 실행",
                     scope="delivery",
                     kind="system",
                 )
                 db.commit()
-            flash("Delivery sync completed.", "success")
+            flash("납품 동기화 완료", "success")
             return redirect(url_for("delivery.delivery_management"))
 
         sync_deliveries(db)
@@ -228,7 +228,7 @@ def delivery_management():
         priority_projects = sort_priority_entries(priority_projects)
 
         page = safe_int(request.args.get('page'), 1)
-        per_page = safe_int(request.args.get('per_page'), 20)
+        per_page = safe_int(request.args.get('per_page'), 50)
         pagination = make_pagination(page, per_page, len(filtered))
         start = (pagination['page'] - 1) * per_page
         projects_page = filtered[start:start + per_page]
@@ -253,7 +253,7 @@ def delivery_detail(project_id):
         project = db.query(Project).options(
             joinedload(Project.contacts),
             joinedload(Project.contracts).joinedload(Contract.items),
-            joinedload(Project.deliveries).joinedload(Delivery.splits),
+            joinedload(Project.deliveries).joinedload(Delivery.splits).joinedload(DeliverySplit.split_items).joinedload(DeliverySplitItem.contract_item),
             joinedload(Project.deliveries).joinedload(Delivery.photos),
         ).get(project_id)
         if not project:
@@ -321,6 +321,26 @@ def delivery_detail(project_id):
                 and delivery._photo_counts.get("delivery_done", 0) == 0
             )
             delivery._is_unassigned = not bool((delivery.contact_name or "").strip())
+
+            # 모델별 납품 집계 (split_items 기반)
+            item_stats = {}  # contract_item_id → {item, planned, delivered}
+            contract = delivery.contract
+            if contract:
+                for ci in (contract.items or []):
+                    item_stats[ci.id] = {
+                        'item': ci,
+                        'planned': ci.quantity or 0,
+                        'delivered': 0,
+                    }
+            for split in (delivery.splits or []):
+                is_done = (split.status or '') in ('done', '완료')
+                for si in (split.split_items or []):
+                    cid = si.contract_item_id
+                    if cid not in item_stats:
+                        item_stats[cid] = {'item': si.contract_item, 'planned': 0, 'delivered': 0}
+                    if is_done:
+                        item_stats[cid]['delivered'] += (si.quantity or 0)
+            delivery._item_stats = item_stats
 
         history, history_counts = get_project_history_context(
             db,

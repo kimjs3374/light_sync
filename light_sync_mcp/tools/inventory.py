@@ -1,4 +1,4 @@
-"""FR-04: 재고 도메인 Tools (5개)"""
+"""FR-04: 재고 도메인 Tools (6개)"""
 import json
 from typing import Optional
 
@@ -197,5 +197,56 @@ def register(mcp: FastMCP):
                 "item_count": len(items),
                 "by_category": cat_list,
             }, ensure_ascii=False)
+        finally:
+            session.close()
+
+    @mcp.tool()
+    def get_inventory_consumption(
+        project_id: Optional[int] = None,
+        model_name: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        limit: int = 50,
+    ) -> str:
+        """재고 소진 이력 조회. BOM 기반 자재 소진 내역을 반환합니다.
+        ★ '소진 이력', '자재 소진', '어디에 얼마나 썼어' 등의 질문에 사용.
+        project_id: 현장 ID로 필터
+        model_name: 완제품 모델명 검색
+        date_from / date_to: YYYY-MM-DD 형식
+        """
+        from modules.models.inventory_entities import StockConsumption
+        session = get_session()
+        try:
+            q = session.query(StockConsumption)
+            if project_id:
+                q = q.filter(StockConsumption.project_id == project_id)
+            if model_name:
+                q = q.filter(StockConsumption.model_name.ilike(f"%{model_name}%"))
+            if date_from:
+                q = q.filter(StockConsumption.tx_date >= date_from)
+            if date_to:
+                q = q.filter(StockConsumption.tx_date <= date_to)
+            consumptions = q.order_by(StockConsumption.tx_date.desc()).limit(limit).all()
+
+            result = []
+            for c in consumptions:
+                items = [{
+                    "item_name": _s(ci.item.item_name) if ci.item else "",
+                    "required_qty": _sn(ci.required_qty),
+                    "consumed_qty": _sn(ci.consumed_qty),
+                } for ci in c.items]
+
+                result.append({
+                    "id": c.id,
+                    "tx_date": _sd(c.tx_date),
+                    "model_name": _s(c.model_name),
+                    "quantity": _sn(c.quantity),
+                    "project_name": _s(c.project.temp_name) if c.project else "",
+                    "bom_name": _s(c.bom.product_name) if c.bom else "",
+                    "note": _s(c.note),
+                    "created_by": _s(c.created_by),
+                    "consumed_items": items,
+                })
+            return json.dumps(result, ensure_ascii=False)
         finally:
             session.close()

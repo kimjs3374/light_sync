@@ -1,4 +1,44 @@
 -- ══════════════════════════════════════════════
+-- 납품관리 모델별 분할납품 (2026-03-30)
+-- delivery_splits.contract_item_id (레거시 단일 모델, 유지)
+-- delivery_split_items (회차별 복수 모델 수량)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.delivery_splits
+ADD COLUMN IF NOT EXISTS contract_item_id INTEGER REFERENCES light_sync.contract_items(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_delivery_splits_contract_item_id
+ON light_sync.delivery_splits(contract_item_id);
+
+CREATE TABLE IF NOT EXISTS light_sync.delivery_split_items (
+    id SERIAL PRIMARY KEY,
+    split_id INTEGER NOT NULL REFERENCES light_sync.delivery_splits(id) ON DELETE CASCADE,
+    contract_item_id INTEGER NOT NULL REFERENCES light_sync.contract_items(id) ON DELETE CASCADE,
+    quantity INTEGER DEFAULT 0,
+    UNIQUE(split_id, contract_item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dsi_split_id ON light_sync.delivery_split_items(split_id);
+CREATE INDEX IF NOT EXISTS idx_dsi_contract_item_id ON light_sync.delivery_split_items(contract_item_id);
+
+-- ══════════════════════════════════════════════
+-- G2B 자동생성 유령 프로젝트 12건 삭제 (2026-03-30)
+-- 원인: auto_create_contracts()에 날짜 컷오프 없어서
+--       2020~2024년 과거 G2B 건이 G-2026-0032~0043으로 생성됨
+-- ══════════════════════════════════════════════
+DELETE FROM light_sync.contract_items
+WHERE contract_id IN (
+  SELECT c.id FROM light_sync.contracts c
+  JOIN light_sync.projects p ON p.id = c.project_id
+  WHERE p.id IN (4200,4201,4202,4203,4204,4205,4206,4207,4208,4209,4210,4211)
+);
+
+DELETE FROM light_sync.contracts
+WHERE project_id IN (4200,4201,4202,4203,4204,4205,4206,4207,4208,4209,4210,4211);
+
+DELETE FROM light_sync.projects
+WHERE id IN (4200,4201,4202,4203,4204,4205,4206,4207,4208,4209,4210,4211);
+-- 삭제 대상: G-2026-0032(순천시민로) ~ G-2026-0043(태백LED투광등)
+
+-- ══════════════════════════════════════════════
 -- BOM 모델명 별칭 테이블 (2026-03-28)
 -- ══════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS light_sync.bom_model_aliases (

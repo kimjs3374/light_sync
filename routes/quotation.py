@@ -196,7 +196,7 @@ def quotation_list():
     date_from = (request.args.get('date_from') or '').strip()
     date_to = (request.args.get('date_to') or '').strip()
     page = safe_int(request.args.get('page'), 1)
-    per_page = 20
+    per_page = 50
 
     with get_db() as db:
         query = db.query(Quotation)

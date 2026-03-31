@@ -103,7 +103,7 @@ def _material_specs_from_contract_item(item):
     category = normalize_detail_item(item.category, default=DETAIL_ITEM_OPTIONS[0])
     model_name = (item.model_name or '').upper()
 
-    if category == '투광등기구':
+    if category in ('투광등기구', 'LED투광등기구', '스포츠조명기구'):
         if 'STA' in model_name:
             return [
                 ('LED', True, '외주입고대기'),
@@ -124,12 +124,22 @@ def _material_specs_from_contract_item(item):
             ('렌즈', False, None),
         ]
 
-    if category in ('가로등기구', '보안등기구', '터널등기구'):
+    if category in ('가로등기구', '보안등기구', '터널등기구',
+                     'LED가로등기구', 'LED보안등기구', 'LED터널용등기구',
+                     'LED경관조명기구'):
         return [
             ('모듈', False, None),
             ('분배기', False, None),
             ('외함', False, None),
             ('SMPS', False, None),
+        ]
+
+    if category == '태양광가로등':
+        return [
+            ('태양광패널', False, None),
+            ('배터리', False, None),
+            ('등기구', False, None),
+            ('컨트롤러', False, None),
         ]
 
     if category == '조명타워':
@@ -138,7 +148,7 @@ def _material_specs_from_contract_item(item):
             specs.append(('L앙카', False, None))
         return specs
 
-    if category in ('철제가로등주', '스텐가로등주'):
+    if category in ('철제가로등주', '스텐가로등주', '스테인리스가로등주'):
         return [
             ('파이프', False, None),
             ('베이스판', False, None),
@@ -146,31 +156,59 @@ def _material_specs_from_contract_item(item):
             ('부속자재', False, None),
         ]
 
+    if category == '가로등주부속자재':
+        return [
+            ('부속자재', False, None),
+        ]
+
     return []
 
 
 def _find_bom_for_contract_item(db, item):
-    """계약품목에 매칭되는 BomHeader를 찾는다."""
+    """계약품목에 매칭되는 BomHeader를 찾는다.
+
+    매칭 순서:
+    1. model_name 정확 매칭 (model_name == product_code)
+    2. model_name 안에 product_code가 포함 (역방향)
+    3. model_name 안의 각 토큰으로 product_code 매칭
+    4. category로 매칭 (최후 수단)
+    """
     model_name = (item.model_name or '').strip()
     category = (item.category or '').strip()
+    model_upper = model_name.upper()
 
-    if model_name:
-        bom = db.query(BomHeader).filter(
-            BomHeader.is_active == True,
-            or_(
-                BomHeader.product_code.ilike(f'%{model_name}%'),
-                BomHeader.product_name.ilike(f'%{model_name}%'),
-            )
-        ).first()
-        if bom:
+    if not model_name:
+        return None
+
+    # 1) 정확 매칭
+    bom = db.query(BomHeader).filter(
+        BomHeader.is_active == True,
+        or_(
+            BomHeader.product_code == model_name,
+            BomHeader.product_name == model_name,
+        )
+    ).first()
+    if bom:
+        return bom
+
+    # 2) BOM product_code가 model_name에 포함되는 역방향 매칭
+    #    예: model_name="LED투광등기구, 매그나텍, MT-FL-600A, 600W" → BOM product_code "MT-FL-600A" 포함
+    all_boms = db.query(BomHeader).filter(BomHeader.is_active == True).all()
+    # product_code 길이 내림차순 (더 구체적인 것 우선)
+    all_boms.sort(key=lambda b: len(b.product_code or ''), reverse=True)
+    for bom in all_boms:
+        code = (bom.product_code or '').strip().upper()
+        if code and len(code) >= 3 and code in model_upper:
             return bom
 
-    if category:
+    # 3) model_name을 쉼표/공백으로 분리해서 각 토큰으로 매칭
+    tokens = [t.strip() for t in model_name.replace(',', ' ').split() if len(t.strip()) >= 3]
+    for token in tokens:
         bom = db.query(BomHeader).filter(
             BomHeader.is_active == True,
             or_(
-                BomHeader.product_name.ilike(f'%{category}%'),
-                BomHeader.product_code.ilike(f'%{category}%'),
+                BomHeader.product_code.ilike(token),
+                BomHeader.product_name.ilike(token),
             )
         ).first()
         if bom:
@@ -485,7 +523,7 @@ def material_management():
         priority_projects = sort_priority_entries(priority_projects)
 
         page = safe_int(request.args.get('page'), 1)
-        per_page = safe_int(request.args.get('per_page'), 20)
+        per_page = safe_int(request.args.get('per_page'), 50)
         pagination = make_pagination(page, per_page, len(filtered_projects))
         start = (pagination['page'] - 1) * per_page
         projects_page = filtered_projects[start:start + per_page]
@@ -496,7 +534,8 @@ def material_management():
             priority_projects=priority_projects,
             stats=stats,
             pagination=pagination,
-            filters={'q': request.args.get('q', ''), 'status': status, 'outsource': outsource, 'sort': sort_by, 'show_done': '1' if show_done else ''}
+            filters={'q': request.args.get('q', ''), 'status': status, 'outsource': outsource, 'sort': sort_by, 'show_done': '1' if show_done else ''},
+            today=datetime.date.today(),
         )
 
 @material_bp.route('/material_management/<int:project_id>', methods=['GET', 'POST'])

@@ -7,12 +7,15 @@
     .stat-label { font-size: .78rem; color: #64748b; margin-top: 2px; }
     .filter-bar { background: #f8fafc; border-radius: 10px; padding: 10px 14px; }
     .v-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; white-space: nowrap; text-transform: uppercase; letter-spacing: .03em; background: #f8fafc; position: sticky; top: 0; z-index: 1; }
-    .v-table td { vertical-align: middle; white-space: nowrap; font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+    .v-table td { vertical-align: middle; font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
     .v-table tbody tr { cursor: pointer; transition: background .12s, box-shadow .12s; }
     .v-table tbody tr:hover { background: #eef2ff; box-shadow: inset 3px 0 0 #2563eb; }
     .v-code { font-family: var(--mg-mono); font-size: .78rem; color: #64748b; }
     .badge-use { font-size: .7rem; padding: 3px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
     .vendor-note { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #64748b; font-size: .82rem; }
+    @media (max-width: 1199.98px) {
+        .main-content .table { min-width: 0 !important; table-layout: auto !important; }
+    }
 </style>
 
 <div class="page-hero mg-fade">
@@ -80,7 +83,7 @@
 <div class="card border-0 shadow-sm" style="border-radius:12px;overflow:hidden;">
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 v-table">
+            <table class="table table-hover align-middle no-stack-table tree-card-table v-table" style="font-size:0.82rem;table-layout:fixed;min-width:780px;">
                 <colgroup>
                     <col style="width:85px">
                     <col style="width:20%">
@@ -89,8 +92,8 @@
                     <col style="width:120px">
                     <col style="width:55px">
                 </colgroup>
-                <thead>
-                    <tr style="background:#f8fafc;">
+                <thead class="table-light" style="white-space:nowrap">
+                    <tr>
                         <th class="ps-3">코드</th>
                         <th>거래처명</th>
                         <th>메모</th>
@@ -104,7 +107,7 @@
                     <tr onclick="location.href='{{ url_for('vendor.vendor_detail', tr_cd=v.TR_CD) }}'">
                         <td class="ps-3"><span class="v-code">{{ v.TR_CD }}</span></td>
                         <td><strong style="color:#0f172a;">{{ v.TR_NM or '-' }}</strong></td>
-                        <td><span class="vendor-note">{{ v.note or '' }}</span></td>
+                        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0"><span class="vendor-note">{{ v.note or '' }}</span></td>
                         <td>{{ v.CEO_NM or '-' }}</td>
                         <td class="text-muted" style="font-size:.82rem;">{{ v.TEL or '-' }}</td>
                         <td>

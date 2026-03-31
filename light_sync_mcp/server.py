@@ -39,8 +39,14 @@ INSTRUCTIONS = """
 | 직원/인원/사원 | 직원 목록 | `get_employees()` |
 | 근무인원/출근/연차/반차 | 오늘 근무현황 | `get_today_attendance()` |
 | 가공발주/외주가공/FO | 가공발주 현황 | `get_processing_orders()` |
+| 출장/출장 일정 | 출장 목록 | `get_business_trips()` |
+| 서류/착수계/납품계 | 서류 현황 | `get_document_list()` |
+| 공구/전동공구 | 공구 목록 | `get_tools_list()` |
+| 소진/자재 소진/썼어 | 소진 이력 | `get_inventory_consumption()` |
+| 전체 현황/종합/요약 | KPI 요약 | `get_dashboard_summary()` |
+| 입고 상세/입고번호 | 입고 상세 | `get_receiving_detail(rcv_no=번호)` |
 
-## Tool 분류 (61개)
+## Tool 분류 (73개)
 
 ### 현장/프로젝트 (7개)
 - `get_projects(status, year, month, search)` — 현장 목록
@@ -72,12 +78,13 @@ INSTRUCTIONS = """
 - `get_worker_assignments()` — 작업자 배치 현황
 - `get_fab_status()` — FAB 공정 현황
 
-### 재고 (5개)
+### 재고 (6개)
 - `get_inventory(category, search)` — 재고 현황
 - `get_low_stock()` — 안전재고 미달 품목
-- `get_inventory_turnover(months)` — 회전율 분석
-- `get_stock_movements(item_id, date_from, date_to)` — 변동 이력
+- `get_inventory_turnover(year, month)` — 회전율 분석
+- `get_stock_movements(item_id, movement_type, date_from, date_to)` — 변동 이력 (IN/OUT/ADJUST)
 - `get_inventory_valuation()` — 재고 평가액
+- `get_inventory_consumption(project_id, model_name, date_from, date_to)` — BOM 소진 이력
 
 ### BOM/품목 (6개)
 - `get_bom_list()` — BOM 목록
@@ -87,10 +94,11 @@ INSTRUCTIONS = """
 - `search_items(query)` — 품목 통합 검색
 - `get_bom_stock_status(bom_id)` — 생산 가능 여부
 
-### 발주/입고 (4개)
+### 발주/입고 (5개)
 - `get_purchase_orders(status, vendor_id, project_id)` — 발주서 목록
 - `get_po_detail(po_id, po_no)` — 발주서 상세
-- `get_receiving_history(vendor_id, date_from, date_to)` — 입고 이력
+- `get_receiving_history(vendor_id, project_id, status, date_from, date_to)` — 입고 이력
+- `get_receiving_detail(rcv_id, rcv_no)` — 입고 상세 (품목+발주연결)
 - `get_vendor_list(search)` — 거래처 목록
 
 ### 견적 (3개)
@@ -153,6 +161,20 @@ INSTRUCTIONS = """
 - `get_processing_orders(status, vendor_id, project_id, search)` — 가공발주 목록 (외주가공)
 - `get_processing_order_detail(fo_id, fo_no)` — 가공발주 상세 (품목+첨부파일)
 ★ 가공발주(FO번호)는 일반 발주(PO번호)와 다릅니다. "가공발주" 질문에는 get_processing_orders 사용.
+
+### 출장관리 (2개)
+- `get_business_trips(status, search)` — 출장 일정 목록
+- `get_business_trip_detail(trip_id)` — 출장 상세 (참가자, 차량, 목적)
+
+### 서류관리 (2개)
+- `get_document_list(search)` — 착수계/납품계 서류 패키지 목록
+- `get_document_detail(package_id)` — 서류 패키지 상세 (공문번호, 첨부파일)
+
+### 공구관리 (1개)
+- `get_tools_list(status, search)` — 전동공구 보유/불출 현황
+
+### 대시보드 (1개)
+- `get_dashboard_summary()` — 전체 KPI 종합 (진행현장/재고부족/입고대기/출장)
 
 ## 자주 묻는 질문 패턴 (1개 Tool로 해결)
 

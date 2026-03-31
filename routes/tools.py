@@ -18,7 +18,7 @@ tools_bp = Blueprint("tools", __name__)
 @menu_required('tools')
 def tool_list():
     page = safe_int(request.args.get('page'), 1)
-    per_page = 30
+    per_page = 50
     search = request.args.get('search', '').strip()
     team_filter = request.args.get('team', '').strip()
     status_filter = request.args.get('status', '').strip()

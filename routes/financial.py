@@ -234,7 +234,7 @@ def financial_dashboard():
 def tax_invoice_list():
     with get_db() as db:
         page = safe_int(request.args.get('page'), 1)
-        per_page = 30
+        per_page = 50
 
         match_filter = request.args.get('match', 'matched')  # matched / unmatched / all
 

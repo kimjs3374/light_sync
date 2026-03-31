@@ -284,6 +284,21 @@
                     </div>
                     {% endfor %}
                     {% endif %}
+
+                    {# 오늘 출장 현황 #}
+                    {% if today_trips %}
+                    <div class="section-title mt-3 mb-2" style="font-size:.88rem;">출장 현황</div>
+                    {% for trip in today_trips %}
+                    <a href="{{ url_for('business_trip.trip_detail', trip_id=trip.id) }}"
+                       style="display:block;text-decoration:none;padding:.35rem .5rem;border-radius:.4rem;background:#eff6ff;border:1px solid #bfdbfe;margin-bottom:.3rem;">
+                        <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
+                            <span style="font-size:.75rem;font-weight:700;color:#2563eb;white-space:nowrap;">출장</span>
+                            <span style="font-size:.82rem;font-weight:600;color:#0f172a;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ trip.destination }}</span>
+                            <span style="font-size:.75rem;color:#64748b;white-space:nowrap;">{{ trip.member_names }}</span>
+                        </div>
+                    </a>
+                    {% endfor %}
+                    {% endif %}
                 </div>
             </div>
 
