@@ -43,12 +43,21 @@
       "mcp__light-sync-erp__get_bom_list",
       "mcp__light-sync-erp__get_bom_detail",
       "mcp__light-sync-erp__search_items",
-      "Skill(pdca)"
+      "Skill(pdca)",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_snapshot",
+      "mcp__plugin_playwright_playwright__browser_fill_form",
+      "mcp__plugin_playwright_playwright__browser_click",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__plugin_playwright_playwright__browser_evaluate",
+      "mcp__plugin_playwright_playwright__browser_resize"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "light-sync-erp",
-    "lightsync-erp-chat"
+    "lightsync-erp-chat",
+    "playwright"
   ],
   "prefersReducedMotion": true,
   "allowDangerouslySkipPermissions": true

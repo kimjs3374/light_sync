@@ -23,6 +23,7 @@ from modules.models import (
     Vendor, PurchaseOrder, PurchaseOrderItem, MaterialOrder,
     Receiving, ReceivingItem, ReceivingHistory,
     Item, BomItem, Contract, Project,
+    ProcessingOrder, ProcessingOrderItem,
 )
 from sqlalchemy.orm import joinedload
 from modules.services.inventory_utils import record_stock_movement
@@ -371,6 +372,7 @@ def receiving_create():
         if request.method == 'POST':
             vendor_id = safe_int(request.form.get('vendor_id'), 0)
             po_id = safe_int(request.form.get('po_id'), 0) or None
+            fo_id = safe_int(request.form.get('fo_id'), 0) or None
             rcv_date_str = request.form.get('rcv_date', '')
             note = (request.form.get('note') or '').strip()
 
@@ -388,18 +390,23 @@ def receiving_create():
             except ValueError:
                 rcv_date = datetime.date.today()
 
-            # 발주서 연결 시 contract_id 자동 설정
+            # 발주서/가공발주 연결 시 contract_id 자동 설정
             contract_id = None
             if po_id:
                 po = db.query(PurchaseOrder).get(po_id)
                 if po:
                     contract_id = po.contract_id
+            elif fo_id:
+                fo = db.query(ProcessingOrder).get(fo_id)
+                if fo:
+                    contract_id = fo.contract_id
 
             rcv = Receiving(
                 rcv_no=_generate_rcv_no(db),
                 rcv_date=rcv_date,
                 vendor_id=vendor_id,
                 po_id=po_id,
+                fo_id=fo_id,
                 contract_id=contract_id,
                 note=note,
                 created_by=session.get('user_id'),
@@ -416,6 +423,7 @@ def receiving_create():
             item_units = request.form.getlist('unit[]')
             item_notes = request.form.getlist('item_note[]')
             po_item_ids = request.form.getlist('po_item_id[]')
+            fo_item_ids = request.form.getlist('fo_item_id[]')
             new_items = []
 
             for i in range(len(item_names)):
@@ -430,6 +438,7 @@ def receiving_create():
                 unit = (item_units[i] if i < len(item_units) else '').strip()
                 item_note = (item_notes[i] if i < len(item_notes) else '').strip()
                 linked_po_item_id = safe_int(po_item_ids[i] if i < len(po_item_ids) else '', 0) or None
+                linked_fo_item_id = safe_int(fo_item_ids[i] if i < len(fo_item_ids) else '', 0) or None
                 amount = qty * price
 
                 # 발주 품목 연결 시 품번 자동 가져오기
@@ -441,6 +450,7 @@ def receiving_create():
                 ri = ReceivingItem(
                     receiving_id=rcv.id,
                     po_item_id=linked_po_item_id,
+                    fo_item_id=linked_fo_item_id,
                     item_cd=item_cd or None,
                     item_name=name,
                     item_spec=spec,
@@ -493,6 +503,24 @@ def receiving_create():
                             po_item.in_confirmed = True
                             po_item.in_confirmed_at = now_dt
 
+            # 가공발주 품목 입고확인 동기화
+            if fo_id:
+                fo_obj = db.query(ProcessingOrder).options(joinedload(ProcessingOrder.items)).get(fo_id)
+                if fo_obj:
+                    now_dt = datetime.datetime.now()
+                    all_confirmed = True
+                    for fo_item in fo_obj.items:
+                        total_rcv = db.query(func.coalesce(func.sum(ReceivingItem.received_qty), 0)).filter(
+                            ReceivingItem.fo_item_id == fo_item.id,
+                        ).scalar() or 0
+                        if total_rcv >= (fo_item.quantity or 0) and not fo_item.in_confirmed:
+                            fo_item.in_confirmed = True
+                            fo_item.in_confirmed_at = now_dt
+                        if not fo_item.in_confirmed:
+                            all_confirmed = False
+                    if all_confirmed and fo_obj.status != '입고완료':
+                        fo_obj.status = '입고완료'
+
             log_activity(db, '입고관리', 'create', f'{rcv.rcv_no} 입고 등록 ({vendor.name})', ref_type='Receiving', ref_id=rcv.id)
             db.commit()
 
@@ -503,10 +531,13 @@ def receiving_create():
             return redirect(url_for('receiving.receiving_detail', rcv_id=rcv.id))
 
         # GET: 폼 표시
-        # 발주서 기반 입고 시 po_id 파라미터로 전달
+        # 발주서 기반 입고 시 po_id 또는 fo_id 파라미터로 전달
         po_id = safe_int(request.args.get('po_id'), 0) or None
+        fo_id = safe_int(request.args.get('fo_id'), 0) or None
         po = None
+        fo = None
         po_items = []
+        fo_items = []
         if po_id:
             po = db.query(PurchaseOrder).options(
                 joinedload(PurchaseOrder.items),
@@ -521,11 +552,26 @@ def receiving_create():
                     pi._already_received = float(already)
                     pi._remaining = max(0, float(pi.quantity or 0) - float(already))
                 po_items = po.items
+        elif fo_id:
+            fo = db.query(ProcessingOrder).options(
+                joinedload(ProcessingOrder.items),
+                joinedload(ProcessingOrder.vendor),
+            ).get(fo_id)
+            if fo:
+                for fi in fo.items:
+                    already = db.query(func.coalesce(func.sum(ReceivingItem.received_qty), 0)).filter(
+                        ReceivingItem.fo_item_id == fi.id,
+                    ).scalar() or 0
+                    fi._already_received = float(already)
+                    fi._remaining = max(0, float(fi.quantity or 0) - float(already))
+                fo_items = fo.items
 
         return render_template(
             'receiving_create.html',
             po=po,
             po_items=po_items,
+            fo=fo,
+            fo_items=fo_items,
         )
 
 
@@ -767,19 +813,20 @@ def api_po_search():
     vendor_id = safe_int(request.args.get('vendor_id'), 0)
 
     with get_db() as db:
-        query = db.query(PurchaseOrder).join(Vendor).filter(
+        # ── 자재발주서 ──
+        po_query = db.query(PurchaseOrder).join(Vendor, PurchaseOrder.vendor_id == Vendor.id).filter(
             PurchaseOrder.status.in_(['발송완료', '입고대기'])
         )
         if vendor_id:
-            query = query.filter(PurchaseOrder.vendor_id == vendor_id)
+            po_query = po_query.filter(PurchaseOrder.vendor_id == vendor_id)
         if q:
             like_q = f"%{q}%"
-            query = query.filter(
+            po_query = po_query.filter(
                 (PurchaseOrder.po_no.ilike(like_q)) | (Vendor.name.ilike(like_q))
             )
+        pos = po_query.order_by(desc(PurchaseOrder.po_date)).limit(20).all()
 
-        pos = query.order_by(desc(PurchaseOrder.po_date)).limit(20).all()
-        return jsonify([{
+        results = [{
             'id': p.id,
             'po_no': p.po_no,
             'po_date': p.po_date.strftime('%Y-%m-%d') if p.po_date else '',
@@ -787,7 +834,34 @@ def api_po_search():
             'vendor_id': p.vendor_id,
             'status': p.status,
             'total_amount': float(p.total_amount or 0),
-        } for p in pos])
+            'order_type': 'po',
+        } for p in pos]
+
+        # ── 가공발주서 ──
+        fo_query = db.query(ProcessingOrder).join(Vendor, ProcessingOrder.vendor_id == Vendor.id).filter(
+            ProcessingOrder.status.in_(['발주완료', '가공중'])
+        )
+        if vendor_id:
+            fo_query = fo_query.filter(ProcessingOrder.vendor_id == vendor_id)
+        if q:
+            like_q = f"%{q}%"
+            fo_query = fo_query.filter(
+                (ProcessingOrder.fo_no.ilike(like_q)) | (Vendor.name.ilike(like_q))
+            )
+        fos = fo_query.order_by(desc(ProcessingOrder.fo_date)).limit(20).all()
+
+        results += [{
+            'id': f.id,
+            'po_no': f.fo_no,
+            'po_date': f.fo_date.strftime('%Y-%m-%d') if f.fo_date else '',
+            'vendor_name': f.vendor.name if f.vendor else '',
+            'vendor_id': f.vendor_id,
+            'status': f.status,
+            'total_amount': float(f.total_amount or 0),
+            'order_type': 'fo',
+        } for f in fos]
+
+        return jsonify(results)
 
 
 # ===================================================================

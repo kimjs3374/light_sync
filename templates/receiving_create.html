@@ -5,8 +5,8 @@
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
         <div>
             <div class="hero-eyebrow">New Receiving</div>
-            <h2>{{ '발주서 기반 입고' if po else '직접 입고 등록' }}</h2>
-            <div class="hero-sub">{% if po %}발주번호: {{ po.po_no }}{% else %}품목을 직접 추가하여 입고를 등록합니다{% endif %}</div>
+            <h2>{{ '발주서 기반 입고' if po else '가공발주 기반 입고' if fo else '직접 입고 등록' }}</h2>
+            <div class="hero-sub">{% if po %}발주번호: {{ po.po_no }}{% elif fo %}가공발주번호: {{ fo.fo_no }}{% else %}품목을 직접 추가하여 입고를 등록합니다{% endif %}</div>
         </div>
         <a href="{{ url_for('receiving.receiving_list') }}" class="btn btn-outline-light btn-sm">목록으로</a>
     </div>
@@ -21,13 +21,16 @@
             <div class="row g-3">
                 <div class="col-md-3">
                     <label class="form-label fw-bold">입고일 <span class="text-danger">*</span></label>
-                    <input type="date" name="rcv_date" class="form-control form-control-sm" value="{{ po.po_date.strftime('%Y-%m-%d') if po and po.po_date else '' }}" required>
+                    <input type="date" name="rcv_date" class="form-control form-control-sm" value="{{ po.po_date.strftime('%Y-%m-%d') if po and po.po_date else fo.fo_date.strftime('%Y-%m-%d') if fo and fo.fo_date else '' }}" required>
                 </div>
                 <div class="col-md-5">
                     <label class="form-label fw-bold">거래처 <span class="text-danger">*</span></label>
                     {% if po %}
                     <input type="hidden" name="vendor_id" value="{{ po.vendor_id }}">
                     <input type="text" class="form-control form-control-sm bg-light" value="{{ po.vendor.name }}" readonly>
+                    {% elif fo %}
+                    <input type="hidden" name="vendor_id" value="{{ fo.vendor_id }}">
+                    <input type="text" class="form-control form-control-sm bg-light" value="{{ fo.vendor.name }}" readonly>
                     {% else %}
                     <input type="hidden" name="vendor_id" id="vendorId">
                     <input type="text" class="form-control form-control-sm" id="vendorSearch"
@@ -40,6 +43,9 @@
                     {% if po %}
                     <input type="hidden" name="po_id" value="{{ po.id }}">
                     <input type="text" class="form-control form-control-sm bg-light" value="{{ po.po_no }}" readonly>
+                    {% elif fo %}
+                    <input type="hidden" name="fo_id" value="{{ fo.id }}">
+                    <input type="text" class="form-control form-control-sm bg-light" value="{{ fo.fo_no }} (가공발주)" readonly>
                     {% else %}
                     <div class="input-group input-group-sm">
                         <input type="hidden" name="po_id" id="poId">
@@ -68,7 +74,7 @@
                 <table class="table table-sm mb-0 no-stack-table" id="itemsTable" style="font-size:.82rem; width:100%; table-layout:fixed;">
                     <colgroup>
                         <col style="width:30px">
-                        {% if not po %}<col style="width:12%">{% endif %}
+                        {% if not po and not fo %}<col style="width:12%">{% endif %}
                         <col style="width:22%">
                         <col style="width:16%">
                         <col style="width:8%">
@@ -81,7 +87,7 @@
                     <thead class="table-light">
                         <tr>
                             <th>#</th>
-                            {% if not po %}<th>품번</th>{% endif %}
+                            {% if not po and not fo %}<th>품번</th>{% endif %}
                             <th>품명</th>
                             <th>규격</th>
                             <th>수량</th>
@@ -99,6 +105,7 @@
                             <td>{{ loop.index }}</td>
                             <td>
                                 <input type="hidden" name="po_item_id[]" value="{{ pi.id }}">
+                                <input type="hidden" name="fo_item_id[]" value="">
                                 <input type="hidden" name="item_cd[]" value="{{ pi.item_code or '' }}">
                                 <input type="text" name="item_name[]" class="form-control form-control-sm" value="{{ pi.item_name }}" readonly>
                             </td>
@@ -114,11 +121,35 @@
                             <td></td>
                         </tr>
                         {% endfor %}
+                        {% elif fo_items %}
+                        {% for fi in fo_items %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>
+                                <input type="hidden" name="po_item_id[]" value="">
+                                <input type="hidden" name="fo_item_id[]" value="{{ fi.id }}">
+                                <input type="hidden" name="item_cd[]" value="">
+                                <input type="text" name="item_name[]" class="form-control form-control-sm" value="{{ fi.item_name }}" readonly>
+                            </td>
+                            <td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="{{ fi.item_spec or '' }}" readonly></td>
+                            <td>
+                                <input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="{{ fi._remaining }}" step="any" min="0" max="{{ fi._remaining }}">
+                                <small class="text-muted">잔량: {{ fi._remaining|int }}</small>
+                            </td>
+                            <td><input type="text" name="unit[]" class="form-control form-control-sm" value="{{ fi.unit or '' }}" readonly></td>
+                            <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="{{ fi.unit_price|int }}" readonly></td>
+                            <td class="amount-cell text-end fw-bold">{{ (fi._remaining * (fi.unit_price or 0))|int|e }}</td>
+                            <td><input type="text" name="item_note[]" class="form-control form-control-sm" value="">
+                                {% if fi.processing_note %}<small class="text-muted d-block">{{ fi.processing_note }}</small>{% endif %}
+                            </td>
+                            <td></td>
+                        </tr>
+                        {% endfor %}
                         {% else %}
                         {# 직접입고: 첫 행 자동 생성 #}
                         <tr>
                             <td>1</td>
-                            <td><input type="hidden" name="po_item_id[]" value=""><input type="text" name="item_cd[]" class="form-control form-control-sm item-cd-input" placeholder="품번" autocomplete="off"></td>
+                            <td><input type="hidden" name="po_item_id[]" value=""><input type="hidden" name="fo_item_id[]" value=""><input type="text" name="item_cd[]" class="form-control form-control-sm item-cd-input" placeholder="품번" autocomplete="off"></td>
                             <td><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" autocomplete="off" required></td>
                             <td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" placeholder="규격" autocomplete="off"></td>
                             <td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="0" step="any" min="0"></td>
@@ -166,8 +197,8 @@
 
 <script>
 (function() {
-    var itemIndex = {{ po_items|length if po_items else 1 }};
-    var isPoBased = {{ 'true' if po else 'false' }};
+    var itemIndex = {{ po_items|length if po_items else fo_items|length if fo_items else 1 }};
+    var isPoBased = {{ 'true' if po or fo else 'false' }};
 
     function recalc() {
         var total = 0;
@@ -254,7 +285,7 @@
         if (isPoBased) {
             tr.innerHTML =
                 '<td>' + itemIndex + '</td>' +
-                '<td><input type="hidden" name="po_item_id[]" value=""><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" required></td>' +
+                '<td><input type="hidden" name="po_item_id[]" value=""><input type="hidden" name="fo_item_id[]" value=""><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" required></td>' +
                 '<td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" placeholder="규격"></td>' +
                 '<td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="0" step="any" min="0"></td>' +
                 '<td><input type="text" name="unit[]" class="form-control form-control-sm" value="EA"></td>' +
@@ -265,7 +296,7 @@
         } else {
             tr.innerHTML =
                 '<td>' + itemIndex + '</td>' +
-                '<td><input type="hidden" name="po_item_id[]" value=""><input type="text" name="item_cd[]" class="form-control form-control-sm item-cd-input" placeholder="품번" autocomplete="off"></td>' +
+                '<td><input type="hidden" name="po_item_id[]" value=""><input type="hidden" name="fo_item_id[]" value=""><input type="text" name="item_cd[]" class="form-control form-control-sm item-cd-input" placeholder="품번" autocomplete="off"></td>' +
                 '<td><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" autocomplete="off" required></td>' +
                 '<td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" placeholder="규격" autocomplete="off"></td>' +
                 '<td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="0" step="any" min="0"></td>' +
@@ -314,18 +345,24 @@
                         if (!data.length) { poResults.innerHTML = '<div class="list-group position-absolute w-100" style="z-index:1050"><div class="list-group-item text-muted">결과 없음</div></div>'; return; }
                         var html = '<div class="list-group position-absolute w-100" style="z-index:1050">';
                         data.forEach(function(po) {
-                            html += '<a href="#" class="list-group-item list-group-item-action py-1" data-id="' + po.id + '" data-no="' + po.po_no + '" data-vendor-id="' + po.vendor_id + '" data-vendor="' + po.vendor_name + '">' + po.po_no + ' - ' + po.vendor_name + ' (' + po.po_date + ')</a>';
+                            var typeLabel = po.order_type === 'fo' ? '[가공] ' : '';
+                            html += '<a href="#" class="list-group-item list-group-item-action py-1" data-id="' + po.id + '" data-no="' + po.po_no + '" data-vendor-id="' + po.vendor_id + '" data-vendor="' + po.vendor_name + '" data-type="' + (po.order_type || 'po') + '">' + typeLabel + po.po_no + ' - ' + po.vendor_name + ' (' + po.po_date + ')</a>';
                         });
                         html += '</div>';
                         poResults.innerHTML = html;
                         poResults.querySelectorAll('a').forEach(function(a) {
                             a.addEventListener('click', function(e) {
                                 e.preventDefault();
+                                var orderType = this.dataset.type;
                                 poId.value = this.dataset.id;
                                 poSearch.value = this.dataset.no;
                                 poResults.innerHTML = '';
                                 clearPo.style.display = '';
-                                window.location.href = '/receiving/create?po_id=' + this.dataset.id;
+                                if (orderType === 'fo') {
+                                    window.location.href = '/receiving/create?fo_id=' + this.dataset.id;
+                                } else {
+                                    window.location.href = '/receiving/create?po_id=' + this.dataset.id;
+                                }
                             });
                         });
                     });
