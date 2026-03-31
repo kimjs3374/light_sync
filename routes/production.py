@@ -15,6 +15,7 @@ from modules.models import (
     ContractItem,
     BusinessTrip,
 )
+from modules.models.constants import PRODUCTION_TEAM_MAP
 from modules.production_logic import (
     sync_production_processes,
     refresh_production_statuses,
@@ -152,7 +153,7 @@ ACTION_HANDLERS = {
 def production_management():
     # GET → 새 카드형 메인으로 redirect
     if request.method == 'GET':
-        return redirect(url_for('production.production_main'))
+        return redirect(url_for('production.production_main_team1'))
 
     with get_db() as db:
         current_user = get_user_display_name()
@@ -269,28 +270,50 @@ def production_detail(project_id):
 # 카드형 생산관리 (재설계)
 # ===================================================================
 
+@production_bp.route('/production/team1')
+@login_required
+@menu_required('production')
+def production_main_team1():
+    """생산1팀 — 철제/스텐가로등주, 조명타워, 부속자재, 태양광가로등"""
+    return _production_main_view('team1', '생산1팀')
+
+
+@production_bp.route('/production/team2')
+@login_required
+@menu_required('production2')
+def production_main_team2():
+    """생산2팀 — LED 조명기구"""
+    return _production_main_view('team2', '생산2팀')
+
+
 @production_bp.route('/production')
 @login_required
 @menu_required('production')
 def production_main():
-    """생산관리 메인 — 현장 목록 (현장 선택 → 상세)"""
+    """생산관리 메인 — 팀 미지정 시 1팀으로"""
+    return redirect(url_for('production.production_main_team1'))
+
+
+def _production_main_view(team_key, team_label):
+    """생산관리 공통 뷰 — 팀별 카테고리 필터링"""
+    team_categories = PRODUCTION_TEAM_MAP.get(team_key)
     site_id = safe_int(request.args.get('site'), 0) or None
 
     with get_db() as db:
         today = datetime.date.today()
 
         if not site_id:
-            # 목록 화면: 동기화 생략 (성능 최적화)
-            site_list = get_site_list(db, today)
+            site_list = get_site_list(db, today, team_categories=team_categories)
             return render_template(
                 'production.html',
                 mode='sites',
                 site_list=site_list,
                 site_id=None,
                 today=today.strftime('%Y-%m-%d'),
+                team_key=team_key,
+                team_label=team_label,
             )
 
-        # 현장 선택됨 — 해당 현장만 동기화
         sync_production_processes(db, project_id=site_id)
         refresh_production_statuses(db, project_id=site_id)
         db.commit()
@@ -298,9 +321,11 @@ def production_main():
         project = db.query(Project).get(site_id)
         if not project:
             flash('현장을 찾을 수 없습니다.', 'warning')
-            return redirect(url_for('production.production_main'))
+            return redirect(url_for(f'production.production_main_{team_key}'))
 
-        item_groups, stats, history, history_counts = get_site_detail(db, project, site_id, today)
+        item_groups, stats, history, history_counts = get_site_detail(
+            db, project, site_id, today, team_categories=team_categories
+        )
 
     return render_template(
         'production.html',
@@ -312,6 +337,8 @@ def production_main():
         today=today.strftime('%Y-%m-%d'),
         history=history,
         history_counts=history_counts,
+        team_key=team_key,
+        team_label=team_label,
     )
 
 

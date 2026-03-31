@@ -12,7 +12,7 @@
 {% if mode == 'sites' %}
 
 <div class="prod-header">
-    <h1>🏭 생산관리</h1>
+    <h1>🏭 {{ team_label|default('생산관리') }}</h1>
     <button class="btn btn-sm btn-light fw-bold px-3" style="white-space:nowrap;" id="btnSync" onclick="doSync()">
         <span id="syncSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
         공정 동기화
@@ -22,7 +22,7 @@
 
 <div class="site-grid">
     {% for s in site_list %}
-    <a href="{{ url_for('production.production_main', site=s.project_id) }}" class="text-decoration-none">
+    <a href="{{ url_for('production.production_main_' + (team_key|default('team1')), site=s.project_id) }}" class="text-decoration-none">
         <div class="site-card {% if s.status == '진행중' %}site-working{% elif s.status == '완료' %}site-done{% endif %}">
             <div>
                 <div class="site-name">{{ s.site_name }}</div>
@@ -69,8 +69,8 @@
 {# ── Header ── #}
 <div class="prod-header">
     <div class="d-flex align-items-center gap-2">
-        <a href="{{ url_for('production.production_main') }}" class="btn btn-sm btn-outline-light" style="white-space:nowrap;">← 현장목록</a>
-        <h1 style="font-size:1.2rem;">🏭 {{ project.temp_name }}</h1>
+        <a href="{{ url_for('production.production_main_' + (team_key|default('team1'))) }}" class="btn btn-sm btn-outline-light" style="white-space:nowrap;">← 현장목록</a>
+        <h1 style="font-size:1.2rem;">🏭 {{ team_label|default('생산관리') }} · {{ project.temp_name }}</h1>
     </div>
     <button class="btn btn-sm btn-light fw-bold px-3" style="white-space:nowrap;" id="btnSync" onclick="doSync()">
         <span id="syncSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>

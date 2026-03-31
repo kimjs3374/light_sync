@@ -47,7 +47,8 @@ MENU_REGISTRY = OrderedDict([
     ("tools",          {"label": "공구관리",   "group": "공통메뉴", "endpoint": "tools.tool_list"}),
     ("documents",      {"label": "서류관리",   "group": "영업부", "endpoint": "document.document_list"}),
     # --- 생산부 ---
-    ("production",     {"label": "생산관리",   "group": "생산부", "endpoint": "production.production_main"}),
+    ("production",     {"label": "생산1팀",   "group": "생산부", "endpoint": "production.production_main_team1"}),
+    ("production2",    {"label": "생산2팀",   "group": "생산부", "endpoint": "production.production_main_team2"}),
     # --- 시스템 (admin only) ---
     ("admin_settings", {"label": "시스템관리", "group": "시스템", "endpoint": "auth.admin_settings", "admin_only": True}),
     ("workboard",      {"label": "현장관리",   "group": "워크보드", "endpoint": "workboard.workboard_list"}),
@@ -71,10 +72,10 @@ GROUP_ICONS = {
 # 부서별 기본 메뉴 (GroupPermission 초기값 세팅용)
 # 형식: "menu_key:r" (읽기전용) / "menu_key:rw" (읽기+쓰기) / "menu_key" (레거시=rw)
 DEFAULT_GROUP_MENUS = {
-    "영업부": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,catalog:r,illuminance:rw,item:r,material:r,bom:r,inventory:r,procurement:rw,procurement_summary:r,warranty:rw,photos:rw,drawing:rw,production:r,receiving_photo:rw,business_trip:rw",
-    "관리부": "project:r,contract:r,delivery:r,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,certification:rw,procurement:r,procurement_summary:r,warranty:rw,photos:rw,drawing:r,production:r,receiving_photo:rw,business_trip:rw,tools:r",
-    "생산부": "contract:r,sales:r,delivery:r,material:r,inventory:r,warranty:rw,photos:rw,drawing:r,production:rw,receiving_photo:rw,business_trip:rw,tools:rw",
-    "임원진": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,catalog:rw,illuminance:rw,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,procurement:rw,procurement_summary:rw,warranty:rw,photos:rw,drawing:rw,production:rw,certification:rw,receiving_photo:rw,business_trip:rw,tools:rw",
+    "영업부": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,catalog:r,illuminance:rw,item:r,material:r,bom:r,inventory:r,procurement:rw,procurement_summary:r,warranty:rw,photos:rw,drawing:rw,production:r,production2:r,receiving_photo:rw,business_trip:rw",
+    "관리부": "project:r,contract:r,delivery:r,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,certification:rw,procurement:r,procurement_summary:r,warranty:rw,photos:rw,drawing:r,production:r,production2:r,receiving_photo:rw,business_trip:rw,tools:r",
+    "생산부": "contract:r,sales:r,delivery:r,material:r,inventory:r,warranty:rw,photos:rw,drawing:r,production:rw,production2:rw,receiving_photo:rw,business_trip:rw,tools:rw",
+    "임원진": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,catalog:rw,illuminance:rw,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,procurement:rw,procurement_summary:rw,warranty:rw,photos:rw,drawing:rw,production:rw,production2:rw,certification:rw,receiving_photo:rw,business_trip:rw,tools:rw",
 }
 
 
@@ -108,3 +109,4 @@ class DevelopmentConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG = False
+    SESSION_COOKIE_SECURE = False   # gunicorn은 HTTP, HTTPS는 nginx에서 종단

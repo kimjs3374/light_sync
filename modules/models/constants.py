@@ -13,6 +13,18 @@ DETAIL_ITEM_OPTIONS = [
     "태양광가로등",
 ]
 
+# 생산팀 카테고리 매핑
+PRODUCTION_TEAM1_CATEGORIES = {
+    "철제가로등주", "스테인리스가로등주", "조명타워", "가로등주부속자재", "태양광가로등",
+}
+PRODUCTION_TEAM2_CATEGORIES = {
+    "LED투광등기구", "LED가로등기구", "LED보안등기구", "LED터널용등기구", "스포츠조명기구", "LED경관조명기구",
+}
+PRODUCTION_TEAM_MAP = {
+    'team1': PRODUCTION_TEAM1_CATEGORIES,
+    'team2': PRODUCTION_TEAM2_CATEGORIES,
+}
+
 # 바코드 입력 허용 대상 (조명기구 계열)
 LIGHTING_DETAIL_ITEMS = {
     "LED투광등기구",

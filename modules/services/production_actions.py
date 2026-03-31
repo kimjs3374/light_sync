@@ -442,8 +442,8 @@ def enrich_detail_items(project, today):
             item_obj.production_processes = sorted(item_obj.production_processes or [], key=lambda x: (x.step_order, x.id))
 
 
-def get_site_list(db, today):
-    """production_main: 현장 목록 조회"""
+def get_site_list(db, today, team_categories=None):
+    """production_main: 현장 목록 조회. team_categories가 있으면 해당 카테고리 품목만 집계."""
     projects = db.query(Project).filter(
         Project.is_contracted.is_(True),
         active_contract_filter(),
@@ -466,6 +466,9 @@ def get_site_list(db, today):
             if c.delivery_due_date and (delivery_date is None or c.delivery_due_date < delivery_date):
                 delivery_date = c.delivery_due_date
             for item_obj in c.items:
+                # 팀 카테고리 필터
+                if team_categories and (item_obj.category or '') not in team_categories:
+                    continue
                 items_count += 1
                 item_summaries.append({
                     'category': item_obj.category or '-',
@@ -505,8 +508,8 @@ def get_site_list(db, today):
     return site_list
 
 
-def get_site_detail(db, project, site_id, today):
-    """production_main: 현장 선택 시 품목별 공정 카드 + 통계"""
+def get_site_detail(db, project, site_id, today, team_categories=None):
+    """production_main: 현장 선택 시 품목별 공정 카드 + 통계. team_categories로 필터."""
     today_logs = load_today_logs(db, today)
 
     item_groups = []
@@ -516,6 +519,9 @@ def get_site_detail(db, project, site_id, today):
         joinedload(Contract.items).joinedload(ContractItem.material_orders),
     ).all():
         for item_obj in c.items:
+            # 팀 카테고리 필터
+            if team_categories and (item_obj.category or '') not in team_categories:
+                continue
             processes = sorted(item_obj.production_processes or [], key=lambda x: (x.step_order, x.id))
             if not processes:
                 continue
