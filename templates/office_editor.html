@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ filename }} — Office</title>
+<script src="https://docs.mgnt.kr/web-apps/apps/api/documents/api.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; overflow:hidden; font-family:'DM Sans',sans-serif; }
+.editor-header {
+    height:44px; background:#1e293b; display:flex; align-items:center; padding:0 16px; gap:12px;
+}
+.editor-header a { color:#94a3b8; text-decoration:none; font-size:.85rem; }
+.editor-header a:hover { color:#fff; }
+.editor-title { color:#fff; font-size:.88rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+.editor-btn { background:transparent; border:1px solid #475569; color:#cbd5e1; padding:4px 12px; border-radius:6px; font-size:.8rem; cursor:pointer; }
+.editor-btn:hover { background:#334155; color:#fff; }
+#editor { height:calc(100% - 44px); }
+</style>
+</head>
+<body>
+<div class="editor-header">
+    <a href="/office/tab/{{ scope }}">← 목록</a>
+    <span class="editor-title">{{ filename }}</span>
+    {% if not is_pdf %}
+    <button class="editor-btn" onclick="forceSave()">저장</button>
+    {% endif %}
+    <a href="/office/download/{{ scope }}/{{ storage_name }}" class="editor-btn" style="text-decoration:none;">다운로드</a>
+</div>
+<div id="editor"></div>
+<script>
+var docEditor = new DocsAPI.DocEditor("editor", {
+    document: {
+        fileType: "{{ ext }}",
+        key: "{{ doc_key }}",
+        title: "{{ filename }}",
+        url: "{{ file_url }}",
+        permissions: {
+            edit: {{ 'false' if is_pdf else 'true' }},
+            download: true,
+            print: true,
+        }
+    },
+    documentType: "{{ doc_type }}",
+    editorConfig: {
+        mode: "{{ 'view' if is_pdf else 'edit' }}",
+        lang: "ko",
+        callbackUrl: "{{ callback_url }}",
+        user: {
+            id: "{{ session.get('user_id', 'anonymous') }}",
+            name: "{{ user_name }}"
+        },
+        customization: {
+            forcesave: true,
+            autosave: true,
+            chat: false,
+            compactHeader: true,
+            toolbarNoTabs: false,
+            spreadsheet: {
+                showSheetsInTabs: true,
+            },
+        },
+    },
+    events: {
+        onError: function(e) { console.error("ONLYOFFICE error:", e); },
+    },
+    type: window.innerWidth < 768 ? "mobile" : "desktop",
+});
+
+function forceSave() {
+    docEditor.requestClose ? docEditor.triggerForceSave && docEditor.triggerForceSave() : null;
+    // ONLYOFFICE API v7+
+    try { docEditor.triggerForceSave(); } catch(e) {}
+}
+</script>
+</body>
+</html>
