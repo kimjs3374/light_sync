@@ -1,0 +1,389 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+  .stat-card-vl { border: none; border-radius: 12px; }
+  .stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
+  .stat-label { font-size: .78rem; color: #64748b; margin-top: 2px; }
+  .vl-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+  .vl-table td { font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vl-table tbody tr { cursor: pointer; }
+  .vl-table tbody tr:hover { background: #f8fafc; }
+  .filter-bar { background: #f8fafc; border-radius: 10px; padding: 10px 14px; }
+  .receipt-thumb { width: 18px; height: 18px; border-radius: 4px; object-fit: cover; vertical-align: middle; }
+  .receipt-preview { max-width: 100%; max-height: 60vh; border-radius: 6px; }
+  .km-cell { font-family: var(--mg-mono, monospace); }
+  @media (max-width: 767.98px) {
+    .stat-num { font-size: 1.4rem; }
+    .col-hide-mobile { display: none !important; }
+  }
+</style>
+
+<div class="page-hero mg-fade">
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+    <div>
+      <div class="hero-eyebrow">Vehicle Log</div>
+      <h2>운행일지</h2>
+      <div class="hero-sub">업무용승용차 운행기록부 (세법 별지서식)</div>
+    </div>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-primary btn-sm" onclick="openCreateModal()">
+        <i class="bi bi-plus-circle"></i> 운행일지 등록
+      </button>
+    </div>
+  </div>
+</div>
+
+{# ─── 통계 카드 ─── #}
+<div class="row g-3 mb-3 mg-fade" style="animation-delay:.05s">
+  <div class="col-6 col-md-3">
+    <div class="card stat-card-vl shadow-sm text-center py-3" style="border-left:3px solid #3b82f6;">
+      <div class="stat-num" style="color:#3b82f6;">{{ logs|length }}</div>
+      <div class="stat-label">기록 건수</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card stat-card-vl shadow-sm text-center py-3" style="border-left:3px solid #22c55e;">
+      <div class="stat-num" style="color:#22c55e;">{{ '{:,}'.format(total_distance) }}</div>
+      <div class="stat-label">주행거리 합계 (km)</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card stat-card-vl shadow-sm text-center py-3" style="border-left:3px solid #f59e0b;">
+      <div class="stat-num" style="color:#f59e0b;">{{ '{:,}'.format(total_fuel) }}</div>
+      <div class="stat-label">주유금액 합계 (원)</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card stat-card-vl shadow-sm text-center py-3" style="border-left:3px solid #6366f1;">
+      <div class="stat-num" style="color:#6366f1;">100<span style="font-size:1rem">%</span></div>
+      <div class="stat-label">업무사용비율 (고정)</div>
+    </div>
+  </div>
+</div>
+
+{# ─── 필터 + 엑셀 다운로드 ─── #}
+<form method="get" class="filter-bar mb-3 mg-fade" style="animation-delay:.08s">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-md-3">
+      <label class="form-label small text-muted mb-1">차량</label>
+      <select name="vehicle" class="form-select form-select-sm">
+        <option value="">전체</option>
+        {% for v in vehicles %}
+        <option value="{{ v }}" {% if filters.vehicle == v %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label small text-muted mb-1">사용자</label>
+      <select name="user_id" class="form-select form-select-sm">
+        <option value="">전체</option>
+        {% for u in users %}
+        <option value="{{ u.id }}" {% if filters.user_id == u.id %}selected{% endif %}>
+          {{ u.full_name }} ({{ u.user_group or '-' }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small text-muted mb-1">시작일</label>
+      <input type="date" name="from" value="{{ filters.from }}" class="form-control form-control-sm">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small text-muted mb-1">종료일</label>
+      <input type="date" name="to" value="{{ filters.to }}" class="form-control form-control-sm">
+    </div>
+    <div class="col-12 col-md-2 d-flex gap-1">
+      <button type="submit" class="btn btn-sm btn-primary flex-grow-1">조회</button>
+      <a href="{{ url_for('vehicle_log.log_list') }}" class="btn btn-sm btn-outline-secondary">초기화</a>
+    </div>
+  </div>
+  <div class="row g-2 mt-1">
+    <div class="col-12 d-flex justify-content-end gap-1 align-items-center">
+      <small class="text-muted me-2">엑셀 다운로드 (별지서식)</small>
+      <select id="exportVehicle" class="form-select form-select-sm" style="width:auto;">
+        {% for v in vehicles %}
+        <option value="{{ v }}" {% if filters.vehicle == v %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
+      </select>
+      <select id="exportYear" class="form-select form-select-sm" style="width:auto;">
+        {% for y in range(current_year - 2, current_year + 1) %}
+        <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}년</option>
+        {% endfor %}
+      </select>
+      <button type="button" onclick="downloadExcel()" class="btn btn-sm btn-success">
+        <i class="bi bi-file-earmark-excel"></i> 다운로드
+      </button>
+    </div>
+  </div>
+</form>
+
+{# ─── 테이블 ─── #}
+<div class="card shadow-sm mg-fade" style="animation-delay:.1s">
+  <div class="table-responsive">
+    <table class="table vl-table mb-0">
+      <thead>
+        <tr>
+          <th>사용일자</th>
+          <th>차량</th>
+          <th>부서</th>
+          <th>성명</th>
+          <th class="text-end">주행 전</th>
+          <th class="text-end">주행 후</th>
+          <th class="text-end">주행거리</th>
+          <th class="text-end">주유금액</th>
+          <th>출발지</th>
+          <th>도착지</th>
+          <th>사용목적</th>
+          <th class="text-center">영수증</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr onclick='openDetail({{ log.id }})'>
+          <td>{{ log.use_date.strftime('%Y-%m-%d') if log.use_date else '' }}</td>
+          <td>{{ log.vehicle }}</td>
+          <td>{{ log.user_department or '-' }}</td>
+          <td>{{ log.user_name }} {{ log.user_position or '' }}</td>
+          <td class="text-end km-cell">{{ '{:,}'.format(log.odometer_start) if log.odometer_start is not none else '-' }}</td>
+          <td class="text-end km-cell">{{ '{:,}'.format(log.odometer_end) }}</td>
+          <td class="text-end km-cell"><strong>{{ '{:,}'.format(log.distance_km) }}</strong></td>
+          <td class="text-end km-cell">{{ '{:,}'.format(log.fuel_amount) if log.fuel_amount else '-' }}</td>
+          <td>{{ log.origin }}</td>
+          <td>{{ log.destination }}</td>
+          <td title="{{ log.purpose }}">{{ log.purpose }}</td>
+          <td class="text-center">
+            {% if log.receipt_url %}<i class="bi bi-image text-primary"></i>{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="12" class="text-center py-4 text-muted">조회된 운행일지가 없습니다</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ─── 등록 모달 ─── #}
+<div class="modal fade" id="createModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">운행일지 등록</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="createForm" enctype="multipart/form-data" onsubmit="submitCreate(event)">
+        <div class="modal-body">
+          <div class="row g-2">
+            <div class="col-md-4">
+              <label class="form-label small text-muted mb-1">사용일자 *</label>
+              <input type="date" name="use_date" id="cf_use_date" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label small text-muted mb-1">차량 *</label>
+              <select name="vehicle" id="cf_vehicle" class="form-select form-select-sm" required onchange="onVehicleChange()">
+                <option value="">선택</option>
+                {% for v in vehicles %}
+                <option value="{{ v }}">{{ v }}</option>
+                {% endfor %}
+              </select>
+              <div id="cf_last_hint" class="form-text small text-muted" style="min-height: 16px;"></div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small text-muted mb-1">주행 전 km</label>
+              <input type="number" name="odometer_start" id="cf_odo_start" class="form-control form-control-sm" oninput="updateDistance()">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small text-muted mb-1">주행 후 km *</label>
+              <input type="number" name="odometer_end" id="cf_odo_end" class="form-control form-control-sm" oninput="updateDistance()" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small text-muted mb-1">주행거리 (자동)</label>
+              <input type="text" id="cf_distance" class="form-control form-control-sm" readonly value="0 km" style="background:#f8fafc;">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small text-muted mb-1">주유금액 (원, 선택)</label>
+              <input type="number" name="fuel_amount" class="form-control form-control-sm" placeholder="0">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small text-muted mb-1">출발지 *</label>
+              <input type="text" name="origin" class="form-control form-control-sm" placeholder="예: 본사" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small text-muted mb-1">도착지 *</label>
+              <input type="text" name="destination" class="form-control form-control-sm" placeholder="예: 파주현장" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label small text-muted mb-1">사용목적 *</label>
+              <textarea name="purpose" class="form-control form-control-sm" rows="2" placeholder="예: 납품 입회 / 측정 / 미팅" required></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label small text-muted mb-1">영수증 사진 (선택, 5MB 이하)</label>
+              <input type="file" name="receipt" accept="image/*" class="form-control form-control-sm">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+          <button type="submit" class="btn btn-sm btn-primary" id="cf_submit">등록</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ─── 상세 모달 ─── #}
+<div class="modal fade" id="detailModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">운행일지 상세</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="detailBody">
+        <div class="text-center py-4 text-muted">로딩...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CSRF = document.querySelector('meta[name=csrf-token]')?.content;
+const LOGS = {{ logs | tojson(default=[]) if false else '[]' }};
+
+// 서버에서 받은 logs를 JS 객체로 직렬화
+const LOG_DATA = {
+{% for log in logs %}
+  {{ log.id }}: {
+    id: {{ log.id }},
+    use_date: {{ (log.use_date.strftime('%Y-%m-%d') if log.use_date else '')|tojson }},
+    vehicle: {{ log.vehicle|tojson }},
+    user_name: {{ log.user_name|tojson }},
+    user_department: {{ (log.user_department or '')|tojson }},
+    user_position: {{ (log.user_position or '')|tojson }},
+    odometer_start: {{ (log.odometer_start if log.odometer_start is not none else 'null') }},
+    odometer_end: {{ log.odometer_end }},
+    distance_km: {{ log.distance_km }},
+    fuel_amount: {{ log.fuel_amount or 0 }},
+    origin: {{ log.origin|tojson }},
+    destination: {{ log.destination|tojson }},
+    purpose: {{ log.purpose|tojson }},
+    has_receipt: {{ 'true' if log.receipt_url else 'false' }},
+    can_edit: {{ 'true' if can_edit_map.get(log.id) else 'false' }},
+  },
+{% endfor %}
+};
+
+function fmt(n) { return n == null ? '-' : Number(n).toLocaleString(); }
+
+function openDetail(id) {
+  const log = LOG_DATA[id];
+  if (!log) return;
+  const body = document.getElementById('detailBody');
+  body.innerHTML = `
+    <table class="table table-sm">
+      <tr><th style="width:120px;">사용일자</th><td>${log.use_date}</td>
+          <th style="width:120px;">차량</th><td>${log.vehicle}</td></tr>
+      <tr><th>부서</th><td>${log.user_department || '-'}</td>
+          <th>성명</th><td>${log.user_name} ${log.user_position || ''}</td></tr>
+      <tr><th>주행 전 km</th><td>${fmt(log.odometer_start)}</td>
+          <th>주행 후 km</th><td>${fmt(log.odometer_end)}</td></tr>
+      <tr><th>주행거리</th><td><strong>${fmt(log.distance_km)} km</strong></td>
+          <th>주유금액</th><td>${fmt(log.fuel_amount)} 원</td></tr>
+      <tr><th>출발지</th><td>${log.origin}</td>
+          <th>도착지</th><td>${log.destination}</td></tr>
+      <tr><th>사용목적</th><td colspan="3">${log.purpose}</td></tr>
+    </table>
+    ${log.has_receipt ? `<div class="text-center mt-2"><img src="/vehicle-logs/${log.id}/receipt" class="receipt-preview"></div>` : ''}
+    ${log.can_edit ? `
+      <div class="d-flex gap-2 justify-content-end mt-3">
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteLog(${log.id})">삭제</button>
+      </div>` : ''}
+  `;
+  new bootstrap.Modal(document.getElementById('detailModal')).show();
+}
+
+function deleteLog(id) {
+  if (!confirm('이 운행일지를 삭제하시겠습니까?')) return;
+  fetch(`/vehicle-logs/${id}/delete`, {
+    method: 'POST',
+    headers: {'X-CSRFToken': CSRF}
+  }).then(r => r.json()).then(d => {
+    if (d.ok) location.reload();
+    else alert(d.error || '삭제 실패');
+  });
+}
+
+function downloadExcel() {
+  const v = document.getElementById('exportVehicle').value;
+  const y = document.getElementById('exportYear').value;
+  if (!v) return alert('차량을 선택해주세요');
+  location.href = `/vehicle-logs/export.xlsx?vehicle=${encodeURIComponent(v)}&year=${y}`;
+}
+
+// ─── 등록 모달 ───
+function openCreateModal() {
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById('cf_use_date').value = today;
+  document.getElementById('cf_vehicle').value = '';
+  document.getElementById('cf_odo_start').value = '';
+  document.getElementById('cf_odo_end').value = '';
+  document.getElementById('cf_distance').value = '0 km';
+  document.getElementById('cf_last_hint').textContent = '';
+  document.getElementById('createForm').reset();
+  document.getElementById('cf_use_date').value = today;
+  new bootstrap.Modal(document.getElementById('createModal')).show();
+}
+
+function onVehicleChange() {
+  const v = document.getElementById('cf_vehicle').value;
+  const hint = document.getElementById('cf_last_hint');
+  const odoStart = document.getElementById('cf_odo_start');
+  if (!v) { hint.textContent = ''; odoStart.value = ''; return; }
+  fetch(`/vehicle-logs/last-odometer?vehicle=${encodeURIComponent(v)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.odometer != null) {
+        hint.textContent = `직전 주행 후: ${d.odometer.toLocaleString()} km (자동 채움)`;
+        odoStart.value = d.odometer;
+      } else {
+        hint.textContent = '직전 기록 없음 — 주행 전 km을 직접 입력하세요';
+        odoStart.value = '';
+      }
+      updateDistance();
+    });
+}
+
+function updateDistance() {
+  const s = parseInt(document.getElementById('cf_odo_start').value, 10);
+  const e = parseInt(document.getElementById('cf_odo_end').value, 10);
+  const dist = (!isNaN(s) && !isNaN(e) && e >= s) ? e - s : 0;
+  document.getElementById('cf_distance').value = dist.toLocaleString() + ' km';
+}
+
+async function submitCreate(ev) {
+  ev.preventDefault();
+  const btn = document.getElementById('cf_submit');
+  btn.disabled = true;
+  btn.textContent = '등록 중...';
+  try {
+    const fd = new FormData(document.getElementById('createForm'));
+    const res = await fetch('/vehicle-logs/create', {
+      method: 'POST',
+      headers: {'X-CSRFToken': CSRF},
+      body: fd,
+    });
+    const data = await res.json();
+    if (data.ok) {
+      location.reload();
+    } else {
+      alert(data.error || '등록 실패');
+    }
+  } catch (e) {
+    alert('등록 실패: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '등록';
+  }
+}
+</script>
+{% endblock %}

@@ -9,6 +9,7 @@ const CHANNELS = [
     { label: '견적관리', path: '/quotations' },
     { label: '납품관리', path: '/deliveries' },
     { label: '서류관리', path: '/documents' },
+    { label: '조도검증', path: '/illuminance' },
   ]},
   { group: '📋 관리부', items: [
     { label: '거래처관리', path: '/vendors' },
@@ -28,6 +29,7 @@ const CHANNELS = [
   { group: '🏭 생산부', items: [
     { label: '생산1팀', path: '/production' },
     { label: '생산2팀', path: '/production?team=team2' },
+    { label: '발주/입고현황', path: '/incoming' },
   ]},
   { group: '🔗 공통메뉴', items: [
     { label: '조달내역', path: '/procurements' },
@@ -36,6 +38,7 @@ const CHANNELS = [
     { label: '도면관리', path: '/drawings' },
     { label: '입고사진', path: '/receiving-photos' },
     { label: '출장관리', path: '/business-trips' },
+    { label: '운행일지', path: '/vehicle-logs' },
     { label: '공구관리', path: '/tools' },
   ]},
 ];
@@ -74,16 +77,16 @@ export default function More() {
         <div style={s.groupLabel}>신규 생성</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
           {[
-            { label: '+ 발주서', path: '/create?type=purchase-order' },
-            { label: '+ 가공발주', path: '/create?type=processing-order' },
-            { label: '+ 입고', path: '/create?type=receiving' },
-            { label: '+ 견적서', path: '/create?type=quotation' },
-            { label: '+ AS접수', path: '/create?type=warranty' },
+            { label: '+ 발주서', path: '/purchase-orders/create' },
+            { label: '+ 가공발주', path: '/processing-orders/create' },
+            { label: '+ 입고', path: '/receivings/create' },
+            { label: '+ 견적서', path: '/quotations/create' },
+            { label: '+ AS접수', path: '/warranty/create' },
             { label: '+ 출장', path: '/create?type=business-trip' },
-            { label: '+ 거래처', path: '/create?type=vendor' },
+            { label: '+ 거래처', path: '/vendors/create' },
             { label: '+ 품목', path: '/create?type=item' },
             { label: '+ 공구', path: '/create?type=tool' },
-            { label: '+ 인증서', path: '/create?type=certification' },
+            { label: '+ 인증서', path: '/certifications/create' },
           ].map((btn) => (
             <button key={btn.path} onClick={() => navigate(btn.path)} style={s.createBtn}>
               {btn.label}

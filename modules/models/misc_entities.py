@@ -8,11 +8,13 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from .base import Base
@@ -49,8 +51,8 @@ class HistoryLog(Base):
     parent_log_id = Column(Integer, ForeignKey('history_logs.id'), nullable=True)
     root_log_id = Column(Integer, ForeignKey('history_logs.id'), nullable=True)
     origin_snapshot = Column(Text, nullable=True)
-    attachments_json = Column(Text, nullable=True)
-    mentions_json = Column(Text, nullable=True)
+    attachments_json = Column(JSONB, nullable=True)
+    mentions_json = Column(JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
 
     project = relationship("Project", back_populates="history_logs")
@@ -705,3 +707,38 @@ class BusinessTripMember(Base):
 
     trip = relationship("BusinessTrip", back_populates="members")
     user = relationship("User", foreign_keys=[user_id])
+
+
+class VehicleLog(Base):
+    """업무용차량 운행기록부 (세법 별지서식 호환)"""
+    __tablename__ = 'vehicle_logs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    use_date = Column(Date, nullable=False, index=True)                  # 사용일자
+    vehicle = Column(String(100), nullable=False, index=True)            # 차종(번호)
+
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    user_name = Column(String(50), nullable=False)                       # 성명 (스냅샷)
+    user_department = Column(String(50), nullable=True)                  # 부서
+    user_position = Column(String(50), nullable=True)                    # 직급
+
+    odometer_start = Column(Integer, nullable=True)                      # 주행 전 km (직전 자동 채움)
+    odometer_end = Column(Integer, nullable=False)                       # 주행 후 km (필수)
+    distance_km = Column(Integer, nullable=False)                        # 주행거리 (서버 계산)
+
+    fuel_amount = Column(Integer, nullable=True)                         # 주유금액(원)
+    origin = Column(String(200), nullable=False)                         # 출발지
+    destination = Column(String(200), nullable=False)                    # 도착지
+    purpose = Column(Text, nullable=False)                               # 사용목적
+
+    receipt_url = Column(Text, nullable=True)                            # 영수증 URL (Supabase)
+
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now,
+                        onupdate=datetime.datetime.now)
+
+    user = relationship("User", foreign_keys=[user_id])
+
+    __table_args__ = (
+        Index('ix_vehicle_logs_vehicle_date_id', 'vehicle', 'use_date'),
+    )

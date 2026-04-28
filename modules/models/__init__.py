@@ -102,6 +102,7 @@ from .entities import (
     BusinessTripMember,
     TRIP_STATUS_CHOICES,
     VEHICLE_CHOICES,
+    VehicleLog,
     Tool,
     ToolCheckout,
     TOOL_STATUS_CHOICES,
@@ -109,11 +110,13 @@ from .entities import (
     DocumentSerial,
     DocumentPackage,
     DocumentAttachment,
+    CommonDrawing,
     DOC_ATTACH_TYPES,
     REUSABLE_ATTACH_TYPES,
     determine_org_type,
     generate_doc_number,
 )
+from .mail_entities import MailAccount, MailSharedAccess, MailContact, MailReadReceipt, MailLargeFile
 from .db import SessionLocal, engine, init_db
 
 __all__ = [
@@ -221,6 +224,7 @@ __all__ = [
     "BusinessTripMember",
     "TRIP_STATUS_CHOICES",
     "VEHICLE_CHOICES",
+    "VehicleLog",
     "Tool",
     "ToolCheckout",
     "TOOL_STATUS_CHOICES",
@@ -228,8 +232,14 @@ __all__ = [
     "DocumentSerial",
     "DocumentPackage",
     "DocumentAttachment",
+    "CommonDrawing",
     "DOC_ATTACH_TYPES",
     "REUSABLE_ATTACH_TYPES",
     "determine_org_type",
     "generate_doc_number",
+    "MailAccount",
+    "MailSharedAccess",
+    "MailContact",
+    "MailReadReceipt",
+    "MailLargeFile",
 ]

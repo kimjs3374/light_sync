@@ -1,4 +1,108 @@
 -- ══════════════════════════════════════════════
+-- 서류 패키지 조립 순서 (2026-04-03)
+-- ══════════════════════════════════════════════
+-- 전체 기본 순서 저장용
+CREATE TABLE IF NOT EXISTS light_sync.system_settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 현장별 개별 순서 저장용
+ALTER TABLE light_sync.document_packages ADD COLUMN IF NOT EXISTS assembly_order JSONB;
+
+-- ══════════════════════════════════════════════
+-- 현장대리인계용 직원 개인정보 컬럼 (2026-04-02)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.users ADD COLUMN IF NOT EXISTS address VARCHAR(300);
+ALTER TABLE light_sync.users ADD COLUMN IF NOT EXISTS birth_date DATE;
+ALTER TABLE light_sync.users ADD COLUMN IF NOT EXISTS hire_date DATE;
+
+-- 기존 엑셀 하드코딩 데이터 이관
+UPDATE light_sync.users SET address='광주광역시 광산구 사암로215번길 16', birth_date='1990-03-09', hire_date='2017-11-13' WHERE full_name='김정수';
+UPDATE light_sync.users SET address='광주광역시 광산구 수등로 287', birth_date='1991-10-20', hire_date='2023-08-01' WHERE full_name='김선중';
+UPDATE light_sync.users SET address='광주광역시 광산구 신창동 1285', birth_date='1991-10-05', hire_date='2024-05-21' WHERE full_name='최한진';
+
+-- ══════════════════════════════════════════════
+-- 변경계약 추적용 변경차수 컬럼 (2026-04-02)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.contracts
+    ADD COLUMN IF NOT EXISTS g2b_change_ord VARCHAR(5) DEFAULT '00';
+
+-- 기존 계약의 변경차수 일괄 세팅 (G2B 데이터 기준)
+UPDATE light_sync.contracts c
+SET g2b_change_ord = sub.max_chg
+FROM (
+    SELECT cntrct_dlvr_req_no, MAX(cntrct_dlvr_req_chg_ord) as max_chg
+    FROM light_sync.g2b_procurements
+    WHERE fnl_cntrct_dlvr_req_chg_ord_yn = 'Y' OR fnl_cntrct_dlvr_req_chg_ord_yn IS NULL
+    GROUP BY cntrct_dlvr_req_no
+) sub
+WHERE c.g2b_contract_no = sub.cntrct_dlvr_req_no
+  AND c.g2b_contract_no IS NOT NULL;
+
+-- ══════════════════════════════════════════════
+-- 외부메일 계정 정렬순서 (2026-04-02)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.mail_accounts
+    ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+
+-- ══════════════════════════════════════════════
+-- 외부메일 계정 지원 (2026-04-02)
+-- ══════════════════════════════════════════════
+ALTER TABLE light_sync.mail_accounts
+    ADD COLUMN IF NOT EXISTS account_type VARCHAR(20) DEFAULT 'internal';
+
+-- 기존 계정은 모두 internal
+UPDATE light_sync.mail_accounts SET account_type = 'internal' WHERE account_type IS NULL;
+
+-- ══════════════════════════════════════════════
+-- 웹메일 테이블 (2026-04-01)
+-- ══════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS light_sync.mail_accounts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES light_sync.users(id),
+    email VARCHAR(255) NOT NULL,
+    display_name VARCHAR(100),
+    imap_host VARCHAR(255) NOT NULL DEFAULT '192.168.0.101',
+    imap_port INTEGER NOT NULL DEFAULT 993,
+    smtp_host VARCHAR(255) NOT NULL DEFAULT '192.168.0.101',
+    smtp_port INTEGER NOT NULL DEFAULT 587,
+    username VARCHAR(255) NOT NULL,
+    password_encrypted TEXT NOT NULL,
+    use_ssl BOOLEAN DEFAULT TRUE,
+    is_shared BOOLEAN DEFAULT FALSE,
+    signature TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS light_sync.mail_shared_access (
+    id SERIAL PRIMARY KEY,
+    mail_account_id INTEGER NOT NULL REFERENCES light_sync.mail_accounts(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES light_sync.users(id),
+    can_send BOOLEAN DEFAULT FALSE,
+    can_delete BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(mail_account_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS light_sync.mail_contacts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES light_sync.users(id),
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    company VARCHAR(200),
+    memo TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mail_accounts_user_id ON light_sync.mail_accounts(user_id);
+CREATE INDEX IF NOT EXISTS idx_mail_shared_access_user_id ON light_sync.mail_shared_access(user_id);
+CREATE INDEX IF NOT EXISTS idx_mail_contacts_user_id ON light_sync.mail_contacts(user_id);
+
+-- ══════════════════════════════════════════════
 -- 납품관리 모델별 분할납품 (2026-03-30)
 -- delivery_splits.contract_item_id (레거시 단일 모델, 유지)
 -- delivery_split_items (회차별 복수 모델 수량)
@@ -1132,3 +1236,36 @@ INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_dat
 INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-125', '31244', '2030-02-20', 'MT-SLC-125', 60, 'LED 가로등 및 보안 등기구', true);
 INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-150', '31237', '2030-02-20', 'MT-SLC-150', 60, 'LED 가로등 및 보안 등기구', true);
 INSERT INTO light_sync.certifications (cert_type, cert_name, cert_no, expiry_date, product_model, alert_days, note, is_active) VALUES ('고효율인증', '고효율인증 MT-SLC-075', '32912', '2030-04-07', 'MT-SLC-075', 60, 'LED 가로등 및 보안 등기구', true);
+-- 2026-04-04: DocumentPackage procurement_req_no unique 제약 추가 (중복 방지)
+ALTER TABLE light_sync.document_packages ADD CONSTRAINT uq_document_packages_req_no UNIQUE (procurement_req_no);
+
+-- 2026-04-06: 공유 주소록 지원
+ALTER TABLE light_sync.mail_contacts ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE light_sync.mail_contacts ADD COLUMN IF NOT EXISTS is_shared BOOLEAN DEFAULT FALSE;
+
+-- 2026-04-13: 도면관리 PDF-only 업로드 허용 (dwg_path NOT NULL 제거)
+ALTER TABLE light_sync.drawing_versions ALTER COLUMN dwg_path DROP NOT NULL;
+
+-- 2026-04-28: 업무용차량 운행기록부 (vehicle_log feature)
+CREATE TABLE IF NOT EXISTS light_sync.vehicle_logs (
+  id SERIAL PRIMARY KEY,
+  use_date DATE NOT NULL,
+  vehicle VARCHAR(100) NOT NULL,
+  user_id INTEGER REFERENCES light_sync.users(id),
+  user_name VARCHAR(50) NOT NULL,
+  user_department VARCHAR(50),
+  user_position VARCHAR(50),
+  odometer_start INTEGER,
+  odometer_end INTEGER NOT NULL,
+  distance_km INTEGER NOT NULL,
+  fuel_amount INTEGER,
+  origin VARCHAR(200) NOT NULL,
+  destination VARCHAR(200) NOT NULL,
+  purpose TEXT NOT NULL,
+  receipt_url TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ix_vehicle_logs_vehicle_date ON light_sync.vehicle_logs(vehicle, use_date DESC);
+CREATE INDEX IF NOT EXISTS ix_vehicle_logs_user ON light_sync.vehicle_logs(user_id);
+CREATE INDEX IF NOT EXISTS ix_vehicle_logs_use_date ON light_sync.vehicle_logs(use_date DESC);

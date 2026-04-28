@@ -15,6 +15,9 @@ MENU_REGISTRY = OrderedDict([
     ("dashboard",      {"label": "메인 현황판", "group": "워크보드", "endpoint": "dashboard.dashboard_view"}),
     ("overview",       {"label": "종합현황",   "group": "워크보드", "endpoint": "overview.project_overview"}),
     ("daily_report",   {"label": "업무보고",   "group": "워크보드", "endpoint": "daily_report.daily_report_view"}),
+    # --- 이메일 ---
+    ("mail_shared",    {"label": "공용메일",  "group": "이메일", "endpoint": "mail.mail_shared"}),
+    ("mail_personal",  {"label": "개인메일",  "group": "이메일", "endpoint": "mail.mail_personal"}),
     # --- 영업부 ---
     ("project",        {"label": "설계관리",   "group": "영업부", "endpoint": "project.project_list"}),
     ("contract",       {"label": "계약관리",   "group": "영업부", "endpoint": "project.contract_list"}),
@@ -27,6 +30,7 @@ MENU_REGISTRY = OrderedDict([
     ("processing_order", {"label": "가공발주", "group": "관리부", "endpoint": "processing_order.fo_list"}),
     ("receiving",      {"label": "입고관리",   "group": "관리부", "endpoint": "receiving.receiving_list"}),
     ("financial",      {"label": "매출/수금",  "group": "관리부", "endpoint": "financial.financial_dashboard"}),
+    ("billing",        {"label": "청구관리",  "group": "관리부", "endpoint": "billing.billing_list"}),
     # --- 자재/재고 ---
     ("item",           {"label": "품목관리",   "group": "자재/재고", "endpoint": "item.item_list"}),
     ("bom",            {"label": "BOM관리",   "group": "자재/재고", "endpoint": "bom.bom_list"}),
@@ -44,23 +48,27 @@ MENU_REGISTRY = OrderedDict([
     ("lighting_layout",{"label": "조명배치도", "group": "영업부", "endpoint": "lighting_layout.layout_list"}),
     ("certification",  {"label": "인증서관리", "group": "관리부", "endpoint": "certification.cert_list"}),
     ("business_trip",  {"label": "출장관리",   "group": "공통메뉴", "endpoint": "business_trip.trip_list"}),
+    ("vehicle_log",    {"label": "운행일지",   "group": "공통메뉴", "endpoint": "vehicle_log.log_list"}),
     ("tools",          {"label": "공구관리",   "group": "공통메뉴", "endpoint": "tools.tool_list"}),
     ("documents",      {"label": "서류관리",   "group": "영업부", "endpoint": "document.document_list"}),
     # --- 생산부 ---
     ("production",     {"label": "생산1팀",   "group": "생산부", "endpoint": "production.production_main_team1"}),
     ("production2",    {"label": "생산2팀",   "group": "생산부", "endpoint": "production.production_main_team2"}),
+    ("incoming_overview", {"label": "발주/입고현황", "group": "생산부", "endpoint": "incoming_overview.incoming_overview_view"}),
     # --- 시스템 (admin only) ---
     ("admin_settings", {"label": "시스템관리", "group": "시스템", "endpoint": "auth.admin_settings", "admin_only": True}),
     ("workboard",      {"label": "현장관리",   "group": "워크보드", "endpoint": "workboard.workboard_list"}),
     ("asboard",        {"label": "A/S",        "group": "워크보드", "endpoint": "asboard.asboard_list"}),
     ("chatbot_admin",  {"label": "챗봇 권한",  "group": "시스템", "endpoint": "chatbot.admin_page", "admin_only": True}),
+    ("office",         {"label": "Office",     "group": "공통메뉴", "endpoint": "office.office_list", "always_show": True}),
 ])
 
-COMMON_MENU_KEYS = {"dashboard", "overview", "daily_report"}
+COMMON_MENU_KEYS = {"dashboard", "overview", "daily_report", "mail_personal", "mail_shared"}
 
 # 사이드바 그룹 아이콘 매핑
 GROUP_ICONS = {
     "워크보드": "📊",
+    "이메일": "✉️",
     "영업부": "💼",
     "관리부": "📋",
     "자재/재고": "📦",
@@ -72,10 +80,10 @@ GROUP_ICONS = {
 # 부서별 기본 메뉴 (GroupPermission 초기값 세팅용)
 # 형식: "menu_key:r" (읽기전용) / "menu_key:rw" (읽기+쓰기) / "menu_key" (레거시=rw)
 DEFAULT_GROUP_MENUS = {
-    "영업부": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,catalog:r,illuminance:rw,item:r,material:r,bom:r,inventory:r,procurement:rw,procurement_summary:r,warranty:rw,photos:rw,drawing:rw,production:r,production2:r,receiving_photo:rw,business_trip:rw",
-    "관리부": "project:r,contract:r,delivery:r,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,certification:rw,procurement:r,procurement_summary:r,warranty:rw,photos:rw,drawing:r,production:r,production2:r,receiving_photo:rw,business_trip:rw,tools:r",
-    "생산부": "contract:r,sales:r,delivery:r,material:r,inventory:r,warranty:rw,photos:rw,drawing:r,production:rw,production2:rw,receiving_photo:rw,business_trip:rw,tools:rw",
-    "임원진": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,catalog:rw,illuminance:rw,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,procurement:rw,procurement_summary:rw,warranty:rw,photos:rw,drawing:rw,production:rw,production2:rw,certification:rw,receiving_photo:rw,business_trip:rw,tools:rw",
+    "영업부": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,catalog:r,illuminance:rw,item:r,material:r,bom:r,inventory:r,procurement:rw,procurement_summary:r,warranty:rw,photos:rw,drawing:rw,production:r,production2:r,receiving_photo:rw,business_trip:rw,vehicle_log:rw",
+    "관리부": "project:r,contract:r,delivery:r,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,certification:rw,procurement:r,procurement_summary:r,warranty:rw,photos:rw,drawing:r,production:r,production2:r,receiving_photo:rw,business_trip:rw,tools:r,incoming_overview:r,vehicle_log:rw",
+    "생산부": "contract:r,sales:r,delivery:r,material:r,inventory:r,warranty:rw,photos:rw,drawing:r,production:rw,production2:rw,receiving_photo:rw,business_trip:rw,tools:rw,incoming_overview:r,vehicle_log:rw",
+    "임원진": "project:rw,contract:rw,sales:rw,quotation:rw,delivery:rw,catalog:rw,illuminance:rw,item:rw,material:rw,vendor:rw,purchase_order:rw,receiving:rw,bom:rw,inventory:rw,procurement:rw,procurement_summary:rw,warranty:rw,photos:rw,drawing:rw,production:rw,production2:rw,certification:rw,receiving_photo:rw,business_trip:rw,tools:rw,incoming_overview:r,vehicle_log:rw",
 }
 
 
@@ -109,4 +117,4 @@ class DevelopmentConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG = False
-    SESSION_COOKIE_SECURE = False   # gunicorn은 HTTP, HTTPS는 nginx에서 종단
+    SESSION_COOKIE_SECURE = True   # Cloudflare HTTPS 종단 → Secure 쿠키 필수

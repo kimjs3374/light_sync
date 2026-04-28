@@ -1,4 +1,5 @@
 import os
+import datetime
 from dotenv import load_dotenv
 load_dotenv()
 import logging
@@ -38,6 +39,7 @@ from routes.receiving_photo import receiving_photo_bp
 from routes.bom import bom_bp
 from routes.item import item_bp
 from routes.financial import financial_bp
+from routes.billing import billing_bp
 from routes.inventory import inventory_bp
 from routes.quotation import quotation_bp
 from routes.photos import photos_bp
@@ -50,9 +52,13 @@ from routes.certification import cert_bp
 from routes.lighting_layout import lighting_layout_bp
 from routes.processing_order import processing_order_bp
 from routes.business_trip import business_trip_bp
+from routes.vehicle_log import vehicle_log_bp
 from routes.tools import tools_bp
 from routes.document import document_bp
 from routes.app_api import app_api_bp
+from routes.incoming_overview import incoming_overview_bp
+from routes.mail import mail_bp
+from routes.office import office_bp
 from modules.pagination import pagination_query
 from modules.scheduler import init_scheduler
 
@@ -68,6 +74,12 @@ else:
     app.config.from_object(ProductionConfig)
 
 app.config["PREFERRED_URL_SCHEME"] = "https"
+app.config["SESSION_COOKIE_SECURE"] = True  # HTTPS 환경 강제
+
+# Cloudflare → VPS → gunicorn: 프록시 헤더 신뢰
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2, x_proto=1, x_host=1)
+app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024 * 1024  # 4GB (대용량 메일 첨부)
 app.json.ensure_ascii = False
 
 # Logging
@@ -85,6 +97,31 @@ app.jinja_env.globals['pagination_query'] = pagination_query
 
 # CSRF Protection
 csrf = CSRFProtect(app)
+
+# ── HTML 세정 필터 (이메일 XSS 방지) ──
+import nh3
+
+def _sanitize_html(value):
+    """이메일 HTML에서 악성 스크립트 제거. 안전한 태그/속성만 허용."""
+    if not value:
+        return ''
+    return nh3.clean(
+        value,
+        tags={'p', 'div', 'span', 'br', 'b', 'i', 'u', 'strong', 'em', 'a', 'ul', 'ol', 'li',
+              'table', 'thead', 'tbody', 'tr', 'td', 'th', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+              'blockquote', 'pre', 'code', 'hr', 'img', 'sub', 'sup', 'font', 'center'},
+        attributes={
+            '*': {'style', 'class', 'id', 'align', 'valign', 'width', 'height', 'bgcolor', 'color'},
+            'a': {'href', 'title', 'target'},
+            'img': {'src', 'alt', 'width', 'height'},
+            'font': {'size', 'color', 'face'},
+            'td': {'colspan', 'rowspan'},
+            'th': {'colspan', 'rowspan'},
+        },
+        url_schemes={'http', 'https', 'mailto'},
+    )
+
+app.jinja_env.filters['sanitize_html'] = _sanitize_html
 
 # Rate Limiting
 limiter = Limiter(
@@ -211,6 +248,7 @@ app.register_blueprint(project_bp)
 app.register_blueprint(contract_bp)
 app.register_blueprint(sales_bp)
 app.register_blueprint(production_bp)
+app.register_blueprint(incoming_overview_bp)
 app.register_blueprint(delivery_bp)
 app.register_blueprint(tech_bp)
 app.register_blueprint(drawing_bp)
@@ -230,6 +268,7 @@ app.register_blueprint(receiving_photo_bp)
 app.register_blueprint(bom_bp)
 app.register_blueprint(item_bp)
 app.register_blueprint(financial_bp)
+app.register_blueprint(billing_bp)
 app.register_blueprint(inventory_bp)
 app.register_blueprint(quotation_bp)
 app.register_blueprint(photos_bp)
@@ -243,9 +282,128 @@ app.register_blueprint(cert_bp)
 app.register_blueprint(lighting_layout_bp)
 app.register_blueprint(processing_order_bp)
 app.register_blueprint(business_trip_bp)
+app.register_blueprint(vehicle_log_bp)
 app.register_blueprint(tools_bp)
 app.register_blueprint(document_bp)
 app.register_blueprint(app_api_bp)
+app.register_blueprint(mail_bp)
+app.register_blueprint(office_bp)
+csrf.exempt(office_bp)
+
+# ONLYOFFICE callback Blueprint (CSRF 면제)
+from flask import Blueprint as _Bp
+_onlyoffice_bp = _Bp('onlyoffice', __name__)
+
+@_onlyoffice_bp.route('/api/onlyoffice/callback', methods=['POST'])
+def onlyoffice_callback():
+    from flask import jsonify as _jsonify
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        status = body.get('status', 0)
+        _log.info("ONLYOFFICE callback: status=%s, key=%s", status, body.get('key'))
+
+        # status 2 = 문서 저장됨 (편집 종료), 6 = 강제 저장
+        if status in (2, 6):
+            download_url = body.get('url')
+            office_file = request.args.get('office_file', '')
+            office_scope = request.args.get('office_scope', 'shared')
+            _log.info("ONLYOFFICE save trigger: status=%s, url=%s, office_file=%s, args=%s",
+                      status, bool(download_url), office_file, dict(request.args))
+            if not download_url:
+                _log.warning("ONLYOFFICE status=%s but no download_url in body. body keys=%s", status, list(body.keys()))
+            else:
+                try:
+                    import requests as _requests
+                    resp = _requests.get(download_url, timeout=30)
+                    if resp.status_code != 200:
+                        _log.error("ONLYOFFICE download failed: HTTP %s, url=%s", resp.status_code, download_url)
+                    else:
+                        from modules.storage_adapter import upload_bytes
+                        content = resp.content
+
+                        req_no = request.args.get('req_no', '')
+                        tpl_type = request.args.get('tpl_type', '')
+                        office_uid = request.args.get('office_uid', '')
+
+                        if office_file:
+                            # Office 범용 파일 저장 (scope 구분)
+                            ext = office_file.rsplit('.', 1)[-1].lower() if '.' in office_file else 'xlsx'
+                            mime_map = {
+                                'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                'xls':  'application/vnd.ms-excel',
+                                'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                'doc':  'application/msword',
+                                'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                            }
+                            office_mime = mime_map.get(ext, 'application/octet-stream')
+                            if office_scope == 'private' and office_uid:
+                                office_path = f'documents/office/private/{office_uid}/{office_file}'
+                            else:
+                                office_path = f'documents/office/shared/{office_file}'
+                            ok_o, msg_o = upload_bytes(office_path, content, content_type=office_mime)
+                            _log.info("Office save [%s]: %s → ok=%s, %s", office_scope, office_file, ok_o, msg_o)
+                            if not ok_o:
+                                _log.error("Office upload_bytes FAILED: %s", msg_o)
+                        elif tpl_type:
+                            # 템플릿 저장 (Supabase + 로컬)
+                            mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                            tpl_paths = {
+                                'commencement': 'documents/templates/commencement_template.xlsx',
+                                'delivery': 'documents/templates/delivery_template.xlsx',
+                            }
+                            tpl_local = {
+                                'commencement': '/web/light_sync/static/templates/commencement_template.xlsx',
+                                'delivery': '/web/light_sync/static/templates/delivery_template.xlsx',
+                            }
+                            if tpl_type in tpl_paths:
+                                upload_bytes(tpl_paths[tpl_type], content, content_type=mime)
+                                with open(tpl_local[tpl_type], 'wb') as f:
+                                    f.write(content)
+                                _log.info("Template saved: %s", tpl_type)
+                        elif req_no:
+                            # 현장 서류 저장 (Supabase + 로컬)
+                            mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                            storage_path = f'documents/commencement/{req_no}.xlsx'
+                            ok, msg = upload_bytes(storage_path, content, content_type=mime)
+                            for local_dir in ['/web/light_sync/static/documents/commencement',
+                                              '/web/light_sync/static/documents/delivery']:
+                                local_path = f'{local_dir}/{req_no}.xlsx'
+                                if os.path.exists(local_path):
+                                    with open(local_path, 'wb') as lf:
+                                        lf.write(content)
+                                    _log.info("Local file saved: %s", local_path)
+                                    break
+                            _log.info("ONLYOFFICE commencement save: %s, %s", ok, msg)
+                        else:
+                            _log.warning("ONLYOFFICE status=%s: no office_file/tpl_type/req_no in args=%s", status, dict(request.args))
+                except Exception as e:
+                    _log.error("ONLYOFFICE save error: %s", e, exc_info=True)
+    except Exception as e:
+        _log.error("ONLYOFFICE callback error: %s", e)
+    return _jsonify({"error": 0}), 200
+
+app.register_blueprint(_onlyoffice_bp)
+csrf.exempt(_onlyoffice_bp)
+
+# 사내망 대용량 업로드 CORS (192.168.x.x → 8501 직접 요청)
+@app.after_request
+def add_security_headers(response):
+    # CORS (사내망 + 도메인)
+    origin = request.headers.get('Origin', '')
+    if origin and ('work.mgnt.kr' in origin or '192.168.' in origin or 'localhost' in origin):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-CSRFToken, X-Requested-With'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS'
+    # 보안 헤더
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    return response
 
 # 워크보드 이미지 썸네일 서빙 (on-the-fly 생성 + 디스크 캐싱)
 @app.route('/static-archive/thumb/<path:filename>')
@@ -299,6 +457,12 @@ csrf.exempt(_cp)
 
 # 모바일 앱 API는 CSRF 면제
 csrf.exempt(app_api_bp)
+
+# 대용량 업로드만 CSRF exempt (사내망 직접 요청)
+with app.app_context():
+    _upload_view = app.view_functions.get('mail.api_upload_large')
+    if _upload_view:
+        csrf.exempt(_upload_view)
 
 
 
@@ -408,6 +572,20 @@ def index():
 
 
 # =====================================================================
+# 모바일 SPA 서빙 (/m/ 경로)
+# =====================================================================
+_mobile_dist = os.path.join(os.path.dirname(__file__), 'mobile', 'dist')
+
+@app.route('/m/')
+@app.route('/m/<path:path>')
+def serve_mobile(path=''):
+    """모바일 SPA — 빌드된 정적 파일 서빙"""
+    if path and os.path.isfile(os.path.join(_mobile_dist, path)):
+        return send_from_directory(_mobile_dist, path)
+    return send_from_directory(_mobile_dist, 'index.html')
+
+
+# =====================================================================
 # Flask CLI Commands (crontab에서 호출)
 # =====================================================================
 import click
@@ -438,6 +616,78 @@ def sync_g2b_cli(mode, start_year, no_auto_contract):
                + (f", 오류 {result['errors']}건" if result.get('errors') else ''))
     if auto_result['created']:
         click.echo(f"[G2B] 자동계약: {auto_result['created']}건 생성, {auto_result['skipped']}건 스킵")
+
+
+@app.cli.command('sync-g2b-changes')
+def sync_g2b_changes_cli():
+    """활성 계약 대상 변경계약 + 납품기한 변경 감지 (crontab용)"""
+    from modules.db_context import get_db
+    from modules.services.g2b_procurement_sync import sync_changes
+
+    with get_db() as db:
+        result = sync_changes(db)
+        db.commit()
+
+    click.echo(
+        f"[G2B변경] 완료: 갱신 {result['updated']}건, "
+        f"납품기한수정 {result.get('date_fixed', 0)}건"
+    )
+
+
+@app.cli.command('cleanup-mail-files')
+def cleanup_mail_files_cli():
+    """만료된 대용량 메일 첨부파일 삭제 (crontab용)"""
+    from modules.db_context import get_db
+    from modules.models.mail_entities import MailLargeFile
+    from modules import storage_adapter
+
+    now = datetime.datetime.now()
+    deleted = 0
+    with get_db() as db:
+        expired = db.query(MailLargeFile).filter(
+            MailLargeFile.expires_at < now,
+            MailLargeFile.is_deleted == False,
+        ).all()
+        for record in expired:
+            storage_adapter.delete_object(record.storage_path)
+            ext = os.path.splitext(record.storage_path)[1] or ''
+            cache_file = f'/tmp/mail_dl_cache/{record.file_id}{ext}'
+            if os.path.exists(cache_file):
+                os.remove(cache_file)
+            record.is_deleted = True
+            deleted += 1
+        db.commit()
+    click.echo(f"[메일정리] 만료 파일 {deleted}건 삭제")
+
+
+@app.route('/health')
+def health_check():
+    """헬스체크 — 로드밸런서/모니터링용"""
+    from flask import jsonify as _jsonify
+    from modules.db_context import get_db
+    from sqlalchemy import text as _text
+    try:
+        with get_db() as db:
+            db.execute(_text('SELECT 1'))
+        return _jsonify({'status': 'healthy', 'timestamp': datetime.datetime.now().isoformat()}), 200
+    except Exception as e:
+        return _jsonify({'status': 'unhealthy', 'error': str(e)}), 503
+
+
+@app.cli.command('check-notifications')
+def check_notifications_cli():
+    """일일 알림 점검 — 납품기한/입고지연/안전재고/서류마감/하자보증/인증서 (crontab: 매일 08:30)"""
+    from modules.services.notification_scheduler import run_daily_notification_checks
+    run_daily_notification_checks()
+    click.echo("[알림] 일일 알림 점검 완료")
+
+
+@app.cli.command('cleanup-notifications')
+def cleanup_notifications_cli():
+    """90일 이상 된 읽은 알림 삭제 (crontab: 매주 일 03:00)"""
+    from modules.services.notification_scheduler import cleanup_old_notifications
+    cleanup_old_notifications()
+    click.echo("[알림] 만료 알림 정리 완료")
 
 
 # =====================================================================
