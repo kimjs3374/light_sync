@@ -1,0 +1,223 @@
+:root {
+  --bg: #1a1d21;
+  --bg-secondary: #222529;
+  --bg-hover: #2c2f33;
+  --bg-active: #35383d;
+  --surface: #2c2f33;
+  --border: #35383d;
+  --text: #d1d2d3;
+  --text-muted: #8b8d91;
+  --text-bright: #f2f3f5;
+  --accent: #4a9eff;
+  --green: #2dc770;
+  --red: #f23f43;
+  --orange: #f0a020;
+  --yellow: #e8d44d;
+  --purple: #9b84ee;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  margin: 0; padding: 0; box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root {
+  height: 100%;
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+input, button, select, textarea {
+  font: inherit; border: none; outline: none;
+}
+
+a { color: inherit; text-decoration: none; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ── 채널 헤더 ── */
+.channel-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.channel-header .ch-icon {
+  font-size: 16px;
+  color: var(--text-muted);
+}
+.channel-header h1 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-bright);
+  flex: 1;
+}
+.channel-header .ch-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* ── 통계 바 ── */
+.stat-bar {
+  display: flex;
+  gap: 0;
+  padding: 0 16px;
+  margin-bottom: 2px;
+  overflow-x: auto;
+}
+.stat-bar .stat-item {
+  padding: 10px 14px;
+  text-align: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.stat-bar .stat-num {
+  font-size: 18px;
+  font-weight: 700;
+}
+.stat-bar .stat-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+/* ── 검색 ── */
+.search-bar {
+  padding: 8px 16px;
+}
+.search-bar input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+}
+.search-bar input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ── 리스트 아이템 (슬랙 메시지 스타일) ── */
+.msg-list {
+  padding: 0 0 80px;
+}
+.msg-item {
+  padding: 8px 16px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.msg-item:active {
+  background: var(--bg-hover);
+}
+.msg-item .indicator {
+  width: 4px;
+  min-height: 36px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.msg-item .msg-body {
+  flex: 1;
+  min-width: 0;
+}
+.msg-item .msg-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.msg-item .msg-id {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+.msg-item .msg-date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.msg-item .msg-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msg-item .msg-meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 3px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ── 뱃지 ── */
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+.badge-red { background: rgba(242,63,67,0.15); color: var(--red); }
+.badge-orange { background: rgba(240,160,32,0.15); color: var(--orange); }
+.badge-green { background: rgba(45,199,112,0.15); color: var(--green); }
+.badge-blue { background: rgba(74,158,255,0.15); color: var(--accent); }
+.badge-purple { background: rgba(155,132,238,0.15); color: var(--purple); }
+.badge-yellow { background: rgba(232,212,77,0.15); color: var(--yellow); }
+.badge-gray { background: rgba(139,141,145,0.12); color: var(--text-muted); }
+
+/* ── 프로그레스 ── */
+.progress-bar {
+  height: 3px;
+  background: var(--border);
+  border-radius: 1.5px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.progress-bar .fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 1.5px;
+}
+
+/* ── 유틸 ── */
+.page-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40vh;
+  color: var(--text-muted);
+}
+.page-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+.money {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}

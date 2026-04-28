@@ -147,32 +147,39 @@ def item_detail(item_id):
             Item.category.isnot(None), Item.category != ''
         ).order_by(Item.category).all()]
 
-        # FR-05: 단가 추이 (icube_item_cd 없어도 item_name 기반으로 조회)
+        # FR-05: 단가 추이 (icube_item_cd 우선, 없으면 item_name 정확매칭)
         price_history = []
 
-        # 1) 자체 입고 단가 이력 - item_name 매칭 (부분 매칭 포함)
-        name_filter = or_(
-            ReceivingItem.item_name == item.item_name,
-            ReceivingItem.item_name.ilike(f'%{item.item_name}%'),
-        ) if item.item_name else (ReceivingItem.item_name == item.item_name)
-        rcv_prices = (
-            db.query(Receiving.rcv_date, ReceivingItem.unit_price, Receiving.vendor_id)
-            .join(ReceivingItem, ReceivingItem.receiving_id == Receiving.id)
-            .filter(
-                name_filter,
-                ReceivingItem.unit_price > 0,
+        # 1) 자체 입고 단가 이력
+        # - icube_item_cd 있으면 ReceivingItem.item_cd 정확매칭 (서로 다른 품번이 같은 품명을
+        #   공유하는 케이스(예: 컨버터(안정기))에서 다른 품목의 단가가 섞이는 것을 방지)
+        # - icube_item_cd 없을 때만 item_name 정확매칭 (ILIKE 부분매칭 금지)
+        if item.icube_item_cd:
+            rcv_filter = ReceivingItem.item_cd == item.icube_item_cd
+        elif item.item_name:
+            rcv_filter = ReceivingItem.item_name == item.item_name
+        else:
+            rcv_filter = None
+
+        if rcv_filter is not None:
+            rcv_prices = (
+                db.query(Receiving.rcv_date, ReceivingItem.unit_price, Receiving.vendor_id)
+                .join(ReceivingItem, ReceivingItem.receiving_id == Receiving.id)
+                .filter(
+                    rcv_filter,
+                    ReceivingItem.unit_price > 0,
+                )
+                .order_by(Receiving.rcv_date)
+                .all()
             )
-            .order_by(Receiving.rcv_date)
-            .all()
-        )
-        for r in rcv_prices:
-            vendor = db.query(Vendor).get(r.vendor_id) if r.vendor_id else None
-            price_history.append({
-                'date': r.rcv_date.strftime('%Y-%m-%d') if r.rcv_date else '',
-                'price': r.unit_price,
-                'vendor': vendor.name if vendor else '-',
-                'source': '자체입고',
-            })
+            for r in rcv_prices:
+                vendor = db.query(Vendor).get(r.vendor_id) if r.vendor_id else None
+                price_history.append({
+                    'date': r.rcv_date.strftime('%Y-%m-%d') if r.rcv_date else '',
+                    'price': r.unit_price,
+                    'vendor': vendor.name if vendor else '-',
+                    'source': '자체입고',
+                })
 
         # 2) iCUBE 입고이력에서 단가 — PostgreSQL JSON 검색으로 직접 매칭
         if item.icube_item_cd:
@@ -214,17 +221,18 @@ def item_detail(item_id):
         related_vendors = []
         seen_vendors = set()
 
-        # BomItem.supplier에서 - item_code 또는 item_name 매칭
-        bom_supplier_filter = []
+        # BomItem.supplier에서 - icube_item_cd 우선, 없으면 item_name 정확매칭
         if item.icube_item_cd:
-            bom_supplier_filter.append(BomItem.item_code == item.icube_item_cd)
-        if item.item_name:
-            bom_supplier_filter.append(BomItem.item_name == item.item_name)
+            bom_supplier_filter = BomItem.item_code == item.icube_item_cd
+        elif item.item_name:
+            bom_supplier_filter = BomItem.item_name == item.item_name
+        else:
+            bom_supplier_filter = None
 
-        if bom_supplier_filter:
+        if bom_supplier_filter is not None:
             bom_suppliers = (
                 db.query(BomItem.supplier)
-                .filter(or_(*bom_supplier_filter), BomItem.supplier.isnot(None))
+                .filter(bom_supplier_filter, BomItem.supplier.isnot(None))
                 .distinct()
                 .all()
             )
@@ -240,19 +248,20 @@ def item_detail(item_id):
                 seen_vendors.add(vn)
                 related_vendors.append({'name': vn, 'source': ph['source']})
 
-        # FR-05: 사용되는 BOM 목록 - item_code 또는 item_name 매칭
+        # FR-05: 사용되는 BOM 목록 - icube_item_cd 우선, 없으면 item_name 정확매칭
         used_in_boms = []
-        bom_filter = []
         if item.icube_item_cd:
-            bom_filter.append(BomItem.item_code == item.icube_item_cd)
-        if item.item_name:
-            bom_filter.append(BomItem.item_name == item.item_name)
+            bom_filter = BomItem.item_code == item.icube_item_cd
+        elif item.item_name:
+            bom_filter = BomItem.item_name == item.item_name
+        else:
+            bom_filter = None
 
-        if bom_filter:
+        if bom_filter is not None:
             bom_usages = (
                 db.query(BomItem, BomHeader)
                 .join(BomHeader, BomItem.bom_id == BomHeader.id)
-                .filter(or_(*bom_filter))
+                .filter(bom_filter)
                 .all()
             )
             seen_bom_ids = set()
