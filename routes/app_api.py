@@ -1690,7 +1690,7 @@ def app_business_trips():
                 'destination': t.destination or '',
                 'departure_date': str(t.departure_date) if t.departure_date else '',
                 'return_date': str(t.return_date) if t.return_date else '',
-                'status': t.status or '',
+                'status': t.effective_status,
                 'vehicle': t.vehicle or '',
                 'members_count': len(t.members) if t.members else 0,
                 'member_names': t.member_names,
@@ -2897,16 +2897,47 @@ def app_po_send_email(po_id):
 @app_api_bp.route('/search/projects')
 @app_auth_required
 def app_search_projects():
-    """현장 검색 자동완성"""
+    """현장 검색 자동완성 — 현장명/약칭/설계번호/계약명 다중 검색
+    옵션: status=계약 → 활성 계약건만 (사진관리 등 현장 선택용)
+    """
     q = (request.args.get('q') or '').strip()
+    only_active = request.args.get('status') == '계약'
     if len(q) < 1:
         return jsonify(ok=True, results=[])
+    like = f'%{q}%'
     with get_db() as db:
-        projects = db.query(Project).filter(
-            Project.temp_name.ilike(f'%{q}%')
-        ).order_by(desc(Project.id)).limit(10).all()
+        # 계약명 검색을 위해 Contract와 outer join
+        from sqlalchemy import or_, exists
+        contract_match = exists().where(
+            (Contract.project_id == Project.id) & (Contract.contract_name.ilike(like))
+        )
+        query = db.query(Project).filter(
+            or_(
+                Project.temp_name.ilike(like),
+                Project.short_name.ilike(like),
+                Project.project_no.ilike(like),
+                contract_match,
+            )
+        )
+        if only_active:
+            query = query.filter(Project.is_contracted.is_(True), active_contract_filter())
+        projects = query.order_by(desc(Project.id)).limit(30).all()
+
+        # 첫 계약명 일괄 로딩 (표시용)
+        project_ids = [p.id for p in projects]
+        contract_name_map = {}
+        if project_ids:
+            for c in db.query(Contract).filter(Contract.project_id.in_(project_ids))\
+                       .order_by(Contract.delivery_due_date).all():
+                contract_name_map.setdefault(c.project_id, c.contract_name or '')
+
         return jsonify(ok=True, results=[{
-            'id': p.id, 'name': p.temp_name or '', 'project_no': p.project_no or '', 'status': p.status or '',
+            'id': p.id,
+            'name': p.temp_name or '',
+            'short_name': p.short_name or '',
+            'project_no': p.project_no or '',
+            'contract_name': contract_name_map.get(p.id, ''),
+            'status': p.status or '',
         } for p in projects])
 
 
@@ -3297,20 +3328,21 @@ def app_business_trip_detail(trip_id):
         members = db.query(BusinessTripMember).filter(BusinessTripMember.trip_id == trip_id).all()
         member_list = []
         for m in members:
-            u = db.query(User).get(m.user_id) if m.user_id else None
             member_list.append({
                 'id': m.id,
                 'user_id': m.user_id,
-                'user_name': (u.full_name if u else '') or '',
-                'position': (u.position if u else '') or '',
+                'user_name': m.user_name or '',
+                'position': m.position or '',
+                'department': m.department or '',
             })
         return jsonify(ok=True, trip={
             'id': trip.id,
             'title': trip.title or '',
             'destination': trip.destination or '',
+            'purpose': trip.purpose or '',
             'departure_date': str(trip.departure_date) if trip.departure_date else '',
             'return_date': str(trip.return_date) if trip.return_date else '',
-            'status': trip.status or '',
+            'status': trip.effective_status,
             'vehicle': trip.vehicle or '',
             'note': trip.note or '',
         }, members=member_list)
@@ -4331,10 +4363,20 @@ def app_drawing_create():
 
 # ── 출장 생성 ──
 
+@app_api_bp.route('/business-trips/vehicles')
+@app_auth_required
+def app_business_trip_vehicles():
+    """출장 이동수단 프리셋 (PC 출장폼과 동일)"""
+    from routes.business_trip import _get_vehicle_choices
+    with get_db() as db:
+        return jsonify(ok=True, vehicles=_get_vehicle_choices(db))
+
+
 @app_api_bp.route('/business-trips/create', methods=['POST'])
 @app_auth_required
 def app_business_trip_create():
-    """출장 신규 등록"""
+    """출장 신규 등록 (PC 출장폼과 동일 필드: 제목, 장소, 출발/복귀일시, 이동수단, 목적, 비고, 출장인원)"""
+    from modules.notification_engine import notify
     data = request.get_json(silent=True) or {}
     title = data.get('title', '').strip()
     destination = data.get('destination', '').strip()
@@ -4348,17 +4390,71 @@ def app_business_trip_create():
         trip = BusinessTrip(
             title=title,
             destination=destination,
+            purpose=(data.get('purpose') or '').strip() or None,
             departure_date=_dt.datetime.fromisoformat(departure_date),
             return_date=_dt.datetime.fromisoformat(data['return_date']) if data.get('return_date') else None,
-            vehicle=data.get('vehicle', ''),
-            note=data.get('note', ''),
+            vehicle=(data.get('vehicle') or '').strip() or None,
+            note=(data.get('note') or '').strip() or None,
             status='예정',
             created_by=user_id,
         )
         db.add(trip)
+        db.flush()
+
+        # 출장인원 저장 (PC _save_members와 동일 형태)
+        members_in = data.get('members') or []
+        for m in members_in:
+            name = (m.get('name') or '').strip()
+            if not name:
+                continue
+            uid = m.get('user_id') or None
+            db.add(BusinessTripMember(
+                trip_id=trip.id,
+                user_id=int(uid) if uid else None,
+                user_name=name,
+                position=(m.get('position') or '').strip() or None,
+                department=(m.get('department') or '').strip() or None,
+            ))
+        db.flush()
+
         log_activity(db, '출장', 'create', f'{title} ({destination}) 등록',
-                     ref_type='BusinessTrip')
+                     ref_type='BusinessTrip', ref_id=trip.id)
         db.commit()
+
+        # 카카오워크 그룹채팅 알림 (PC와 동일)
+        member_labels = [
+            f"{m.user_name} {m.position}".strip() if m.position else m.user_name
+            for m in trip.members if m.user_name
+        ]
+        creator_user = db.query(User).get(user_id)
+        creator_label = '-'
+        if creator_user:
+            creator_label = creator_user.full_name
+            if creator_user.position:
+                creator_label = f"{creator_user.full_name} {creator_user.position}"
+        dep_str = trip.departure_date.strftime('%Y-%m-%d %H:%M') if trip.departure_date else '-'
+        ret_str = trip.return_date.strftime('%Y-%m-%d %H:%M') if trip.return_date else '-'
+        kakao_text = (
+            f"[출장등록] {trip.title}\n"
+            f"목적지: {trip.destination}\n"
+            f"출발: {dep_str}\n"
+            f"귀환: {ret_str}\n"
+            f"차량: {trip.vehicle or '-'}\n"
+            f"인원: {', '.join(member_labels) or '-'}\n"
+            f"등록자: {creator_label}"
+        )
+        try:
+            notify(db, 'trip.created', {
+                'destination': trip.destination or trip.title,
+                'detail': f"{dep_str}~{ret_str} · {', '.join(member_labels) or '-'}",
+                'trip_id': trip.id,
+                'departure_date': dep_str,
+                'return_date': ret_str,
+                'members': ', '.join(member_labels) or '-',
+            }, kakao_text_override=kakao_text)
+        except Exception:
+            pass
+
         return jsonify(ok=True, trip_id=trip.id)
 
 
