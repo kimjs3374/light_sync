@@ -95,8 +95,8 @@ export default function More() {
         </div>
       </div>
 
-      {/* PC 버전 */}
-      <div onClick={() => window.open('/dashboard', '_blank')}
+      {/* PC 버전 — /?pc=1로 진입하면 세션에 force_pc 플래그 저장되어 이후 리다이렉트 체인에서도 PC 유지 */}
+      <div onClick={() => window.open('/?pc=1', '_blank')}
         style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 13, color: 'var(--accent)' }}>
         PC 버전 열기 →
       </div>

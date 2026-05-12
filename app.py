@@ -566,8 +566,32 @@ def forbidden(e):
     return render_template('error.html', error_code=403, error_message='접근 권한이 없습니다.'), 403
 
 
+def _is_mobile_ua(ua: str) -> bool:
+    """User-Agent가 모바일이면 True. 태블릿(iPad)은 PC 취급."""
+    if not ua:
+        return False
+    ua_l = ua.lower()
+    if 'ipad' in ua_l or 'tablet' in ua_l:
+        return False
+    return any(k in ua_l for k in ('iphone', 'android', 'mobile', 'webos', 'blackberry', 'iemobile', 'opera mini'))
+
+
+def _should_force_mobile() -> bool:
+    """모바일 UA + 세션에 PC 강제 플래그 없을 때 True."""
+    if session.get('force_pc'):
+        return False
+    return _is_mobile_ua(request.headers.get('User-Agent', ''))
+
+
 @app.route('/')
 def index():
+    # ?pc=1 쿼리로 PC 강제 진입 → 세션에 저장하여 이후 리다이렉트 체인에서 유지
+    if request.args.get('pc') == '1':
+        session['force_pc'] = True
+    elif request.args.get('pc') == '0':
+        session.pop('force_pc', None)
+    if _should_force_mobile():
+        return redirect('/m/')
     return redirect(url_for('dashboard.dashboard_view'))
 
 

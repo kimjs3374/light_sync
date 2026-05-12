@@ -13,6 +13,85 @@ from config import MENU_REGISTRY, COMMON_MENU_KEYS
 
 auth_bp = Blueprint('auth', __name__)
 
+# ── 로그인 실패 잠금 (IP 기반, 5회 실패 → 5분 잠금) ──
+_login_failures = {}  # {ip: {'count': int, 'locked_until': datetime}}
+_MAX_FAILURES = 5
+_LOCKOUT_MINUTES = 5
+
+
+def _check_login_lockout(ip):
+    """잠금 상태면 남은 초 반환, 아니면 None"""
+    info = _login_failures.get(ip)
+    if not info:
+        return None
+    if info.get('locked_until') and datetime.datetime.now() < info['locked_until']:
+        remaining = (info['locked_until'] - datetime.datetime.now()).seconds
+        return remaining
+    if info.get('locked_until') and datetime.datetime.now() >= info['locked_until']:
+        _login_failures.pop(ip, None)
+    return None
+
+
+def _record_login_failure(ip):
+    info = _login_failures.setdefault(ip, {'count': 0, 'locked_until': None})
+    info['count'] += 1
+    if info['count'] >= _MAX_FAILURES:
+        info['locked_until'] = datetime.datetime.now() + datetime.timedelta(minutes=_LOCKOUT_MINUTES)
+
+
+def _clear_login_failure(ip):
+    _login_failures.pop(ip, None)
+
+
+def _auto_register_mail_account(db, user, plain_password):
+    """로그인 시 mail_accounts에 Mailcow 계정이 없으면 자동 등록."""
+    try:
+        import os
+        from sqlalchemy import text as _text
+        from modules.services.mail_client import encrypt_password
+
+        mailcow_domain = os.environ.get('MAILCOW_DOMAIN', 'mgnt.kr')
+        mailcow_email = f"{user.username}@{mailcow_domain}"
+        mailcow_imap_host = os.environ.get('MAILCOW_URL', '127.0.0.1').replace('https://', '').replace('http://', '').split(':')[0]
+        mailcow_imap_port = int(os.environ.get('MAILCOW_IMAPS_PORT', '993'))
+        mailcow_smtp_port = int(os.environ.get('MAILCOW_SUBMISSION_PORT', '587'))
+
+        existing = db.execute(_text(
+            "SELECT id FROM light_sync.mail_accounts WHERE email = :email AND user_id = :uid"
+        ), {"email": mailcow_email, "uid": user.id}).fetchone()
+
+        if not existing:
+            enc_pw = encrypt_password(plain_password)
+            db.execute(_text("""
+                INSERT INTO light_sync.mail_accounts
+                    (user_id, email, display_name, imap_host, imap_port, smtp_host, smtp_port,
+                     username, password_encrypted, use_ssl, is_shared, is_active)
+                VALUES
+                    (:uid, :email, :name, :imap_host, :imap_port, :smtp_host, :smtp_port,
+                     :username, :pw, true, false, true)
+            """), {
+                "uid": user.id,
+                "email": mailcow_email,
+                "name": f"{user.full_name or user.username}",
+                "imap_host": mailcow_imap_host,
+                "imap_port": mailcow_imap_port,
+                "smtp_host": mailcow_imap_host,
+                "smtp_port": mailcow_smtp_port,
+                "username": mailcow_email,
+                "pw": enc_pw,
+            })
+            db.commit()
+        else:
+            # 이미 있으면 비밀번호만 갱신
+            enc_pw = encrypt_password(plain_password)
+            db.execute(_text(
+                "UPDATE light_sync.mail_accounts SET password_encrypted = :pw WHERE email = :email AND user_id = :uid"
+            ), {"pw": enc_pw, "email": mailcow_email, "uid": user.id})
+            db.commit()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("mail_accounts 자동등록 실패")
+
 
 def _validate_password(pw):
     """비밀번호 규칙: 8자 이상, 영문 대/소문자·숫자·특수문자 중 3종 이상"""
@@ -34,13 +113,55 @@ def _get_limiter():
     return current_app.extensions.get("limiter")
 
 
+def _is_mobile_ua(ua: str) -> bool:
+    """User-Agent가 모바일이면 True. 태블릿(iPad)은 PC 취급."""
+    if not ua:
+        return False
+    ua_l = ua.lower()
+    if 'ipad' in ua_l or 'tablet' in ua_l:
+        return False
+    return any(k in ua_l for k in ('iphone', 'android', 'mobile', 'webos', 'blackberry', 'iemobile', 'opera mini'))
+
+
+def _should_force_mobile() -> bool:
+    """모바일 UA + 세션에 PC 강제 플래그 없을 때 True."""
+    if session.get('force_pc'):
+        return False
+    return _is_mobile_ua(request.headers.get('User-Agent', ''))
+
+
+def _post_auth_redirect():
+    """로그인 성공/이미 로그인 시 PC/모바일 분기 리다이렉트."""
+    if request.args.get('pc') == '1':
+        session['force_pc'] = True
+    if _should_force_mobile():
+        return redirect('/m/')
+    return redirect(url_for('dashboard.dashboard_view'))
+
+
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
+    # ?pc=1 쿼리는 로그인 단계에서도 세션 플래그로 보존
+    if request.args.get('pc') == '1':
+        session['force_pc'] = True
+    elif request.args.get('pc') == '0':
+        session.pop('force_pc', None)
+
     if 'user_id' in session:
-        return redirect(url_for('dashboard.dashboard_view'))
+        return _post_auth_redirect()
+
+    # GET 요청에서 모바일 UA면 /m/로 (모바일 SPA의 자체 로그인 화면 사용)
+    if request.method == 'GET' and _should_force_mobile():
+        return redirect('/m/')
 
     with get_db() as db:
         if request.method == 'POST':
+            client_ip = request.remote_addr or '0.0.0.0'
+            lockout_sec = _check_login_lockout(client_ip)
+            if lockout_sec:
+                flash(f"로그인 시도 초과. {lockout_sec // 60 + 1}분 후 다시 시도하세요.", "danger")
+                return redirect(url_for('auth.login'))
+
             login_id = request.form.get('username')
             login_pw = request.form.get('password')
             user = db.query(User).filter(User.username == login_id).first()
@@ -98,6 +219,11 @@ def login():
                         ).first()
                     )
 
+                    # Mailcow 비밀번호 동기화 + 웹메일 계정 자동 등록
+                    from modules.services.mailcow_api import sync_password as _mc_sync
+                    _mc_sync(user.username, login_pw)
+                    _auto_register_mail_account(db, user, login_pw)
+
                     session.update({
                         'user_id': user.id, 'username': user.username, 'full_name': user.full_name,
                         'user_group': user.user_group, 'role': user.role, 'position': user.position or '',
@@ -107,14 +233,16 @@ def login():
                         'can_approve_delete': bool(user.role == 'admin' or user.can_approve_delete),
                         'can_manage_priority': can_manage_priority,
                     })
+                    _clear_login_failure(client_ip)
                     # 비밀번호 초기화 후 강제 변경
                     if getattr(user, 'must_change_password', False):
                         session['must_change_password'] = True
                         return redirect(url_for('auth.force_change_password'))
-                    return redirect(url_for('dashboard.dashboard_view'))
+                    return _post_auth_redirect()
                 else:
                     flash("승인 대기 중입니다.", "warning")
             else:
+                _record_login_failure(client_ip)
                 flash("아이디 또는 비밀번호 오류", "danger")
 
         groups = [g.group_name for g in db.query(GroupPermission).filter(GroupPermission.group_name != "최고관리자").all()]
@@ -598,6 +726,9 @@ def approve_user(user_id):
         user = db.get(User, user_id)
         if user:
             user.is_approved = True
+            # Mailcow 메일박스 자동 생성
+            from modules.services.mailcow_api import create_mailbox as _mc_create
+            _mc_create(user.username, user.full_name, "Mgnt2026!")
             # 챗봇 권한 초기값: 일반직원 프리셋 적용
             from sqlalchemy import text as _text
             import json as _json
@@ -1063,4 +1194,7 @@ def api_menu_order():
 @auth_bp.route('/logout')
 def logout():
     session.clear()
-    return redirect(url_for('auth.login'))
+    resp = redirect(url_for('auth.login'))
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    resp.delete_cookie('session')
+    return resp
