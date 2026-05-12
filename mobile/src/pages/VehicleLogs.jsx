@@ -71,15 +71,18 @@ export default function VehicleLogs() {
   };
 
   // ────── 영수증 이미지 처리 ──────
+  // HEIC 포함 모든 이미지를 캔버스로 통과시켜 JPEG으로 변환·리사이즈
+  // (아이폰 HEIC를 서버가 거부하는 문제 + 큰 사진 업로드 실패 방지)
   const onPickReceipt = async (file) => {
     if (!file) { setReceipt(null); setReceiptPreview(null); return; }
-    if (file.size > 5 * 1024 * 1024) {
-      const resized = await resizeImage(file, 1280);
-      setReceipt(resized);
-      setReceiptPreview(URL.createObjectURL(resized));
-    } else {
-      setReceipt(file);
-      setReceiptPreview(URL.createObjectURL(file));
+    try {
+      const processed = await resizeImage(file, 1600);
+      setReceipt(processed);
+      setReceiptPreview(URL.createObjectURL(processed));
+    } catch (e) {
+      alert(e?.message || '이미지를 처리할 수 없습니다. 다른 사진을 선택해주세요.');
+      setReceipt(null);
+      setReceiptPreview(null);
     }
   };
 
@@ -98,18 +101,29 @@ export default function VehicleLogs() {
       return alert('출발지/도착지/사용목적을 입력해주세요');
     }
     setSubmitting(true);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 90000);  // 90초 타임아웃
     try {
       const fd = new FormData();
       fd.append('vehicle', selectedVehicle.name);
       Object.entries(form).forEach(([k, v]) => fd.append(k, v == null ? '' : String(v)));
-      if (receipt) fd.append('receipt', receipt);
+      if (receipt) fd.append('receipt', receipt, 'receipt.jpg');  // 서버 확장자 검증용
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/app/vehicle-logs/create', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: fd,
-      });
-      const data = await res.json();
+      let res;
+      try {
+        res = await fetch('/api/app/vehicle-logs/create', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: fd,
+          signal: ctrl.signal,
+        });
+      } catch (netErr) {
+        if (netErr.name === 'AbortError') {
+          throw new Error('업로드 시간이 초과되었습니다. 네트워크 확인 후 다시 시도해주세요.');
+        }
+        throw new Error('네트워크 오류로 전송하지 못했습니다. 사진 크기를 줄이거나 Wi-Fi에서 다시 시도해주세요.');
+      }
+      const data = await res.json().catch(() => ({ ok: false, error: `서버 오류 (${res.status})` }));
       if (!data.ok) throw new Error(data.error || '등록 실패');
       // 등록 성공 → 차량 목록으로 복귀 (다른 차량 등록도 쉽게)
       await api.get('/vehicle-logs/vehicles').then(d => {
@@ -119,6 +133,7 @@ export default function VehicleLogs() {
     } catch (e) {
       alert(e.message);
     } finally {
+      clearTimeout(timer);
       setSubmitting(false);
     }
   };
@@ -419,25 +434,53 @@ function Row({ label, value }) {
   );
 }
 
-function resizeImage(file, maxWidth) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = (e) => { img.src = e.target.result; };
-    img.onload = () => {
-      const ratio = Math.min(1, maxWidth / img.width);
-      const w = Math.round(img.width * ratio);
-      const h = Math.round(img.height * ratio);
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      canvas.toBlob((blob) => {
-        const out = new File([blob], file.name, { type: 'image/jpeg' });
-        resolve(out);
-      }, 'image/jpeg', 0.85);
-    };
-    reader.readAsDataURL(file);
+// 이미지 → JPEG 리사이즈 (HEIC 디코딩 실패 시 에러 throw)
+// createImageBitmap을 우선 시도 (iOS Safari 17+ HEIC 지원), 실패 시 <img> 폴백.
+async function resizeImage(file, maxWidth) {
+  let bitmap = null;
+  try {
+    if (typeof createImageBitmap === 'function') {
+      bitmap = await createImageBitmap(file);
+    }
+  } catch (_) { /* 폴백 */ }
+
+  let srcW, srcH, drawSource;
+  if (bitmap) {
+    srcW = bitmap.width; srcH = bitmap.height; drawSource = bitmap;
+  } else {
+    drawSource = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('파일을 읽을 수 없습니다'));
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('지원하지 않는 이미지 형식입니다 (HEIC는 JPEG로 변환해주세요)'));
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+    srcW = drawSource.naturalWidth || drawSource.width;
+    srcH = drawSource.naturalHeight || drawSource.height;
+  }
+
+  if (!srcW || !srcH) throw new Error('이미지 크기를 인식하지 못했습니다');
+
+  const ratio = Math.min(1, maxWidth / srcW);
+  const w = Math.max(1, Math.round(srcW * ratio));
+  const h = Math.max(1, Math.round(srcH * ratio));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, w, h);  // PNG 투명 영역 흰배경 처리
+  ctx.drawImage(drawSource, 0, 0, w, h);
+  if (bitmap && bitmap.close) bitmap.close();
+
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob((b) => b ? resolve(b) : reject(new Error('JPEG 변환에 실패했습니다')),
+                  'image/jpeg', 0.85);
   });
+  return new File([blob], 'receipt.jpg', { type: 'image/jpeg' });
 }
 
 const s = {
