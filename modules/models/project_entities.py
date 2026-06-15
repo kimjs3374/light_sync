@@ -110,6 +110,7 @@ class ProjectPhoto(Base):
     file_name   = Column(String(255), nullable=False)
     storage_path= Column(String(500), nullable=False)
     uploaded_by = Column(String(50),  default='사용자')
+    sort_order  = Column(Integer,     default=0)   # 갤러리 표시 순서 (작을수록 앞, 드래그&드롭으로 변경)
     created_at  = Column(DateTime,    default=datetime.datetime.now)
 
     project  = relationship("Project",  back_populates="project_photos")

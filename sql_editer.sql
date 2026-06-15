@@ -1269,3 +1269,215 @@ CREATE TABLE IF NOT EXISTS light_sync.vehicle_logs (
 CREATE INDEX IF NOT EXISTS ix_vehicle_logs_vehicle_date ON light_sync.vehicle_logs(vehicle, use_date DESC);
 CREATE INDEX IF NOT EXISTS ix_vehicle_logs_user ON light_sync.vehicle_logs(user_id);
 CREATE INDEX IF NOT EXISTS ix_vehicle_logs_use_date ON light_sync.vehicle_logs(use_date DESC);
+
+-- ═══════════════════════════════════════════════════════════════
+-- 2026-05-13 AX 0주차 데이터 정리 (Mattermost 봇 도입 준비)
+-- 백업 테이블: _bk_*_20260513_143740 (6종)
+-- ═══════════════════════════════════════════════════════════════
+
+-- 1. history_logs: 사람/시스템/채팅 origin 구분 (AX KPI 기준선)
+ALTER TABLE light_sync.history_logs
+  ADD COLUMN IF NOT EXISTS origin VARCHAR(20) DEFAULT 'system';
+-- 기준선: 30일 사람 작성 13/195 = 6.7%. 목표: 50%+
+UPDATE light_sync.history_logs
+  SET origin = 'web'
+  WHERE user_name IS NOT NULL
+    AND user_name NOT IN ('시스템', '시스템 🤖', '봇', 'system')
+    AND user_name NOT LIKE '%시스템%';
+
+-- 2. contracts: 미청구 사유 분류 (회수불가/탕감/분쟁/단순지연/기타)
+ALTER TABLE light_sync.contracts
+  ADD COLUMN IF NOT EXISTS unpaid_reason VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS unpaid_reason_note TEXT;
+
+-- 3. notifications: 실제 중복 방어 키 (현재는 title 비교만 — gap 분석 1번)
+ALTER TABLE light_sync.notifications
+  ADD COLUMN IF NOT EXISTS dedupe_key VARCHAR(200);
+CREATE INDEX IF NOT EXISTS idx_notifications_dedupe
+  ON light_sync.notifications(dedupe_key, created_at DESC)
+  WHERE dedupe_key IS NOT NULL;
+
+-- 4. 동시수정 충돌 방지 — optimistic locking
+ALTER TABLE light_sync.deliveries
+  ADD COLUMN IF NOT EXISTS entity_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE light_sync.delivery_splits
+  ADD COLUMN IF NOT EXISTS entity_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE light_sync.warranty_cases
+  ADD COLUMN IF NOT EXISTS entity_version INTEGER NOT NULL DEFAULT 1;
+
+-- 5. Mattermost 채널 × MCP tool 권한 매트릭스 (PERSONAS dict 대체)
+CREATE TABLE IF NOT EXISTS light_sync.channel_tool_acl (
+  channel_name VARCHAR(50) NOT NULL,
+  tool_name VARCHAR(100) NOT NULL,
+  allow BOOLEAN NOT NULL DEFAULT TRUE,
+  note TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (channel_name, tool_name)
+);
+CREATE INDEX IF NOT EXISTS idx_channel_tool_acl_channel
+  ON light_sync.channel_tool_acl(channel_name);
+
+-- 6. delivery_splits status 한글 통일 (waiting/done 영문 잔존 정리)
+UPDATE light_sync.delivery_splits SET status='완료' WHERE status='done';
+UPDATE light_sync.delivery_splits SET status='대기' WHERE status='waiting';
+
+-- ════════════════════════════════════════════════════════
+-- 2026-05-13 write_ops: pending_write_sessions 테이블
+-- ════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS light_sync.pending_write_sessions (
+    token         VARCHAR(36)  PRIMARY KEY,
+    intent_type   VARCHAR(50)  NOT NULL,
+    payload_json  TEXT         NOT NULL DEFAULT '{}',
+    channel_id    VARCHAR(50),
+    user_name     VARCHAR(50),
+    created_at    TIMESTAMP    DEFAULT NOW(),
+    expires_at    TIMESTAMP    NOT NULL,
+    used          BOOLEAN      DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS ix_pws_expires ON light_sync.pending_write_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS ix_pws_used ON light_sync.pending_write_sessions(used);
+
+-- 만료 세션 자동 정리 (선택사항: pg_cron 없으면 수동)
+-- DELETE FROM light_sync.pending_write_sessions WHERE expires_at < NOW() - INTERVAL '1 hour';
+
+-- ════════════════════════════════════════════════════════
+-- 2026-05-18 메일 신착 알림 (mail_notify_state)
+-- IMAP UID 워터마크 기반 mail_account 단위 상태. mail_notifier 데몬에서 사용.
+-- ════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS light_sync.mail_notify_state (
+    account_id      INTEGER     PRIMARY KEY
+                                REFERENCES light_sync.mail_accounts(id) ON DELETE CASCADE,
+    last_seen_uid   BIGINT      NOT NULL DEFAULT 0,
+    uid_validity    BIGINT,
+    is_enabled      BOOLEAN     NOT NULL DEFAULT TRUE,
+    last_polled_at  TIMESTAMP,
+    last_error      TEXT,
+    notify_count    INTEGER     NOT NULL DEFAULT 0,
+    created_at      TIMESTAMP   NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ix_mns_enabled ON light_sync.mail_notify_state(is_enabled);
+
+-- ════════════════════════════════════════════════════════
+-- 전자결재 (電子決裁) — 2026-06-10
+-- 순차 결재 + 직급/부서 기반 기본 결재선(수정가능) + 참조/수신.
+-- 양식(approval_form_templates)은 관리자가 추가/수정 가능.
+-- (init_db create_all로도 자동 생성됨 — 이 SQL은 기록/수동복구용)
+-- ════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS light_sync.approval_form_templates (
+    id              SERIAL      PRIMARY KEY,
+    form_key        VARCHAR(50) UNIQUE NOT NULL,
+    name            VARCHAR(100) NOT NULL,
+    description     TEXT,
+    icon            VARCHAR(20),
+    field_schema    JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    default_line    JSONB,
+    has_amount      BOOLEAN     DEFAULT FALSE,
+    amount_field    VARCHAR(50),
+    is_active       BOOLEAN     DEFAULT TRUE,
+    sort_order      INTEGER     DEFAULT 0,
+    created_at      TIMESTAMP   DEFAULT NOW(),
+    updated_at      TIMESTAMP   DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS light_sync.approval_documents (
+    id              SERIAL      PRIMARY KEY,
+    doc_no          VARCHAR(30) UNIQUE,
+    form_key        VARCHAR(50) NOT NULL,
+    form_name       VARCHAR(100) NOT NULL,
+    title           VARCHAR(200) NOT NULL,
+    drafter_id      INTEGER     NOT NULL REFERENCES light_sync.users(id),
+    drafter_name    VARCHAR(50) NOT NULL,
+    drafter_dept    VARCHAR(50),
+    drafter_position VARCHAR(50),
+    form_data       JSONB,
+    content         TEXT,
+    amount          NUMERIC(15,0),
+    status          VARCHAR(20) NOT NULL DEFAULT 'draft',
+    current_step    INTEGER     DEFAULT 0,
+    created_at      TIMESTAMP   DEFAULT NOW(),
+    submitted_at    TIMESTAMP,
+    completed_at    TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_ea_doc_drafter ON light_sync.approval_documents(drafter_id);
+CREATE INDEX IF NOT EXISTS ix_ea_doc_status ON light_sync.approval_documents(status);
+
+CREATE TABLE IF NOT EXISTS light_sync.approval_steps (
+    id              SERIAL      PRIMARY KEY,
+    document_id     INTEGER     NOT NULL REFERENCES light_sync.approval_documents(id) ON DELETE CASCADE,
+    step_order      INTEGER     NOT NULL,
+    approver_id     INTEGER     NOT NULL REFERENCES light_sync.users(id),
+    approver_name   VARCHAR(50) NOT NULL,
+    approver_position VARCHAR(50),
+    approver_dept   VARCHAR(50),
+    role            VARCHAR(20) DEFAULT 'approval',
+    status          VARCHAR(20) DEFAULT 'waiting',
+    comment         TEXT,
+    acted_at        TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_ea_step_doc ON light_sync.approval_steps(document_id);
+CREATE INDEX IF NOT EXISTS ix_ea_step_approver ON light_sync.approval_steps(approver_id, status);
+
+CREATE TABLE IF NOT EXISTS light_sync.approval_references (
+    id              SERIAL      PRIMARY KEY,
+    document_id     INTEGER     NOT NULL REFERENCES light_sync.approval_documents(id) ON DELETE CASCADE,
+    user_id         INTEGER     NOT NULL REFERENCES light_sync.users(id),
+    user_name       VARCHAR(50) NOT NULL,
+    ref_type        VARCHAR(20) DEFAULT 'reference',
+    is_read         BOOLEAN     DEFAULT FALSE,
+    read_at         TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_ea_ref_doc ON light_sync.approval_references(document_id);
+CREATE INDEX IF NOT EXISTS ix_ea_ref_user ON light_sync.approval_references(user_id);
+
+CREATE TABLE IF NOT EXISTS light_sync.approval_attachments (
+    id              SERIAL      PRIMARY KEY,
+    document_id     INTEGER     NOT NULL REFERENCES light_sync.approval_documents(id) ON DELETE CASCADE,
+    filename        VARCHAR(255) NOT NULL,
+    storage_path    VARCHAR(500) NOT NULL,
+    content_type    VARCHAR(100),
+    size            INTEGER,
+    uploaded_at     TIMESTAMP   DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ix_ea_att_doc ON light_sync.approval_attachments(document_id);
+
+CREATE TABLE IF NOT EXISTS light_sync.approval_comments (
+    id              SERIAL      PRIMARY KEY,
+    document_id     INTEGER     NOT NULL REFERENCES light_sync.approval_documents(id) ON DELETE CASCADE,
+    user_id         INTEGER     NOT NULL REFERENCES light_sync.users(id),
+    user_name       VARCHAR(50) NOT NULL,
+    content         TEXT        NOT NULL,
+    created_at      TIMESTAMP   DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ix_ea_cmt_doc ON light_sync.approval_comments(document_id);
+
+-- ════════════════════════════════════════════════════════
+-- 인사관리 — 연차 수동 가감 (2026-06-10)
+-- 연차는 입사일 기준 자동 산정(hr_service) + 전자결재 휴가 자동차감(승인분 집계).
+-- 이 테이블은 이월/특별부여/보정 등 수동 가감만 기록.
+-- ════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS light_sync.leave_adjustments (
+    id          SERIAL      PRIMARY KEY,
+    user_id     INTEGER     NOT NULL REFERENCES light_sync.users(id),
+    days        NUMERIC(4,1) NOT NULL,
+    reason      TEXT,
+    leave_year  INTEGER,
+    created_by  VARCHAR(50),
+    created_at  TIMESTAMP   DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ix_leave_adj_user ON light_sync.leave_adjustments(user_id, leave_year);
+
+-- ════════════════════════════════════════════════════════
+-- 현장사진 갤러리 — 드래그&드롭 순서변경 (2026-06-15)
+-- project_photos에 sort_order 추가. 작을수록 갤러리 앞쪽.
+-- 기존 데이터는 created_at DESC(최신순) 기준으로 백필.
+-- ════════════════════════════════════════════════════════
+ALTER TABLE light_sync.project_photos ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+
+WITH ranked AS (
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY created_at DESC, id DESC) - 1 AS rn
+    FROM light_sync.project_photos
+)
+UPDATE light_sync.project_photos p SET sort_order = ranked.rn
+FROM ranked WHERE p.id = ranked.id;

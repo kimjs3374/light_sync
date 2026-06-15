@@ -121,7 +121,9 @@ def api_photos():
         q = db.query(ProjectPhoto).filter(ProjectPhoto.project_id == site_id)
         if photo_type and photo_type != '전체':
             q = q.filter(ProjectPhoto.photo_type == photo_type)
-        photos = q.order_by(ProjectPhoto.created_at.desc()).all()
+        photos = q.order_by(
+            ProjectPhoto.sort_order.asc(), ProjectPhoto.created_at.desc()
+        ).all()
 
         return jsonify({'photos': [{
             'id':          p.id,
@@ -163,6 +165,11 @@ def api_upload():
     from modules.history_board import get_user_display_name
     current_user = get_user_display_name()
     with get_db() as db:
+        # 새 사진은 갤러리 맨 앞에 표시 (기존 최솟값보다 작게)
+        min_order = db.query(func.min(ProjectPhoto.sort_order)).filter(
+            ProjectPhoto.project_id == site_id
+        ).scalar()
+        new_order = (min_order - 1) if min_order is not None else 0
         photo = ProjectPhoto(
             project_id=site_id,
             contract_id=contract_id,
@@ -170,6 +177,7 @@ def api_upload():
             file_name=secure_filename(file.filename),
             storage_path=storage_path,
             uploaded_by=current_user,
+            sort_order=new_order,
         )
         db.add(photo)
         db.commit()
@@ -198,6 +206,38 @@ def api_delete(photo_id):
         db.delete(photo)
         db.commit()
     return jsonify({'ok': True})
+
+
+@photos_bp.route('/api/reorder', methods=['POST'])
+@login_required
+@menu_required('photos')
+def api_reorder():
+    """드래그&드롭 순서변경 저장. 전체 보기에서 현장의 전체 사진 순서를 받음."""
+    data = request.get_json(silent=True) or {}
+    site_id = data.get('site_id')
+    ids = data.get('ids', [])
+    try:
+        site_id = int(site_id)
+        ids = [int(i) for i in ids]
+    except (TypeError, ValueError):
+        return jsonify({'error': 'site_id와 ids가 필요합니다'}), 400
+    if not site_id or not ids:
+        return jsonify({'error': 'site_id와 ids가 필요합니다'}), 400
+
+    with get_db() as db:
+        # 해당 현장 사진만 대상으로 (다른 현장 ID 섞임 방지)
+        valid = {
+            r.id: r for r in db.query(ProjectPhoto).filter(
+                ProjectPhoto.project_id == site_id,
+                ProjectPhoto.id.in_(ids),
+            ).all()
+        }
+        for idx, pid in enumerate(ids):
+            photo = valid.get(pid)
+            if photo:
+                photo.sort_order = idx
+        db.commit()
+    return jsonify({'ok': True, 'count': len(valid)})
 
 
 @photos_bp.route('/api/download', methods=['POST'])

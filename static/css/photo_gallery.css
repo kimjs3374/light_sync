@@ -208,6 +208,10 @@
 }
 .photo-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(15,23,42,.12); }
 .photo-card:hover .photo-delete-btn { opacity: 1; }
+/* 드래그&드롭 순서변경 (전체 보기) */
+.photo-grid.reorder-on .photo-card { cursor: grab; }
+.photo-grid.reorder-on .photo-card:active { cursor: grabbing; }
+.photo-card.dragging { opacity: .4; transform: none; box-shadow: 0 0 0 2px var(--mg-primary, #2563eb); }
 .photo-thumb-wrap {
     aspect-ratio: 1 / 1;
     overflow: hidden;

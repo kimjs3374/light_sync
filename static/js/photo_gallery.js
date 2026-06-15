@@ -216,6 +216,78 @@ function renderPhotos() {
                 </div>
             </div>
         </div>`).join('');
+    setupDragAndDrop();
+}
+
+/* ── 드래그&드롭 순서변경 (전체 보기에서만) ── */
+function isReorderEnabled() {
+    return State.currentFilter === '전체' && State.contractFilter === null;
+}
+
+let _dragSrc = null;
+
+function setupDragAndDrop() {
+    const enabled = isReorderEnabled();
+    const grid = document.getElementById('photoGrid');
+    grid.classList.toggle('reorder-on', enabled);
+    const hint = document.getElementById('reorderHint');
+    if (hint) hint.style.display = (enabled && State.filtered.length > 1) ? '' : 'none';
+
+    grid.querySelectorAll('.photo-card').forEach(card => {
+        card.draggable = enabled;
+        if (!enabled) return;
+        card.addEventListener('dragstart', onPhotoDragStart);
+        card.addEventListener('dragover',  onPhotoDragOver);
+        card.addEventListener('dragend',   onPhotoDragEnd);
+    });
+}
+
+function onPhotoDragStart(e) {
+    _dragSrc = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', this.dataset.photoid); } catch {}
+}
+
+function onPhotoDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (!_dragSrc || this === _dragSrc) return;
+    const rect = this.getBoundingClientRect();
+    const before = e.clientX < rect.left + rect.width / 2;
+    const grid = this.parentNode;
+    if (before) grid.insertBefore(_dragSrc, this);
+    else        grid.insertBefore(_dragSrc, this.nextSibling);
+}
+
+function onPhotoDragEnd() {
+    this.classList.remove('dragging');
+    _dragSrc = null;
+    persistPhotoOrder();
+}
+
+function persistPhotoOrder() {
+    const grid = document.getElementById('photoGrid');
+    const ids = [...grid.querySelectorAll('.photo-card')].map(c => parseInt(c.dataset.photoid, 10));
+    // State.photos를 새 순서로 재정렬 (전체 보기이므로 filtered === photos)
+    const map = new Map(State.photos.map(p => [p.id, p]));
+    const reordered = ids.map(id => map.get(id)).filter(Boolean);
+    // 변경 없으면 저장 생략
+    if (reordered.length === State.photos.length &&
+        reordered.every((p, i) => p.id === State.photos[i].id)) return;
+    State.photos = reordered;
+    applyFilter();  // 인덱스 재계산 + 재렌더 (라이트박스 순서 동기화)
+
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    fetch('/photos/api/reorder', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(csrfMeta ? {'X-CSRFToken': csrfMeta.content} : {}),
+        },
+        body: JSON.stringify({ site_id: State.siteId, ids }),
+    }).then(r => { if (!r.ok) throw new Error(); })
+      .catch(() => showToast('순서 저장 실패', 'danger'));
 }
 
 /* ── 선택 & 다운로드 ── */
