@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>메일 인쇄</title>
+<style>
+body { font-family: 'Malgun Gothic', sans-serif; font-size: 13px; color: #333; margin: 20px; }
+.print-header { border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 16px; }
+.print-header h2 { margin: 0 0 8px; font-size: 18px; }
+.print-meta { font-size: 12px; color: #666; line-height: 1.8; }
+.print-meta span { font-weight: bold; color: #333; display: inline-block; width: 70px; }
+.print-body { line-height: 1.7; word-break: break-word; }
+.print-body img { max-width: 100%; }
+@media print { body { margin: 0; } }
+</style>
+</head>
+<body onload="window.print()">
+<div class="print-header">
+    <h2>{{ msg.subject or '(제목 없음)' }}</h2>
+    <div class="print-meta">
+        <div><span>보낸사람</span> {{ msg.from.name }} &lt;{{ msg.from.email }}&gt;</div>
+        <div><span>받는사람</span> {% for t in msg.to %}{{ t.name }} &lt;{{ t.email }}&gt;{% if not loop.last %}, {% endif %}{% endfor %}</div>
+        {% if msg.cc %}<div><span>참조</span> {% for c in msg.cc %}{{ c.email }}{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+        <div><span>날짜</span> {{ msg.date }}</div>
+        {% if msg.attachments %}<div><span>첨부</span> {% for a in msg.attachments %}{{ a.filename }}{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+    </div>
+</div>
+<div class="print-body">
+    {{ msg.html_body|sanitize_html|safe if msg.html_body else msg.text_body|replace('\n','<br>')|safe }}
+</div>
+</body>
+</html>

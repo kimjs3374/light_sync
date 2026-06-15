@@ -28,6 +28,11 @@ crontab -e
 #    - 자동계약 미사용 시: --no-auto-contract 추가
 0 1 * * * cd /web/light_sync && venv/bin/flask sync-g2b --mode daily >> logs/g2b_cron.log 2>&1
 
+# 1-2) 변경계약 감지 (매일 새벽 1시 30분)
+#    - 활성 계약(미청구/부분입금)의 최소 계약일 ~ 오늘 범위 재조회
+#    - 변경차수 증가 감지 시 계약 금액/품목 자동 업데이트
+30 1 * * * cd /web/light_sync && venv/bin/flask sync-g2b-changes >> logs/g2b_sync.log 2>&1
+
 # 2) NAS 폴더 동기화 (매 30분)
 #    - 시놀로지 NAS에서 curl로 호출하는 방식 유지
 #    (NAS 작업 스케줄러에서 설정)
@@ -50,6 +55,9 @@ venv/bin/flask sync-g2b --mode bulk
 
 # 특정 연도부터 벌크
 venv/bin/flask sync-g2b --mode bulk --start-year 2020
+
+# 변경계약 감지 (활성 계약 대상)
+venv/bin/flask sync-g2b-changes
 ```
 
 ## 로그 확인

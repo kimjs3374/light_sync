@@ -169,17 +169,19 @@
         <div class="table-responsive">
             <table class="table table-sm mb-0 items-table no-stack-table" style="table-layout:fixed;">
                 <colgroup>
-                    <col style="width:36px"><col><col style="width:65px"><col style="width:65px"><col style="width:70px"><col style="width:40px">
-                    {% if not hide_financial %}<col style="width:85px"><col style="width:95px">{% endif %}<col style="width:12%"><col style="width:12%">
+                    <col style="width:36px"><col style="width:70px"><col><col style="width:60px"><col style="width:60px"><col style="width:65px"><col style="width:38px"><col style="width:85px">
+                    {% if not hide_financial %}<col style="width:80px"><col style="width:90px">{% endif %}<col style="width:10%"><col style="width:10%">
                 </colgroup>
                 <thead>
                     <tr style="background:#f8fafc;">
                         <th class="ps-3">No</th>
+                        <th style="width:80px">품번</th>
                         <th>품명/규격</th>
                         <th class="text-end">실재고</th>
                         <th class="text-end">가용</th>
                         <th class="text-end">수량</th>
                         <th>단위</th>
+                        <th>납기일</th>
                         {% if not hide_financial %}<th class="text-end">단가</th>
                         <th class="text-end">금액</th>{% endif %}
                         <th>BOM</th>
@@ -190,6 +192,7 @@
                     {% for item in po.items %}
                     <tr>
                         <td class="text-muted ps-3">{{ loop.index }}</td>
+                        <td><code class="small">{{ item.item_code or '' }}</code></td>
                         <td>
                             <strong>{{ item.item_name }}</strong>
                             {% if item.item_spec %}<br><small class="text-muted">{{ item.item_spec }}</small>{% endif %}
@@ -201,6 +204,7 @@
                         <td class="text-end {{ 'text-danger fw-bold' if avail != '-' and avail <= 0 else 'text-success fw-bold' if avail != '-' else '' }}">{{ avail }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.quantity or 0) }}</td>
                         <td>{{ item.unit or '' }}</td>
+                        <td class="small">{{ item.delivery_date.strftime('%Y-%m-%d') if item.delivery_date else '' }}</td>
                         {% if not hide_financial %}<td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
                         <td class="text-end fw-bold" style="color:#0f172a;">{{ "{:,.0f}".format(item.amount or 0) }}</td>{% endif %}
                         <td class="small">
@@ -251,10 +255,12 @@
                         <table class="table table-sm" id="editItemsTable">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width:25%">품명</th>
+                                    <th style="width:80px">품번</th>
+                                    <th style="width:22%">품명</th>
                                     <th style="width:100px">규격</th>
                                     <th style="width:70px">수량</th>
                                     <th style="width:50px">단위</th>
+                                    <th style="width:110px">납기일</th>
                                     <th style="width:90px">단가</th>
                                     <th>비고</th>
                                     <th style="width:40px"></th>
@@ -263,6 +269,7 @@
                             <tbody id="editItemsBody">
                                 {% for item in po.items %}
                                 <tr>
+                                    <td><input type="text" name="item_code[]" class="form-control form-control-sm" value="{{ item.item_code or '' }}"></td>
                                     <td>
                                         <input type="hidden" name="item_id[]" value="{{ item.item_id or '' }}">
                                         <input type="text" name="item_name[]" class="form-control form-control-sm" value="{{ item.item_name }}" required>
@@ -270,6 +277,7 @@
                                     <td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="{{ item.item_spec or '' }}"></td>
                                     <td><input type="number" name="quantity[]" class="form-control form-control-sm text-end" value="{{ item.quantity }}" min="0" step="any"></td>
                                     <td><input type="text" name="unit[]" class="form-control form-control-sm" value="{{ item.unit or '' }}"></td>
+                                    <td><input type="date" name="delivery_date[]" class="form-control form-control-sm" value="{{ item.delivery_date.strftime('%Y-%m-%d') if item.delivery_date else '' }}"></td>
                                     <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end" value="{{ item.unit_price }}" min="0" step="any"></td>
                                     <td><input type="text" name="item_note[]" class="form-control form-control-sm" value="{{ item.note or '' }}"></td>
                                     <td><button type="button" class="btn btn-sm text-danger edit-remove-btn" style="font-size:1.1rem;">&times;</button></td>
@@ -294,10 +302,12 @@
         var tbody = document.getElementById('editItemsBody');
         var tr = document.createElement('tr');
         tr.innerHTML =
+            '<td><input type="text" name="item_code[]" class="form-control form-control-sm"></td>' +
             '<td><input type="hidden" name="item_id[]" value=""><input type="text" name="item_name[]" class="form-control form-control-sm" required></td>' +
             '<td><input type="text" name="item_spec[]" class="form-control form-control-sm"></td>' +
             '<td><input type="number" name="quantity[]" class="form-control form-control-sm text-end" min="0" step="any"></td>' +
             '<td><input type="text" name="unit[]" class="form-control form-control-sm"></td>' +
+            '<td><input type="date" name="delivery_date[]" class="form-control form-control-sm"></td>' +
             '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end" min="0" step="any"></td>' +
             '<td><input type="text" name="item_note[]" class="form-control form-control-sm"></td>' +
             '<td><button type="button" class="btn btn-sm text-danger edit-remove-btn" style="font-size:1.1rem;">&times;</button></td>';

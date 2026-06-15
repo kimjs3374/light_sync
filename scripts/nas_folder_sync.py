@@ -10,10 +10,11 @@ NAS 폴더 → ERP 현장 자동 동기화 (v3 - 올인원 Python)
 5. API 응답의 write_plans → .plan.txt 파일 자동 생성
 
 설치:
-  1. NAS에 복사: /scripts/nas_folder_sync.py
-  2. 실행 권한: chmod +x /scripts/nas_folder_sync.py
-  3. cron 등록: bash /scripts/nas_folder_sync.sh
+  1. NAS에 복사: /volume1/scripts/nas_folder_sync.py
+  2. 실행 권한: chmod +x /volume1/scripts/nas_folder_sync.py
+  3. cron 등록: bash /volume1/scripts/nas_folder_sync.sh
      (래퍼 스크립트가 python3 호출)
+  ※ /volume1/ 아래에 두어야 시놀로지 재부팅 시 삭제되지 않음
 """
 
 import datetime
@@ -32,7 +33,7 @@ API_KEY = "mgnt-nas-sync-2026-secure-key"
 BASE_DIR = "/volume1/현장관리/000. 현장관리"
 YEAR = str(datetime.date.today().year)
 SCAN_DIR = os.path.join(BASE_DIR, YEAR)
-LOG_FILE = "/scripts/nas_sync.log"
+LOG_FILE = "/volume1/scripts/nas_sync.log"
 
 FOLDER_PATTERN = re.compile(r'^\d{4}\.\d{2}\.\d{2}_.+')
 

@@ -10,9 +10,32 @@ venv2/
 
 .env
 *.env
+.env.bak*
 supabase/.env
 kakaowork/.env
 storage/.env
+
+# DB 백업 / 개인정보 / 루트 스크린샷 (커밋 금지)
+backups/
+*.vcf
+/*.png
+
+# node_modules (모든 하위 프로젝트)
+node_modules/
+
+# MCP 실행 설정 (DATABASE_URL 등 비밀정보 포함 — 로컬 전용)
+mcp-*.json
+static/commencement_files
+
+# 사용자 업로드/생성 문서는 Supabase Storage 전용 — repo 커밋 금지 (CLAUDE.md)
+static/documents/
+static/commencement_files/
+
+# 루트 다운로드 참고자료 / 저장된 웹페이지 junk
+/*.docx
+/*.htm
+/*.html
+*.files/
 
 .pytest_cache/
 .mypy_cache/
@@ -42,3 +65,4 @@ icube_migration/
 .trash/
 .playwright-mcp/
 light_sync_channel/node_modules/
+.oidc_keys/

@@ -1,0 +1,257 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    .monthly-header { background: #f8fafc; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; }
+    .monthly-vendor { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 16px; }
+    .monthly-vendor-header { background: #f1f5f9; padding: 8px 14px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+    .monthly-vendor-name { font-weight: 700; font-size: .9rem; color: #0f172a; }
+    .monthly-vendor-info { font-size: .75rem; color: #64748b; }
+    .monthly-table { table-layout: fixed; min-width: 1500px; width: 100%; border-collapse: collapse; }
+    .monthly-table th, .monthly-table td { border: 1px solid #d1d5db; padding: 6px 10px; white-space: nowrap; }
+    .monthly-table th { font-size: .75rem; color: #1e293b; font-weight: 700; background: #f1f5f9; text-align: center; }
+    .monthly-table td { font-size: .8rem; }
+    .monthly-table .subtotal-row td { border-top: 2px solid #0f172a; font-weight: 700; background: #f8fafc; }
+    .monthly-summary { background: #0f172a; color: #fff; border-radius: 10px; padding: 16px 20px; }
+    .vendor-check { width: 16px; height: 16px; margin-right: 8px; cursor: pointer; vertical-align: middle; }
+
+    @media print {
+        @page { size: landscape; margin: 8mm; }
+        body, html { background: #fff !important; font-size: 11px !important; }
+        .page-hero, .sidebar, .navbar, .chatbot-panel, .sidebar-quick-actions, #chatbot-toggle-fab { display: none !important; }
+        .main-content { margin: 0 !important; padding: 0 !important; }
+        .no-print { display: none !important; }
+        .monthly-summary { display: none !important; }
+        .monthly-vendor { border-radius: 0; margin-bottom: 0; border: none; }
+        .monthly-vendor.print-hide { display: none !important; }
+        .monthly-vendor-header { display: none !important; }
+        .vendor-print-title { display: block !important; text-align: center; margin-bottom: 28px; padding-top: 20px; }
+        .vendor-print-title h3 { margin: 0 0 8px 0; font-size: 16px; font-weight: 700; }
+        .vendor-print-title .sub { font-size: 10px; color: #666; }
+        .monthly-table { margin-top: 12px; table-layout: fixed; min-width: 0 !important; width: 100% !important; border-collapse: collapse; }
+        .monthly-table th, .monthly-table td { border: 1px solid #999; white-space: normal !important; word-break: keep-all; overflow: visible !important; color: #000 !important; }
+        .monthly-table th { font-size: .7rem; padding: 4px 5px; background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .monthly-table td { font-size: .72rem; padding: 3px 5px; }
+    }
+</style>
+
+<div class="page-hero mg-fade no-print">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Monthly Receiving Statement</div>
+            <h2>월별 거래처 마감</h2>
+            <div class="hero-sub">해당 월 입고 거래처별 내역을 정리합니다</div>
+        </div>
+        <a href="{{ url_for('receiving.receiving_list') }}" class="btn btn-outline-light btn-sm">입고관리</a>
+    </div>
+</div>
+
+{# ─── 월 선택 + 출력 버튼 ─── #}
+<div class="monthly-header no-print">
+    <form method="GET" class="row g-2 align-items-end">
+        <div class="col-auto">
+            <label class="form-label mb-0" style="font-size:.78rem;font-weight:600;">연도</label>
+            <select name="year" class="form-select form-select-sm" style="width:100px;">
+                {% for y in range(2024, 2028) %}
+                <option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}년</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label mb-0" style="font-size:.78rem;font-weight:600;">월</label>
+            <select name="month" class="form-select form-select-sm" style="width:80px;">
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}" {{ 'selected' if m == month }}>{{ m }}월</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm">조회</button>
+        </div>
+        {% if vendor_groups %}
+        <div class="col-auto ms-auto d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnSelectAll">전체선택</button>
+            <button type="button" class="btn btn-sm btn-outline-dark" onclick="printAll()">전체출력</button>
+            <button type="button" class="btn btn-sm btn-dark" onclick="printSelected()">선택출력</button>
+        </div>
+        {% endif %}
+    </form>
+</div>
+
+
+{# ─── 요약 ─── #}
+{% if vendor_groups %}
+<div class="monthly-summary mb-4 mg-fade" style="animation-delay:.05s">
+    <div class="row text-center">
+        <div class="col-4">
+            <div style="font-size:1.6rem;font-weight:700;">{{ vendor_count }}</div>
+            <div style="font-size:.75rem;opacity:.7;">거래처</div>
+        </div>
+        <div class="col-4">
+            <div style="font-size:1.6rem;font-weight:700;">{{ total_items }}</div>
+            <div style="font-size:.75rem;opacity:.7;">품목 건수</div>
+        </div>
+        <div class="col-4">
+            <div style="font-size:1.3rem;font-weight:700;color:#f59e0b;">{{ "{:,.0f}".format(grand_total) }}원</div>
+            <div style="font-size:.75rem;opacity:.7;">총 입고금액 (공급가 기준)</div>
+        </div>
+    </div>
+</div>
+
+{# ─── 거래처별 입고내역 ─── #}
+{% for group in vendor_groups %}
+<div class="monthly-vendor mg-fade" data-vendor-idx="{{ loop.index0 }}" style="animation-delay:{{ loop.index * 0.02 }}s">
+    <div class="vendor-print-title" style="display:none;">
+        <h3>{{ year }}년 {{ month }}월 {{ group.vendor_name }} 입고현황</h3>
+        {% if group.business_no %}<div class="sub">사업자번호: {{ group.business_no }}{% if group.tel %} | {{ group.tel }}{% endif %}</div>{% endif %}
+    </div>
+    <div class="monthly-vendor-header">
+        <div class="d-flex align-items-center">
+            <input type="checkbox" class="vendor-check no-print" data-idx="{{ loop.index0 }}" checked>
+            <span class="monthly-vendor-name">{{ group.vendor_name }}</span>
+            {% if group.business_no %}<span class="monthly-vendor-info ms-2">{{ group.business_no }}</span>{% endif %}
+            {% if group.tel %}<span class="monthly-vendor-info ms-2">{{ group.tel }}</span>{% endif %}
+        </div>
+        <div>
+            <span style="font-size:.78rem;font-weight:700;color:#0f172a;">{{ "{:,.0f}".format(group.total) }}원</span>
+            <span style="font-size:.7rem;color:#94a3b8;margin-left:6px;">{{ group.rows|length }}건</span>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0 monthly-table">
+            <colgroup>
+                <col style="width:5%">
+                <col style="width:8%">
+                <col style="width:18%">
+                <col style="width:12%">
+                <col style="width:22%">
+                <col style="width:4%">
+                <col style="width:5%">
+                <col style="width:8%">
+                <col style="width:7%">
+                <col style="width:11%">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>입고일자</th>
+                    <th>거래처</th>
+                    <th>품번</th>
+                    <th>품명</th>
+                    <th>규격</th>
+                    <th class="text-end">수량</th>
+                    <th class="text-end">단가</th>
+                    <th class="text-end">공급가</th>
+                    <th class="text-end">부가세</th>
+                    <th class="text-end">합계</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set ns = namespace(supply_sum=0, vat_sum=0, total_sum=0) %}
+                {% for item in group.rows %}
+                {% set supply = item.amount or 0 %}
+                {% set vat = (supply * 0.1)|round|int %}
+                {% set row_total = supply + vat %}
+                {% set ns.supply_sum = ns.supply_sum + supply %}
+                {% set ns.vat_sum = ns.vat_sum + vat %}
+                {% set ns.total_sum = ns.total_sum + row_total %}
+                <tr>
+                    <td>{{ item.rcv_date }}</td>
+                    <td title="{{ group.vendor_name }}">{{ group.vendor_name }}</td>
+                    <td title="{{ item.item_cd or '' }}" style="font-family:var(--mg-mono);font-size:.72rem;">{{ item.item_cd or '' }}</td>
+                    <td title="{{ item.item_name }}">{{ item.item_name }}</td>
+                    <td title="{{ item.spec }}" style="color:#808080;">{{ item.spec }}</td>
+                    <td class="text-end">{{ "{:,.0f}".format(item.qty or 0) }}</td>
+                    <td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
+                    <td class="text-end">{{ "{:,.0f}".format(supply) }}</td>
+                    <td class="text-end" style="color:#64748b;">{{ "{:,.0f}".format(vat) }}</td>
+                    <td class="text-end" style="color:#cc0000;font-weight:600;">{{ "{:,.0f}".format(row_total) }}</td>
+                </tr>
+                {% endfor %}
+                <tr class="subtotal-row">
+                    <td colspan="7" class="text-end">소계</td>
+                    <td class="text-end">{{ "{:,.0f}".format(ns.supply_sum) }}</td>
+                    <td class="text-end" style="color:#64748b;">{{ "{:,.0f}".format(ns.vat_sum) }}</td>
+                    <td class="text-end" style="color:#cc0000;">{{ "{:,.0f}".format(ns.total_sum) }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+
+{# ─── 전체 합계 (하단) ─── #}
+{% set grand_vat = (grand_total * 0.1)|round|int %}
+<div class="monthly-summary mt-2 mb-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <span style="font-size:.9rem;">{{ year }}년 {{ month }}월 합계 ({{ vendor_count }}개 거래처)</span>
+        <div class="text-end">
+            <span style="font-size:.8rem;opacity:.7;">공급가 {{ "{:,.0f}".format(grand_total) }} + 부가세 {{ "{:,.0f}".format(grand_vat) }} = </span>
+            <span style="font-size:1.3rem;font-weight:700;color:#f59e0b;">{{ "{:,.0f}".format(grand_total + grand_vat) }}원</span>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="text-center text-muted py-5">
+    <div style="font-size:1.2rem;font-weight:600;">{{ year }}년 {{ month }}월 입고 내역이 없습니다.</div>
+</div>
+{% endif %}
+
+<script>
+(function() {
+    // 전체선택 토글
+    var btnAll = document.getElementById('btnSelectAll');
+    if (btnAll) {
+        btnAll.addEventListener('click', function() {
+            var checks = document.querySelectorAll('.vendor-check');
+            var allChecked = Array.from(checks).every(function(c) { return c.checked; });
+            checks.forEach(function(c) { c.checked = !allChecked; });
+            btnAll.textContent = allChecked ? '전체선택' : '전체해제';
+        });
+    }
+
+    // 첫 번째 보이는 거래처는 page-break 제거
+    function fixFirstPageBreak() {
+        var vendors = document.querySelectorAll('.monthly-vendor');
+        var first = true;
+        vendors.forEach(function(el) {
+            if (!el.classList.contains('print-hide')) {
+                el.style.pageBreakBefore = first ? 'avoid' : 'always';
+                first = false;
+            }
+        });
+    }
+
+    // 전체출력
+    window.printAll = function() {
+        document.querySelectorAll('.monthly-vendor').forEach(function(el) {
+            el.classList.remove('print-hide');
+        });
+        fixFirstPageBreak();
+        window.print();
+    };
+
+    // 선택출력
+    window.printSelected = function() {
+        var checks = document.querySelectorAll('.vendor-check');
+        var anyChecked = false;
+        checks.forEach(function(c) {
+            var idx = c.getAttribute('data-idx');
+            var vendor = document.querySelector('.monthly-vendor[data-vendor-idx="' + idx + '"]');
+            if (c.checked) {
+                vendor.classList.remove('print-hide');
+                anyChecked = true;
+            } else {
+                vendor.classList.add('print-hide');
+            }
+        });
+        if (!anyChecked) {
+            alert('출력할 거래처를 선택해주세요.');
+            return;
+        }
+        fixFirstPageBreak();
+        window.print();
+    };
+})();
+</script>
+
+{% endblock %}

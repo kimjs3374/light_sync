@@ -308,7 +308,7 @@
 
 <script>
 var deptData = {{ dept_reports | tojson }};
-var dateStr = '{{ target_date.strftime("%y.%m.%d") }}';
+var dateStr = '{{ target_date.strftime("%Y. %m. %d.") }}';
 var weekday = '{{ weekday_kr }}';
 
 function buildText(dept, allItems) {

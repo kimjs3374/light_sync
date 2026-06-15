@@ -70,11 +70,16 @@ def send_purchase_order_email(to_email, subject, body_text, pdf_bytes=None, pdf_
             msg.attach(attachment)
 
         # SMTP 발송
+        import ssl as _ssl
+        smtp_ctx = _ssl.create_default_context()
+        smtp_ctx.check_hostname = False
+        smtp_ctx.verify_mode = _ssl.CERT_NONE
+
         with smtplib.SMTP(config['host'], config['port'], timeout=30) as server:
             # 인증이 필요한 경우
             if config['password']:
                 try:
-                    server.starttls()
+                    server.starttls(context=smtp_ctx)
                 except smtplib.SMTPNotSupportedError:
                     pass  # TLS 미지원 서버
                 server.login(config['user'], config['password'])
@@ -92,33 +97,69 @@ def send_purchase_order_email(to_email, subject, body_text, pdf_bytes=None, pdf_
         return {'success': False, 'message': f'발송 실패: {e}'}
 
 
-def send_email_with_attachments(to_email, subject, body_text, attachments=None, from_email=None, from_name=None):
+def _get_user_mail_account(user_id):
+    """로그인 사용자의 mail_accounts SMTP 설정을 가져온다."""
+    if not user_id:
+        return None
+    try:
+        from modules.db_context import get_db
+        from modules.services.mail_client import decrypt_password
+        from sqlalchemy import text
+        with get_db() as db:
+            row = db.execute(text(
+                "SELECT email, smtp_host, smtp_port, username, password_encrypted "
+                "FROM light_sync.mail_accounts WHERE user_id = :uid AND is_active = true "
+                "ORDER BY is_default DESC LIMIT 1"
+            ), {"uid": user_id}).fetchone()
+            if row:
+                return {
+                    'email': row[0],
+                    'smtp_host': row[1],
+                    'smtp_port': row[2],
+                    'username': row[3],
+                    'password': decrypt_password(row[4]),
+                }
+    except Exception as e:
+        logger.warning("사용자 메일계정 조회 실패 (user_id=%s): %s", user_id, e)
+    return None
+
+
+def send_email_with_attachments(to_email, subject, body_text, attachments=None,
+                                from_email=None, from_name=None, user_id=None):
     """
     다중 첨부파일 이메일 발송 (가공발주 등).
-
-    Args:
-        to_email: 수신자 이메일
-        subject: 메일 제목
-        body_text: 메일 본문
-        attachments: list of (filename, content_bytes) tuples
-        from_email: 발신자 이메일 (None이면 SMTP 기본값)
-        from_name: 발신자 표시 이름 (None이면 이메일만 표시)
-
-    Returns:
-        dict: {'success': bool, 'message': str}
+    user_id가 주어지면 해당 사용자의 메일 계정(mail_accounts)으로 발송.
+    없으면 환경변수 SMTP 설정(purchase@mgnt.kr) fallback.
     """
-    config = _get_smtp_config()
     attachments = attachments or []
-    envelope_from = from_email or config['user']
+
+    # 1) 사용자 메일 계정으로 발송 시도
+    acct = _get_user_mail_account(user_id) if user_id else None
+    if acct:
+        smtp_host = acct['smtp_host']
+        smtp_port = acct['smtp_port']
+        smtp_user = acct['username']
+        smtp_pass = acct['password']
+        envelope_from = acct['email']
+    else:
+        config = _get_smtp_config()
+        smtp_host = config['host']
+        smtp_port = config['port']
+        smtp_user = config['user']
+        smtp_pass = config['password']
+        envelope_from = config['user']
+
+    display_email = from_email or envelope_from
 
     # From 헤더: 한글 이름이 있으면 RFC2047 인코딩
     if from_name:
         from email.utils import formataddr
         from email.header import Header
-        display_from = formataddr((str(Header(from_name, 'utf-8')), envelope_from))
+        display_from = formataddr((str(Header(from_name, 'utf-8')), display_email))
     else:
-        display_from = envelope_from
+        display_from = display_email
 
+    config = _get_smtp_config()
     if config['dry_run']:
         logger.info("[DRY_RUN] 이메일 발송 시뮬레이션")
         logger.info("  From: %s, To: %s, Subject: %s", display_from, to_email, subject)
@@ -133,6 +174,8 @@ def send_email_with_attachments(to_email, subject, body_text, attachments=None, 
         msg['From'] = display_from
         msg['To'] = to_email
         msg['Subject'] = subject
+        if display_email != envelope_from:
+            msg['Reply-To'] = display_email
         msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
 
         for fname, fbytes in attachments:
@@ -140,17 +183,29 @@ def send_email_with_attachments(to_email, subject, body_text, attachments=None, 
             att.add_header('Content-Disposition', 'attachment', filename=fname)
             msg.attach(att)
 
-        with smtplib.SMTP(config['host'], config['port'], timeout=30) as server:
-            if config['password']:
-                try:
-                    server.starttls()
-                except smtplib.SMTPNotSupportedError:
-                    pass
-                server.login(config['user'], config['password'])
-            server.sendmail(envelope_from, [to_email], msg.as_string())
+        import ssl as _ssl
+        smtp_ctx = _ssl.create_default_context()
+        smtp_ctx.check_hostname = False
+        smtp_ctx.verify_mode = _ssl.CERT_NONE
 
-        logger.info("이메일 발송 성공: From=%s, To=%s, Subject=%s, 첨부=%d건", envelope_from, to_email, subject, len(attachments))
-        return {'success': True, 'message': '이메일 발송 완료'}
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30, context=smtp_ctx) as server:
+                if smtp_pass:
+                    server.login(smtp_user, smtp_pass)
+                server.sendmail(envelope_from, [to_email], msg.as_string())
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+                if smtp_pass:
+                    try:
+                        server.starttls(context=smtp_ctx)
+                    except smtplib.SMTPNotSupportedError:
+                        pass
+                    server.login(smtp_user, smtp_pass)
+                server.sendmail(envelope_from, [to_email], msg.as_string())
+
+        logger.info("이메일 발송 성공: From=%s(%s), To=%s, Subject=%s, 첨부=%d건",
+                     envelope_from, smtp_user, to_email, subject, len(attachments))
+        return {'success': True, 'message': f'이메일 발송 완료 ({envelope_from})'}
 
     except smtplib.SMTPException as e:
         logger.error("SMTP 오류: %s", e)

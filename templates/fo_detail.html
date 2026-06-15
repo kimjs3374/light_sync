@@ -213,7 +213,7 @@
                             {% if item.in_confirmed %}
                                 <span class="text-success fw-bold">✓ {{ item.in_confirmed_at.strftime('%m/%d') if item.in_confirmed_at else '' }}</span>
                             {% else %}
-                                <button class="btn btn-success btn-xs confirm-btn" style="white-space:nowrap;" data-item-id="{{ item.id }}">입고확인</button>
+                                <span class="text-muted">-</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -225,6 +225,36 @@
         </div>
     </div>
 </div>
+
+{# ─── 도면 갤러리 (참고용 이미지) ─── #}
+{% set ref_images = [] %}{% for f in fo.files %}{% if f.is_reference and f.file_type in ('jpg','jpeg','png','pdf') %}{% if ref_images.append(f) %}{% endif %}{% endif %}{% endfor %}
+{% if ref_images %}
+<div class="card info-card shadow-sm mb-4">
+    <div class="card-header"><strong>도면 참고</strong> <span class="badge bg-secondary ms-1" style="font-size:.72rem;">{{ ref_images|length }}건</span></div>
+    <div class="card-body p-2">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            {% for f in ref_images %}
+            <div style="position:relative;border:1px solid var(--mg-border);border-radius:6px;overflow:hidden;cursor:pointer;" onclick="document.getElementById('galleryModal{{ f.id }}').style.display='flex'">
+                {% if f.file_type in ('jpg','jpeg','png') %}
+                <img src="{{ url_for('processing_order.fo_view_file', fo_id=fo.id, fid=f.id) }}" style="height:140px;max-width:240px;object-fit:contain;display:block;">
+                {% else %}
+                <div style="width:160px;height:140px;display:flex;align-items:center;justify-content:center;background:#f8f9fa;font-size:.8rem;color:#64748b;">PDF: {{ f.file_name|truncate(20) }}</div>
+                {% endif %}
+                <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.6);color:#fff;font-size:.7rem;padding:2px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ f.file_name }}</div>
+            </div>
+            {# 확대 모달 #}
+            <div id="galleryModal{{ f.id }}" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);align-items:center;justify-content:center;cursor:zoom-out;" onclick="this.style.display='none'">
+                {% if f.file_type in ('jpg','jpeg','png') %}
+                <img src="{{ url_for('processing_order.fo_view_file', fo_id=fo.id, fid=f.id) }}" style="max-width:90vw;max-height:90vh;object-fit:contain;">
+                {% else %}
+                <iframe src="{{ url_for('processing_order.fo_view_file', fo_id=fo.id, fid=f.id) }}" style="width:90vw;height:90vh;border:none;background:#fff;" onclick="event.stopPropagation()"></iframe>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {# ─── 첨부 파일 ─── #}
 <div class="card info-card shadow-sm mb-4">
@@ -239,13 +269,24 @@
         <input type="file" id="fileInput" multiple accept=".dwg,.dxf,.pdf,.jpg,.jpeg,.png,.zip" style="display:none">
         <div id="fileList">
             {% for f in fo.files %}
-            <div class="file-item" data-file-id="{{ f.id }}">
+            <div class="file-item" data-file-id="{{ f.id }}" {% if f.is_reference %}style="background:#fefce8;"{% endif %}>
                 <span class="file-icon">{% if f.file_type in ('dwg','dxf') %}📐{% elif f.file_type == 'pdf' %}📄{% elif f.file_type in ('jpg','jpeg','png') %}🖼️{% else %}📦{% endif %}</span>
                 <div class="flex-grow-1">
+                    {% if f.file_type in ('pdf','jpg','jpeg','png') %}
+                    <a href="{{ url_for('processing_order.fo_view_file', fo_id=fo.id, fid=f.id) }}" target="_blank" class="text-decoration-none">
+                        <strong>{{ f.file_name }}</strong>
+                    </a>
+                    {% else %}
                     <strong>{{ f.file_name }}</strong>
+                    {% endif %}
                     <small class="text-muted ms-2">{{ "%.1f"|format(f.file_size / 1024 / 1024) }}MB</small>
                     <small class="text-muted ms-2">{{ f.uploaded_at.strftime('%m/%d %H:%M') if f.uploaded_at else '' }}</small>
+                    {% if f.is_reference %}<span class="badge bg-warning text-dark ms-2" style="font-size:.68rem;">참고용</span>{% endif %}
                 </div>
+                {% if f.file_type in ('pdf','jpg','jpeg','png') %}
+                <a href="{{ url_for('processing_order.fo_view_file', fo_id=fo.id, fid=f.id) }}" target="_blank" class="btn btn-outline-success btn-xs action-btn" style="white-space:nowrap;">보기</a>
+                {% endif %}
+                <button class="btn btn-xs action-btn toggle-ref-btn {% if f.is_reference %}btn-warning{% else %}btn-outline-warning{% endif %}" data-file-id="{{ f.id }}" style="white-space:nowrap;">{{ '참고용 해제' if f.is_reference else '참고용' }}</button>
                 <a href="{{ url_for('processing_order.fo_download_file', fo_id=fo.id, fid=f.id) }}" class="btn btn-outline-primary btn-xs action-btn" style="white-space:nowrap;">다운로드</a>
                 <button class="btn btn-outline-danger btn-xs action-btn delete-file-btn" data-file-id="{{ f.id }}" style="white-space:nowrap;">삭제</button>
             </div>
@@ -465,41 +506,7 @@
         });
     }
 
-    // ── 입고 확인 (AJAX) ──
-    document.querySelectorAll('.confirm-btn').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            var btn = this;
-            var itemId = btn.dataset.itemId;
-            var cell = btn.closest('.confirm-cell');
-            btn.disabled = true;
-            btn.textContent = '처리중...';
-            fetch('/processing-order/' + foId + '/confirm-item/' + itemId, {
-                method: 'POST',
-                headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/json'},
-            }).then(function(r) {
-                if (!r.ok) throw new Error('서버 오류 ' + r.status);
-                return r.json();
-            }).then(function(d) {
-                if (d.ok) {
-                    if (d.confirmed) {
-                        cell.innerHTML = '<span class="text-success fw-bold">✓ ' + d.confirmed_at + '</span>';
-                    } else {
-                        cell.innerHTML = '<button class="btn btn-success btn-xs confirm-btn" style="white-space:nowrap;" data-item-id="' + itemId + '">입고확인</button>';
-                    }
-                    if (d.fo_status === '입고완료') location.reload();
-                } else {
-                    alert(d.error || '입고확인 처리 중 오류가 발생했습니다.');
-                    btn.disabled = false;
-                    btn.textContent = '입고확인';
-                }
-            }).catch(function(err) {
-                alert('입고확인 실패: ' + err.message);
-                btn.disabled = false;
-                btn.textContent = '입고확인';
-            });
-        });
-    });
+    // 입고확인 AJAX 제거 — 입고는 입고관리 화면에서 처리
 
     // ── 파일 업로드 ──
     var fileInput = document.getElementById('fileInput');
@@ -524,6 +531,39 @@
             setTimeout(function() { dropZone.innerHTML = '📎 파일을 드래그하거나 클릭하여 업로드<br><small>DWG, DXF, PDF, JPG, PNG, ZIP (최대 50MB)</small>'; }, 2000);
         });
     }
+
+    // ── 참고용 토글 ──
+    document.querySelectorAll('.toggle-ref-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var fileId = this.dataset.fileId;
+            var b = this;
+            var item = this.closest('.file-item');
+            fetch('/processing-order/' + foId + '/file/' + fileId + '/toggle-reference', {
+                method: 'POST', headers: {'X-CSRFToken': csrfToken},
+            }).then(function(r) { return r.json(); }).then(function(d) {
+                if (d.ok) {
+                    if (d.is_reference) {
+                        b.textContent = '참고용 해제';
+                        b.classList.remove('btn-outline-warning');
+                        b.classList.add('btn-warning');
+                        item.style.background = '#fefce8';
+                        var badge = item.querySelector('.badge.bg-warning');
+                        if (!badge) {
+                            var grow = item.querySelector('.flex-grow-1');
+                            grow.insertAdjacentHTML('beforeend', '<span class="badge bg-warning text-dark ms-2" style="font-size:.68rem;">참고용</span>');
+                        }
+                    } else {
+                        b.textContent = '참고용';
+                        b.classList.remove('btn-warning');
+                        b.classList.add('btn-outline-warning');
+                        item.style.background = '';
+                        var badge = item.querySelector('.badge.bg-warning');
+                        if (badge) badge.remove();
+                    }
+                }
+            });
+        });
+    });
 
     // ── 파일 삭제 ──
     document.querySelectorAll('.delete-file-btn').forEach(function(btn) {

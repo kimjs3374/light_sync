@@ -1,95 +1,169 @@
 import datetime
-import json
 
 from flask import Blueprint, render_template, request, session, jsonify, flash, redirect, url_for
 from sqlalchemy.orm import joinedload
 from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from modules.models import (
-    DailyReport, User, HistoryLog, Project, Contract, ContractItem,
-    Delivery, MaterialOrder, ProductionProcess, ProductionDailyLog,
-    WarrantyCase, PurchaseOrder, Receiving, StockAudit, StockMovement,
+    DailyReport, User, Contract, ContractItem,
+    Delivery, Drawing, ProductionProcess, ProductionDailyLog,
+    WarrantyCase, PurchaseOrder, Receiving, ProcessingOrder,
+    TaxInvoice, PaymentRecord,
 )
 
 daily_report_bp = Blueprint('daily_report', __name__)
 
 WEEKDAY_KR = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
 
-# log_scope → 부서 매핑
-SCOPE_TO_DEPT = {
-    'design': '영업부',
-    'drawing': '영업부',
-    'sales': '영업부',
-    'contract': '영업부',
-    'delivery': '영업부',
-    'material': '경영관리부',
-    'production': '생산부',
-    'technical': '영업부',
-    'common': None,
-}
+
+def _site_name(project):
+    """프로젝트 → 현장명. 없으면 None."""
+    if not project:
+        return None
+    return project.temp_name or None
 
 
-def _collect_auto_items(db, target_date):
-    """ERP 데이터에서 당일 활동을 부서별로 자동 수집"""
-    day_start = datetime.datetime.combine(target_date, datetime.time.min)
-    day_end = datetime.datetime.combine(target_date, datetime.time.max)
+def _collect_sales_items(db, target_date, day_start, day_end):
+    """영업부: 계약 등록 / 납품 / 도면 / 세금계산서 발행"""
+    items = []
 
-    dept_items = {}
-
-    # 사용자→부서 매핑
-    user_dept_map = {}
-    for u in db.query(User).filter(User.is_active.is_(True)).all():
-        user_dept_map[u.full_name] = u.user_group or '미지정'
-
-    # ─── 1. 신규 프로젝트 ───
-    for p in db.query(Project).filter(
-        Project.created_at >= day_start, Project.created_at <= day_end,
-    ).all():
-        dept_items.setdefault('영업부', []).append(
-            f"{p.temp_name} 현장 신규 등록 ({p.project_no})"
-        )
-
-    # ─── 2. 계약 등록 ───
+    # 계약 등록 (contract_date 기준)
     for c in db.query(Contract).filter(
         Contract.contract_date == target_date,
     ).options(joinedload(Contract.project)).all():
-        site = c.project.temp_name if c.project else '(현장미상)'
+        site = _site_name(c.project)
+        if not site:
+            continue
         cname = c.contract_name or ''
-        if site in cname:
-            item = f"{cname} 계약 등록"
+        if cname and site not in cname:
+            items.append(f"{site} {cname} 계약 등록")
         else:
-            item = f"{site} {cname} 계약 등록"
-        dept_items.setdefault('영업부', []).append(item)
+            items.append(f"{cname or site} 계약 등록")
 
-    # ─── 3. 납품 ───
+    # 납품 (created_at 기준, 현장 있는 것만)
+    deliv_by_site = {}
     for d in db.query(Delivery).filter(
         Delivery.created_at >= day_start, Delivery.created_at <= day_end,
     ).options(joinedload(Delivery.project)).all():
-        site = d.project.temp_name if d.project else '(현장미상)'
-        dept_items.setdefault('영업부', []).append(
-            f"{site} 납품 {d.delivery_status or '등록'}"
-        )
+        site = _site_name(d.project)
+        if not site:
+            continue
+        deliv_by_site.setdefault(site, set()).add(d.delivery_status or '등록')
+    for site, statuses in deliv_by_site.items():
+        items.append(f"{site} 납품 {'/'.join(sorted(statuses))}")
 
-    # ─── 4. 자재 발주/입고 ───
-    mat_summary = {}
-    for m in db.query(MaterialOrder).filter(
-        MaterialOrder.updated_at >= day_start, MaterialOrder.updated_at <= day_end,
+    # 도면 등록/수정 (현장별 합산)
+    drawing_by_site = {}
+    for dw in db.query(Drawing).filter(
+        ((Drawing.created_at >= day_start) & (Drawing.created_at <= day_end))
+        | ((Drawing.updated_at >= day_start) & (Drawing.updated_at <= day_end)),
+    ).options(joinedload(Drawing.project)).all():
+        site = _site_name(dw.project)
+        if not site:
+            continue
+        is_new = dw.created_at and day_start <= dw.created_at <= day_end
+        drawing_by_site.setdefault(site, []).append(('등록' if is_new else '수정', dw.title))
+    for site, dws in drawing_by_site.items():
+        if len(dws) == 1:
+            action, title = dws[0]
+            items.append(f"{site} {title} 도면 {action}")
+        else:
+            actions = sorted({a for a, _ in dws})
+            items.append(f"{site} 도면 {'/'.join(actions)} {len(dws)}건")
+
+    # 세금계산서 발행 (issue_date 기준)
+    tax_by_site = {}
+    for ti in db.query(TaxInvoice).filter(
+        TaxInvoice.issue_date == target_date,
+    ).options(joinedload(TaxInvoice.project)).all():
+        site = _site_name(ti.project) or ti.g2b_contract_name or '(현장미상)'
+        tax_by_site.setdefault(site, []).append(int(ti.total_amount or 0))
+    for site, amounts in tax_by_site.items():
+        total = sum(amounts)
+        cnt = len(amounts)
+        amt_str = f" ({total:,}원)" if total else ''
+        suffix = f" {cnt}건" if cnt > 1 else ''
+        items.append(f"{site} 세금계산서 발행{suffix}{amt_str}")
+
+    return items
+
+
+def _collect_admin_items(db, target_date, day_start, day_end):
+    """경영관리부: 발주서 / 입고 / 입금확인"""
+    items = []
+
+    # 발주서 (현장별 그룹핑, 3건 이상 압축)
+    po_by_site = {}
+    for po in db.query(PurchaseOrder).filter(
+        PurchaseOrder.created_at >= day_start, PurchaseOrder.created_at <= day_end,
+    ).options(joinedload(PurchaseOrder.project), joinedload(PurchaseOrder.vendor)).all():
+        site = _site_name(po.project) or '(현장미지정)'
+        po_by_site.setdefault(site, []).append(po)
+    for site, pos in po_by_site.items():
+        if len(pos) <= 2:
+            for po in pos:
+                vendor_name = po.vendor.name if po.vendor else '(거래처미상)'
+                items.append(f"{site} 발주 ({vendor_name})")
+        else:
+            vendors = sorted({po.vendor.name for po in pos if po.vendor})
+            vendor_str = (
+                f" ({vendors[0]} 외 {len(vendors)-1})" if len(vendors) > 1
+                else f" ({vendors[0]})" if vendors else ''
+            )
+            items.append(f"{site} 발주 {len(pos)}건{vendor_str}")
+
+    # 입고 (현장별 그룹핑, 거래처 위주)
+    rcv_by_site = {}
+    for rcv in db.query(Receiving).filter(
+        Receiving.created_at >= day_start, Receiving.created_at <= day_end,
     ).options(
-        joinedload(MaterialOrder.contract_item)
-        .joinedload(ContractItem.contract)
-        .joinedload(Contract.project)
+        joinedload(Receiving.vendor),
+        joinedload(Receiving.purchase_order).joinedload(PurchaseOrder.project),
     ).all():
-        try:
-            site = m.contract_item.contract.project.temp_name
-        except AttributeError:
-            site = '(현장미상)'
-        mat_summary.setdefault(site, set()).add(m.order_status)
-    for site, statuses in mat_summary.items():
-        dept_items.setdefault('경영관리부', []).append(
-            f"{site} 자재 {'/'.join(sorted(statuses))}"
-        )
+        site = None
+        if rcv.purchase_order and rcv.purchase_order.project:
+            site = _site_name(rcv.purchase_order.project)
+        site = site or '(직접입고)'
+        rcv_by_site.setdefault(site, []).append(rcv)
+    for site, rcvs in rcv_by_site.items():
+        vendors = sorted({r.vendor.name for r in rcvs if r.vendor})
+        if site == '(직접입고)':
+            vendor_str = ', '.join(vendors) if vendors else '거래처미상'
+            items.append(f"자재 수령 ({vendor_str})")
+        else:
+            vendor_str = (
+                f" ({vendors[0]} 외 {len(vendors)-1})" if len(vendors) > 1
+                else f" ({vendors[0]})" if vendors else ''
+            )
+            cnt_str = f" {len(rcvs)}건" if len(rcvs) > 1 else ''
+            items.append(f"{site} 입고{cnt_str}{vendor_str}")
 
-    # ─── 5. 생산 실적 ───
+    # 입금 확인 (payment_date 기준)
+    pay_by_site = {}
+    for pr in db.query(PaymentRecord).filter(
+        PaymentRecord.payment_date == target_date,
+    ).options(
+        joinedload(PaymentRecord.tax_invoice).joinedload(TaxInvoice.project),
+    ).all():
+        ti = pr.tax_invoice
+        if not ti:
+            continue
+        site = _site_name(ti.project) or ti.g2b_contract_name or '(현장미상)'
+        pay_by_site.setdefault(site, []).append(int(pr.amount or 0))
+    for site, amounts in pay_by_site.items():
+        total = sum(amounts)
+        amt_str = f" ({total:,}원)" if total else ''
+        items.append(f"{site} 입금 확인{amt_str}")
+
+    return items
+
+
+def _collect_production_items(db, target_date, day_start, day_end):
+    """생산부: 생산 실적 / 가공발주 / 하자·AS"""
+    items = []
+
+    # 생산 실적 (현장+공정별 합산)
+    prod_summary = {}
     for log in db.query(ProductionDailyLog).filter(
         ProductionDailyLog.work_date == target_date,
     ).options(
@@ -99,95 +173,72 @@ def _collect_auto_items(db, target_date):
         .joinedload(Contract.project)
     ).all():
         try:
-            site = log.production_process.contract_item.contract.project.temp_name
+            site = _site_name(log.production_process.contract_item.contract.project)
         except AttributeError:
-            site = '(현장미상)'
-        pname = log.production_process.process_name if log.production_process else ''
-        parts = [f"{site} {pname}"]
-        if log.daily_qty:
-            parts.append(f"{log.daily_qty}개")
-        if log.memo:
-            parts.append(log.memo)
-        dept_items.setdefault('생산부', []).append(' '.join(parts))
+            site = None
+        if not site:
+            continue
+        pname = log.production_process.process_name if log.production_process else '생산'
+        key = (site, pname)
+        prod_summary.setdefault(key, 0)
+        prod_summary[key] += int(log.daily_qty or 0)
+    for (site, pname), qty in prod_summary.items():
+        if qty:
+            items.append(f"{site} {pname} {qty}개")
+        else:
+            items.append(f"{site} {pname}")
 
-    # ─── 6. 하자/AS ───
+    # 가공발주 (외주)
+    fo_by_site = {}
+    for fo in db.query(ProcessingOrder).filter(
+        ProcessingOrder.fo_date == target_date,
+    ).options(joinedload(ProcessingOrder.project), joinedload(ProcessingOrder.vendor)).all():
+        site = _site_name(fo.project) or '(현장미지정)'
+        fo_by_site.setdefault(site, []).append(fo)
+    for site, fos in fo_by_site.items():
+        vendors = sorted({f.vendor.name for f in fos if f.vendor})
+        vendor_str = (
+            f" ({vendors[0]} 외 {len(vendors)-1})" if len(vendors) > 1
+            else f" ({vendors[0]})" if vendors else ''
+        )
+        cnt_str = f" {len(fos)}건" if len(fos) > 1 else ''
+        items.append(f"{site} 가공발주{cnt_str}{vendor_str}")
+
+    # 하자/AS 접수 (현장별 그룹핑)
+    case_by_site = {}
     for c in db.query(WarrantyCase).filter(
         WarrantyCase.created_at >= day_start, WarrantyCase.created_at <= day_end,
     ).options(joinedload(WarrantyCase.warranty)).all():
         w = c.warranty
-        site = w.contract_name or (w.project.temp_name if w and w.project else None) or '(현장미상)' if w else '(현장미상)'
-        dept_items.setdefault('생산부', []).append(
-            f"{site} 하자/AS 접수 ({c.defect_type or '기타'})"
-        )
-
-    # ─── 7. 발주서 생성/발송 (현장별 그룹핑, 3건 이상 압축) ───
-    po_by_site = {}
-    for po in db.query(PurchaseOrder).filter(
-        PurchaseOrder.created_at >= day_start, PurchaseOrder.created_at <= day_end,
-    ).all():
-        site = po.project.temp_name if po.project else '(현장미지정)'
-        po_by_site.setdefault(site, []).append(po)
-    for site, pos in po_by_site.items():
-        if len(pos) <= 2:
-            for po in pos:
-                vendor_name = po.vendor.name if po.vendor else '(거래처미상)'
-                dept_items.setdefault('경영관리부', []).append(
-                    f"{site} 발주서 {po.po_no} ({vendor_name})")
+        site = None
+        if w:
+            site = _site_name(getattr(w, 'project', None)) or w.contract_name
+        site = site or '(현장미상)'
+        case_by_site.setdefault(site, []).append(c.defect_type or '기타')
+    for site, defects in case_by_site.items():
+        if len(defects) == 1:
+            items.append(f"{site} 하자/AS 접수 ({defects[0]})")
         else:
-            total_amt = sum(int(po.total_amount or 0) for po in pos)
-            first_no = pos[0].po_no
-            amt_str = f", 합계 {total_amt:,}원" if total_amt else ''
-            dept_items.setdefault('경영관리부', []).append(
-                f"{site} 발주서 {first_no} 외 {len(pos)-1}건 생성{amt_str}")
+            items.append(f"{site} 하자/AS 접수 {len(defects)}건")
 
-    # ─── 8. 입고 처리 (현장별 그룹핑) ───
-    rcv_by_site = {}
-    for rcv in db.query(Receiving).filter(
-        Receiving.created_at >= day_start, Receiving.created_at <= day_end,
-    ).all():
-        site = '(현장미지정)'
-        if rcv.purchase_order and rcv.purchase_order.project:
-            site = rcv.purchase_order.project.temp_name
-        rcv_by_site.setdefault(site, []).append(rcv)
-    for site, rcvs in rcv_by_site.items():
-        if len(rcvs) <= 2:
-            for rcv in rcvs:
-                vendor_name = rcv.vendor.name if rcv.vendor else '(거래처미상)'
-                dept_items.setdefault('경영관리부', []).append(
-                    f"{site} 입고 {rcv.rcv_no} ({vendor_name})")
-        else:
-            dept_items.setdefault('경영관리부', []).append(
-                f"{site} 입고 {rcvs[0].rcv_no} 외 {len(rcvs)-1}건 처리")
+    return items
 
-    # ─── 9. 재고실사 확정 ───
-    for audit in db.query(StockAudit).filter(
-        StockAudit.confirmed_at >= day_start, StockAudit.confirmed_at <= day_end,
-        StockAudit.status == '완료',
-    ).all():
-        dept_items.setdefault('경영관리부', []).append(
-            f"재고실사 {audit.audit_no} 확정 ({audit.total_items or 0}개 품목)"
-        )
 
-    # ─── 10. 히스토리 로그 (system 이벤트만, 댓글/답글 제외) ───
-    # 발주서/입고/실사는 7~9에서 이미 수집하므로 중복 제거
-    _skip_keywords = {'발주서를 생성', '일괄발주서', '입고', '재고실사'}
-    for log in db.query(HistoryLog).filter(
-        HistoryLog.created_at >= day_start, HistoryLog.created_at <= day_end,
-        HistoryLog.log_kind == 'system',
-    ).options(joinedload(HistoryLog.project)).all():
-        content = log.content or ''
-        if any(kw in content for kw in _skip_keywords):
-            continue
-        dept = SCOPE_TO_DEPT.get(log.log_scope)
-        if dept is None:
-            dept = user_dept_map.get(log.user_name)
-        if not dept:
-            continue
-        site = log.project.temp_name if log.project else ''
-        item = f"{site} {log.content}" if site else content
-        if len(item) > 80:
-            item = item[:77] + '...'
-        dept_items.setdefault(dept, []).append(item)
+def _collect_auto_items(db, target_date):
+    """ERP 데이터에서 당일 활동을 부서별로 자동 수집"""
+    day_start = datetime.datetime.combine(target_date, datetime.time.min)
+    day_end = datetime.datetime.combine(target_date, datetime.time.max)
+
+    dept_items = {}
+    sales = _collect_sales_items(db, target_date, day_start, day_end)
+    if sales:
+        dept_items['영업부'] = sales
+    admin = _collect_admin_items(db, target_date, day_start, day_end)
+    if admin:
+        dept_items['경영관리부'] = admin
+    prod = _collect_production_items(db, target_date, day_start, day_end)
+    if prod:
+        dept_items['생산부'] = prod
 
     return dept_items
 
@@ -425,7 +476,7 @@ def generate_all_kakao_text():
 def _format_kakao_text(department, target_date, hc_total, hc_present, absence_info, items):
     """카카오톡 업무보고 포맷"""
     weekday = WEEKDAY_KR[target_date.weekday()]
-    date_str = target_date.strftime('%y.%m.%d')
+    date_str = target_date.strftime('%Y. %m. %d.')
     lines = [
         f"{date_str} {weekday}",
         f"{department} 업무보고",

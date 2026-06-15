@@ -5,7 +5,7 @@ from typing import Optional
 from mcp.server.fastmcp import FastMCP
 
 from ..db import get_session
-from ._helpers import _s, _sn, _sd
+from ._helpers import _s, _sn, _sd, _erp_url
 
 
 def register(mcp: FastMCP):
@@ -47,11 +47,22 @@ def register(mcp: FastMCP):
             if not rows:
                 return "조달내역을 찾을 수 없습니다."
 
-            # 계약번호별 그룹핑
+            # 계약번호별 그룹핑 + project_id 매칭 (deeplink용)
+            from modules.models.entities import Contract
+            g2b_to_project = {}
+            g2b_nos = list({_s(r.cntrct_dlvr_req_no) for r in rows if r.cntrct_dlvr_req_no})
+            if g2b_nos:
+                for ct in session.query(Contract).filter(
+                    Contract.g2b_contract_no.in_(g2b_nos),
+                    Contract.project_id.isnot(None),
+                ).all():
+                    g2b_to_project[ct.g2b_contract_no] = ct.project_id
+
             groups = {}
             for r in rows:
                 key = r.cntrct_dlvr_req_no
                 if key not in groups:
+                    pid = g2b_to_project.get(key)
                     groups[key] = {
                         "cntrct_dlvr_req_no": _s(key),
                         "cntrct_dlvr_req_nm": _s(r.cntrct_dlvr_req_nm),
@@ -64,6 +75,8 @@ def register(mcp: FastMCP):
                         "corp_nm": _s(r.corp_nm),
                         "total_amt": 0,
                         "items": [],
+                        "project_id": pid,
+                        "erp_url": _erp_url(f"/contract_detail/{pid}") if pid else _erp_url("/procurement"),
                     }
                 groups[key]["total_amt"] += int(r.prdct_amt or 0)
                 groups[key]["items"].append({
@@ -81,6 +94,90 @@ def register(mcp: FastMCP):
             if len(result) == 1:
                 return json.dumps(result[0], ensure_ascii=False)
             return json.dumps(result, ensure_ascii=False)
+        finally:
+            session.close()
+
+    @mcp.tool()
+    def list_recent_g2b_contracts(
+        days: int = 7,
+        limit: int = 50,
+    ) -> str:
+        """최근 N일 내 체결된 G2B 계약(조달내역) 목록.
+
+        days: 오늘 기준 며칠 전까지 (기본 7일). cntrct_dlvr_req_date 기준.
+        limit: 최대 반환 건수 (기본 50, 그룹 단위).
+        동일 cntrct_dlvr_req_no(계약납품요구번호)는 한 건으로 그룹핑되며,
+        품목 합계 금액과 품목 수가 포함됩니다.
+
+        ⚠️ "최근 N일 계약" 류 질문은 반드시 이 도구로 답하세요.
+        contract.get_contracts 는 레거시 contracts 테이블이라 G2B 신규건이
+        반영되지 않을 수 있습니다.
+        """
+        from modules.models.entities import G2bProcurement, Contract
+        import datetime
+        session = get_session()
+        try:
+            cutoff = datetime.date.today() - datetime.timedelta(days=days)
+            rows = session.query(G2bProcurement).filter(
+                G2bProcurement.cntrct_dlvr_req_date >= cutoff
+            ).order_by(
+                G2bProcurement.cntrct_dlvr_req_date.desc(),
+                G2bProcurement.cntrct_dlvr_req_no,
+                G2bProcurement.prdct_sno,
+            ).all()
+
+            if not rows:
+                return json.dumps({
+                    "days": days,
+                    "cutoff": str(cutoff),
+                    "count": 0,
+                    "items": [],
+                }, ensure_ascii=False)
+
+            # 계약번호별 그룹핑
+            groups = {}
+            for r in rows:
+                key = r.cntrct_dlvr_req_no
+                if key not in groups:
+                    groups[key] = {
+                        "cntrct_dlvr_req_no": _s(key),
+                        "cntrct_dlvr_req_nm": _s(r.cntrct_dlvr_req_nm),
+                        "cntrct_dlvr_req_date": _sd(r.cntrct_dlvr_req_date),
+                        "dminstt_nm": _s(r.dminstt_nm),
+                        "dminstt_rgn_nm": _s(r.dminstt_rgn_nm),
+                        "cntrct_div_nm": _s(r.cntrct_div_nm),
+                        "dlvr_tmlmt_date": _sd(r.dlvr_tmlmt_date),
+                        "corp_nm": _s(r.corp_nm),
+                        "total_amt": 0,
+                        "item_count": 0,
+                    }
+                groups[key]["total_amt"] += int(r.prdct_amt or 0)
+                groups[key]["item_count"] += 1
+
+            # project 매칭 (deeplink)
+            g2b_nos = list(groups.keys())
+            if g2b_nos:
+                for ct in session.query(Contract).filter(
+                    Contract.g2b_contract_no.in_(g2b_nos),
+                    Contract.project_id.isnot(None),
+                ).all():
+                    if ct.g2b_contract_no in groups:
+                        groups[ct.g2b_contract_no]["project_id"] = ct.project_id
+                        groups[ct.g2b_contract_no]["erp_url"] = _erp_url(
+                            f"/contract_detail/{ct.project_id}"
+                        )
+
+            items = list(groups.values())
+            # 최근 날짜순 정렬
+            items.sort(key=lambda x: x.get("cntrct_dlvr_req_date") or "", reverse=True)
+            items = items[:limit]
+
+            return json.dumps({
+                "days": days,
+                "cutoff": str(cutoff),
+                "count": len(items),
+                "items": items,
+            }, ensure_ascii=False)
         finally:
             session.close()
 

@@ -32,6 +32,7 @@ class Contract(Base):
     is_prof_inspection = Column(Boolean, default=False) # 전문기관검수여부 (💡 체크 시 파란 음영)
     is_urgent_prod = Column(Boolean, default=False)     # 긴급제작건 여부 (💡 체크 시 빨간 음영)
     g2b_contract_no = Column(String(30), nullable=True)  # G2B 계약납품요구번호 (매칭 연동)
+    g2b_change_ord = Column(String(5), default='00')     # G2B 변경차수 (00=원계약, 01~=변경)
 
     # 대금 관련 필드 (매그나텍 PHASE 8)
     payment_status = Column(String(20), default='미청구')       # 미청구/부분입금/입금완료/변경완료/취소
@@ -40,6 +41,10 @@ class Contract(Base):
     is_excluded = Column(Boolean, default=False)                 # 예외처리 여부 (관리화면 숨김)
     exclude_reason = Column(String(50), nullable=True)           # 예외 사유
     exclude_note = Column(String(200), nullable=True)            # 예외 메모
+
+    # 미청구 사유 분류 (회수불가/탕감/분쟁/단순지연/기타 — 알림 라우팅 기준)
+    unpaid_reason = Column(String(50), nullable=True)
+    unpaid_reason_note = Column(Text, nullable=True)
 
     project = relationship("Project", back_populates="contracts")
     # 💡 계약별 품목 (1계약 : N품목)

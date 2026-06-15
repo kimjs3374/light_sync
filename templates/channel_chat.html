@@ -168,7 +168,8 @@ async function sendMsg() {
 }
 
 async function pollReply(requestId, thinkingEl) {
-  const maxPolls = 60;
+  const maxPolls = 200;        // 200 x 3초 = 최대 10분
+  const pollInterval = 3000;   // 3초 간격
   for (let i = 0; i < maxPolls; i++) {
     try {
       const res = await fetch('/channel-chat/poll', {
@@ -178,7 +179,7 @@ async function pollReply(requestId, thinkingEl) {
       });
       if (!res.ok && res.status !== 404) {
         console.error('[poll] HTTP', res.status, await res.text().catch(()=>''));
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, pollInterval));
         continue;
       }
       const data = await res.json();
@@ -186,22 +187,24 @@ async function pollReply(requestId, thinkingEl) {
       if (data.status === 'done') return data.reply;
       if (data.status === 'timeout') return data.reply;
       if (data.status === 'partial') {
-        // 중간 메시지 표시 후 계속 폴링
         thinkingEl.textContent = data.reply;
         thinkingEl.style.color = '#666';
+        await new Promise(r => setTimeout(r, 1000));
         continue;
       }
       if (data.status === 'not_found') {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, pollInterval));
         continue;
       }
 
+      // waiting 상태 — 경과 시간 표시 후 대기
       if (data.elapsed != null) {
         thinkingEl.textContent = `Claude가 처리 중... (${data.elapsed}초)`;
       }
+      await new Promise(r => setTimeout(r, pollInterval));
     } catch (e) {
       console.error('[poll] error:', e);
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, pollInterval));
     }
   }
   return '응답 시간이 초과되었습니다.';

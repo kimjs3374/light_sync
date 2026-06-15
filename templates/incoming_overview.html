@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    .stat-card-po { border: none; border-radius: 12px; transition: transform .15s; }
+    .stat-card-po:hover { transform: translateY(-2px); }
+    .stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
+    .stat-label { font-size: .78rem; color: #64748b; margin-top: 2px; }
+    .po-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; letter-spacing: .03em; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+    .po-table td { font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .po-table tbody tr.row-overdue { box-shadow: inset 3px 0 0 #ef4444; }
+    .po-no-link { font-weight: 700; color: #0f172a; text-decoration: none; font-family: var(--mg-mono); font-size: .82rem; }
+    .po-no-link:hover { color: #3b82f6; }
+    .badge-status { font-size: .72rem; padding: 3px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
+    .filter-bar { background: #f8fafc; border-radius: 10px; padding: 10px 14px; }
+    .btn-status-group { display: flex; flex-wrap: wrap; gap: 4px; }
+    .btn-status-group .btn { font-size: .75rem; padding: 3px 10px; white-space: nowrap; }
+    .btn-status-group .btn.active { background: var(--mg-primary, #2563eb); border-color: var(--mg-primary, #2563eb); color: #fff; }
+    .btn-status-group .btn:not(.active) { color: var(--mg-muted, #64748b); }
+    @media (max-width: 767.98px) {
+        .stat-num { font-size: 1.4rem; }
+        .stat-cards-row .col { min-width: 0; }
+        .col-hide-mobile { display: none !important; }
+    }
+</style>
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Incoming Items</div>
+            <h2>발주/입고현황</h2>
+            <div class="hero-sub">발주된 자재의 입고예정과 잔량을 한 화면에서 추적합니다</div>
+        </div>
+    </div>
+</div>
+
+{# ─── 통계 카드 ─── #}
+<div class="row g-3 mb-4 stat-cards-row mg-fade" style="animation-delay:.05s">
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-po shadow-sm text-center py-3" style="border-left:3px solid #f59e0b;">
+            <div class="stat-num" style="color:#f59e0b;">{{ stats.pending }}</div>
+            <div class="stat-label">미입고</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-po shadow-sm text-center py-3" style="border-left:3px solid #ef4444;">
+            <div class="stat-num" style="color:#ef4444;">{{ stats.overdue }}</div>
+            <div class="stat-label">지연</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-po shadow-sm text-center py-3" style="border-left:3px solid #3b82f6;">
+            <div class="stat-num" style="color:#3b82f6;">{{ stats.this_week }}</div>
+            <div class="stat-label">7일내 입고예정</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-po shadow-sm text-center py-3" style="border-left:3px solid #22c55e;">
+            <div class="stat-num" style="color:#22c55e;">{{ stats.today_in }}</div>
+            <div class="stat-label">오늘 입고</div>
+        </div>
+    </div>
+</div>
+
+{# ─── 검색/필터 ─── #}
+<div class="filter-bar mb-3 mg-fade" style="animation-delay:.08s">
+    <div class="row g-2 align-items-end">
+        {# 상태 탭 버튼 그룹 #}
+        <div class="col-12 col-md-auto mb-1 mb-md-0">
+            <div class="btn-status-group btn-group btn-group-sm" role="group">
+                <a href="?{% if filters.q %}q={{ filters.q }}&{% endif %}{% if filters.from %}from={{ filters.from }}&{% endif %}{% if filters.to %}to={{ filters.to }}&{% endif %}status="
+                   class="btn btn-outline-secondary {{ 'active' if not filters.status or filters.status == 'all' }}">전체</a>
+                <a href="?{% if filters.q %}q={{ filters.q }}&{% endif %}{% if filters.from %}from={{ filters.from }}&{% endif %}{% if filters.to %}to={{ filters.to }}&{% endif %}status=pending"
+                   class="btn btn-outline-secondary {{ 'active' if filters.status == 'pending' }}">미입고</a>
+                <a href="?{% if filters.q %}q={{ filters.q }}&{% endif %}{% if filters.from %}from={{ filters.from }}&{% endif %}{% if filters.to %}to={{ filters.to }}&{% endif %}status=partial"
+                   class="btn btn-outline-secondary {{ 'active' if filters.status == 'partial' }}">부분입고</a>
+                <a href="?{% if filters.q %}q={{ filters.q }}&{% endif %}{% if filters.from %}from={{ filters.from }}&{% endif %}{% if filters.to %}to={{ filters.to }}&{% endif %}status=overdue"
+                   class="btn btn-outline-secondary {{ 'active' if filters.status == 'overdue' }}">지연</a>
+                <a href="?{% if filters.q %}q={{ filters.q }}&{% endif %}{% if filters.from %}from={{ filters.from }}&{% endif %}{% if filters.to %}to={{ filters.to }}&{% endif %}status=done"
+                   class="btn btn-outline-secondary {{ 'active' if filters.status == 'done' }}">완료</a>
+                <a href="?{% if filters.q %}q={{ filters.q }}&{% endif %}{% if filters.from %}from={{ filters.from }}&{% endif %}{% if filters.to %}to={{ filters.to }}&{% endif %}status=direct"
+                   class="btn btn-outline-secondary {{ 'active' if filters.status == 'direct' }}">직접입고</a>
+            </div>
+        </div>
+        {# 검색 + 기간 + 버튼은 폼으로 처리 #}
+        <div class="col-12">
+            <form method="GET" class="row g-2 align-items-end">
+                {% if filters.status %}<input type="hidden" name="status" value="{{ filters.status }}">{% endif %}
+                <div class="col-md-4 col-12">
+                    <input type="text" name="q" class="form-control form-control-sm" placeholder="품목명/거래처/현장/PO번호 검색" value="{{ filters.q or '' }}">
+                </div>
+                <div class="col-md-2 col-6">
+                    <input type="date" name="from" class="form-control form-control-sm" value="{{ filters.from or '' }}">
+                </div>
+                <div class="col-md-2 col-6">
+                    <input type="date" name="to" class="form-control form-control-sm" value="{{ filters.to or '' }}">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary btn-sm">검색</button>
+                    <a href="{{ url_for('incoming_overview.incoming_overview_view') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# ─── 목록 테이블 ─── #}
+<div class="card border-0 shadow-sm mg-fade" style="border-radius:12px;overflow:hidden;animation-delay:.1s">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle no-stack-table mb-0 po-table" style="font-size:0.82rem;table-layout:fixed;min-width:960px;">
+                <colgroup>
+                    <col style="width:90px">
+                    <col style="width:90px">
+                    <col style="width:11%">
+                    <col style="width:90px">
+                    <col style="width:22%">
+                    <col style="width:14%">
+                    <col style="width:60px">
+                    <col style="width:60px">
+                    <col style="width:60px">
+                    <col style="width:70px">
+                </colgroup>
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">발주일</th>
+                        <th>예정일</th>
+                        <th class="col-hide-mobile">거래처</th>
+                        <th>품번</th>
+                        <th>품목명+규격</th>
+                        <th class="col-hide-mobile">현장</th>
+                        <th class="text-end">발주량</th>
+                        <th class="text-end">입고량</th>
+                        <th class="text-end">잔량</th>
+                        <th class="text-center">상태</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr class="{{ 'row-overdue' if item.status == 'overdue' }}">
+                        <td class="ps-3">{{ item.po_date if item.po_date else (item.rcv_date if item.status == 'direct' else '-') }}</td>
+                        <td>{{ item.delivery_date or '-' }}</td>
+                        <td class="col-hide-mobile" style="max-width:0;">{{ item.vendor_name or '-' }}</td>
+                        <td style="max-width:0;font-family:var(--mg-mono);font-size:.78rem;">{{ item.item_code or '-' }}</td>
+                        <td style="max-width:0;">
+                            <span class="fw-semibold">{{ item.item_name }}</span>
+                            {% if item.item_spec %}<span class="text-muted ms-1" style="font-size:.78rem;">{{ item.item_spec }}</span>{% endif %}
+                        </td>
+                        <td class="col-hide-mobile" style="max-width:0;color:#64748b;">{{ item.site_name or '-' }}</td>
+                        <td class="text-end">{% if item.status == 'direct' %}-{% else %}{{ item.quantity|int }}{{ item.unit or '' }}{% endif %}</td>
+                        <td class="text-end">{{ item.received_qty|int }}{{ item.unit or '' }}</td>
+                        <td class="text-end {% if item.status in ['done','direct'] %}text-muted{% else %}fw-bold{% endif %}">
+                            {% if item.status == 'direct' %}-{% else %}{{ item.remain|int }}{{ item.unit or '' }}{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if item.status == 'pending' %}
+                                <span class="badge-status" style="background:#fef3c7;color:#92400e;">{{ item.status_label }}</span>
+                            {% elif item.status == 'partial' %}
+                                <span class="badge-status" style="background:#dbeafe;color:#1e40af;">{{ item.status_label }}</span>
+                            {% elif item.status == 'done' %}
+                                <span class="badge-status" style="background:#dcfce7;color:#166534;">{{ item.status_label }}</span>
+                            {% elif item.status == 'overdue' %}
+                                <span class="badge-status" style="background:#fee2e2;color:#dc2626;">{{ item.status_label }}</span>
+                            {% elif item.status == 'direct' %}
+                                <span class="badge-status" style="background:#ede9fe;color:#6d28d9;">{{ item.status_label }}</span>
+                            {% else %}
+                                <span class="badge-status" style="background:#f1f5f9;color:#64748b;">{{ item.status_label }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="10" class="text-center text-muted py-4">조건에 맞는 발주 품목이 없습니다.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

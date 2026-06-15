@@ -109,17 +109,7 @@ def dashboard_view():
             .all()
         )
 
-        design_projects = (
-            db.query(Project)
-            .filter(Project.is_contracted.is_(False))
-            .options(
-                joinedload(Project.materials),
-                joinedload(Project.contacts),
-                joinedload(Project.priority_override),
-            )
-            .order_by(Project.created_at.desc(), Project.id.desc())
-            .all()
-        )
+        # design_projects 제거 — Priority Brief 삭제로 불필요
 
         deliveries = (
             db.query(Delivery)
@@ -226,34 +216,7 @@ def dashboard_view():
         issue_project_ids.update(pid for (pid,) in issue_log_project_ids)
         as_issue_count = len(issue_project_ids)
 
-        recent_logs = (
-            db.query(HistoryLog)
-            .join(Project, Project.id == HistoryLog.project_id)
-            .filter(Project.is_contracted.is_(True))
-            .options(joinedload(HistoryLog.project))
-            .order_by(HistoryLog.created_at.desc(), HistoryLog.id.desc())
-            .limit(12)
-            .all()
-        )
-        timeline_items = []
-        for log in recent_logs:
-            project = log.project
-            content = log.content or ''
-            scope = log.log_scope or 'common'
-            timeline_items.append(
-                {
-                    'id': log.id,
-                    'user_name': log.user_name,
-                    'created_at': log.created_at,
-                    'project_name': (project.short_name or project.temp_name) if project else '알 수 없는 현장',
-                    'project_no': project.project_no if project else '-',
-                    'content': content,
-                    'scope': scope,
-                    'detail_url': history_detail_link(project, scope) if project else url_for('project.contract_list'),
-                    'is_issue': ('이슈' in content) or ('긴급' in content),
-                    'is_system': '시스템' in (log.user_name or ''),
-                }
-            )
+        # timeline_items는 피드 API(/api/dashboard/feed)로 이관됨
 
         monthly_delivery_contracts = (
             db.query(Contract)
@@ -298,7 +261,7 @@ def dashboard_view():
             )
 
         action_tabs = build_action_tabs(contracted_projects, deliveries, today)
-        dashboard_priority = build_dashboard_priority_items(design_projects, contracted_projects, deliveries, today)
+        # dashboard_priority 제거 — 통합 피드로 이관, Priority Brief 삭제됨
         delivery_active_project_ids = {
             delivery.project_id
             for delivery in deliveries
@@ -347,59 +310,10 @@ def dashboard_view():
             },
         ]
 
-        alert_banners = build_auto_alert_items(db, today, week_later)
-
-        manual_notices = (
-            db.query(DashboardNotice)
-            .filter(DashboardNotice.is_active.is_(True))
-            .order_by(DashboardNotice.sort_order.asc(), DashboardNotice.id.asc())
-            .all()
-        )
-
-        global_display_seconds = max(2, get_dashboard_setting_int(db, 'billboard_global_seconds', 6))
-
-        billboard_items = []
-        for n in manual_notices:
-            billboard_items.append(
-                {
-                    'title': n.title or '공지',
-                    'message': n.message,
-                    'level': n.level or 'info',
-                    'detail_url': url_for('dashboard.dashboard_notice_admin'),
-                    'display_seconds': global_display_seconds,
-                }
-            )
-
-        for b in alert_banners:
-            billboard_items.append(
-                {
-                    'title': b['label'],
-                    'message': b['message'],
-                    'level': b['level'],
-                    'detail_url': b['detail_url'],
-                    'display_seconds': global_display_seconds,
-                }
-            )
-
+        # billboard/전광판은 통합 피드로 이관됨
         pending_users = db.query(User).filter(User.is_approved.is_(False)).count()
 
-        if not billboard_items:
-            billboard_items.append(
-                {
-                    'title': '상태정상',
-                    'message': '현재 긴급 공지나 전광판 알림이 없습니다. 예정 납품과 액션 탭을 확인해 주세요.',
-                    'level': 'info',
-                    'detail_url': url_for('project.contract_list'),
-                    'display_seconds': global_display_seconds,
-                }
-            )
-
-        # ── 입고 지연 알림 자동 생성 (1일 1회) ──
-        try:
-            from modules.services.notification_service import create_receiving_delay_notifications
-            create_receiving_delay_notifications(db)
-        except Exception:
-            pass  # 알림 생성 실패가 대시보드 렌더링을 막으면 안 됨
+        # ── 입고 지연 알림은 스케줄러(07:00)로 이관됨 ──
 
         # ── 입고예정 통계 (발주서 품목 기준) ──
         _base_expected = db.query(PurchaseOrderItem).join(
@@ -419,9 +333,43 @@ def dashboard_view():
             'unknown': _base_expected.filter(PurchaseOrderItem.expected_in_date.is_(None)).count(),
         }
 
-        # 카카오워크 연차 캘린더 동기화
+        # 연차 캘린더 동기화 (외부 iCal) + 전자결재 승인 휴가 병합
+        from modules.services import approval_service as _appsvc
         leave_by_date = get_leave_events_for_month(today.year, today.month)
         today_leaves = get_leave_events_for_date(today)
+        try:
+            ea_month = _appsvc.get_approved_leaves_for_month(db, today.year, today.month)
+            for _d, _evs in ea_month.items():
+                leave_by_date.setdefault(_d, []).extend(_evs)
+            today_leaves = list(today_leaves) + _appsvc.get_approved_leaves_for_date(db, today)
+        except Exception:
+            pass
+
+        # ── 최근 코멘트 (전체 현장) ──
+        recent_comments_raw = (
+            db.query(HistoryLog)
+            .join(Project, Project.id == HistoryLog.project_id)
+            .filter(
+                HistoryLog.log_kind.in_(['comment', 'reply']),
+                Project.is_contracted.is_(True),
+            )
+            .order_by(HistoryLog.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        recent_comments = []
+        for log in recent_comments_raw:
+            project = db.query(Project).get(log.project_id)
+            if not project:
+                continue
+            recent_comments.append({
+                'user_name': log.user_name or '사용자',
+                'project_name': project.short_name or project.temp_name,
+                'content': (log.content or '')[:80],
+                'scope': log.log_scope or 'common',
+                'created_at': log.created_at,
+                'link': url_for('project.contract_detail', project_id=project.id) + '#history-board',
+            })
 
         # 오늘 출장 중인 인원
         today_dt = datetime.datetime.combine(today, datetime.time.min)
@@ -457,15 +405,12 @@ def dashboard_view():
                 'pending_users': pending_users,
                 'urgent_delivery_projects': urgent_delivery_projects[:6],
             },
-            billboard_items=billboard_items,
-            timeline_items=timeline_items,
             mini_calendar_items=mini_calendar_items,
             calendar_weeks=calendar_weeks,
             calendar_month_label=f"{today.year}.{today.month:02d}",
             calendar_weekdays=['일', '월', '화', '수', '목', '금', '토'],
             today_leaves=today_leaves,
             today_trips=today_trips,
-            dashboard_priority=dashboard_priority,
             kanban={
                 '영업/설계': kanban['영업/설계'],
                 '자재확인': kanban['자재확인'],
@@ -475,6 +420,7 @@ def dashboard_view():
             workflow_nodes=workflow_nodes,
             action_tabs=action_tabs,
             dash_expected=dash_expected,
+            recent_comments=recent_comments,
         )
 
 

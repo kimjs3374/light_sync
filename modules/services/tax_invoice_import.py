@@ -289,6 +289,8 @@ def import_and_match(db, records):
             g2b_delivery_no=rec['g2b_delivery_no'],
         )
 
+        db.add(inv)
+
         # G2B 매칭: g2b_procurements.cntrct_dlvr_req_no 기준
         matched = False
         if rec['g2b_contract_no']:
@@ -298,6 +300,7 @@ def import_and_match(db, records):
             if proc:
                 inv.match_status = '자동매칭'
                 matched = True
+                db.flush()
                 _link_invoice_to_contract(db, inv, rec['g2b_contract_no'], rec['issue_date'], auto_create_warranty)
 
         # 2차: 계약번호 매칭 실패 시 계약명으로 매칭 시도
@@ -309,15 +312,24 @@ def import_and_match(db, records):
                 inv.g2b_contract_no = proc.cntrct_dlvr_req_no
                 inv.match_status = '자동매칭'
                 matched = True
+                db.flush()
                 _link_invoice_to_contract(db, inv, proc.cntrct_dlvr_req_no, rec['issue_date'], auto_create_warranty)
 
         if matched:
             result['matched'] += 1
+            # 알림: 세금계산서 발행
+            try:
+                from modules.notification_engine import notify
+                notify(db, 'tax_invoice.issued', {
+                    'contract_name': rec.get('g2b_contract_name') or inv.supplier_name or '미지정',
+                    'project_name': rec.get('g2b_contract_name') or inv.supplier_name or '미지정',
+                    'amount': f"{int(inv.supply_amount or 0):,}",
+                })
+            except Exception:
+                pass
         else:
             inv.match_status = '미매칭'
             result['unmatched'] += 1
-
-        db.add(inv)
         result['imported'] += 1
 
     db.flush()

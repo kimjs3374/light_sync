@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>01 · 3-Pane 레이아웃</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    background: #fff;
+    color: #202124;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; cursor: pointer; }
+
+  /* ===== Layout ===== */
+  .app { display: grid; grid-template-rows: 44px 1fr; height: 100vh; }
+  .topbar {
+    display: flex; align-items: center; padding: 0 16px;
+    border-bottom: 1px solid #e8eaed; background: #fff;
+    gap: 16px;
+  }
+  .brand { font-weight: 700; font-size: 14px; color: #1a73e8; letter-spacing: -0.01em; }
+  .search {
+    flex: 1; max-width: 520px;
+    display: flex; align-items: center; gap: 8px;
+    background: #f1f3f4; border-radius: 6px; padding: 6px 12px;
+    color: #5f6368;
+  }
+  .search input {
+    border: none; background: transparent; outline: none;
+    flex: 1; font-size: 13px; color: #202124;
+  }
+  .topright { display: flex; gap: 16px; align-items: center; color: #5f6368; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: #1a73e8; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+
+  .body { display: grid; grid-template-columns: 240px 1fr 360px; height: calc(100vh - 44px); overflow: hidden; }
+
+  /* ===== Left: channels ===== */
+  .sidebar { background: #f8f9fa; border-right: 1px solid #e8eaed; overflow-y: auto; padding: 8px 0; }
+  .sb-section { padding: 12px 16px 4px; font-size: 11px; color: #5f6368; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  .sb-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 16px; cursor: pointer; color: #3c4043;
+    font-size: 13px;
+    border-left: 3px solid transparent;
+  }
+  .sb-item:hover { background: #f1f3f4; }
+  .sb-item.active { background: #e8f0fe; color: #1a73e8; border-left-color: #1a73e8; font-weight: 600; }
+  .sb-item .hash { color: #9aa0a6; }
+  .sb-item.active .hash { color: #1a73e8; }
+  .sb-item .badge { margin-left: auto; background: #d93025; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+  .sb-item .dot { margin-left: auto; width: 8px; height: 8px; background: #1a73e8; border-radius: 50%; }
+  .dm-avatar { width: 18px; height: 18px; border-radius: 50%; background: #5f6368; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; }
+  .dm-avatar.bot { background: #10b981; }
+
+  /* ===== Center: stream ===== */
+  .stream { display: flex; flex-direction: column; min-width: 0; background: #fff; }
+  .stream-header {
+    padding: 10px 24px; border-bottom: 1px solid #e8eaed;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .ch-title { font-size: 15px; font-weight: 600; }
+  .ch-meta { color: #5f6368; font-size: 12px; }
+  .ch-actions { margin-left: auto; display: flex; gap: 12px; color: #5f6368; }
+
+  .stream-body { flex: 1; overflow-y: auto; padding: 16px 24px 8px; }
+
+  .day-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0 12px; color: #5f6368; font-size: 11px; }
+  .day-divider::before, .day-divider::after { content: ""; flex: 1; height: 1px; background: #e8eaed; }
+
+  .msg { display: flex; gap: 12px; padding: 6px 0; }
+  .msg-avatar { width: 36px; height: 36px; border-radius: 50%; background: #5f6368; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+  .msg-avatar.eom { background: #ea580c; }
+  .msg-avatar.kim { background: #1a73e8; }
+  .msg-avatar.park { background: #7c3aed; }
+  .msg-avatar.bot { background: #10b981; }
+  .msg-body { flex: 1; min-width: 0; }
+  .msg-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+  .msg-name { font-weight: 600; color: #202124; font-size: 13px; }
+  .msg-time { color: #9aa0a6; font-size: 11px; }
+  .msg-text { color: #202124; line-height: 1.55; }
+  .mention { color: #1a73e8; background: #e8f0fe; padding: 0 4px; border-radius: 3px; font-weight: 500; }
+
+  /* ===== Bot card (in stream) ===== */
+  .bot-card {
+    margin-top: 8px; max-width: 520px;
+    border: 1px solid #d1fae5; border-radius: 8px;
+    background: #f0fdf4;
+    overflow: hidden;
+  }
+  .bot-card-head { padding: 10px 14px; border-bottom: 1px solid #d1fae5; font-weight: 600; font-size: 12px; color: #047857; display: flex; align-items: center; gap: 6px; }
+  .bot-card-body { padding: 12px 14px; background: #fff; }
+  .bc-row { display: flex; gap: 12px; padding: 4px 0; font-size: 13px; }
+  .bc-label { color: #5f6368; min-width: 60px; }
+  .bc-value { color: #202124; font-weight: 500; }
+  .bc-value .old { color: #9aa0a6; text-decoration: line-through; margin-right: 6px; }
+  .bc-value .new { color: #047857; font-weight: 600; }
+  .bot-card-actions { padding: 10px 14px; background: #fff; border-top: 1px solid #f0fdf4; display: flex; gap: 8px; }
+  .btn {
+    border: 1px solid #dadce0; background: #fff; color: #3c4043;
+    padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  }
+  .btn:hover { background: #f8f9fa; }
+  .btn-primary { background: #047857; border-color: #047857; color: #fff; }
+  .btn-primary:hover { background: #065f46; }
+  .btn-ghost { border-color: transparent; color: #5f6368; }
+
+  /* ===== Composer ===== */
+  .composer {
+    border-top: 1px solid #e8eaed; padding: 12px 24px 16px;
+  }
+  .composer-box {
+    border: 1px solid #dadce0; border-radius: 10px; padding: 8px 12px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .composer-box:focus-within { border-color: #1a73e8; }
+  .composer-input {
+    border: none; outline: none; font-family: inherit; font-size: 13px;
+    width: 100%; resize: none; min-height: 44px; line-height: 1.5;
+  }
+  .composer-toolbar { display: flex; align-items: center; gap: 4px; color: #5f6368; }
+  .composer-tool { padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+  .composer-tool:hover { background: #f1f3f4; }
+  .composer-send { margin-left: auto; background: #1a73e8; color: #fff; border: none; padding: 6px 16px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+  .hint { padding-top: 6px; font-size: 11px; color: #9aa0a6; }
+  .hint kbd { background: #f1f3f4; border: 1px solid #e8eaed; border-radius: 3px; padding: 1px 5px; font-family: inherit; font-size: 10px; }
+
+  /* ===== Right: context panel ===== */
+  .context { background: #f8f9fa; border-left: 1px solid #e8eaed; overflow-y: auto; padding: 16px; }
+  .ctx-pin { font-size: 11px; color: #5f6368; margin-bottom: 8px; display: flex; align-items: center; gap: 4px; }
+  .ctx-card { background: #fff; border: 1px solid #e8eaed; border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+  .ctx-card-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; line-height: 1.3; }
+  .ctx-card-sub { font-size: 11px; color: #5f6368; margin-bottom: 12px; }
+  .ctx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; font-size: 12px; }
+  .ctx-grid .k { color: #5f6368; }
+  .ctx-grid .v { color: #202124; font-weight: 500; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ctx-grid .v.danger { color: #d93025; }
+  .ctx-grid .v.success { color: #047857; }
+  .ctx-section-title { font-size: 11px; color: #5f6368; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin: 4px 0 8px; padding: 0 2px; }
+  .ctx-status-pill { display: inline-block; padding: 2px 8px; font-size: 11px; border-radius: 10px; font-weight: 600; background: #fef3c7; color: #92400e; }
+  .ctx-link {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; font-size: 12px; color: #1a73e8; text-decoration: none; border-top: 1px solid #f1f3f4;
+  }
+  .ctx-link:first-of-type { border-top: none; }
+  .ctx-timeline { padding: 0; margin: 0; list-style: none; }
+  .ctx-timeline li {
+    padding: 6px 0 6px 14px; font-size: 12px; color: #3c4043; line-height: 1.5;
+    border-left: 2px solid #e8eaed; position: relative; margin-left: 4px;
+  }
+  .ctx-timeline li::before { content: ""; position: absolute; left: -5px; top: 12px; width: 8px; height: 8px; border-radius: 50%; background: #9aa0a6; }
+  .ctx-timeline li.now::before { background: #1a73e8; }
+  .ctx-timeline .when { color: #9aa0a6; font-size: 11px; margin-right: 6px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ===== Top bar ===== -->
+  <div class="topbar">
+    <div class="brand">Light-Sync</div>
+    <div class="search">
+      🔍 <input placeholder="현장, 직원, 품목, 메시지 검색" />
+    </div>
+    <div class="topright">
+      <span>🔔</span>
+      <div class="avatar">김민</div>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- ===== Left sidebar ===== -->
+    <aside class="sidebar">
+      <div class="sb-section">채널</div>
+      <div class="sb-item active"><span class="hash">#</span> 영업 <span class="dot"></span></div>
+      <div class="sb-item"><span class="hash">#</span> 생산 <span class="badge">3</span></div>
+      <div class="sb-item"><span class="hash">#</span> 관리</div>
+      <div class="sb-item"><span class="hash">#</span> AS</div>
+      <div class="sb-item"><span class="hash">#</span> 공지</div>
+
+      <div class="sb-section">DM</div>
+      <div class="sb-item"><div class="dm-avatar bot">🤖</div> 봇 (학습로그)</div>
+      <div class="sb-item"><div class="dm-avatar">엄</div> 엄과장 <span class="badge">1</span></div>
+      <div class="sb-item"><div class="dm-avatar">박</div> 박부장</div>
+      <div class="sb-item"><div class="dm-avatar">이</div> 이대리</div>
+
+      <div class="sb-section">즐겨찾는 현장</div>
+      <div class="sb-item">📍 ○○초 LED교체</div>
+      <div class="sb-item">📍 △△청사 보안등</div>
+    </aside>
+
+    <!-- ===== Center stream ===== -->
+    <main class="stream">
+      <div class="stream-header">
+        <div class="ch-title"># 영업</div>
+        <div class="ch-meta">· 12명 · 영업부 일일 업무 채널</div>
+        <div class="ch-actions"><span>📌 핀</span><span>👥</span><span>⋯</span></div>
+      </div>
+
+      <div class="stream-body">
+        <div class="day-divider">2026년 5월 12일 화요일</div>
+
+        <div class="msg">
+          <div class="msg-avatar park">박</div>
+          <div class="msg-body">
+            <div class="msg-meta">
+              <span class="msg-name">영업부 박정호 부장</span>
+              <span class="msg-time">오전 9:42</span>
+            </div>
+            <div class="msg-text">○○초등학교 자재 다 들어왔다고 현장에서 연락왔는데, 납품 일정 잡아야 할 것 같습니다.</div>
+          </div>
+        </div>
+
+        <div class="msg">
+          <div class="msg-avatar kim">김</div>
+          <div class="msg-body">
+            <div class="msg-meta">
+              <span class="msg-name">영업부 김민수 과장</span>
+              <span class="msg-time">오전 9:43</span>
+            </div>
+            <div class="msg-text"><span class="mention">@봇</span> ○○초등학교 LED교체 납품일정 내일로 등록해줘</div>
+          </div>
+        </div>
+
+        <div class="msg">
+          <div class="msg-avatar bot">🤖</div>
+          <div class="msg-body">
+            <div class="msg-meta">
+              <span class="msg-name">봇</span>
+              <span class="msg-time">오전 9:43</span>
+            </div>
+            <div class="msg-text">납품일정을 아래와 같이 등록할게요. 확인해주세요.</div>
+
+            <div class="bot-card">
+              <div class="bot-card-head">📋 납품일정 등록 확인</div>
+              <div class="bot-card-body">
+                <div class="bc-row"><span class="bc-label">현장</span><span class="bc-value">○○초등학교 LED교체 (G-2026-0123)</span></div>
+                <div class="bc-row"><span class="bc-label">변경</span><span class="bc-value"><span class="old">미정</span><span class="new">2026-05-13 (수)</span></span></div>
+                <div class="bc-row"><span class="bc-label">담당자</span><span class="bc-value">생산부 이대리 (자동지정)</span></div>
+              </div>
+              <div class="bot-card-actions">
+                <button class="btn btn-primary">✓ 확정</button>
+                <button class="btn">✎ 수정</button>
+                <button class="btn btn-ghost">✗ 취소</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="msg">
+          <div class="msg-avatar eom">엄</div>
+          <div class="msg-body">
+            <div class="msg-meta">
+              <span class="msg-name">생산부 엄지현 과장</span>
+              <span class="msg-time">오전 9:45</span>
+            </div>
+            <div class="msg-text">컨버터 12개 모자랐는데 어제 입고 완료했습니다. 출하 가능합니다.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- composer -->
+      <div class="composer">
+        <div class="composer-box">
+          <textarea class="composer-input" placeholder="#영업 채널에 메시지 보내기 (@현장명, /명령어 사용 가능)"></textarea>
+          <div class="composer-toolbar">
+            <span class="composer-tool">📎</span>
+            <span class="composer-tool">📷</span>
+            <span class="composer-tool">@</span>
+            <span class="composer-tool">/</span>
+            <span class="composer-tool">B</span>
+            <span class="composer-tool">I</span>
+            <button class="composer-send">보내기</button>
+          </div>
+        </div>
+        <div class="hint"><kbd>@</kbd> 현장/직원 멘션 · <kbd>/</kbd> 슬래시 명령어 · <kbd>Shift+Enter</kbd> 줄바꿈</div>
+      </div>
+    </main>
+
+    <!-- ===== Right context panel ===== -->
+    <aside class="context">
+      <div class="ctx-pin">📌 대화 중 거론된 현장</div>
+
+      <div class="ctx-card">
+        <div class="ctx-card-title">○○초등학교 LED교체 공사</div>
+        <div class="ctx-card-sub">G-2026-0123 · 영업부 박정호</div>
+
+        <div style="margin-bottom: 12px;">
+          <span class="ctx-status-pill">생산중</span>
+        </div>
+
+        <div class="ctx-grid">
+          <div class="k">계약금액</div><div class="v">12,480,000원</div>
+          <div class="k">납품예정</div><div class="v">2026-05-13</div>
+          <div class="k">납품기한</div><div class="v">2026-05-20</div>
+          <div class="k">미수금</div><div class="v success">0원</div>
+          <div class="k">생산진행률</div><div class="v">85%</div>
+          <div class="k">서류상태</div><div class="v danger">착수계 미작성</div>
+        </div>
+      </div>
+
+      <div class="ctx-card">
+        <div class="ctx-section-title">최근 활동</div>
+        <ul class="ctx-timeline">
+          <li class="now"><span class="when">9:43</span>김민수: 납품일정 내일 요청</li>
+          <li><span class="when">어제</span>이대리: 컨버터 12EA 입고완료</li>
+          <li><span class="when">5/8</span>박정호: 계약서 PDF 업로드</li>
+          <li><span class="when">5/2</span>봇: G2B 동기화 → 계약 생성</li>
+        </ul>
+      </div>
+
+      <div class="ctx-card">
+        <div class="ctx-section-title">바로가기</div>
+        <a class="ctx-link" href="#">현장 상세 페이지 →</a>
+        <a class="ctx-link" href="#">납품관리 →</a>
+        <a class="ctx-link" href="#">하자보증 →</a>
+        <a class="ctx-link" href="#">서류관리 →</a>
+      </div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

@@ -55,11 +55,9 @@
           </div>
           <div class="col-md-6">
             <label class="form-label small fw-bold">상태</label>
-            <select name="status" class="form-select form-select-sm">
-              {% for code, label in status_choices %}
-              <option value="{{ code }}" {{ 'selected' if trip and trip.status == code }}>{{ label }}</option>
-              {% endfor %}
-            </select>
+            <div class="form-control-plaintext form-control-sm text-muted small" style="padding-top:.25rem">
+              출발·복귀 일시 기준 자동 (예정 / 진행중 / 완료) — 취소는 상세에서 처리
+            </div>
           </div>
           <div class="col-12">
             <label class="form-label small fw-bold">출장목적 상세</label>

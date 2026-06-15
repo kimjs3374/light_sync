@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>04 · 기존 ERP + 채팅 통합 시뮬레이터</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    background: #f3f4f6;
+    color: #202124;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; cursor: pointer; }
+
+  /* ===== Mode switcher (top fixed) ===== */
+  .mode-bar {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 100;
+    background: #fff; border: 1px solid #e8eaed; border-radius: 24px; padding: 4px;
+    display: flex; gap: 2px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  }
+  .mode-btn {
+    border: none; background: transparent; color: #5f6368;
+    padding: 8px 16px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  }
+  .mode-btn.active { background: #1a73e8; color: #fff; }
+  .mode-btn:hover:not(.active) { background: #f1f3f4; }
+
+  .nav-back {
+    position: fixed; top: 16px; left: 16px; z-index: 100;
+    color: #1a73e8; font-size: 12px; text-decoration: none;
+    background: #fff; padding: 6px 12px; border-radius: 20px; border: 1px solid #e8eaed;
+  }
+
+  /* ===== App shell — mimics actual ERP ===== */
+  .app { display: grid; grid-template-columns: 220px 1fr; height: 100vh; }
+
+  /* Dark sidebar (matches existing magnatech.css #0f172a) */
+  .erp-side {
+    background: #0f172a; color: #cbd5e1;
+    overflow-y: auto;
+  }
+  .erp-side .brand {
+    padding: 14px 16px 12px; display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #1e293b;
+  }
+  .erp-side .brand-icon { font-size: 22px; }
+  .erp-side .brand-tx { line-height: 1.2; }
+  .erp-side .brand-co { font-size: 9px; font-weight: 700; letter-spacing: .12em; color: #60a5fa; text-transform: uppercase; }
+  .erp-side .brand-app { font-size: 14px; font-weight: 700; color: #fff; }
+
+  .erp-side .user-block { padding: 10px 16px; border-bottom: 1px solid #1e293b; font-size: 12px; }
+  .erp-side .user-name { color: #fff; font-weight: 600; }
+  .erp-side .user-meta { color: #64748b; font-size: 11px; margin-top: 2px; }
+
+  .erp-side .menu { padding: 8px 0; }
+  .erp-side .menu-section { padding: 12px 16px 4px; font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+  .erp-side .menu-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 16px; cursor: pointer; color: #cbd5e1;
+    font-size: 13px;
+    border-left: 3px solid transparent;
+  }
+  .erp-side .menu-item:hover { background: #1e293b; color: #fff; }
+  .erp-side .menu-item.active { background: #1e293b; color: #fff; border-left-color: #3b82f6; }
+  .erp-side .menu-icon { width: 18px; text-align: center; opacity: .9; }
+  .erp-side .badge-new { margin-left: auto; background: #3b82f6; color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 8px; font-weight: 600; }
+
+  /* Main pane */
+  .erp-main { display: flex; flex-direction: column; min-width: 0; background: #f3f4f6; }
+  .erp-top {
+    background: #fff; border-bottom: 1px solid #e5e7eb;
+    padding: 12px 24px; display: flex; align-items: center; gap: 16px;
+  }
+  .crumbs { font-size: 12px; color: #6b7280; }
+  .crumbs a { color: #1a73e8; text-decoration: none; }
+  .crumbs span { margin: 0 6px; color: #9ca3af; }
+  .top-actions { margin-left: auto; display: flex; gap: 12px; align-items: center; color: #6b7280; }
+  .top-bell { position: relative; cursor: pointer; }
+  .top-bell .dot { position: absolute; top: -2px; right: -3px; width: 7px; height: 7px; background: #d93025; border-radius: 50%; }
+
+  .erp-content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+  .page-title { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+  .page-sub { font-size: 12px; color: #6b7280; margin-bottom: 20px; }
+
+  /* KPI tiles */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi { background: #fff; border-radius: 8px; padding: 14px 16px; border: 1px solid #e5e7eb; }
+  .kpi-k { font-size: 11px; color: #6b7280; }
+  .kpi-v { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .kpi-v.success { color: #047857; }
+  .kpi-v.danger { color: #d93025; }
+  .kpi-v.warn { color: #b45309; }
+  .kpi-sub { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+
+  /* List card */
+  .list-card { background: #fff; border-radius: 8px; border: 1px solid #e5e7eb; margin-bottom: 16px; overflow: hidden; }
+  .list-head {
+    padding: 12px 16px; border-bottom: 1px solid #e5e7eb;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .list-title { font-size: 14px; font-weight: 600; }
+  .list-meta { font-size: 11px; color: #6b7280; }
+  .list-search { margin-left: auto; }
+  .list-search input { border: 1px solid #e5e7eb; border-radius: 6px; padding: 6px 10px; font-size: 12px; width: 200px; outline: none; }
+
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.tbl th, table.tbl td {
+    padding: 8px 14px; text-align: left;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  table.tbl th { color: #6b7280; font-weight: 600; background: #f9fafb; font-size: 11px; }
+  table.tbl tbody tr:hover { background: #f9fafb; cursor: pointer; }
+  table.tbl tbody tr:last-child td { border-bottom: none; }
+  table.tbl td.right { text-align: right; }
+  .pill { display: inline-block; padding: 2px 8px; font-size: 10px; border-radius: 8px; font-weight: 600; }
+  .pill.warn { background: #fef3c7; color: #92400e; }
+  .pill.success { background: #d1fae5; color: #047857; }
+  .pill.danger { background: #fce8e6; color: #d93025; }
+  .pill.info { background: #dbeafe; color: #1e40af; }
+
+  /* ===== Chat dock (Mode A: floating) ===== */
+  .chat-dock-btn {
+    position: fixed; right: 24px; bottom: 24px; z-index: 90;
+    width: 56px; height: 56px; border-radius: 28px; background: #10b981;
+    color: #fff; font-size: 22px; border: none; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, .35);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .chat-dock-btn .badge {
+    position: absolute; top: -4px; right: -4px;
+    background: #d93025; color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 700;
+  }
+  .chat-panel {
+    position: fixed; right: 0; top: 0; bottom: 0; width: 380px; z-index: 95;
+    background: #fff; border-left: 1px solid #e5e7eb;
+    display: flex; flex-direction: column;
+    transform: translateX(100%); transition: transform .25s ease;
+    box-shadow: -4px 0 16px rgba(0,0,0,.08);
+  }
+  .chat-panel.open { transform: translateX(0); }
+  .chat-head {
+    padding: 12px 16px; background: #f9fafb; border-bottom: 1px solid #e5e7eb;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .chat-head-tab { font-size: 12px; padding: 4px 10px; border-radius: 4px; cursor: pointer; color: #6b7280; }
+  .chat-head-tab.active { background: #fff; color: #1a73e8; font-weight: 600; border: 1px solid #e5e7eb; }
+  .chat-close { margin-left: auto; cursor: pointer; color: #6b7280; font-size: 18px; padding: 0 4px; }
+  .ctx-pin {
+    padding: 10px 16px; background: #ecfdf5; border-bottom: 1px solid #d1fae5;
+    font-size: 11px; color: #047857; display: flex; align-items: center; gap: 6px;
+  }
+  .ctx-pin b { font-weight: 700; }
+  .ctx-pin .x { margin-left: auto; color: #047857; cursor: pointer; }
+
+  .stream { flex: 1; overflow-y: auto; padding: 12px 16px; }
+  .day-divider { display: flex; align-items: center; gap: 8px; margin: 12px 0 8px; color: #9ca3af; font-size: 10px; }
+  .day-divider::before, .day-divider::after { content: ""; flex: 1; height: 1px; background: #e5e7eb; }
+
+  .cmsg { display: flex; gap: 8px; padding: 6px 0; }
+  .ca { width: 28px; height: 28px; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .ca.kim { background: #1a73e8; }
+  .ca.park { background: #7c3aed; }
+  .ca.eom { background: #ea580c; }
+  .ca.bot { background: #10b981; }
+  .cb { flex: 1; min-width: 0; }
+  .cmeta { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; }
+  .cn { font-size: 12px; font-weight: 600; }
+  .ct { color: #9ca3af; font-size: 10px; }
+  .cch { color: #1a73e8; font-size: 10px; background: #dbeafe; padding: 0 5px; border-radius: 3px; }
+  .ctx { font-size: 12px; line-height: 1.5; }
+  .mention { color: #1a73e8; background: #dbeafe; padding: 0 4px; border-radius: 3px; font-weight: 500; }
+
+  .botcard { margin-top: 6px; border: 1px solid #d1fae5; border-radius: 6px; overflow: hidden; }
+  .bch { padding: 6px 10px; background: #f0fdf4; font-size: 11px; font-weight: 600; color: #047857; }
+  .bcb { padding: 8px 10px; font-size: 12px; }
+  .bcr { display: flex; padding: 2px 0; }
+  .bck { color: #6b7280; min-width: 40px; }
+  .bcv { font-weight: 500; }
+  .bca { padding: 6px 10px; border-top: 1px solid #f0fdf4; display: flex; gap: 6px; background: #fff; }
+  .botbtn { padding: 4px 10px; font-size: 11px; border: 1px solid #e5e7eb; background: #fff; border-radius: 4px; cursor: pointer; }
+  .botbtn.primary { background: #047857; color: #fff; border-color: #047857; }
+
+  .composer { border-top: 1px solid #e5e7eb; padding: 10px 12px; background: #fff; }
+  .ccbox { border: 1px solid #e5e7eb; border-radius: 8px; padding: 6px 10px; }
+  .ccbox:focus-within { border-color: #1a73e8; }
+  .ccin { width: 100%; border: none; outline: none; font-family: inherit; font-size: 12px; resize: none; min-height: 36px; }
+  .cct { display: flex; gap: 4px; align-items: center; color: #6b7280; }
+  .cct-icon { padding: 2px 6px; font-size: 11px; cursor: pointer; }
+  .cc-send { margin-left: auto; background: #1a73e8; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; }
+
+  /* ===== Mode-specific overrides ===== */
+  /* Mode A: dock floating */
+  body.mode-a .chat-dock-btn { display: flex; }
+  body.mode-a .chat-panel.open { display: flex; }
+
+  /* Mode B: fullscreen replaces content */
+  body.mode-b .erp-content { display: none; }
+  body.mode-b .erp-top { display: none; }
+  body.mode-b .erp-side .menu-item.chat-item { background: #1e293b; color: #fff; border-left-color: #10b981; }
+  body.mode-b .erp-side .menu-item.dashboard-item { background: transparent; color: #cbd5e1; border-left-color: transparent; }
+  body.mode-b .fullscreen-chat { display: grid; }
+
+  /* Mode C: embedded sidebar */
+  body.mode-c .erp-content { display: none; }
+  body.mode-c .embedded-chart { display: grid; }
+  body.mode-c .crumbs::after { content: " › ○○초등학교 LED교체"; color: #6b7280; }
+
+  /* Hidden by default */
+  .fullscreen-chat { display: none; flex: 1; grid-template-columns: 220px 1fr 340px; }
+  .fc-channels { background: #f9fafb; border-right: 1px solid #e5e7eb; padding: 8px 0; }
+  .fc-section { padding: 12px 16px 4px; font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  .fc-item { padding: 6px 16px; font-size: 13px; color: #3c4043; cursor: pointer; }
+  .fc-item:hover { background: #f3f4f6; }
+  .fc-item.active { background: #dbeafe; color: #1a73e8; font-weight: 600; }
+  .fc-stream-wrap { display: flex; flex-direction: column; min-width: 0; background: #fff; }
+  .fc-stream-head { padding: 12px 20px; border-bottom: 1px solid #e5e7eb; font-size: 14px; font-weight: 600; }
+  .fc-stream { flex: 1; overflow-y: auto; padding: 16px 20px; }
+  .fc-context { background: #f9fafb; border-left: 1px solid #e5e7eb; padding: 16px; }
+  .fc-ctx-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .fc-ctx-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .fc-ctx-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+  .fc-ctx-row .k { color: #6b7280; }
+  .fc-ctx-row .v { font-weight: 500; }
+
+  .embedded-chart { display: none; flex: 1; grid-template-columns: 1fr 360px; min-height: 0; }
+  .ec-main { background: #fff; padding: 20px 24px; overflow-y: auto; }
+  .ec-side { background: #f9fafb; border-left: 1px solid #e5e7eb; display: flex; flex-direction: column; min-height: 0; }
+  .ec-side .ctx-pin { background: #ecfdf5; border-bottom: 1px solid #d1fae5; padding: 10px 16px; font-size: 11px; color: #047857; }
+
+  .ec-chart-title { font-size: 22px; font-weight: 700; }
+  .ec-chart-sub { font-size: 12px; color: #6b7280; margin: 4px 0 12px; }
+  .ec-pill { display: inline-block; padding: 3px 10px; font-size: 11px; border-radius: 12px; background: #fef3c7; color: #92400e; font-weight: 600; }
+  .ec-tabs { display: flex; border-bottom: 1px solid #e5e7eb; margin: 16px 0 12px; }
+  .ec-tab { padding: 8px 14px; font-size: 12px; color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .ec-tab.active { color: #1a73e8; border-color: #1a73e8; font-weight: 600; }
+
+  /* Hint banner */
+  .hint-banner {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #1f2937; color: #fff; padding: 10px 18px; border-radius: 20px;
+    font-size: 12px; max-width: 600px; z-index: 80;
+    box-shadow: 0 4px 12px rgba(0,0,0,.2);
+  }
+  .hint-banner b { color: #60a5fa; }
+</style>
+</head>
+<body class="mode-a">
+
+<a class="nav-back" href="index.html">← 시안 목록</a>
+
+<div class="mode-bar">
+  <button class="mode-btn active" data-mode="a">A · 글로벌 도크</button>
+  <button class="mode-btn" data-mode="b">B · 전용 풀스크린</button>
+  <button class="mode-btn" data-mode="c">C · 현장 임베드</button>
+</div>
+
+<div class="app">
+  <!-- ===== ERP Sidebar (existing) ===== -->
+  <aside class="erp-side">
+    <div class="brand">
+      <div class="brand-icon">💡</div>
+      <div class="brand-tx">
+        <div class="brand-co">MAGNATECH</div>
+        <div class="brand-app">Light-Sync <span style="font-size:9px;color:#94a3b8;">ERP</span></div>
+      </div>
+    </div>
+
+    <div class="user-block">
+      <div class="user-name">영업부 김민수 과장</div>
+      <div class="user-meta">근무중 · 9:45</div>
+    </div>
+
+    <div class="menu">
+      <div class="menu-item dashboard-item active"><span class="menu-icon">📊</span>종합현황</div>
+      <div class="menu-item"><span class="menu-icon">📍</span>현장관리</div>
+      <div class="menu-item"><span class="menu-icon">📑</span>조달내역</div>
+
+      <div class="menu-section">생산</div>
+      <div class="menu-item"><span class="menu-icon">🏭</span>생산현황</div>
+      <div class="menu-item"><span class="menu-icon">🚚</span>납품관리</div>
+      <div class="menu-item"><span class="menu-icon">📦</span>입고/발주</div>
+
+      <div class="menu-section">사후</div>
+      <div class="menu-item"><span class="menu-icon">🛠</span>하자보증</div>
+      <div class="menu-item"><span class="menu-icon">💰</span>세금계산서</div>
+
+      <div class="menu-section">소통</div>
+      <div class="menu-item chat-item"><span class="menu-icon">💬</span>대화 (봇)<span class="badge-new">NEW</span></div>
+      <div class="menu-item"><span class="menu-icon">📧</span>메일</div>
+      <div class="menu-item"><span class="menu-icon">🔔</span>알림</div>
+    </div>
+  </aside>
+
+  <!-- ===== Main pane ===== -->
+  <main class="erp-main">
+    <div class="erp-top">
+      <div class="crumbs"><a href="#">홈</a><span>›</span>종합현황</div>
+      <div class="top-actions">
+        <span class="top-bell">🔔<span class="dot"></span></span>
+        <span>⚙️</span>
+        <span>김민수</span>
+      </div>
+    </div>
+
+    <!-- ====== MODE A·기본 ERP 대시보드 ====== -->
+    <div class="erp-content">
+      <div class="page-title">종합현황</div>
+      <div class="page-sub">2026년 5월 12일 화요일 · 영업부 기준</div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-k">진행 현장</div><div class="kpi-v">28</div><div class="kpi-sub">생산중 12 · 출하대기 8 · 설치중 8</div></div>
+        <div class="kpi"><div class="kpi-k">이번달 매출</div><div class="kpi-v success">142,800,000</div><div class="kpi-sub">전월 대비 +18%</div></div>
+        <div class="kpi"><div class="kpi-k">미수금</div><div class="kpi-v danger">87,640,000</div><div class="kpi-sub">3건 60일 초과</div></div>
+        <div class="kpi"><div class="kpi-k">이번주 납품</div><div class="kpi-v warn">4건</div><div class="kpi-sub">자재부족 1건</div></div>
+      </div>
+
+      <div class="list-card">
+        <div class="list-head">
+          <div class="list-title">이번주 납품 예정</div>
+          <div class="list-meta">· 4건 · 합계 48,470,000원</div>
+          <div class="list-search"><input placeholder="현장명 검색"></div>
+        </div>
+        <table class="tbl">
+          <thead>
+            <tr><th>납품일</th><th>현장</th><th>담당</th><th class="right">금액</th><th>생산</th><th>상태</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>5/13(수)</td><td>○○초등학교 LED교체</td><td>박정호</td>
+              <td class="right">12,480,000</td><td>85%</td><td><span class="pill warn">생산중</span></td>
+            </tr>
+            <tr>
+              <td>5/14(목)</td><td>△△청사 보안등 교체</td><td>김민수</td>
+              <td class="right">8,250,000</td><td>100%</td><td><span class="pill success">출하준비</span></td>
+            </tr>
+            <tr>
+              <td>5/15(금)</td><td>□□시청 가로등 교체</td><td>이대리</td>
+              <td class="right">22,100,000</td><td>62%</td><td><span class="pill warn">생산중</span></td>
+            </tr>
+            <tr>
+              <td>5/17(일)</td><td>××여중 강당 LED</td><td>박정호</td>
+              <td class="right">5,640,000</td><td>40%</td><td><span class="pill danger">자재부족</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-card">
+        <div class="list-head">
+          <div class="list-title">최근 활동</div>
+          <div class="list-meta">· 24시간</div>
+        </div>
+        <table class="tbl">
+          <thead>
+            <tr><th>시각</th><th>현장</th><th>활동</th><th>담당</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>9:43</td><td>○○초등학교 LED교체</td>
+              <td>봇이 납품일정 등록 (대화로) <span class="pill info">채팅발생</span></td>
+              <td>김민수</td>
+            </tr>
+            <tr>
+              <td>어제 17:20</td><td>○○초등학교 LED교체</td>
+              <td>컨버터 12EA 입고완료</td>
+              <td>이대리</td>
+            </tr>
+            <tr>
+              <td>어제 14:05</td><td>××여중 강당 LED</td>
+              <td>자재부족 알림 발생</td>
+              <td>시스템</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ====== MODE B·전용 풀스크린 채팅 ====== -->
+    <div class="fullscreen-chat">
+      <div class="fc-channels">
+        <div class="fc-section">채널</div>
+        <div class="fc-item active"># 영업</div>
+        <div class="fc-item"># 생산</div>
+        <div class="fc-item"># 관리</div>
+        <div class="fc-item"># AS</div>
+        <div class="fc-section">DM</div>
+        <div class="fc-item">🤖 봇</div>
+        <div class="fc-item">박부장</div>
+      </div>
+      <div class="fc-stream-wrap">
+        <div class="fc-stream-head"># 영업 <span style="color:#9ca3af;font-weight:400;font-size:12px;"> · 12명</span></div>
+        <div class="fc-stream">
+          <div class="day-divider">오늘</div>
+          <div class="cmsg">
+            <div class="ca park">박</div>
+            <div class="cb">
+              <div class="cmeta"><span class="cn">박정호</span><span class="ct">9:42</span></div>
+              <div class="ctx">○○초등학교 자재 다 들어왔다고 현장에서 연락왔는데, 납품 일정 잡아야 할 것 같습니다.</div>
+            </div>
+          </div>
+          <div class="cmsg">
+            <div class="ca kim">김</div>
+            <div class="cb">
+              <div class="cmeta"><span class="cn">김민수</span><span class="ct">9:43</span></div>
+              <div class="ctx"><span class="mention">@봇</span> ○○초등학교 LED교체 납품일정 내일로 등록해줘</div>
+            </div>
+          </div>
+          <div class="cmsg">
+            <div class="ca bot">🤖</div>
+            <div class="cb">
+              <div class="cmeta"><span class="cn">봇</span><span class="ct">9:43</span></div>
+              <div class="ctx">납품일정 등록 확인:</div>
+              <div class="botcard">
+                <div class="bch">📋 납품일정 등록</div>
+                <div class="bcb">
+                  <div class="bcr"><span class="bck">현장</span><span class="bcv">○○초 LED교체</span></div>
+                  <div class="bcr"><span class="bck">날짜</span><span class="bcv">2026-05-13 (수)</span></div>
+                </div>
+                <div class="bca">
+                  <button class="botbtn primary">✓ 확정</button>
+                  <button class="botbtn">✎ 수정</button>
+                  <button class="botbtn">✗ 취소</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="cmsg">
+            <div class="ca eom">엄</div>
+            <div class="cb">
+              <div class="cmeta"><span class="cn">엄지현</span><span class="ct">9:45</span></div>
+              <div class="ctx">컨버터 12개 모자랐는데 어제 입고 완료했습니다. 출하 가능합니다.</div>
+            </div>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="ccbox">
+            <textarea class="ccin" placeholder="#영업 채널에 메시지... (@현장명, /명령어)"></textarea>
+            <div class="cct">
+              <span class="cct-icon">📎</span><span class="cct-icon">@</span><span class="cct-icon">/</span>
+              <button class="cc-send">보내기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="fc-context">
+        <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-bottom:8px;">📌 거론된 현장</div>
+        <div class="fc-ctx-card">
+          <div class="fc-ctx-title">○○초등학교 LED교체</div>
+          <div class="fc-ctx-row"><span class="k">계약</span><span class="v">G-2026-0123</span></div>
+          <div class="fc-ctx-row"><span class="k">금액</span><span class="v">12,480,000</span></div>
+          <div class="fc-ctx-row"><span class="k">납품</span><span class="v">5/13 (수)</span></div>
+          <div class="fc-ctx-row"><span class="k">진행</span><span class="v">생산중 85%</span></div>
+          <div class="fc-ctx-row"><span class="k">미수금</span><span class="v" style="color:#047857;">0원</span></div>
+        </div>
+        <div style="text-align:center;margin-top:8px;">
+          <a href="#" style="font-size:11px;color:#1a73e8;text-decoration:none;">현장 상세 페이지 →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== MODE C·현장 상세에 임베드 ====== -->
+    <div class="embedded-chart">
+      <div class="ec-main">
+        <div class="ec-chart-title">○○초등학교 LED교체 공사</div>
+        <div class="ec-chart-sub">G-2026-0123 · 영업부 박정호 · 2026-05-02 계약체결</div>
+        <div class="ec-pill">생산중</div>
+
+        <div class="kpis" style="margin-top: 16px;">
+          <div class="kpi"><div class="kpi-k">계약금액</div><div class="kpi-v">12,480,000</div></div>
+          <div class="kpi"><div class="kpi-k">납품예정</div><div class="kpi-v">5/13 (수)</div></div>
+          <div class="kpi"><div class="kpi-k">진행률</div><div class="kpi-v success">85%</div></div>
+          <div class="kpi"><div class="kpi-k">미수금</div><div class="kpi-v">0원</div></div>
+        </div>
+
+        <div class="ec-tabs">
+          <div class="ec-tab active">통합 타임라인</div>
+          <div class="ec-tab">계약/납품</div>
+          <div class="ec-tab">자재/생산</div>
+          <div class="ec-tab">서류</div>
+          <div class="ec-tab">정산</div>
+        </div>
+
+        <div style="font-size: 12px; color: #4b5563; padding: 8px 0;">
+          ※ 통합 타임라인에 채팅·액션·시스템 알림이 한 줄기로 정렬됩니다 (시안 03 참고)
+        </div>
+
+        <div style="border-left: 2px solid #e5e7eb; padding-left: 16px; margin-top: 12px;">
+          <div style="padding: 8px 0;"><b style="font-size:13px;">엄지현</b> <span style="color:#9ca3af;font-size:11px;">9:45 · 채팅</span><div style="font-size:13px;margin-top:2px;">컨버터 입고 완료, 출하 가능합니다.</div></div>
+          <div style="padding: 8px 0;"><b style="font-size:13px;color:#1a73e8;">⚡ 봇 액션</b> <span style="color:#9ca3af;font-size:11px;">9:43</span><div style="font-size:13px;margin-top:2px;color:#6b7280;">납품예정일 → 2026-05-13 등록</div></div>
+          <div style="padding: 8px 0;"><b style="font-size:13px;">김민수</b> <span style="color:#9ca3af;font-size:11px;">9:43 · 채팅</span><div style="font-size:13px;margin-top:2px;">@봇 ○○초 납품일정 내일로 등록해줘</div></div>
+        </div>
+      </div>
+      <div class="ec-side">
+        <div class="ctx-pin">📌 <b style="margin-left:4px;">○○초등학교 LED교체</b> 자동 핀</div>
+        <div class="stream">
+          <div class="day-divider">오늘</div>
+          <div class="cmsg">
+            <div class="ca park">박</div>
+            <div class="cb"><div class="cmeta"><span class="cn">박정호</span><span class="ct">9:42</span><span class="cch">#영업</span></div><div class="ctx">자재 다 들어왔답니다.</div></div>
+          </div>
+          <div class="cmsg">
+            <div class="ca kim">김</div>
+            <div class="cb"><div class="cmeta"><span class="cn">김민수</span><span class="ct">9:43</span><span class="cch">#영업</span></div><div class="ctx"><span class="mention">@봇</span> 납품 내일로</div></div>
+          </div>
+          <div class="cmsg">
+            <div class="ca bot">🤖</div>
+            <div class="cb">
+              <div class="cmeta"><span class="cn">봇</span><span class="ct">9:43</span></div>
+              <div class="ctx">완료 ✅</div>
+            </div>
+          </div>
+          <div class="cmsg">
+            <div class="ca eom">엄</div>
+            <div class="cb"><div class="cmeta"><span class="cn">엄지현</span><span class="ct">9:45</span><span class="cch">#영업</span></div><div class="ctx">출하 가능합니다.</div></div>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="ccbox">
+            <textarea class="ccin" placeholder="이 현장에 대해 말하기..."></textarea>
+            <div class="cct">
+              <button class="cc-send">전송</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ===== Floating chat dock (Mode A only) ===== -->
+<button class="chat-dock-btn" id="dockBtn">💬<span class="badge">2</span></button>
+<aside class="chat-panel" id="chatPanel">
+  <div class="chat-head">
+    <div class="chat-head-tab active">전체</div>
+    <div class="chat-head-tab">멘션</div>
+    <div class="chat-head-tab">DM</div>
+    <span class="chat-close" id="chatClose">✕</span>
+  </div>
+  <div class="ctx-pin">📌 현재 페이지: <b>종합현황</b> · 핀 없음</div>
+  <div class="stream">
+    <div class="day-divider">오늘</div>
+    <div class="cmsg">
+      <div class="ca park">박</div>
+      <div class="cb"><div class="cmeta"><span class="cn">박정호</span><span class="ct">9:42</span><span class="cch">#영업</span></div><div class="ctx">○○초 자재 다 들어왔답니다. 납품 일정 잡아야 할 듯.</div></div>
+    </div>
+    <div class="cmsg">
+      <div class="ca kim">김</div>
+      <div class="cb"><div class="cmeta"><span class="cn">김민수</span><span class="ct">9:43</span><span class="cch">#영업</span></div><div class="ctx"><span class="mention">@봇</span> ○○초 납품일정 내일로 등록해줘</div></div>
+    </div>
+    <div class="cmsg">
+      <div class="ca bot">🤖</div>
+      <div class="cb">
+        <div class="cmeta"><span class="cn">봇</span><span class="ct">9:43</span></div>
+        <div class="ctx">납품일정 등록 확인:</div>
+        <div class="botcard">
+          <div class="bch">📋 납품일정</div>
+          <div class="bcb">
+            <div class="bcr"><span class="bck">현장</span><span class="bcv">○○초 LED교체</span></div>
+            <div class="bcr"><span class="bck">날짜</span><span class="bcv">2026-05-13 (수)</span></div>
+          </div>
+          <div class="bca">
+            <button class="botbtn primary">✓ 확정</button>
+            <button class="botbtn">✎ 수정</button>
+            <button class="botbtn">✗ 취소</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="composer">
+    <div class="ccbox">
+      <textarea class="ccin" placeholder="#영업 채널에 메시지..."></textarea>
+      <div class="cct">
+        <span class="cct-icon">📎</span><span class="cct-icon">@</span><span class="cct-icon">/</span>
+        <button class="cc-send">보내기</button>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<div class="hint-banner" id="hint">
+  <b>모드 A:</b> 우측 하단 💬 버튼으로 채팅 도크를 열고/닫음. 어떤 ERP 페이지에서도 동일.
+</div>
+
+<script>
+  const buttons = document.querySelectorAll('.mode-btn');
+  const body = document.body;
+  const dockBtn = document.getElementById('dockBtn');
+  const chatPanel = document.getElementById('chatPanel');
+  const chatClose = document.getElementById('chatClose');
+  const hint = document.getElementById('hint');
+
+  const hints = {
+    a: '<b>모드 A:</b> 우측 하단 💬 버튼으로 채팅 도크를 열고/닫음. 어떤 ERP 페이지에서도 동일.',
+    b: '<b>모드 B:</b> 사이드바 [💬 대화] 클릭 시 풀스크린 채팅으로 전환. 채팅에 집중할 때.',
+    c: '<b>모드 C:</b> 현장 상세 페이지에서 우측 사이드바로 그 현장 채팅이 자동 핀. 작업하면서 동시에 대화.'
+  };
+
+  buttons.forEach(b => b.addEventListener('click', () => {
+    buttons.forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    const m = b.dataset.mode;
+    body.className = 'mode-' + m;
+    chatPanel.classList.remove('open');
+    hint.innerHTML = hints[m];
+  }));
+
+  dockBtn.addEventListener('click', () => chatPanel.classList.toggle('open'));
+  chatClose.addEventListener('click', () => chatPanel.classList.remove('open'));
+</script>
+
+</body>
+</html>

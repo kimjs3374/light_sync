@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<style>
+@page {
+    size: A4 portrait;
+    margin: 20mm 18mm 18mm 18mm;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'NanumGothic', '나눔고딕', sans-serif;
+    font-size: 11pt;
+    color: #000;
+    line-height: 1.4;
+}
+
+/* 레터헤드 */
+.letterhead {
+    margin-bottom: 6mm;
+}
+.company-name {
+    font-size: 14pt;
+    font-weight: bold;
+    margin-bottom: 1mm;
+}
+.company-addr, .company-tel {
+    font-size: 10pt;
+    color: #000;
+}
+
+/* 제목 */
+.doc-title {
+    font-size: 25pt;
+    font-weight: bold;
+    text-align: center;
+    letter-spacing: 8pt;
+    margin: 12mm 0 8mm 0;
+}
+
+/* 공사명 */
+.project-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 2mm;
+    min-height: 10mm;
+}
+.project-label {
+    width: 45mm;
+    text-align: right;
+    padding-right: 3mm;
+    letter-spacing: 3pt;
+    flex-shrink: 0;
+}
+.project-value {
+    flex: 1;
+    border-bottom: 1px solid #000;
+    padding-left: 2mm;
+    min-height: 8mm;
+    display: flex;
+    align-items: center;
+}
+
+/* 본문 */
+.body-text {
+    text-align: center;
+    margin: 6mm 0;
+}
+
+/* 납품 년월일 (우측) */
+.delivery-date-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin: 4mm 0;
+    min-height: 10mm;
+}
+.delivery-date-label {
+    text-align: right;
+    padding-right: 2mm;
+}
+.delivery-date-value {
+    min-width: 40mm;
+}
+
+/* 아래 */
+.separator {
+    text-align: center;
+    margin: 6mm 0;
+    letter-spacing: 3pt;
+}
+
+/* 현장대리인 섹션 */
+.agent-section-title {
+    font-size: 12pt;
+    font-weight: bold;
+    letter-spacing: 4pt;
+    margin: 6mm 0 4mm 4mm;
+}
+
+.agent-info {
+    margin-left: 8mm;
+}
+.agent-row {
+    display: flex;
+    align-items: center;
+    min-height: 13mm;
+}
+.agent-label {
+    width: 50mm;
+    text-align: center;
+    letter-spacing: 1pt;
+    flex-shrink: 0;
+}
+.agent-value {
+    flex: 1;
+    text-align: center;
+    border-bottom: 1px solid #000;
+    padding-bottom: 1mm;
+}
+
+/* 날짜 */
+.submit-date {
+    text-align: center;
+    margin: 12mm 0 8mm 0;
+}
+
+/* 서명부 */
+.signature-block {
+    margin-top: 6mm;
+    text-align: center;
+}
+.sig-line {
+    text-align: left;
+    margin-left: 50%;
+    margin-bottom: 1mm;
+}
+
+/* 수신 */
+.recipient {
+    font-size: 16pt;
+    font-weight: bold;
+    margin-top: 10mm;
+}
+</style>
+</head>
+<body>
+
+<!-- 레터헤드 -->
+<div class="letterhead">
+    <div class="company-name">㈜매그나텍</div>
+    <div class="company-addr">전남 장성군 동화면 전자농공단지2길 55</div>
+    <div class="company-tel">Telephone : 061-392-5508&nbsp;&nbsp;Fax : 061-392-5518</div>
+</div>
+
+<!-- 제목 -->
+<div class="doc-title">현 장 대 리 인 계</div>
+
+<!-- 공사명 -->
+<div class="project-row">
+    <div class="project-label">공&nbsp;&nbsp;&nbsp;&nbsp;사&nbsp;&nbsp;&nbsp;&nbsp;명&nbsp;&nbsp;:</div>
+    <div class="project-value">전라남도청 민원인 전용주차장 건립 전기공사 LED투광등기구 구매</div>
+</div>
+
+<!-- 본문 -->
+<div class="body-text">상기 용역에 대해 아래와 같이 현장대리인을 선정하여 제출합니다.</div>
+
+<!-- 납품 년월일 -->
+<div class="delivery-date-row">
+    <div class="delivery-date-label">납 품&nbsp;&nbsp;년월일 :</div>
+    <div class="delivery-date-value">2026년 12월 24일</div>
+</div>
+
+<!-- 아래 -->
+<div class="separator">-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;아&nbsp;&nbsp;&nbsp;&nbsp;래&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-</div>
+
+<!-- 현장대리인 -->
+<div class="agent-section-title">&nbsp;&nbsp;&nbsp;&nbsp;현&nbsp;&nbsp;장&nbsp;&nbsp;대&nbsp;&nbsp;리&nbsp;&nbsp;인</div>
+
+<div class="agent-info">
+    <div class="agent-row">
+        <div class="agent-label">성&nbsp;&nbsp;명 / 직&nbsp;&nbsp;급&nbsp;&nbsp;&nbsp;:</div>
+        <div class="agent-value">최  한  진&nbsp;&nbsp;/&nbsp;&nbsp;대 리</div>
+    </div>
+    <div class="agent-row">
+        <div class="agent-label">주&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;소&nbsp;&nbsp;&nbsp;:</div>
+        <div class="agent-value">광주광역시 광산구 신창동 1285</div>
+    </div>
+    <div class="agent-row">
+        <div class="agent-label">생&nbsp;&nbsp;년&nbsp;&nbsp;&nbsp;월&nbsp;&nbsp;일&nbsp;&nbsp;&nbsp;:</div>
+        <div class="agent-value">1991년 10월 05일</div>
+    </div>
+</div>
+
+<!-- 제출일자 -->
+<div class="submit-date">2026년 03월 26일</div>
+
+<!-- 서명 -->
+<div class="signature-block">
+    <div class="sig-line">전남 장성군 동화면 전자농공단지2길 55</div>
+    <div class="sig-line">㈜ 매그나텍</div>
+    <div class="sig-line">대&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;표&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;박&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;선&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;후&nbsp;&nbsp;&nbsp;&nbsp;(인)</div>
+</div>
+
+<!-- 수신 -->
+<div class="recipient">전라남도&nbsp;&nbsp;&nbsp;&nbsp;귀하</div>
+
+</body>
+</html>

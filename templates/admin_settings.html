@@ -42,6 +42,9 @@
         <button class="nav-link" id="chatbot-perms-tab" data-bs-toggle="tab" data-bs-target="#chatbotPermsPane" type="button" role="tab">챗봇 권한</button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" id="mail-admin-tab" data-bs-toggle="tab" data-bs-target="#mailAdminPane" type="button" role="tab">메일설정</button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link" id="ops-tab" data-bs-toggle="tab" data-bs-target="#opsPane" type="button" role="tab">운영설정</button>
     </li>
     <li class="nav-item" role="presentation">
@@ -210,6 +213,406 @@
     <div class="tab-pane fade p-3" id="chatbotPermsPane" role="tabpanel">
         {% include 'partials/admin_chatbot.html' %}
     </div>
+
+    {# ── 메일설정 탭 ── #}
+    <div class="tab-pane fade p-3" id="mailAdminPane" role="tabpanel">
+        <h6 class="fw-bold mb-3">공용메일 계정 관리</h6>
+
+        <div class="table-responsive mb-3">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr><th>이메일</th><th>표시이름</th><th>IMAP</th><th>SMTP</th><th>상태</th><th style="width:180px"></th></tr>
+                </thead>
+                <tbody id="sharedAccountsBody"></tbody>
+            </table>
+        </div>
+
+        {# 수정 폼 #}
+        <div id="sharedEditForm" class="card border-warning mb-3" style="display:none;">
+            <div class="card-header bg-warning text-dark py-2"><small class="fw-bold" id="editFormTitle">계정 수정</small></div>
+            <div class="card-body p-3">
+                <input type="hidden" id="maEditId">
+                <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-0">이메일</label>
+                        <input type="email" id="maEditEmail" class="form-control form-control-sm" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small mb-0">표시이름</label>
+                        <input type="text" id="maEditName" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small mb-0">로그인 ID</label>
+                        <input type="text" id="maEditUsername" class="form-control form-control-sm">
+                    </div>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-0">IMAP 서버</label>
+                        <input type="text" id="maEditImapHost" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-0">IMAP 포트</label>
+                        <input type="number" id="maEditImapPort" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-0">SMTP 서버</label>
+                        <input type="text" id="maEditSmtpHost" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-0">SMTP 포트</label>
+                        <input type="number" id="maEditSmtpPort" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-0">SSL</label>
+                        <select id="maEditSsl" class="form-select form-select-sm">
+                            <option value="1">사용</option>
+                            <option value="0">미사용</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-0">비밀번호 <span class="text-muted">(변경 시만 입력)</span></label>
+                        <input type="password" id="maEditPw" class="form-control form-control-sm" placeholder="변경 안 하면 비워두세요">
+                    </div>
+                </div>
+                <div class="d-flex gap-2 mt-2">
+                    <button class="btn btn-sm btn-warning" onclick="mailAdmin.submitEdit()">저장</button>
+                    <button class="btn btn-sm btn-secondary" onclick="mailAdmin.cancelEdit()">취소</button>
+                </div>
+            </div>
+        </div>
+
+        {# 공용계정 추가 폼 #}
+        <div id="sharedAddForm" class="card border-primary mb-4" style="display:none;">
+            <div class="card-header bg-primary text-white py-2"><small class="fw-bold">공용계정 추가</small></div>
+            <div class="card-body p-3">
+                <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-0">이메일 <span class="text-danger">*</span></label>
+                        <input type="email" id="maNewEmail" class="form-control form-control-sm" placeholder="purchase@mgnt.kr">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small mb-0">표시이름</label>
+                        <input type="text" id="maNewName" class="form-control form-control-sm" placeholder="구매팀">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small mb-0">로그인 ID <span class="text-muted">(이메일과 다르면 입력)</span></label>
+                        <input type="text" id="maNewUsername" class="form-control form-control-sm" placeholder="이메일과 동일하면 비워두세요">
+                    </div>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-0">IMAP 서버 <span class="text-danger">*</span></label>
+                        <input type="text" id="maNewImapHost" class="form-control form-control-sm" value="127.0.0.1">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-0">IMAP 포트</label>
+                        <input type="number" id="maNewImapPort" class="form-control form-control-sm" value="993">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-0">SMTP 서버</label>
+                        <input type="text" id="maNewSmtpHost" class="form-control form-control-sm" value="127.0.0.1">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-0">SMTP 포트</label>
+                        <input type="number" id="maNewSmtpPort" class="form-control form-control-sm" value="587">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-0">SSL</label>
+                        <select id="maNewSsl" class="form-select form-select-sm">
+                            <option value="1" selected>사용</option>
+                            <option value="0">미사용</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-0">비밀번호 <span class="text-danger">*</span></label>
+                        <input type="password" id="maNewPw" class="form-control form-control-sm" placeholder="비밀번호">
+                    </div>
+                    <div class="col-md-8 d-flex align-items-end">
+                        <span id="maTestResult" class="small ms-2"></span>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 mt-2 flex-wrap">
+                    <button class="btn btn-sm btn-warning" onclick="mailAdmin.testConnection()">연결 테스트</button>
+                    <button class="btn btn-sm btn-primary" onclick="mailAdmin.submitAdd()">등록</button>
+                    <button class="btn btn-sm btn-secondary" onclick="mailAdmin.cancelAdd()">취소</button>
+                    <span class="border-start mx-1"></span>
+                    <button class="btn btn-sm btn-outline-info" onclick="mailAdmin.fillPreset('naver')">네이버</button>
+                    <button class="btn btn-sm btn-outline-info" onclick="mailAdmin.fillPreset('daum')">다음</button>
+                    <button class="btn btn-sm btn-outline-info" onclick="mailAdmin.fillPreset('gmail')">Gmail</button>
+                    <button class="btn btn-sm btn-outline-info" onclick="mailAdmin.fillPreset('mailcow')">Mailcow</button>
+                </div>
+            </div>
+        </div>
+        <button class="btn btn-sm btn-outline-primary mb-4" id="maAddBtn" onclick="mailAdmin.showAddRow()">+ 공용계정 추가</button>
+
+        <hr>
+        <h6 class="fw-bold mb-3">공용메일 접근 권한</h6>
+        <p class="text-muted small mb-3">상단 계정 목록에서 이메일을 클릭하면 권한 설정이 표시됩니다.</p>
+
+        <div id="sharedAccessDetail" style="display:none;">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
+                    <span class="fw-bold small" id="accessDetailTitle"></span>
+                    <button class="btn btn-sm btn-success py-0 px-3" onclick="mailAdmin.saveAccess()">저장</button>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>부서</th><th>이름</th><th>직급</th>
+                                <th class="text-center" style="width:60px">보기</th>
+                                <th class="text-center" style="width:60px">발송</th>
+                                <th class="text-center" style="width:60px">삭제</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sharedAccessBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const mailAdmin = {
+        accounts: [], users: [], access: {},
+        selectedAccountId: null,
+        _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+
+        async init() {
+            const r = await fetch('/mail/api/admin/mail-config');
+            const d = await r.json();
+            this.accounts = d.shared_accounts || [];
+            this.users = d.users || [];
+            this.access = d.access || {};
+            this.renderAccounts();
+            if (this.selectedAccountId) this.showAccess(this.selectedAccountId);
+        },
+
+        renderAccounts() {
+            const tbody = document.getElementById('sharedAccountsBody');
+            if (!this.accounts.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">등록된 공용계정이 없습니다.</td></tr>';
+            } else {
+                tbody.innerHTML = this.accounts.map(a => {
+                    const sel = this.selectedAccountId === a.id;
+                    return `
+                    <tr style="cursor:pointer;${sel ? 'background:#e8f0fe;' : ''}" onclick="mailAdmin.showAccess(${a.id})">
+                        <td class="text-nowrap fw-bold" style="color:#1a73e8">${a.email}</td>
+                        <td>${a.display_name || ''}</td>
+                        <td class="text-nowrap small">${a.imap_host}:${a.imap_port}</td>
+                        <td class="text-nowrap small">${a.smtp_host}:${a.smtp_port}</td>
+                        <td><span class="badge bg-${a.is_active ? 'success' : 'secondary'}">${a.is_active ? '활성' : '비활성'}</span></td>
+                        <td class="text-nowrap" onclick="event.stopPropagation()">
+                            <button class="btn btn-sm btn-outline-warning py-0 px-2" onclick="mailAdmin.editShared(${a.id})">수정</button>
+                            <button class="btn btn-sm btn-outline-success py-0 px-2" onclick="mailAdmin.testExisting(${a.id},this)">테스트</button>
+                            <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="mailAdmin.removeShared(${a.id})">삭제</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+            }
+        },
+
+        editShared(accountId) {
+            const a = this.accounts.find(x => x.id === accountId);
+            if (!a) return;
+            document.getElementById('maEditId').value = a.id;
+            document.getElementById('maEditEmail').value = a.email;
+            document.getElementById('maEditName').value = a.display_name || '';
+            document.getElementById('maEditUsername').value = a.username || a.email;
+            document.getElementById('maEditImapHost').value = a.imap_host;
+            document.getElementById('maEditImapPort').value = a.imap_port;
+            document.getElementById('maEditSmtpHost').value = a.smtp_host;
+            document.getElementById('maEditSmtpPort').value = a.smtp_port;
+            document.getElementById('maEditSsl').value = a.use_ssl ? '1' : '0';
+            document.getElementById('maEditPw').value = '';
+            document.getElementById('editFormTitle').textContent = `${a.email} 수정`;
+            document.getElementById('sharedEditForm').style.display = '';
+        },
+        cancelEdit() {
+            document.getElementById('sharedEditForm').style.display = 'none';
+        },
+        async submitEdit() {
+            const id = document.getElementById('maEditId').value;
+            const pw = document.getElementById('maEditPw').value;
+            const d = {
+                id: parseInt(id),
+                email: document.getElementById('maEditEmail').value,
+                display_name: document.getElementById('maEditName').value.trim(),
+                username: document.getElementById('maEditUsername').value.trim(),
+                imap_host: document.getElementById('maEditImapHost').value.trim(),
+                imap_port: parseInt(document.getElementById('maEditImapPort').value) || 993,
+                smtp_host: document.getElementById('maEditSmtpHost').value.trim(),
+                smtp_port: parseInt(document.getElementById('maEditSmtpPort').value) || 587,
+                use_ssl: document.getElementById('maEditSsl').value === '1',
+            };
+            if (pw) d.password = pw;
+            const r = await fetch('/mail/api/admin/shared', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': this._csrf()},
+                body: JSON.stringify(d)
+            });
+            if (r.ok) { this.cancelEdit(); this.init(); }
+            else { const res = await r.json(); alert(res.error || '수정 실패'); }
+        },
+
+        showAccess(accountId) {
+            this.selectedAccountId = accountId;
+            this.renderAccounts();
+            const a = this.accounts.find(x => x.id === accountId);
+            if (!a) return;
+            document.getElementById('accessDetailTitle').textContent = `${a.email} 접근 권한`;
+            document.getElementById('sharedAccessDetail').style.display = '';
+
+            const tbody = document.getElementById('sharedAccessBody');
+            tbody.innerHTML = this.users.map(u => {
+                const ua = (this.access[u.id] || []).find(x => x.account_id === accountId);
+                const hasAccess = !!ua;
+                const canSend = ua ? ua.can_send : false;
+                const canDelete = ua ? ua.can_delete : false;
+                return `<tr>
+                    <td class="text-nowrap small">${u.group}</td>
+                    <td class="text-nowrap">${u.name}</td>
+                    <td class="text-nowrap small">${u.position}</td>
+                    <td class="text-center"><input type="checkbox" class="ma-access" data-uid="${u.id}" data-aid="${accountId}" data-perm="read" ${hasAccess ? 'checked' : ''}></td>
+                    <td class="text-center"><input type="checkbox" class="ma-access" data-uid="${u.id}" data-aid="${accountId}" data-perm="send" ${canSend ? 'checked' : ''}></td>
+                    <td class="text-center"><input type="checkbox" class="ma-access" data-uid="${u.id}" data-aid="${accountId}" data-perm="delete" ${canDelete ? 'checked' : ''}></td>
+                </tr>`;
+            }).join('');
+        },
+
+        presets: {
+            naver:   { imap: 'imap.naver.com', imap_port: 993, smtp: 'smtp.naver.com', smtp_port: 587, ssl: '1' },
+            daum:    { imap: 'imap.daum.net',   imap_port: 993, smtp: 'smtp.daum.net',  smtp_port: 465, ssl: '1' },
+            gmail:   { imap: 'imap.gmail.com',  imap_port: 993, smtp: 'smtp.gmail.com', smtp_port: 587, ssl: '1' },
+            mailcow: { imap: '127.0.0.1',       imap_port: 993, smtp: '127.0.0.1',     smtp_port: 587, ssl: '1' },
+        },
+        fillPreset(name) {
+            const p = this.presets[name]; if (!p) return;
+            document.getElementById('maNewImapHost').value = p.imap;
+            document.getElementById('maNewImapPort').value = p.imap_port;
+            document.getElementById('maNewSmtpHost').value = p.smtp;
+            document.getElementById('maNewSmtpPort').value = p.smtp_port;
+            document.getElementById('maNewSsl').value = p.ssl;
+        },
+
+        showAddRow() {
+            document.getElementById('sharedAddForm').style.display = '';
+            document.getElementById('maAddBtn').style.display = 'none';
+            document.getElementById('maNewEmail').focus();
+        },
+        cancelAdd() {
+            document.getElementById('sharedAddForm').style.display = 'none';
+            document.getElementById('maAddBtn').style.display = '';
+            ['maNewEmail','maNewName','maNewUsername','maNewPw'].forEach(id => document.getElementById(id).value = '');
+            document.getElementById('maTestResult').innerHTML = '';
+            this.fillPreset('mailcow');
+        },
+
+        _getFormData() {
+            return {
+                email: document.getElementById('maNewEmail').value.trim(),
+                display_name: document.getElementById('maNewName').value.trim() || undefined,
+                username: document.getElementById('maNewUsername').value.trim() || undefined,
+                password: document.getElementById('maNewPw').value,
+                imap_host: document.getElementById('maNewImapHost').value.trim(),
+                imap_port: parseInt(document.getElementById('maNewImapPort').value) || 993,
+                smtp_host: document.getElementById('maNewSmtpHost').value.trim(),
+                smtp_port: parseInt(document.getElementById('maNewSmtpPort').value) || 587,
+                use_ssl: document.getElementById('maNewSsl').value === '1',
+            };
+        },
+
+        async testConnection() {
+            const d = this._getFormData();
+            if (!d.email || !d.password || !d.imap_host) { alert('이메일, 비밀번호, IMAP 서버를 입력하세요.'); return; }
+            const el = document.getElementById('maTestResult');
+            el.innerHTML = '<span class="text-primary">연결 중...</span>';
+            const r = await fetch('/mail/api/admin/test-connection', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': this._csrf()},
+                body: JSON.stringify(d)
+            });
+            const res = await r.json();
+            el.innerHTML = res.success
+                ? `<span class="text-success fw-bold">✓ ${res.message}</span>`
+                : `<span class="text-danger fw-bold">✗ ${res.error}</span>`;
+        },
+
+        async testExisting(id, btn) {
+            btn.disabled = true; btn.textContent = '...';
+            const r = await fetch(`/mail/api/account/${id}/test`, {
+                method: 'POST', headers: {'X-CSRFToken': this._csrf()}
+            });
+            const res = await r.json();
+            btn.disabled = false; btn.textContent = '테스트';
+            alert(res.success ? res.message : res.error);
+        },
+
+        async submitAdd() {
+            const d = this._getFormData();
+            if (!d.email) { alert('이메일을 입력하세요.'); return; }
+            if (!d.password) { alert('비밀번호를 입력하세요.'); return; }
+            if (!d.imap_host) { alert('IMAP 서버를 입력하세요.'); return; }
+            d.display_name = d.display_name || d.email.split('@')[0];
+            d.username = d.username || d.email;
+            d.smtp_host = d.smtp_host || d.imap_host;
+            const r = await fetch('/mail/api/admin/shared', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': this._csrf()},
+                body: JSON.stringify(d)
+            });
+            if (r.ok) { this.cancelAdd(); this.init(); }
+            else { const res = await r.json(); alert(res.error || '등록 실패'); }
+        },
+
+        async removeShared(id) {
+            if (!confirm('삭제하시겠습니까?')) return;
+            const r = await fetch('/mail/api/admin/shared/' + id, {
+                method: 'DELETE', headers: {'X-CSRFToken': this._csrf()}
+            });
+            if (r.ok) { this.selectedAccountId = null; this.init(); } else alert('삭제 실패');
+        },
+
+        async saveAccess() {
+            // 현재 선택된 계정 권한 + 다른 계정 기존 권한 합쳐서 전송
+            const checks = document.querySelectorAll('.ma-access');
+            const currentData = {};
+            checks.forEach(c => {
+                const uid = c.dataset.uid, aid = c.dataset.aid, perm = c.dataset.perm;
+                const key = `${uid}_${aid}`;
+                if (!currentData[key]) currentData[key] = { user_id: parseInt(uid), account_id: parseInt(aid), read: false, send: false, 'delete': false };
+                if (c.checked) currentData[key][perm] = true;
+            });
+
+            // 다른 계정의 기존 권한 유지
+            const allAccess = [];
+            for (const [uid, items] of Object.entries(this.access)) {
+                for (const item of items) {
+                    if (item.account_id !== this.selectedAccountId) {
+                        allAccess.push({ user_id: parseInt(uid), account_id: item.account_id, read: true, send: item.can_send, 'delete': item.can_delete });
+                    }
+                }
+            }
+            // 현재 계정 권한 추가
+            for (const item of Object.values(currentData)) {
+                if (item.read) allAccess.push(item);
+            }
+
+            const r = await fetch('/mail/api/admin/mail-access', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': this._csrf()},
+                body: JSON.stringify(allAccess)
+            });
+            if (r.ok) { alert('저장 완료'); this.init(); } else alert('저장 실패');
+        }
+    };
+    document.getElementById('mail-admin-tab')?.addEventListener('shown.bs.tab', () => mailAdmin.init());
+    </script>
 
     {# ── 운영설정 탭 ── #}
     <div class="tab-pane fade p-3" id="opsPane" role="tabpanel">

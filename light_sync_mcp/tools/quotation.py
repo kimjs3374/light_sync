@@ -5,7 +5,7 @@ from typing import Optional
 from mcp.server.fastmcp import FastMCP
 
 from ..db import get_session
-from ._helpers import _s, _sn, _sd
+from ._helpers import _s, _sn, _sd, _erp_url
 
 
 def register(mcp: FastMCP):
@@ -43,6 +43,7 @@ def register(mcp: FastMCP):
                 "status": _s(qt.status),
                 "item_count": len(qt.items) if hasattr(qt, "items") else 0,
                 "created_by": _s(qt.created_by),
+                "erp_url": _erp_url(f"/quotation/{qt.id}"),
             } for qt in quotes], ensure_ascii=False)
         finally:
             session.close()

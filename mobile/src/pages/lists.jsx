@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ListPage from '../components/ListPage';
 
@@ -79,7 +80,7 @@ export function Deliveries() {
           { label: '완료', value: ds.filter(x => ['completed','done'].includes(x.delivery_status)).length, color: 'green' },
         ];
       }}
-      onItemClick={(d) => nav(`/deliveries/${d.id}`)}
+      onItemClick={(d) => nav(`/delivery-projects/${d.project_id}`)}
       renderItem={(d) => {
         const dd = dday(d.delivery_due_date);
         const pct = d.planned_total_qty > 0 ? Math.round((d.delivered_total_qty / d.planned_total_qty) * 100) : 0;
@@ -148,16 +149,27 @@ export function Sales() {
 // API keys: email_sent_at, id, item_count, note, po_date, po_no, project_name, status, tax_amount, total_amount, vendor_name
 export function PurchaseOrders() {
   const nav = useNavigate();
+  const sColor = { '작성중': 'orange', '발송완료': 'blue', '입고대기': 'purple', '입고완료': 'green', '취소': 'gray' };
   return (
     <ListPage icon="#" title="발주관리" endpoint="/purchase-orders" dataKey="purchase_orders"
       onItemClick={(po) => nav(`/purchase-orders/${po.id}`)}
+      onCreate={() => nav('/purchase-orders/create')}
+      stats={(d) => {
+        const pos = d.purchase_orders || [];
+        return [
+          { label: '전체', value: pos.length },
+          { label: '작성중', value: pos.filter(p => p.status === '작성중').length, color: 'orange' },
+          { label: '발송', value: pos.filter(p => p.status === '발송완료').length, color: 'accent' },
+          { label: '입고', value: pos.filter(p => ['입고대기', '입고완료'].includes(p.status)).length, color: 'green' },
+        ];
+      }}
       renderItem={(po) => (<>
-        <Indicator color={po.status === '작성중' ? 'var(--orange)' : 'var(--green)'} />
+        <Indicator color={`var(--${sColor[po.status] || 'gray'})`} />
         <div className="msg-body">
           <div className="msg-top">
-            <span className="msg-id">{po.po_no}</span>
+            <span className="msg-id" style={{ fontFamily: 'monospace' }}>{po.po_no}</span>
             <span className="msg-date">{po.po_date}</span>
-            <Badge text={po.status} color={po.status === '작성중' ? 'orange' : 'green'} />
+            <Badge text={po.status} color={sColor[po.status] || 'gray'} />
           </div>
           <div className="msg-title">{po.vendor_name}{po.project_name ? ` · ${po.project_name}` : ''}</div>
           <div className="msg-meta">
@@ -175,16 +187,27 @@ export function PurchaseOrders() {
 // API keys: created_at, id, item_count, note, po_no, rcv_date, rcv_no, status, total_amount, vendor_name
 export function Receivings() {
   const nav = useNavigate();
+  const sColor = { '검수대기': 'orange', '검수완료': 'green', '반품': 'red' };
   return (
     <ListPage icon="#" title="입고관리" endpoint="/receivings" dataKey="receivings"
       onItemClick={(r) => nav(`/receivings/${r.id}`)}
+      onCreate={() => nav('/receivings/create')}
+      stats={(d) => {
+        const rs = d.receivings || [];
+        return [
+          { label: '전체', value: rs.length },
+          { label: '검수대기', value: rs.filter(r => r.status === '검수대기' || !r.status).length, color: 'orange' },
+          { label: '검수완료', value: rs.filter(r => r.status === '검수완료').length, color: 'green' },
+          { label: '반품', value: rs.filter(r => r.status === '반품').length, color: 'red' },
+        ];
+      }}
       renderItem={(r) => (<>
-        <Indicator color={r.status === '검수완료' ? 'var(--green)' : 'var(--orange)'} />
+        <Indicator color={`var(--${sColor[r.status] || 'gray'})`} />
         <div className="msg-body">
           <div className="msg-top">
-            <span className="msg-id">{r.rcv_no}</span>
+            <span className="msg-id" style={{ fontFamily: 'monospace' }}>{r.rcv_no}</span>
             <span className="msg-date">{r.rcv_date}</span>
-            <Badge text={r.status} color={r.status === '검수완료' ? 'green' : 'orange'} />
+            <Badge text={r.status || '검수대기'} color={sColor[r.status] || 'orange'} />
           </div>
           <div className="msg-title">{r.vendor_name}</div>
           <div className="msg-meta">
@@ -205,6 +228,7 @@ export function Quotations() {
   return (
     <ListPage icon="#" title="견적관리" endpoint="/quotations" dataKey="quotations"
       onItemClick={(q) => nav(`/quotations/${q.id}`)}
+      onCreate={() => nav('/quotations/create')}
       stats={(d) => {
         const qs = d.quotations || [];
         return [
@@ -225,6 +249,44 @@ export function Quotations() {
           <div className="msg-meta">
             {q.customer_name && <M>{q.customer_name}</M>}
             {q.grand_total > 0 && <span className="money">{money(q.grand_total)}</span>}
+          </div>
+        </div>
+      </>)}
+    />
+  );
+}
+
+/* ═══ 서류관리 ═══ */
+// API keys: req_no, business_name, demand_org, supply_amount, delivery_due, req_date, item_count, status
+export function Documents() {
+  const nav = useNavigate();
+  const statusColor = (s) => s === '완료' ? 'green' : s === '납품계 생성가능' ? 'blue' : s === '착수계 생성가능' ? 'orange' : 'gray';
+  return (
+    <ListPage icon="#" title="서류관리" endpoint="/documents" dataKey="documents"
+      onItemClick={(d) => nav(`/documents/${encodeURIComponent(d.req_no)}`)}
+      stats={(d) => {
+        const s = d.stats || {};
+        return [
+          { label: '전체', value: s.total || 0 },
+          { label: '미등록', value: s.no_contract || 0, color: 'gray' },
+          { label: '착수계', value: s.commencement_ready || 0, color: 'orange' },
+          { label: '납품계', value: s.delivery_ready || 0, color: 'accent' },
+          { label: '완료', value: s.done || 0, color: 'green' },
+        ];
+      }}
+      renderItem={(d) => (<>
+        <Indicator color={`var(--${statusColor(d.status)})`} />
+        <div className="msg-body">
+          <div className="msg-top">
+            <span className="msg-id" style={{ fontFamily: 'monospace' }}>{d.req_no}</span>
+            <span className="msg-date">{d.req_date}</span>
+            <Badge text={d.status} color={statusColor(d.status)} />
+          </div>
+          <div className="msg-title">{d.business_name}</div>
+          <div className="msg-meta">
+            <M>{d.demand_org}</M>
+            <M>품목 {d.item_count}</M>
+            {d.supply_amount > 0 && <span className="money">{money(d.supply_amount)}</span>}
           </div>
         </div>
       </>)}
@@ -311,18 +373,34 @@ export function Items() {
 /* ═══ 거래처 ═══ */
 // API keys: address, business, business_no, ceo_name, email, id, name, tel
 export function Vendors() {
+  const nav = useNavigate();
   return (
     <ListPage icon="#" title="거래처" endpoint="/vendors" dataKey="vendors"
+      onItemClick={(v) => nav(`/vendors/${v.id}`)}
+      onCreate={() => nav('/vendors/create')}
+      stats={(d) => {
+        const vs = d.vendors || [];
+        const active = vs.filter(v => v.is_active !== false).length;
+        return [
+          { label: '전체', value: vs.length },
+          { label: '사용', value: active, color: 'green' },
+          { label: '미사용', value: vs.length - active, color: 'gray' },
+        ];
+      }}
       renderItem={(v) => (<>
-        <Indicator />
+        <Indicator color={v.is_active === false ? 'var(--border)' : 'var(--green)'} />
         <div className="msg-body">
+          <div className="msg-top">
+            {v.icube_tr_cd && <span className="msg-id" style={{ fontFamily: 'monospace' }}>{v.icube_tr_cd}</span>}
+            {v.is_active === false && <Badge text="미사용" color="gray" />}
+          </div>
           <div className="msg-title">{v.name}</div>
           <div className="msg-meta">
             {v.ceo_name && <M>대표 {v.ceo_name}</M>}
             {v.tel && <M>{v.tel}</M>}
-            {v.business && <M>{v.business}</M>}
             {v.business_no && <M>{v.business_no}</M>}
           </div>
+          {v.note && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.note}</div>}
         </div>
       </>)}
     />
@@ -390,6 +468,188 @@ export function Procurements() {
           </div>
         </>);
       }}
+    />
+  );
+}
+
+/* ═══ 청구관리 ═══ */
+export function Billing() {
+  const nav = useNavigate();
+  const TABS = [
+    { key: 'pending', label: '미청구', color: 'red' },
+    { key: 'partial', label: '선금(잔금대기)', color: 'orange' },
+    { key: 'billed', label: '청구완료', color: 'blue' },
+    { key: 'all', label: '전체', color: 'gray' },
+  ];
+  const [tab, setTab] = useState('pending');
+  return (
+    <ListPage icon="#" title="청구관리" endpoint="/billing" dataKey="contracts"
+      onItemClick={(r) => nav(`/billing/${r.id}`)}
+      defaultParams={{ tab }}
+      stats={(d) => {
+        const s = d.stats || {};
+        return [
+          { label: '미청구', value: s['미청구'] || 0, color: 'red' },
+          { label: '부분입금', value: s['부분입금'] || 0, color: 'orange' },
+          { label: '청구완료', value: s['청구완료'] || 0, color: 'blue' },
+        ];
+      }}
+      filters={[{
+        key: 'tab',
+        options: TABS.map(t => ({ value: t.key, label: t.label })),
+      }]}
+      renderItem={(r) => {
+        const psColor = r.payment_status === '미청구' ? 'red'
+          : r.payment_status === '청구완료' ? 'blue'
+          : r.payment_status === '부분입금' ? 'orange' : 'gray';
+        return (<>
+          <Indicator color={`var(--${psColor})`} />
+          <div className="msg-body">
+            <div className="msg-top">
+              <span className="msg-id">{r.g2b_contract_no || '-'}</span>
+              <Badge text={r.is_invoiced ? '발행' : '미발행'} color={r.is_invoiced ? 'green' : 'gray'} />
+              <Badge text={r.payment_status} color={psColor} />
+            </div>
+            <div className="msg-title">{r.contract_name}</div>
+            <div className="msg-meta">
+              <M>{r.project_name}</M>
+              {r.delivery_due_date && <M>납품 {r.delivery_due_date}</M>}
+              {r.amount > 0 && <span className="money">{money(r.amount)}</span>}
+            </div>
+          </div>
+        </>);
+      }}
+    />
+  );
+}
+
+/* ═══ 인증서관리 ═══ */
+export function Certifications() {
+  const nav = useNavigate();
+  const expColor = (s) => s === 'expired' || s === 'critical' ? 'red'
+    : s === 'warning' ? 'orange'
+    : s === 'ok' ? 'green' : 'gray';
+  const expBadge = (c) => {
+    const d = c.days_until_expiry;
+    if (d == null) return null;
+    if (d < 0) return { text: `${Math.abs(d)}일 경과`, color: 'red' };
+    if (d <= 7) return { text: `D-${d}`, color: 'red' };
+    if (d <= 30) return { text: `D-${d}`, color: 'orange' };
+    return { text: `D-${d}`, color: 'green' };
+  };
+  return (
+    <ListPage icon="#" title="인증서관리" endpoint="/certifications" dataKey="certifications"
+      onItemClick={(c) => nav(`/certifications/${c.id}`)}
+      onCreate={() => nav('/certifications/create')}
+      stats={(d) => {
+        const cs = d.certifications || [];
+        return [
+          { label: '전체', value: cs.length },
+          { label: '정상', value: cs.filter(c => c.expiry_status === 'ok').length, color: 'green' },
+          { label: '30일내', value: cs.filter(c => c.expiry_status === 'warning').length, color: 'orange' },
+          { label: '7일내', value: cs.filter(c => c.expiry_status === 'critical').length, color: 'red' },
+          { label: '만료', value: cs.filter(c => c.expiry_status === 'expired').length, color: 'red' },
+        ];
+      }}
+      renderItem={(c) => {
+        const dd = expBadge(c);
+        return (<>
+          <Indicator color={`var(--${expColor(c.expiry_status)})`} />
+          <div className="msg-body">
+            <div className="msg-top">
+              <Badge text={c.cert_type} color="gray" />
+              {c.cert_no && <span className="msg-id">{c.cert_no}</span>}
+              {dd && <Badge text={dd.text} color={dd.color} />}
+              {c.has_file && <Badge text="파일" color="blue" />}
+            </div>
+            <div className="msg-title">{c.cert_name}</div>
+            <div className="msg-meta">
+              {c.issued_by && <M>{c.issued_by}</M>}
+              {c.product_model && <M>{c.product_model}</M>}
+              {c.expiry_date && <M>만료 {c.expiry_date}</M>}
+            </div>
+          </div>
+        </>);
+      }}
+    />
+  );
+}
+
+/* ═══ 조도검증 ═══ */
+// API keys: id, project_name, customer, location, install_date, facility_type, status, area_count, measured_count, pass_count, fail_count, created_at
+export function Illuminance() {
+  const nav = useNavigate();
+  const sColor = { design: 'orange', measured: 'blue', reported: 'green' };
+  const sLabel = { design: '설계', measured: '실측', reported: '리포트' };
+  return (
+    <ListPage icon="#" title="조도검증" endpoint="/illuminance" dataKey="illuminance_projects"
+      onItemClick={(p) => nav(`/illuminance/${p.id}`)}
+      stats={(d) => {
+        const ps = d.illuminance_projects || [];
+        return [
+          { label: '전체', value: ps.length },
+          { label: '설계', value: ps.filter(p => p.status === 'design').length, color: 'orange' },
+          { label: '실측', value: ps.filter(p => p.status === 'measured').length, color: 'accent' },
+          { label: 'PASS', value: ps.reduce((s, p) => s + (p.pass_count || 0), 0), color: 'green' },
+          { label: 'FAIL', value: ps.reduce((s, p) => s + (p.fail_count || 0), 0), color: 'red' },
+        ];
+      }}
+      renderItem={(p) => (<>
+        <Indicator color={`var(--${sColor[p.status] || 'gray'})`} />
+        <div className="msg-body">
+          <div className="msg-top">
+            <span className="msg-date">{p.install_date || p.created_at?.slice(0, 10)}</span>
+            <Badge text={sLabel[p.status] || p.status} color={sColor[p.status] || 'gray'} />
+            {p.facility_type && <Badge text={p.facility_type} color="purple" />}
+          </div>
+          <div className="msg-title">{p.project_name}</div>
+          <div className="msg-meta">
+            <M>구역 {p.area_count}</M>
+            <M>실측 {p.measured_count}/{p.area_count}</M>
+            {p.pass_count > 0 && <Badge text={`PASS ${p.pass_count}`} color="green" />}
+            {p.fail_count > 0 && <Badge text={`FAIL ${p.fail_count}`} color="red" />}
+            {p.customer && <M>{p.customer}</M>}
+          </div>
+        </div>
+      </>)}
+    />
+  );
+}
+
+/* ═══ 가공발주 ═══ */
+export function ProcessingOrders() {
+  const nav = useNavigate();
+  const sColor = { '작성중': 'orange', '발주완료': 'blue', '가공중': 'purple', '입고완료': 'green', '취소': 'gray' };
+  return (
+    <ListPage icon="#" title="가공발주" endpoint="/processing-orders" dataKey="processing_orders"
+      onItemClick={(fo) => nav(`/processing-orders/${fo.id}`)}
+      onCreate={() => nav('/processing-orders/create')}
+      stats={(d) => {
+        const fs = d.processing_orders || [];
+        return [
+          { label: '전체', value: fs.length },
+          { label: '작성중', value: fs.filter(f => f.status === '작성중').length, color: 'orange' },
+          { label: '발주', value: fs.filter(f => f.status === '발주완료').length, color: 'accent' },
+          { label: '가공중', value: fs.filter(f => f.status === '가공중').length, color: 'purple' },
+          { label: '입고', value: fs.filter(f => f.status === '입고완료').length, color: 'green' },
+        ];
+      }}
+      renderItem={(fo) => (<>
+        <Indicator color={`var(--${sColor[fo.status] || 'gray'})`} />
+        <div className="msg-body">
+          <div className="msg-top">
+            <span className="msg-id" style={{ fontFamily: 'monospace' }}>{fo.fo_no}</span>
+            <span className="msg-date">{fo.fo_date}</span>
+            <Badge text={fo.status} color={sColor[fo.status] || 'gray'} />
+            <Badge text={fo.processing_type === '사급가공' ? '사급' : '외주'} color={fo.processing_type === '사급가공' ? 'orange' : 'purple'} />
+          </div>
+          <div className="msg-title">{fo.vendor_name}{fo.project_name ? ` · ${fo.project_name}` : ''}</div>
+          <div className="msg-meta">
+            <M>품목 {fo.item_count}</M>
+            {fo.total_amount > 0 && <span className="money">{money(fo.total_amount)}</span>}
+          </div>
+        </div>
+      </>)}
     />
   );
 }

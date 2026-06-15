@@ -7,16 +7,17 @@
 <script src="https://docs.mgnt.kr/web-apps/apps/api/documents/api.js"></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-html, body { height:100%; overflow:hidden; font-family:'DM Sans',sans-serif; }
+html, body { height:100%; overflow:hidden; }
+html, body { display:flex; flex-direction:column; }
 .editor-header {
-    height:44px; background:#1e293b; display:flex; align-items:center; padding:0 16px; gap:12px;
+    height:44px; min-height:44px; background:#1e293b; display:flex; align-items:center; padding:0 16px; gap:12px;
 }
 .editor-header a { color:#94a3b8; text-decoration:none; font-size:.85rem; }
 .editor-header a:hover { color:#fff; }
 .editor-title { color:#fff; font-size:.88rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
 .editor-btn { background:transparent; border:1px solid #475569; color:#cbd5e1; padding:4px 12px; border-radius:6px; font-size:.8rem; cursor:pointer; }
 .editor-btn:hover { background:#334155; color:#fff; }
-#editor { height:calc(100% - 44px); }
+#editor { flex:1; }
 </style>
 </head>
 <body>
@@ -46,31 +47,18 @@ var docEditor = new DocsAPI.DocEditor("editor", {
     editorConfig: {
         mode: "{{ 'view' if is_pdf else 'edit' }}",
         lang: "ko",
-        callbackUrl: "{{ callback_url }}",
+        callbackUrl: "{{ callback_url | safe }}",
         user: {
             id: "{{ session.get('user_id', 'anonymous') }}",
             name: "{{ user_name }}"
-        },
-        customization: {
-            forcesave: true,
-            autosave: true,
-            chat: false,
-            compactHeader: true,
-            toolbarNoTabs: false,
-            spreadsheet: {
-                showSheetsInTabs: true,
-            },
         },
     },
     events: {
         onError: function(e) { console.error("ONLYOFFICE error:", e); },
     },
-    type: window.innerWidth < 768 ? "mobile" : "desktop",
 });
 
 function forceSave() {
-    docEditor.requestClose ? docEditor.triggerForceSave && docEditor.triggerForceSave() : null;
-    // ONLYOFFICE API v7+
     try { docEditor.triggerForceSave(); } catch(e) {}
 }
 </script>

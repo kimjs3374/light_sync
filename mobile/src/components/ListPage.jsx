@@ -13,6 +13,7 @@ export default function ListPage({
   filters,
   renderItem,
   onItemClick,
+  onCreate,
   defaultParams = {},
 }) {
   const [items, setItems] = useState([]);
@@ -90,6 +91,23 @@ export default function ListPage({
             </select>
           ))}
         </div>
+      )}
+
+      {/* + 생성 FAB */}
+      {onCreate && (
+        <button
+          onClick={onCreate}
+          aria-label="새로 만들기"
+          style={{
+            position: 'fixed', right: 16, bottom: 72, zIndex: 50,
+            width: 48, height: 48, borderRadius: '50%',
+            background: 'var(--accent)', color: '#fff', border: 'none',
+            fontSize: 24, fontWeight: 600, cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            lineHeight: 1,
+          }}
+        >+</button>
       )}
 
       {/* 리스트 */}

@@ -75,13 +75,14 @@
         {% for t in trips %}
         <tr style="cursor:pointer" onclick="location.href='{{ url_for('business_trip.trip_detail', trip_id=t.id) }}'">
           <td style="white-space:nowrap">
-            {% if t.status == '예정' %}
+            {% set es = t.effective_status %}
+            {% if es == '예정' %}
             <span class="badge bg-primary">예정</span>
-            {% elif t.status == '진행중' %}
+            {% elif es == '진행중' %}
             <span class="badge bg-warning text-dark">진행중</span>
-            {% elif t.status == '완료' %}
+            {% elif es == '완료' %}
             <span class="badge bg-success">완료</span>
-            {% elif t.status == '취소' %}
+            {% elif es == '취소' %}
             <span class="badge bg-secondary">취소</span>
             {% endif %}
           </td>

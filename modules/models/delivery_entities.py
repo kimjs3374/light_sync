@@ -37,6 +37,8 @@ class Delivery(Base):
     contact_phone = Column(String(50), nullable=True)
     note = Column(Text, nullable=True)
 
+    entity_version = Column(Integer, nullable=False, default=1)  # 동시수정 충돌 방지 (optimistic locking)
+
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
@@ -59,8 +61,10 @@ class DeliverySplit(Base):
     confirmed_date = Column(Date, nullable=True)
     loading_done_at = Column(DateTime, nullable=True)
     delivered_done_at = Column(DateTime, nullable=True)
-    status = Column(String(20), default='예정')
+    status = Column(String(20), default='예정')  # 대기/예정/진행중/완료 (한글 통일, 영문 deprecated)
     note = Column(Text, nullable=True)
+
+    entity_version = Column(Integer, nullable=False, default=1)  # 동시수정 충돌 방지 (optimistic locking)
 
     delivery = relationship("Delivery", back_populates="splits")
     contract_item = relationship("ContractItem")

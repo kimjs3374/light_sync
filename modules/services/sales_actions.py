@@ -7,7 +7,7 @@ from modules.models import (
     CONTRACT_ITEM_SPEC_SCHEMA,
 )
 from modules.history_board import append_history_log
-from modules.kakaowork_notifier import send_group_notification
+from modules.notification_engine import notify
 from modules.spec_utils import BOOLEAN_SPEC_FIELDS
 
 
@@ -163,10 +163,10 @@ def handle_update_sales_item(db, project, form, current_user, **ctx):
             scope='sales'
         )
 
-        # 카카오워크 그룹채팅 알림
+        # 알림 엔진: ERP 내부 + 카카오워크 동시 발송
         project_name = project.temp_name or project.short_name or f"현장#{project.id}"
         detail_url = f"https://work.mgnt.kr/sales_management/{project.id}"
-        notify_text = (
+        kakao_text = (
             f"[협의변경]\n"
             f"{project_name}\n"
             f"\n"
@@ -175,7 +175,18 @@ def handle_update_sales_item(db, project, form, current_user, **ctx):
             f"\n"
             f"{detail_url}"
         )
-        send_group_notification(notify_text)
+        # 계약명 조회
+        from modules.models import Contract as _C
+        _first_c = db.query(_C).filter(_C.project_id == project.id).first()
+        _contract_name = _first_c.contract_name if _first_c and _first_c.contract_name else project_name
+        notify(db, 'issue.flagged', {
+            'contract_name': _contract_name,
+            'project_name': project_name,
+            'project_id': project.id,
+            'detail': f"{item.category}/{item.model_name} — {', '.join(changed_lines)}",
+            'content': log_content,
+            'detail_url': detail_url,
+        }, kakao_text_override=kakao_text)
 
         return {'flash': ('협의내용이 저장되었습니다.', 'success')}
     return {'flash': ('저장되었습니다. (변경값 없음)', 'success')}

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Luckysheet Test - xlsx import</title>
+
+<!-- Luckysheet CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/css/pluginsCss.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/plugins.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/css/luckysheet.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/assets/iconfont/iconfont.css" />
+
+<!-- Luckysheet JS -->
+<script src="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/js/plugin.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/luckysheet.umd.js"></script>
+
+<!-- Luckyexcel for xlsx import -->
+<script src="https://cdn.jsdelivr.net/npm/luckyexcel@1.0.1/dist/luckyexcel.umd.js"></script>
+
+<style>
+html, body { margin: 0; padding: 0; height: 100%; }
+#toolbar { padding: 8px 16px; background: #f5f5f5; border-bottom: 1px solid #ddd; display: flex; gap: 12px; align-items: center; z-index: 1000; position: relative; }
+#toolbar button { padding: 6px 16px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; }
+#toolbar button:hover { background: #e8e8e8; }
+#status { color: #666; font-size: 13px; }
+#luckysheet { margin: 0; padding: 0; width: 100%; height: calc(100vh - 41px); }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button onclick="loadTemplate()">엑셀 템플릿 로드</button>
+  <span id="status">Ready</span>
+</div>
+<div id="luckysheet"></div>
+
+<script>
+async function loadTemplate() {
+  const status = document.getElementById('status');
+  status.textContent = '로딩 중...';
+
+  try {
+    const resp = await fetch('/static/templates/commencement_template.xlsx');
+    const blob = await resp.blob();
+    const file = new File([blob], 'commencement_template.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+
+    LuckyExcel.transformExcelToLucky(file, function(exportJson, luckysheetfile) {
+      if (!exportJson || !exportJson.sheets || exportJson.sheets.length === 0) {
+        status.textContent = 'Error: 시트 파싱 실패';
+        return;
+      }
+
+      status.textContent = '로드 완료 - ' + exportJson.sheets.length + '개 시트';
+      console.log('Parsed sheets:', exportJson.sheets.map(s => s.name));
+      console.log('First sheet keys:', Object.keys(exportJson.sheets[0]));
+      console.log('First sheet sample:', JSON.stringify(exportJson.sheets[0]).substring(0, 500));
+
+      // 공문 시트를 기본으로 활성화
+      exportJson.sheets.forEach((s, i) => {
+        s.status = (s.name === '공문') ? 1 : 0;
+        s.order = i;
+      });
+
+      luckysheet.destroy();
+
+      setTimeout(function() {
+        luckysheet.create({
+          container: 'luckysheet',
+          data: exportJson.sheets,
+          showinfobar: false,
+          showsheetbar: true,
+          showstatisticBar: false,
+          sheetFormulaBar: true,
+          enableAddRow: false,
+          enableAddBackTop: false,
+          userInfo: false,
+          forceCalculation: true,
+        });
+      }, 100);
+    });
+
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    console.error(e);
+  }
+}
+</script>
+</body>
+</html>

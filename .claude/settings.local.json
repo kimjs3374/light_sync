@@ -50,7 +50,15 @@
       "mcp__plugin_playwright_playwright__browser_click",
       "mcp__plugin_playwright_playwright__browser_take_screenshot",
       "mcp__plugin_playwright_playwright__browser_evaluate",
-      "mcp__plugin_playwright_playwright__browser_resize"
+      "mcp__plugin_playwright_playwright__browser_resize",
+      "WebFetch(domain:check.spamhaus.org)",
+      "WebFetch(domain:www.brevo.com)",
+      "WebFetch(domain:pkgs.tailscale.com)",
+      "WebFetch(domain:tailscale.com)",
+      "mcp__plugin_playwright_playwright__browser_run_code",
+      "mcp__plugin_playwright_playwright__browser_console_messages",
+      "mcp__plugin_bkit_bkit-pdca__bkit_pdca_status",
+      "mcp__plugin_bkit_bkit-pdca__bkit_feature_list"
     ]
   },
   "enableAllProjectMcpServers": true,

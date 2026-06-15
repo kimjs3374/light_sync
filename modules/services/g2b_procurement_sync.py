@@ -12,7 +12,7 @@ import datetime
 import calendar
 import urllib.parse
 
-from sqlalchemy import text
+from sqlalchemy import text, func as sa_func
 from collections import defaultdict
 
 import requests
@@ -31,19 +31,17 @@ PROCUREMENT_ENDPOINT = f'{G2B_BASE_URL}/getSpcifyPrdlstPrcureInfoList'
 BIZNO = os.environ.get('G2B_BIZNO', '4088168519')
 CORP_KEYWORD = os.environ.get('G2B_CORP_NAME', '매그나텍')
 
-# 매그나텍 품목 매핑: (품명, 세부품명) — API 검색에 둘 다 필요
-PRODUCT_MAP = [
-    ('투광조명', 'LED투광등기구'),
-    ('도로조명설비', 'LED가로등기구'),
-    ('거주로조명설비', 'LED보안등기구'),
-    ('경관조명', 'LED경관조명기구'),
-    ('도로조명설비', 'LED터널용등기구'),
-    ('스포츠조명기구', '스포츠조명기구'),
-    ('조명타워', '조명타워'),
-    ('신재생에너지가로등', '태양광가로등'),
-    ('가로등주및부속자재', '철제가로등주'),
-    ('가로등주및부속자재', '스테인리스가로등주'),
-    ('가로등주및부속자재', '가로등주부속자재'),
+# 매그나텍 품목 매핑: 물품분류번호(prdctClsfcNo) 기반 — 번호 검색이 한글 품명보다 훨씬 빠름
+PRODUCT_CLSFC_NOS = [
+    '39111611',  # 투광조명
+    '39111603',  # 도로조명설비 (LED가로등, LED터널용)
+    '39111608',  # 거주로조명설비 (LED보안등)
+    '39111605',  # 경관조명
+    '39111537',  # 스포츠조명기구
+    '39112001',  # 조명타워
+    '39111697',  # 신재생에너지가로등
+    '39111526',  # 가로등주및부속자재
+    '46161585',  # 도로표지병
 ]
 
 
@@ -71,10 +69,10 @@ def _parse_int(val):
 
 
 def _build_url(bgn_date, end_date, page_no=1, num_of_rows=999, inqry_div='1',
-               clsfc_nm=None, dtil_nm=None):
+               clsfc_no=None):
     """
     API URL 생성.
-    inqryPrdctDiv=1 + bizno + corpNm + 품명 + 세부품명 조합으로 검색.
+    inqryPrdctDiv=1 + bizno + corpNm + 물품분류번호(prdctClsfcNo) 조합으로 검색.
     """
     key = os.environ.get('DATA_GO_KR_API_KEY', '')
     params = {
@@ -89,18 +87,16 @@ def _build_url(bgn_date, end_date, page_no=1, num_of_rows=999, inqry_div='1',
         'bizno': BIZNO,
         'corpNm': CORP_KEYWORD,
     }
-    if clsfc_nm:
-        params['prdctClsfcNoNm'] = clsfc_nm
-    if dtil_nm:
-        params['dtilPrdctClsfcNoNm'] = dtil_nm
+    if clsfc_no:
+        params['prdctClsfcNo'] = clsfc_no
 
     qs = '&'.join(f'{k}={urllib.parse.quote(str(v))}' for k, v in params.items())
-    return f'{PROCUREMENT_ENDPOINT}?serviceKey={key}&{qs}'
+    return f'{PROCUREMENT_ENDPOINT}?serviceKey={urllib.parse.quote(key)}&{qs}'
 
 
-def _fetch_page(bgn_date, end_date, page_no=1, num_of_rows=999, inqry_div='1', **kwargs):
+def _fetch_page(bgn_date, end_date, page_no=1, num_of_rows=999, inqry_div='1', clsfc_no=None):
     """단일 페이지 API 호출 (502/504 시 성공할 때까지 재시도)"""
-    url = _build_url(bgn_date, end_date, page_no, num_of_rows, inqry_div, **kwargs)
+    url = _build_url(bgn_date, end_date, page_no, num_of_rows, inqry_div, clsfc_no=clsfc_no)
 
     for attempt in range(10):
         try:
@@ -148,14 +144,14 @@ def _fetch_page(bgn_date, end_date, page_no=1, num_of_rows=999, inqry_div='1', *
     return [], 0
 
 
-def _fetch_all(bgn_date, end_date, inqry_div='1', **kwargs):
+def _fetch_all(bgn_date, end_date, inqry_div='1', clsfc_no=None):
     """전체 데이터 페이지네이션 처리"""
     all_items = []
     page = 1
     num_of_rows = 999
 
     while True:
-        items, total = _fetch_page(bgn_date, end_date, page, num_of_rows, inqry_div, **kwargs)
+        items, total = _fetch_page(bgn_date, end_date, page, num_of_rows, inqry_div, clsfc_no=clsfc_no)
         all_items.extend(items)
 
         if not items or len(all_items) >= total:
@@ -216,9 +212,12 @@ def _upsert_item(db, item):
     }
 
     if existing:
+        changed = False
         for k, v in fields.items():
-            setattr(existing, k, v)
-        return 'updated'
+            if getattr(existing, k) != v:
+                setattr(existing, k, v)
+                changed = True
+        return 'updated' if changed else 'unchanged'
     else:
         new_record = G2bProcurement(
             cntrct_dlvr_req_no=req_no,
@@ -240,8 +239,9 @@ def _upsert_items(db, items):
                 created += 1
             elif result == 'updated':
                 updated += 1
-            else:
+            elif result == 'error':
                 errors += 1
+            # 'unchanged'는 카운트하지 않음
         except Exception as e:
             logger.error(f"[G2B조달] Upsert 오류: {e}")
             errors += 1
@@ -282,7 +282,6 @@ def sync_daily(db):
     1) 물품규격명=매그나텍 검색 (기본)
     2) 세부품명별 추가 검색 (스포츠조명기구 등 규격명에 매그나텍이 없는 품목)
     """
-    from sqlalchemy import func as sa_func
     last_synced = db.query(sa_func.max(G2bProcurement.created_at)).scalar()
     if last_synced:
         since = (last_synced - datetime.timedelta(days=1)).strftime('%Y%m%d')
@@ -291,17 +290,94 @@ def sync_daily(db):
     today = datetime.date.today().strftime('%Y%m%d')
     logger.info(f"[G2B조달] 일일동기화 조회기간: {since} ~ {today}")
 
-    # 품명/세부품명별 순회 조회
+    # 물품분류번호별 순회 조회
     all_items = []
-    for clsfc_nm, dtil_nm in PRODUCT_MAP:
-        items = _fetch_all(since, today, inqry_div='1',
-                           clsfc_nm=clsfc_nm, dtil_nm=dtil_nm)
+    for clsfc_no in PRODUCT_CLSFC_NOS:
+        items = _fetch_all(since, today, inqry_div='1', clsfc_no=clsfc_no)
         all_items.extend(items)
 
     created, updated, errors = _upsert_items(db, all_items)
     cleaned = _cleanup_non_final(db)
     logger.info(f"[G2B조달] 일일동기화 완료: 신규 {created}, 갱신 {updated}, 오류 {errors}, 정리 {cleaned}")
     return {'created': created, 'updated': updated, 'errors': errors, 'total_fetched': len(all_items)}
+
+
+def sync_changes(db):
+    """활성 계약 대상 변경계약 + 납품기한 변경 감지.
+
+    1) DB에서 미완료(미청구/부분입금) 계약의 최소 계약일 ~ 오늘 범위로 G2B 조회
+    2) 기존 chg_ord보다 높은 변경차수 감지 → upsert
+    3) G2B 납품기한과 DB 납품기한 비교 → 불일치 시 자동 업데이트
+    """
+    from modules.models import Contract
+
+    # 활성 계약 중 가장 오래된 계약일
+    oldest = db.query(sa_func.min(Contract.contract_date)).filter(
+        Contract.g2b_contract_no.isnot(None),
+        Contract.payment_status.in_(['미청구', '부분입금']),
+    ).scalar()
+
+    if not oldest:
+        logger.info("[G2B조달] 변경계약 조회 대상 없음 (활성 계약 0건)")
+        return {'created': 0, 'updated': 0, 'errors': 0, 'total_fetched': 0, 'date_fixed': 0}
+
+    since = oldest
+    today = datetime.date.today()
+    logger.info(f"[G2B조달] 변경계약 조회기간: {since.strftime('%Y%m%d')} ~ {today.strftime('%Y%m%d')}")
+
+    # API 조회기간 최대 12개월 제한 → 12개월 단위로 분할 조회
+    all_items = []
+    current = since
+    while current <= today:
+        chunk_end = min(current + datetime.timedelta(days=365), today)
+        bgn_str = current.strftime('%Y%m%d')
+        end_str = chunk_end.strftime('%Y%m%d')
+        for clsfc_no in PRODUCT_CLSFC_NOS:
+            items = _fetch_all(bgn_str, end_str, inqry_div='1', clsfc_no=clsfc_no)
+            all_items.extend(items)
+        current = chunk_end + datetime.timedelta(days=1)
+
+    created, updated, errors = _upsert_items(db, all_items)
+    cleaned = _cleanup_non_final(db)
+
+    # 납품기한 변경 감지: G2B 테이블 vs Contract 테이블 비교
+    date_fixed = _sync_delivery_dates(db)
+
+    logger.info(
+        f"[G2B조달] 변경계약 동기화 완료: 신규 {created}, 갱신 {updated}, "
+        f"오류 {errors}, 정리 {cleaned}, 납품기한수정 {date_fixed}"
+    )
+    return {'created': created, 'updated': updated, 'errors': errors,
+            'total_fetched': len(all_items), 'date_fixed': date_fixed}
+
+
+def _sync_delivery_dates(db):
+    """G2B 납품기한과 Contract 납품기한 불일치 시 자동 수정"""
+    from modules.models import Contract
+
+    rows = db.execute(text('''
+        SELECT c.id, c.g2b_contract_no, c.delivery_due_date,
+               MAX(g.dlvr_tmlmt_date) as g2b_date, c.contract_name
+        FROM light_sync.contracts c
+        JOIN light_sync.g2b_procurements g ON g.cntrct_dlvr_req_no = c.g2b_contract_no
+        WHERE c.payment_status IN ('미청구', '부분입금')
+          AND c.g2b_contract_no IS NOT NULL
+        GROUP BY c.id, c.g2b_contract_no, c.delivery_due_date, c.contract_name
+        HAVING c.delivery_due_date != MAX(g.dlvr_tmlmt_date)
+    ''')).fetchall()
+
+    for r in rows:
+        db.execute(text('''
+            UPDATE light_sync.contracts
+            SET delivery_due_date = :new_date
+            WHERE id = :cid
+        '''), {'new_date': r.g2b_date, 'cid': r.id})
+        logger.info(
+            f"[G2B조달] 납품기한 수정: {r.g2b_contract_no} "
+            f"{r.delivery_due_date} → {r.g2b_date} ({r.contract_name[:30]})"
+        )
+
+    return len(rows)
 
 
 def sync_bulk(db, start_year=2020, end_year=None):
@@ -333,11 +409,10 @@ def sync_bulk(db, start_year=2020, end_year=None):
 
         logger.info(f"[G2B조달] 벌크동기화: {bgn_str} ~ {end_str}")
 
-        # 품명/세부품명별 순회 조회
+        # 물품분류번호별 순회 조회
         items = []
-        for clsfc_nm, dtil_nm in PRODUCT_MAP:
-            fetched = _fetch_all(bgn_str, end_str, inqry_div='1',
-                                 clsfc_nm=clsfc_nm, dtil_nm=dtil_nm)
+        for clsfc_no in PRODUCT_CLSFC_NOS:
+            fetched = _fetch_all(bgn_str, end_str, inqry_div='1', clsfc_no=clsfc_no)
             items.extend(fetched)
 
         c, u, e = _upsert_items(db, items)

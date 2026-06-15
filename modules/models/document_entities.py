@@ -2,7 +2,7 @@
 
 import datetime
 from sqlalchemy import (
-    Column, Integer, String, Date, DateTime, Text, ForeignKey, Boolean,
+    Column, Integer, String, Date, DateTime, Text, ForeignKey, Boolean, JSON,
 )
 from sqlalchemy.orm import relationship
 from .base import Base
@@ -26,7 +26,7 @@ class DocumentPackage(Base):
     __tablename__ = 'document_packages'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    procurement_req_no = Column(String(30), nullable=False, index=True)  # 납품요구번호 (g2b 매칭키)
+    procurement_req_no = Column(String(30), nullable=False, unique=True, index=True)  # 납품요구번호 (g2b 매칭키)
     project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)
     contract_id = Column(Integer, ForeignKey('contracts.id'), nullable=True)
 
@@ -60,6 +60,9 @@ class DocumentPackage(Base):
     delivery_date = Column(Date, nullable=True)               # 납품일 (제출일자)
     delivery_generated = Column(Boolean, default=False)       # 납품계 생성 여부
 
+    # 서류 패키지 조립 순서 (현장별 개별 설정, null이면 전체 기본순서 사용)
+    assembly_order = Column(JSON, nullable=True)
+
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
     created_by = Column(String(50), nullable=True)
@@ -86,6 +89,17 @@ class DocumentAttachment(Base):
     created_at = Column(DateTime, default=datetime.datetime.now)
 
     package = relationship('DocumentPackage', back_populates='attachments')
+
+
+class CommonDrawing(Base):
+    """공통 제작도면 — 모델코드별 도면 PDF 등록 관리."""
+    __tablename__ = 'common_drawings'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_code = Column(String(100), nullable=False, unique=True, index=True)
+    storage_path = Column(String(500), nullable=False)
+    created_by = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
 
 
 # 첨부파일 유형 상수

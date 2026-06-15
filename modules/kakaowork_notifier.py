@@ -8,6 +8,16 @@ import requests
 logger = logging.getLogger(__name__)
 
 
+def _kakaowork_disabled() -> bool:
+    """KAKAOWORK_DISABLED 환경변수가 truthy면 카카오워크 알림을 전면 차단.
+
+    테스트/개발용 킬스위치. 실사용 알림과 혼동되지 않도록 사용.
+    허용값(차단 활성): 1, true, yes, on (대소문자 무시).
+    """
+    val = os.environ.get("KAKAOWORK_DISABLED", "").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
 def load_kakaowork_config() -> Dict[str, str]:
     token = os.environ.get("KAKAOWORK_BOT_TOKEN", "")
     workboard_id = os.environ.get("KAKAOWORK_WORKBOARD_ID", "")
@@ -26,6 +36,10 @@ def load_kakaowork_config() -> Dict[str, str]:
 
 def send_group_notification(text: str) -> bool:
     """그룹채팅방에 봇 알림 메시지 전송. 실패해도 예외 미발생 (non-blocking)."""
+    if _kakaowork_disabled():
+        logger.info("카카오워크 알림 차단(KAKAOWORK_DISABLED): %s", text[:120].replace("\n", " | "))
+        return False
+
     cfg = load_kakaowork_config()
     token = cfg["token"]
     conv_id = cfg["notify_conv_id"]
@@ -140,6 +154,14 @@ def build_contract_workboard_text(project, contracts: List) -> str:
 
 
 def post_contract_summary(project, contracts: List) -> Tuple[bool, str, Optional[dict]]:
+    if _kakaowork_disabled():
+        logger.info(
+            "카카오워크 워크보드 게시 차단(KAKAOWORK_DISABLED): project_id=%s, contracts=%d",
+            getattr(project, "id", "-"),
+            len(contracts or []),
+        )
+        return False, "KAKAOWORK_DISABLED=1 — 카카오워크 알림 차단됨(테스트 모드)", None
+
     cfg = load_kakaowork_config()
     token = cfg["token"]
     workboard_id = cfg["workboard_id"]

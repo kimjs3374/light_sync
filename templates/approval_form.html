@@ -1,0 +1,499 @@
+{% extends "base.html" %}
+{% block title %}{{ '기안 수정' if doc else '새 기안' }}{% endblock %}
+
+{% block content %}
+<style>
+  .ea-section { background:#fff; border:1px solid #e2e8f0; border-radius:var(--mg-radius,.65rem); padding:1rem 1.2rem; }
+  .ea-section-title { font-size:.72rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.04em; margin-bottom:.7rem; }
+  .form-label { font-size:.78rem; color:#475569; font-weight:600; margin-bottom:.25rem; }
+  .form-label.req::after { content:' *'; color:#dc2626; }
+  .ea-line-item, .ea-ref-item { display:flex; align-items:center; gap:.5rem; padding:.4rem .55rem;
+                  border:1px solid #e2e8f0; border-radius:.5rem; margin-bottom:.4rem; background:#f8fafc; }
+  .ea-line-item .step-no { width:22px; height:22px; border-radius:50%; background:#2563eb; color:#fff;
+                  display:flex; align-items:center; justify-content:center; font-size:.72rem; flex:0 0 auto; }
+  .ea-pick-card { border:1px solid #e2e8f0; border-radius:var(--mg-radius,.65rem); padding:1rem; background:#fff;
+                  transition:.12s; text-decoration:none; color:var(--mg-ink,#0f172a); display:block; height:100%; }
+  .ea-pick-card:hover { border-color:#2563eb; box-shadow:var(--mg-shadow,0 2px 12px rgba(15,23,42,.06)); }
+</style>
+
+<div class="container-fluid" style="max-width:980px">
+
+  {% if not form %}
+  {# ── 양식 선택 ── #}
+  <div class="page-hero mg-fade">
+    <div class="hero-eyebrow">Approval</div>
+    <h2>새 기안</h2>
+    <div class="hero-sub">결재 양식을 선택하세요</div>
+  </div>
+  <div class="row g-3 mg-fade" style="animation-delay:.05s">
+    {% for f in forms %}
+    <div class="col-6 col-md-4">
+      <a href="{{ url_for('approval.approval_new', form=f.form_key) }}" class="ea-pick-card">
+        <div style="font-size:1.7rem">{{ f.icon or '📄' }}</div>
+        <div class="fw-bold mt-1">{{ f.name }}</div>
+        <small class="text-muted">{{ f.description or '' }}</small>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  {# ── 기안 작성 폼 ── #}
+  <div class="page-hero mg-fade">
+    <div class="d-flex justify-content-between align-items-center gap-2">
+      <div>
+        <div class="hero-eyebrow">{{ form.icon or '📄' }} {{ '기안 수정' if doc else '새 기안' }}</div>
+        <h2>{{ form.name }}</h2>
+        {% if form.description %}<div class="hero-sub">{{ form.description }}</div>{% endif %}
+      </div>
+      <a href="{{ url_for('approval.approval_list') }}" class="btn btn-sm">목록</a>
+    </div>
+  </div>
+
+  <form method="POST" action="{{ url_for('approval.approval_save') }}" id="eaForm" class="mg-fade" enctype="multipart/form-data" style="animation-delay:.05s">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form_key" value="{{ form.form_key }}">
+    {% if doc %}<input type="hidden" name="doc_id" value="{{ doc.id }}">{% endif %}
+    <input type="hidden" name="action" id="eaAction" value="draft">
+
+    <div class="mb-3">
+      <label class="form-label req">제목</label>
+      <input type="text" name="title" class="form-control" required
+             value="{{ doc.title if doc else '' }}" placeholder="문서 제목">
+    </div>
+
+    {% if leave_balance %}
+    {# ── 연차 잔여 배너 (휴가 양식) ── #}
+    <div class="ea-section mb-3" style="background:#f0f9ff;border-color:#bae6fd" id="eaLeaveBox">
+      <div class="d-flex align-items-center flex-wrap gap-3">
+        <div><span class="text-muted" style="font-size:.78rem">부여</span>
+          <span style="font-size:1.1rem;font-weight:700">{{ leave_balance.granted }}{% if leave_balance.adjust %}{{ '%+g'|format(leave_balance.adjust) }}{% endif %}</span>일</div>
+        <div><span class="text-muted" style="font-size:.78rem">사용</span>
+          <span style="font-size:1.1rem;font-weight:700">{{ leave_balance.used }}</span>일</div>
+        <div><span class="text-muted" style="font-size:.78rem">잔여</span>
+          <span style="font-size:1.3rem;font-weight:700;color:#0284c7" id="eaRemain">{{ leave_balance.remaining }}</span>일</div>
+        <div class="ms-auto" id="eaAfterBox" style="display:none;font-size:.85rem">
+          신청 후 잔여 <span style="font-weight:700" id="eaAfter"></span>일
+        </div>
+      </div>
+      <div class="text-muted mt-1" style="font-size:.72rem">사용일수는 주말 제외 평일로 자동 계산됩니다 (반차 0.5일). 공휴일은 직접 조정하세요.</div>
+    </div>
+    {% endif %}
+
+    {# ── 양식 필드 ── #}
+    <div class="ea-section mb-3">
+      <div class="ea-section-title">{{ form.name }} 내용</div>
+      <div class="row g-3">
+        {% if form.form_key == 'leave' %}
+        {# ── 휴가 전용 폼 (전체 커스텀, 한 컬럼 정렬) ── #}
+        {% set _fd = doc.form_data if doc and doc.form_data else {} %}
+        {% set _lt = (form.field_schema|selectattr('key','equalto','leave_type')|first) %}
+        {% set _p = _fd.get('period') or '종일' %}
+        <div class="col-12">
+          <label class="form-label req">휴가종류</label>
+          <select name="field_leave_type" class="form-select" required>
+            <option value="">선택</option>
+            {% for opt in (_lt.options if _lt else ['연차','병가','경조사','공가','기타']) %}
+            <option value="{{ opt }}" {{ 'selected' if (_fd.get('leave_type') or '연차') == opt }}>{{ opt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12">
+          <label class="form-label">기간</label>
+          <div class="btn-group w-100" role="group" id="eaPeriod">
+            <input type="radio" class="btn-check" name="field_period" id="pFull" value="종일" autocomplete="off" {{ 'checked' if _p == '종일' }}>
+            <label class="btn btn-outline-primary" for="pFull">종일</label>
+            <input type="radio" class="btn-check" name="field_period" id="pAm" value="오전반차" autocomplete="off" {{ 'checked' if _p == '오전반차' }}>
+            <label class="btn btn-outline-primary" for="pAm">오전반차</label>
+            <input type="radio" class="btn-check" name="field_period" id="pPm" value="오후반차" autocomplete="off" {{ 'checked' if _p == '오후반차' }}>
+            <label class="btn btn-outline-primary" for="pPm">오후반차</label>
+          </div>
+        </div>
+        <div class="col-12">
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label" id="eaDateLbl">시작일</label>
+              <input type="date" name="field_start_date" class="form-control" value="{{ _fd.get('start_date') or '' }}" required>
+            </div>
+            <div class="col-md-6" id="eaEndCol">
+              <label class="form-label">종료일</label>
+              <input type="date" name="field_end_date" class="form-control" value="{{ _fd.get('end_date') or '' }}">
+            </div>
+          </div>
+          <div class="mt-2" id="eaTimeRow" style="display:none">
+            <label class="form-label">휴가 시간</label>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <input type="time" name="field_start_time" class="form-control" style="width:130px" step="600" value="{{ _fd.get('start_time') or '' }}">
+              <span>~</span>
+              <input type="time" name="field_end_time" class="form-control" style="width:130px" step="600" value="{{ _fd.get('end_time') or '' }}">
+              <span class="badge bg-info text-dark" id="eaReturnHint" style="font-size:.8rem"></span>
+            </div>
+          </div>
+          <div class="d-flex align-items-center gap-2 mt-2">
+            <span class="form-label mb-0">사용일수</span>
+            <input type="number" name="field_days" class="form-control" style="width:84px" step="0.5"
+                   value="{{ _fd.get('days') or '' }}" required readonly>
+            <span style="font-size:.85rem">일</span>
+            <small class="text-muted ms-1">자동 계산</small>
+          </div>
+        </div>
+        <div class="col-12">
+          <label class="form-label">비상연락처</label>
+          <input type="text" name="field_emergency_contact" class="form-control" value="{{ _fd.get('emergency_contact') or '' }}">
+        </div>
+        <div class="col-12">
+          <label class="form-label">사유</label>
+          <textarea name="field_reason" class="form-control" rows="3">{{ _fd.get('reason') or '' }}</textarea>
+        </div>
+        {% elif form.form_key == 'expense' %}
+        {# ── 지출결의서 전용: 명세 여러 건 + 증빙첨부 ── #}
+        {% set _fd = doc.form_data if doc and doc.form_data else {} %}
+        <div class="col-md-6">
+          <label class="form-label req">지출일</label>
+          <input type="date" name="field_expense_date" class="form-control" value="{{ _fd.get('expense_date') or '' }}" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">결제수단</label>
+          <select name="field_payment_method" class="form-select">
+            <option value="">선택</option>
+            {% for opt in ['법인카드','계좌이체','현금','개인카드(환급)'] %}
+            <option value="{{ opt }}" {{ 'selected' if _fd.get('payment_method') == opt }}>{{ opt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12">
+          <div class="d-flex align-items-center mb-1">
+            <label class="form-label mb-0 req">지출명세</label>
+            <button type="button" class="btn btn-sm btn-outline-primary ms-auto" onclick="exAddRow()">+ 항목추가</button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm mb-1 align-middle" style="min-width:520px">
+              <thead class="table-light">
+                <tr><th>지출항목</th><th style="width:140px">금액(원)</th><th>사용처/거래처</th><th style="width:38px"></th></tr>
+              </thead>
+              <tbody id="exBody"></tbody>
+              <tfoot>
+                <tr><th class="text-end">합계</th><th class="text-end"><span id="exTotal">0</span></th><th colspan="2"></th></tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+        <div class="col-12">
+          <label class="form-label req">지출사유</label>
+          <textarea name="field_reason" class="form-control" rows="2" required>{{ _fd.get('reason') or '' }}</textarea>
+        </div>
+        <div class="col-12">
+          <label class="form-label">증빙서류 첨부</label>
+          <input type="file" name="attachments" class="form-control" multiple
+                 accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.hwp,.hwpx">
+          <small class="text-muted">영수증·세금계산서·거래명세서 등 (여러 개 가능, 개당 20MB 이하)</small>
+          {% if doc and doc.attachments %}
+          <ul class="small mt-1 mb-0">{% for a in doc.attachments %}<li>📎 {{ a.filename }}</li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+        {% else %}
+        {% for fld in form.field_schema %}
+        {% set val = (doc.form_data.get(fld.key) if doc and doc.form_data else '') %}
+        <div class="col-md-6">
+          <label class="form-label {{ 'req' if fld.required }}">{{ fld.label }}</label>
+          {% if fld.type == 'textarea' %}
+            <textarea name="field_{{ fld.key }}" class="form-control" rows="3"
+                      {{ 'required' if fld.required }}>{{ val }}</textarea>
+          {% elif fld.type == 'select' %}
+            <select name="field_{{ fld.key }}" class="form-select" {{ 'required' if fld.required }}>
+              <option value="">선택</option>
+              {% for opt in fld.options %}
+              <option value="{{ opt }}" {{ 'selected' if val == opt }}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+          {% elif fld.type == 'date' %}
+            <input type="date" name="field_{{ fld.key }}" class="form-control"
+                   value="{{ val }}" {{ 'required' if fld.required }}>
+          {% elif fld.type == 'time' %}
+            <input type="time" name="field_{{ fld.key }}" class="form-control"
+                   value="{{ val }}" {{ 'required' if fld.required }}>
+          {% elif fld.type == 'datetime' %}
+            <input type="datetime-local" name="field_{{ fld.key }}" class="form-control"
+                   value="{{ val }}" {{ 'required' if fld.required }}>
+          {% elif fld.type == 'number' %}
+            <div class="input-group">
+              <input type="number" name="field_{{ fld.key }}" class="form-control" step="1"
+                     value="{{ val }}" {{ 'required' if fld.required }}>
+              {% if fld.suffix %}<span class="input-group-text">{{ fld.suffix }}</span>{% endif %}
+            </div>
+          {% else %}
+            <input type="text" name="field_{{ fld.key }}" class="form-control"
+                   value="{{ val }}" {{ 'required' if fld.required }}>
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">본문 / 비고</label>
+      <textarea name="content" class="form-control" rows="3"
+                placeholder="추가 설명이 필요하면 입력하세요">{{ doc.content if doc else '' }}</textarea>
+    </div>
+
+    <div class="row g-3">
+      {# ── 결재선 ── #}
+      <div class="col-md-7">
+        <div class="ea-section h-100">
+          <div class="d-flex align-items-center mb-2">
+            <span class="ea-section-title mb-0">결재선</span>
+            <button type="button" class="btn btn-sm btn-outline-primary ms-auto" onclick="addApprover()">+ 결재자</button>
+          </div>
+          <div class="text-muted mb-2" style="font-size:.74rem">순차 결재 · 기본: 부서장 → 경영진(부장 이상 전원)</div>
+          <div id="eaLine"></div>
+          <div class="text-danger small" id="eaLineEmpty" style="display:none">결재자를 1명 이상 지정하세요.</div>
+        </div>
+      </div>
+
+      {# ── 참조/수신 ── #}
+      <div class="col-md-5">
+        <div class="ea-section h-100">
+          <div class="d-flex align-items-center mb-2">
+            <span class="ea-section-title mb-0">참조 / 수신</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" onclick="addRef()">+ 추가</button>
+          </div>
+          <div id="eaRefs"></div>
+          <div class="text-muted small" id="eaRefEmpty">지정한 사람에게 열람용으로 공유됩니다.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-4 pt-3 border-top">
+      <button type="submit" class="btn btn-outline-secondary" onclick="document.getElementById('eaAction').value='draft'">
+        <i class="bi bi-save"></i> 임시저장</button>
+      <button type="submit" class="btn btn-primary ms-auto" onclick="return doSubmit()">
+        <i class="bi bi-send"></i> 상신</button>
+      {% if doc %}
+      <button type="button" class="btn btn-outline-danger"
+              onclick="if(confirm('삭제하시겠습니까?')) submitDelete()"><i class="bi bi-trash"></i></button>
+      {% endif %}
+    </div>
+  </form>
+
+  <form id="eaDeleteForm" method="POST"
+        action="{% if doc %}{{ url_for('approval.approval_delete', doc_id=doc.id) }}{% endif %}" class="d-none">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  </form>
+
+  <script>
+    const EA_USERS = {{ users|tojson }};
+    let EA_LINE = {{ default_line|tojson }};
+    let EA_REFS = {{ (refs if refs is defined else [])|tojson }};
+    const EA_HOLIDAYS = new Set({{ (holidays if holidays is defined else [])|tojson }});
+
+    function userOptions(selectedId) {
+      let h = '<option value="">선택</option>';
+      EA_USERS.forEach(u => {
+        const sel = (u.id == selectedId) ? 'selected' : '';
+        h += `<option value="${u.id}" ${sel}>${u.name} ${u.position} (${u.dept})</option>`;
+      });
+      return h;
+    }
+
+    function renderLine() {
+      const box = document.getElementById('eaLine');
+      box.innerHTML = '';
+      EA_LINE.forEach((s, i) => {
+        const div = document.createElement('div');
+        div.className = 'ea-line-item';
+        div.innerHTML = `
+          <span class="step-no">${i+1}</span>
+          <select class="form-select form-select-sm" name="approver_id" onchange="onLineChange(${i}, this.value)">${userOptions(s.approver_id)}</select>
+          <select class="form-select form-select-sm" name="approver_role" style="width:84px">
+            <option value="approval" ${s.role!=='agreement'?'selected':''}>결재</option>
+            <option value="agreement" ${s.role==='agreement'?'selected':''}>합의</option>
+          </select>
+          <button type="button" class="btn btn-sm btn-light" onclick="moveUp(${i})" ${i===0?'disabled':''}>▲</button>
+          <button type="button" class="btn btn-sm btn-light text-danger" onclick="removeApprover(${i})">✕</button>`;
+        box.appendChild(div);
+      });
+      document.getElementById('eaLineEmpty').style.display = EA_LINE.length ? 'none' : 'block';
+    }
+    function onLineChange(i, v) { EA_LINE[i].approver_id = v; }
+    function addApprover() { syncLine(); EA_LINE.push({approver_id:'', role:'approval'}); renderLine(); }
+    function removeApprover(i) { syncLine(); EA_LINE.splice(i,1); renderLine(); }
+    function moveUp(i) { if(i>0){ syncLine(); [EA_LINE[i-1],EA_LINE[i]]=[EA_LINE[i],EA_LINE[i-1]]; renderLine(); } }
+    function syncLine() {
+      const sels = document.querySelectorAll('#eaLine select[name=approver_id]');
+      const roles = document.querySelectorAll('#eaLine select[name=approver_role]');
+      sels.forEach((s,idx)=>{ if(EA_LINE[idx]) EA_LINE[idx].approver_id = s.value; });
+      roles.forEach((s,idx)=>{ if(EA_LINE[idx]) EA_LINE[idx].role = s.value; });
+    }
+
+    function renderRefs() {
+      const box = document.getElementById('eaRefs');
+      box.innerHTML = '';
+      EA_REFS.forEach((r, i) => {
+        const div = document.createElement('div');
+        div.className = 'ea-ref-item';
+        div.innerHTML = `
+          <select class="form-select form-select-sm" name="ref_id">${userOptions(r.user_id)}</select>
+          <select class="form-select form-select-sm" name="ref_type" style="width:78px">
+            <option value="reference" ${r.ref_type!=='receiver'?'selected':''}>참조</option>
+            <option value="receiver" ${r.ref_type==='receiver'?'selected':''}>수신</option>
+          </select>
+          <button type="button" class="btn btn-sm btn-light text-danger" onclick="removeRef(${i})">✕</button>`;
+        box.appendChild(div);
+      });
+      document.getElementById('eaRefEmpty').style.display = EA_REFS.length ? 'none' : 'block';
+    }
+    function addRef() { syncRefs(); EA_REFS.push({user_id:'', ref_type:'reference'}); renderRefs(); }
+    function removeRef(i) { syncRefs(); EA_REFS.splice(i,1); renderRefs(); }
+    function syncRefs() {
+      const ids = document.querySelectorAll('#eaRefs select[name=ref_id]');
+      const types = document.querySelectorAll('#eaRefs select[name=ref_type]');
+      EA_REFS = []; ids.forEach((s,idx)=>EA_REFS.push({user_id:s.value, ref_type:types[idx].value}));
+    }
+
+    function doSubmit() {
+      syncLine();
+      const valid = EA_LINE.filter(s => s.approver_id);
+      if (!valid.length) { alert('결재자를 1명 이상 지정하세요.'); return false; }
+      document.getElementById('eaAction').value = 'submit';
+      return confirm('상신하시겠습니까? 상신 후에는 수정할 수 없습니다.');
+    }
+    function submitDelete() { document.getElementById('eaDeleteForm').submit(); }
+
+    // ── 휴가: 기간(종일/오전반차/오후반차) → 일수 자동 (종일=근무일수, 반차=0.5) ──
+    function eaIso(d) {
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function eaIsHoliday(dateStr) {
+      const w = new Date(dateStr + 'T00:00:00').getDay();
+      return w === 0 || w === 6 || EA_HOLIDAYS.has(dateStr);
+    }
+    function eaWorkingDays(s, e) {
+      const sd = new Date(s + 'T00:00:00'), ed = new Date((e || s) + 'T00:00:00');
+      if (isNaN(sd) || isNaN(ed) || ed < sd) return 0;
+      let n = 0;
+      for (const d = new Date(sd); d <= ed; d.setDate(d.getDate() + 1)) {
+        if (!eaIsHoliday(eaIso(d))) n++;
+      }
+      return n;
+    }
+    function eaPeriod() {
+      const r = document.querySelector('input[name="field_period"]:checked');
+      return r ? r.value : '종일';
+    }
+    function eaApply(resetTimes) {
+      const period = eaPeriod();
+      const isHalf = period.indexOf('반차') >= 0;
+      const sd = document.querySelector('[name="field_start_date"]');
+      const ed = document.querySelector('[name="field_end_date"]');
+      const st = document.querySelector('[name="field_start_time"]');
+      const et = document.querySelector('[name="field_end_time"]');
+      const dd = document.querySelector('[name="field_days"]');
+      const endCol = document.getElementById('eaEndCol');
+      const timeRow = document.getElementById('eaTimeRow');
+      const dateLbl = document.getElementById('eaDateLbl');
+      const hint = document.getElementById('eaReturnHint');
+      if (!sd) return;
+      if (isHalf) {
+        if (endCol) endCol.style.display = 'none';
+        if (timeRow) timeRow.style.display = '';
+        if (dateLbl) dateLbl.textContent = '날짜';
+        if (resetTimes || !st.value) {
+          if (period === '오전반차') { st.value = '09:00'; et.value = '14:00'; }
+          else { st.value = '14:00'; et.value = '18:00'; }
+        }
+        if (hint) hint.textContent = (period === '오전반차')
+          ? ('🔔 ' + (et.value || '14:00') + ' 출근(복귀)')
+          : ('🔔 ' + (st.value || '14:00') + ' 조퇴');
+        if (sd.value) ed.value = sd.value;
+        dd.value = 0.5;
+      } else {
+        if (endCol) endCol.style.display = '';
+        if (timeRow) timeRow.style.display = 'none';
+        if (dateLbl) dateLbl.textContent = '시작일';
+        if (sd.value) dd.value = eaWorkingDays(sd.value, ed && ed.value ? ed.value : sd.value);
+      }
+      eaUpdateAfter();
+    }
+    function eaUpdateAfter() {
+      const remEl = document.getElementById('eaRemain');
+      const dd = document.querySelector('[name="field_days"]');
+      if (!remEl || !dd) return;
+      const rem = parseFloat(remEl.textContent) || 0;
+      const used = parseFloat(dd.value) || 0;
+      const box = document.getElementById('eaAfterBox'), after = document.getElementById('eaAfter');
+      if (used > 0 && after) {
+        const left = Math.round((rem - used) * 100) / 100;
+        after.textContent = left;
+        after.style.color = left < 0 ? '#dc2626' : '#0284c7';
+        box.style.display = '';
+      } else if (box) { box.style.display = 'none'; }
+    }
+    (function bindLeave() {
+      const sd = document.querySelector('[name="field_start_date"]');
+      if (!sd) return;  // 휴가 양식 아님
+      const ed = document.querySelector('[name="field_end_date"]');
+      const st = document.querySelector('[name="field_start_time"]');
+      const et = document.querySelector('[name="field_end_time"]');
+      document.querySelectorAll('input[name="field_period"]').forEach(function (r) {
+        r.addEventListener('change', function () { eaApply(true); });
+      });
+      sd.addEventListener('change', function () { eaApply(false); });
+      if (ed) ed.addEventListener('change', function () { eaApply(false); });
+      if (st) st.addEventListener('change', function () { eaApply(false); });
+      if (et) et.addEventListener('change', function () { eaApply(false); });
+      eaApply(false);
+    })();
+
+    {% if form.form_key == 'expense' %}
+    // ── 지출결의서 명세 행 ──
+    let EX_ITEMS = {{ (doc.form_data.get('items') if doc and doc.form_data and doc.form_data.get('items') else [])|tojson }};
+    function exEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+    function exRender() {
+      const body = document.getElementById('exBody');
+      if (!body) return;
+      body.innerHTML = '';
+      (EX_ITEMS.length ? EX_ITEMS : [{}]).forEach(function (r) {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td><input class="form-control form-control-sm" name="li_item" value="' + exEsc(r.item) + '"></td>' +
+          '<td><input type="number" class="form-control form-control-sm text-end" name="li_amount" value="' + exEsc(r.amount) + '" oninput="exCalc()"></td>' +
+          '<td><input class="form-control form-control-sm" name="li_payee" value="' + exEsc(r.payee) + '"></td>' +
+          '<td class="text-center"><button type="button" class="btn btn-sm btn-light text-danger" onclick="exDel(this)">✕</button></td>';
+        body.appendChild(tr);
+      });
+      exCalc();
+    }
+    function exSync() {
+      const items = document.querySelectorAll('#exBody input[name="li_item"]');
+      const amts = document.querySelectorAll('#exBody input[name="li_amount"]');
+      const pys = document.querySelectorAll('#exBody input[name="li_payee"]');
+      EX_ITEMS = [];
+      items.forEach((it, i) => EX_ITEMS.push({ item: it.value, amount: amts[i].value, payee: pys[i].value }));
+    }
+    function exAddRow() { exSync(); EX_ITEMS.push({}); exRender(); }
+    function exDel(btn) {
+      exSync();
+      const tr = btn.closest('tr');
+      const idx = [...tr.parentNode.children].indexOf(tr);
+      EX_ITEMS.splice(idx, 1);
+      if (!EX_ITEMS.length) EX_ITEMS.push({});
+      exRender();
+    }
+    function exCalc() {
+      let t = 0;
+      document.querySelectorAll('#exBody input[name="li_amount"]').forEach(a => {
+        t += parseInt((a.value || '0').toString().replace(/[^0-9-]/g, '')) || 0;
+      });
+      const el = document.getElementById('exTotal');
+      if (el) el.textContent = t.toLocaleString();
+    }
+    exRender();
+    {% endif %}
+
+    renderLine(); renderRefs();
+  </script>
+
+  {% endif %}
+</div>
+{% endblock %}

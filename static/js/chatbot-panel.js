@@ -170,7 +170,9 @@ async function sendChatPanel() {
 }
 
 async function _pollPanelReply(requestId, thinkingEl, csrf) {
-    for (var i = 0; i < 60; i++) {
+    var maxPolls = 200;
+    var interval = 3000;
+    for (var i = 0; i < maxPolls; i++) {
         try {
             var headers = {'Content-Type': 'application/json'};
             if (csrf) headers['X-CSRFToken'] = csrf;
@@ -178,16 +180,17 @@ async function _pollPanelReply(requestId, thinkingEl, csrf) {
                 method: 'POST', headers: headers,
                 body: JSON.stringify({request_id: requestId})
             });
-            if (!res.ok && res.status !== 404) { await new Promise(function(r){setTimeout(r,2000)}); continue; }
+            if (!res.ok && res.status !== 404) { await new Promise(function(r){setTimeout(r,interval)}); continue; }
             var data = await res.json();
             if (data.status === 'done') return data.reply;
             if (data.status === 'timeout') return data.reply;
-            if (data.status === 'partial') { thinkingEl.textContent = data.reply; thinkingEl.style.color = '#666'; continue; }
-            if (data.status === 'not_found') { await new Promise(function(r){setTimeout(r,2000)}); continue; }
+            if (data.status === 'partial') { thinkingEl.textContent = data.reply; thinkingEl.style.color = '#666'; await new Promise(function(r){setTimeout(r,1000)}); continue; }
+            if (data.status === 'not_found') { await new Promise(function(r){setTimeout(r,interval)}); continue; }
             if (data.elapsed != null) thinkingEl.textContent = 'Claude가 처리 중... (' + data.elapsed + '초)';
-        } catch(e) { await new Promise(function(r){setTimeout(r,2000)}); }
+            await new Promise(function(r){setTimeout(r,interval)});
+        } catch(e) { await new Promise(function(r){setTimeout(r,interval)}); }
     }
-    return '응답 시간이 초과되었습니다.';
+    return '응답 시간이 초과되었습니다. Claude Code 세션을 확인하세요.';
 }
 
 async function clearChatPanel() {

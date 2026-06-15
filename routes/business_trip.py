@@ -7,7 +7,7 @@ from modules.db_context import get_db
 from modules.utils import safe_int, parse_date
 from modules.pagination import make_pagination
 from modules.activity import log_activity
-from modules.kakaowork_notifier import send_group_notification
+from modules.notification_engine import notify
 from modules.models import (
     BusinessTrip, BusinessTripMember, User, DashboardSetting,
     TRIP_STATUS_CHOICES, VEHICLE_CHOICES,
@@ -89,11 +89,49 @@ def trip_list():
 
     with get_db() as db:
         from sqlalchemy.orm import joinedload
+        from sqlalchemy import func, case, or_
+        now = datetime.datetime.now()
+
+        # 복귀 미정이면 출발일 다음날 00:00을 묵시 복귀로 (당일 출장은 다음날 완료)
+        implicit_return = func.coalesce(
+            BusinessTrip.return_date,
+            func.date_trunc('day', BusinessTrip.departure_date) + datetime.timedelta(days=1),
+        )
+
+        # 효과적 상태(effective status) — 취소 외에는 날짜 기반
+        eff_status_expr = case(
+            (BusinessTrip.status == '취소', '취소'),
+            (BusinessTrip.departure_date == None, '예정'),  # noqa: E711
+            (BusinessTrip.departure_date > now, '예정'),
+            (implicit_return <= now, '완료'),
+            else_='진행중',
+        )
+
         query = db.query(BusinessTrip).options(
             joinedload(BusinessTrip.members)
         ).order_by(BusinessTrip.departure_date.desc())
+
         if status_filter:
-            query = query.filter(BusinessTrip.status == status_filter)
+            if status_filter == '취소':
+                query = query.filter(BusinessTrip.status == '취소')
+            elif status_filter == '예정':
+                query = query.filter(
+                    BusinessTrip.status != '취소',
+                    or_(BusinessTrip.departure_date == None, BusinessTrip.departure_date > now),  # noqa: E711
+                )
+            elif status_filter == '진행중':
+                query = query.filter(
+                    BusinessTrip.status != '취소',
+                    BusinessTrip.departure_date != None,  # noqa: E711
+                    BusinessTrip.departure_date <= now,
+                    implicit_return > now,
+                )
+            elif status_filter == '완료':
+                query = query.filter(
+                    BusinessTrip.status != '취소',
+                    BusinessTrip.departure_date != None,  # noqa: E711
+                    implicit_return <= now,
+                )
         if search:
             like = f'%{search}%'
             query = query.filter(
@@ -113,11 +151,10 @@ def trip_list():
                 unique_trips.append(t)
         trips = unique_trips
 
-        # 상태별 건수
-        from sqlalchemy import func
+        # 상태별 건수 (effective status 기준)
         status_counts = dict(
-            db.query(BusinessTrip.status, func.count(BusinessTrip.id))
-            .group_by(BusinessTrip.status).all()
+            db.query(eff_status_expr.label('s'), func.count(BusinessTrip.id))
+            .group_by(eff_status_expr).all()
         )
 
         vehicles = _get_vehicle_choices(db)
@@ -173,7 +210,7 @@ def trip_create():
                 creator_label = f"{creator_user.full_name} {creator_user.position}"
             dep_str = trip.departure_date.strftime('%Y-%m-%d %H:%M') if trip.departure_date else '-'
             ret_str = trip.return_date.strftime('%Y-%m-%d %H:%M') if trip.return_date else '-'
-            notify_text = (
+            kakao_text = (
                 f"[출장등록] {trip.title}\n"
                 f"목적지: {trip.destination}\n"
                 f"출발: {dep_str}\n"
@@ -182,7 +219,14 @@ def trip_create():
                 f"인원: {', '.join(member_labels) or '-'}\n"
                 f"등록자: {creator_label}"
             )
-            send_group_notification(notify_text)
+            notify(db, 'trip.created', {
+                'destination': trip.destination or trip.title,
+                'detail': f"{dep_str}~{ret_str} · {', '.join(member_labels) or '-'}",
+                'trip_id': trip.id,
+                'departure_date': dep_str,
+                'return_date': ret_str,
+                'members': ', '.join(member_labels) or '-',
+            }, kakao_text_override=kakao_text)
 
             flash('출장이 등록되었습니다.', 'success')
             return redirect(url_for('business_trip.trip_list'))

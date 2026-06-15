@@ -14,6 +14,8 @@ from flask_limiter.util import get_remote_address
 from config import ProductionConfig, DevelopmentConfig, MENU_REGISTRY, COMMON_MENU_KEYS, GROUP_ICONS
 from modules.models import init_db
 from routes.auth import auth_bp
+from routes.mattermost_action import mattermost_action_bp
+from routes.mattermost_slash import mattermost_slash_bp
 from routes.dashboard import dashboard_bp
 from routes.project import project_bp
 from routes.contract import contract_bp
@@ -53,12 +55,16 @@ from routes.lighting_layout import lighting_layout_bp
 from routes.processing_order import processing_order_bp
 from routes.business_trip import business_trip_bp
 from routes.vehicle_log import vehicle_log_bp
+from routes.approval import approval_bp
+from routes.hr import hr_bp
 from routes.tools import tools_bp
 from routes.document import document_bp
 from routes.app_api import app_api_bp
 from routes.incoming_overview import incoming_overview_bp
 from routes.mail import mail_bp
 from routes.office import office_bp
+from routes.mockups import mockups_bp
+from routes.oauth import oauth_bp
 from modules.pagination import pagination_query
 from modules.scheduler import init_scheduler
 
@@ -97,6 +103,10 @@ app.jinja_env.globals['pagination_query'] = pagination_query
 
 # CSRF Protection
 csrf = CSRFProtect(app)
+
+# Bearer 토큰 인증 경로에서 세션 쿠키 누출 차단 + CSRF 우회
+from modules.auth_decorators import init_auth_security
+init_auth_security(app, csrf)
 
 # ── HTML 세정 필터 (이메일 XSS 방지) ──
 import nh3
@@ -237,6 +247,10 @@ limiter.limit("10 per minute")(auth_bp)
 # Blueprint 등록
 # =====================================================================
 app.register_blueprint(auth_bp)
+app.register_blueprint(mattermost_action_bp)
+csrf.exempt(mattermost_action_bp)  # 외부(Mattermost 서버)에서 호출되는 webhook이라 CSRF 면제
+app.register_blueprint(mattermost_slash_bp)
+csrf.exempt(mattermost_slash_bp)   # 슬래시 커맨드도 외부 호출
 
 # 개별 엔드포인트 rate limit (Blueprint 등록 후 적용)
 with app.app_context():
@@ -283,11 +297,16 @@ app.register_blueprint(lighting_layout_bp)
 app.register_blueprint(processing_order_bp)
 app.register_blueprint(business_trip_bp)
 app.register_blueprint(vehicle_log_bp)
+app.register_blueprint(approval_bp)
+app.register_blueprint(hr_bp)
 app.register_blueprint(tools_bp)
 app.register_blueprint(document_bp)
 app.register_blueprint(app_api_bp)
 app.register_blueprint(mail_bp)
 app.register_blueprint(office_bp)
+app.register_blueprint(mockups_bp)
+app.register_blueprint(oauth_bp)
+csrf.exempt(oauth_bp)
 csrf.exempt(office_bp)
 
 # ONLYOFFICE callback Blueprint (CSRF 면제)

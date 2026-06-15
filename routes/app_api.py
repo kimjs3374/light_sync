@@ -5,8 +5,6 @@
 - 토큰 인증 (앱용)
 """
 import datetime
-import hashlib
-import hmac
 import json
 import time
 import bcrypt
@@ -14,6 +12,11 @@ from flask import Blueprint, jsonify, request, session, make_response, current_a
 from functools import wraps
 from modules.db_context import get_db
 from modules.contract_filters import active_contract_filter
+from modules.auth_decorators import (
+    make_app_token,
+    verify_app_token,
+    compute_user_permissions,
+)
 from modules.models import (
     User, GroupPermission, UserPriorityPermission, Project, HistoryLog,
     Notification, G2bProcurement, Contract, ContractItem,
@@ -36,46 +39,21 @@ from sqlalchemy.orm import joinedload
 app_api_bp = Blueprint('app_api', __name__, url_prefix='/api/app')
 
 
-# ── 토큰 유틸 ──
+# ── 토큰 유틸 (modules.auth_decorators 로 이동, 하위 호환 alias 유지) ──
 
-def _get_secret():
-    return current_app.config.get('SECRET_KEY', 'fallback-secret')
-
-
-def _make_token(user_id):
-    """user_id + 만료시각을 HMAC 서명"""
-    expires = int(time.time()) + 8 * 3600  # 8시간
-    payload = f'{user_id}:{expires}'
-    sig = hmac.new(_get_secret().encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
-    return f'{payload}:{sig}'
-
-
-def _verify_token(token):
-    """토큰 검증 → user_id 반환, 실패 시 None"""
-    try:
-        parts = token.split(':')
-        if len(parts) != 3:
-            return None
-        user_id, expires, sig = int(parts[0]), int(parts[1]), parts[2]
-        if time.time() > expires:
-            return None
-        expected = hmac.new(_get_secret().encode(), f'{user_id}:{expires}'.encode(), hashlib.sha256).hexdigest()[:32]
-        if not hmac.compare_digest(sig, expected):
-            return None
-        return user_id
-    except Exception:
-        return None
+_make_token = make_app_token
+_verify_token = verify_app_token
 
 
 def app_auth_required(f):
-    """앱 토큰 인증 데코레이터"""
+    """앱 토큰 인증 데코레이터 — 모바일 전용 엔드포인트(PC 세션 허용 안 함)."""
     @wraps(f)
     def decorated(*args, **kwargs):
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
             return jsonify(ok=False, error='로그인이 필요합니다'), 401
         token = auth_header[7:]
-        user_id = _verify_token(token)
+        user_id = verify_app_token(token)
         if not user_id:
             return jsonify(ok=False, error='세션이 만료되었습니다. 다시 로그인해주세요'), 401
         request._app_user_id = user_id
@@ -106,60 +84,14 @@ def webview_auth():
     from flask import redirect
     token = request.args.get('token', '')
     next_url = request.args.get('next', '/dashboard')
-    user_id = _verify_token(token)
+    user_id = verify_app_token(token)
     if not user_id:
         return redirect('/login')
     with get_db() as db:
         user = db.query(User).get(user_id)
         if not user or not user.is_approved:
             return redirect('/login')
-        group_data = db.query(GroupPermission).filter(GroupPermission.group_name == user.user_group).first()
-        if user.role == 'admin':
-            allowed_menus = [k for k in MENU_REGISTRY if k not in COMMON_MENU_KEYS]
-            writable_menus = list(allowed_menus)
-            hide_financial = False
-        else:
-            perm_map = {}
-            if group_data and group_data.allowed_menus:
-                for entry in group_data.allowed_menus.split(","):
-                    entry = entry.strip()
-                    if not entry:
-                        continue
-                    if ':' in entry:
-                        key, perm = entry.rsplit(':', 1)
-                    else:
-                        key, perm = entry, 'rw'
-                    perm_map[key] = perm
-            if user.extra_menus:
-                for entry in user.extra_menus.split(","):
-                    entry = entry.strip()
-                    if not entry:
-                        continue
-                    if ':' in entry:
-                        key, perm = entry.rsplit(':', 1)
-                    else:
-                        key, perm = entry, 'rw'
-                    perm_map[key] = perm
-            allowed_menus = list(perm_map.keys())
-            writable_menus = [k for k, v in perm_map.items() if v == 'rw']
-            hide_financial = bool(group_data and getattr(group_data, 'hide_financial', False))
-            if hasattr(user, 'hide_financial_override') and user.hide_financial_override is not None:
-                hide_financial = user.hide_financial_override
-        can_manage_priority = bool(
-            user.role == 'admin'
-            or db.query(UserPriorityPermission).filter(
-                UserPriorityPermission.user_id == user.id,
-                UserPriorityPermission.is_active.is_(True)
-            ).first()
-        )
-        session.update({
-            'user_id': user.id, 'username': user.username, 'full_name': user.full_name,
-            'user_group': user.user_group, 'role': user.role, 'position': user.position or '',
-            'allowed_menus': allowed_menus, 'writable_menus': writable_menus,
-            'hide_financial': hide_financial,
-            'can_approve_delete': bool(user.role == 'admin' or user.can_approve_delete),
-            'can_manage_priority': can_manage_priority,
-        })
+        session.update(compute_user_permissions(db, user))
     return redirect(next_url)
 
 
@@ -183,41 +115,8 @@ def app_login():
         if user.is_active is False:
             return jsonify(ok=False, error='비활성화된 계정입니다. 관리자에게 문의하세요'), 403
 
-        # 권한 계산
-        group_data = db.query(GroupPermission).filter(GroupPermission.group_name == user.user_group).first()
-        if user.role == 'admin':
-            allowed_menus = [k for k in MENU_REGISTRY if k not in COMMON_MENU_KEYS]
-            writable_menus = list(allowed_menus)
-            hide_financial = False
-        else:
-            perm_map = {}
-            if group_data and group_data.allowed_menus:
-                for entry in group_data.allowed_menus.split(","):
-                    entry = entry.strip()
-                    if not entry:
-                        continue
-                    if ':' in entry:
-                        key, perm = entry.rsplit(':', 1)
-                    else:
-                        key, perm = entry, 'rw'
-                    perm_map[key] = perm
-            if user.extra_menus:
-                for entry in user.extra_menus.split(","):
-                    entry = entry.strip()
-                    if not entry:
-                        continue
-                    if ':' in entry:
-                        key, perm = entry.rsplit(':', 1)
-                    else:
-                        key, perm = entry, 'rw'
-                    perm_map[key] = perm
-            allowed_menus = list(perm_map.keys())
-            writable_menus = [k for k, v in perm_map.items() if v == 'rw']
-            hide_financial = bool(group_data and getattr(group_data, 'hide_financial', False))
-            if hasattr(user, 'hide_financial_override') and user.hide_financial_override is not None:
-                hide_financial = user.hide_financial_override
-
-        token = _make_token(user.id)
+        perms = compute_user_permissions(db, user)
+        token = make_app_token(user.id)
 
         return jsonify(ok=True, token=token, user={
             'id': user.id,
@@ -226,9 +125,9 @@ def app_login():
             'group': user.user_group,
             'role': user.role,
             'position': user.position or '',
-            'allowed_menus': allowed_menus,
-            'writable_menus': writable_menus,
-            'hide_financial': hide_financial,
+            'allowed_menus': perms['allowed_menus'],
+            'writable_menus': perms['writable_menus'],
+            'hide_financial': perms['hide_financial'],
         })
 
 
@@ -7578,3 +7477,351 @@ def app_vehicle_log_receipt(log_id):
         mime_map = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
                     'png': 'image/png', 'webp': 'image/webp'}
         return Response(data, mimetype=mime_map.get(ext, 'application/octet-stream'))
+
+
+# ═══════════════════════════════════════════════════════════════
+# 전자결재 (모바일)
+# ═══════════════════════════════════════════════════════════════
+
+def _ea_doc_brief(doc, uid):
+    """목록용 문서 요약 dict"""
+    cur = next((s for s in doc.steps if s.status == 'current'), None)
+    return {
+        'id': doc.id,
+        'doc_no': doc.doc_no or '',
+        'form_key': doc.form_key,
+        'form_name': doc.form_name,
+        'title': doc.title,
+        'drafter_name': doc.drafter_name,
+        'drafter_position': doc.drafter_position or '',
+        'status': doc.status,
+        'status_label': doc.status_label,
+        'my_turn': bool(cur and cur.approver_id == uid),
+        'current_approver': cur.approver_name if cur else '',
+        'date': (doc.submitted_at or doc.created_at).strftime('%Y-%m-%d') if (doc.submitted_at or doc.created_at) else '',
+        'step_count': len(doc.steps),
+        'approved_steps': sum(1 for s in doc.steps if s.status == 'approved'),
+    }
+
+
+@app_api_bp.route('/approvals')
+@app_auth_required
+def app_approvals():
+    """결재 목록 — tab: inbox/drafted/done"""
+    from modules.models import ApprovalDocument, ApprovalStep, ApprovalReference
+    from modules.services import approval_service as svc
+    uid = request._app_user_id
+    tab = request.args.get('tab', 'inbox')
+    with get_db() as db:
+        svc.seed_form_templates(db); db.commit()
+        base = db.query(ApprovalDocument)
+        if tab == 'inbox':
+            docs = (base.join(ApprovalStep)
+                    .filter(ApprovalDocument.status == 'pending',
+                            ApprovalStep.approver_id == uid,
+                            ApprovalStep.status == 'current')
+                    .order_by(ApprovalDocument.submitted_at.desc()).all())
+        elif tab == 'drafted':
+            docs = (base.filter(ApprovalDocument.drafter_id == uid)
+                    .order_by(ApprovalDocument.created_at.desc()).all())
+        elif tab == 'referenced':
+            docs = (base.join(ApprovalReference)
+                    .filter(ApprovalReference.user_id == uid)
+                    .order_by(ApprovalDocument.submitted_at.desc().nullslast()).all())
+        else:  # done
+            docs = (base.join(ApprovalStep)
+                    .filter(ApprovalDocument.status.in_(['approved', 'rejected']),
+                            ApprovalStep.approver_id == uid)
+                    .order_by(ApprovalDocument.completed_at.desc().nullslast()).distinct().all())
+        inbox_count = (db.query(ApprovalDocument).join(ApprovalStep)
+                       .filter(ApprovalDocument.status == 'pending',
+                               ApprovalStep.approver_id == uid,
+                               ApprovalStep.status == 'current').count())
+        return jsonify(ok=True, approvals=[_ea_doc_brief(d, uid) for d in docs],
+                       inbox_count=inbox_count, tab=tab)
+
+
+@app_api_bp.route('/approvals/forms')
+@app_auth_required
+def app_approval_forms():
+    """결재 양식 목록 + 양식별 기본 결재선(현재 사용자 기준)"""
+    from modules.models import User
+    from modules.services import approval_service as svc
+    uid = request._app_user_id
+    with get_db() as db:
+        svc.seed_form_templates(db); db.commit()
+        me = db.query(User).get(uid)
+        forms = svc.get_active_forms(db)
+        out = []
+        for f in forms:
+            line = svc.resolve_default_line(db, me, f.default_line)
+            out.append({
+                'form_key': f.form_key, 'name': f.name, 'icon': f.icon or '📄',
+                'description': f.description or '', 'fields': f.field_schema or [],
+                'default_line': line,
+            })
+        # 결재자 선택용 사용자 목록
+        users = (db.query(User).filter(User.is_active.is_(True), User.user_group != '최고관리자')
+                 .order_by(User.user_group, User.full_name).all())
+        user_list = [{'id': u.id, 'name': u.full_name, 'position': u.position or '',
+                      'dept': u.user_group or ''} for u in users]
+        leave_balance = None
+        try:
+            from modules.services import hr_service
+            _s = hr_service.leave_summary(db, me)
+            leave_balance = {'granted': _s['granted'], 'used': _s['used'],
+                             'adjust': _s['adjust'], 'remaining': _s['remaining']}
+        except Exception:
+            pass
+        holidays = []
+        try:
+            from modules.services import holiday_service
+            _y = datetime.date.today().year
+            holidays = holiday_service.holiday_list([_y, _y + 1])
+        except Exception:
+            pass
+        return jsonify(ok=True, forms=out, users=user_list,
+                       leave_balance=leave_balance, holidays=holidays)
+
+
+@app_api_bp.route('/approvals/<int:doc_id>')
+@app_auth_required
+def app_approval_detail(doc_id):
+    from modules.models import ApprovalDocument, ApprovalFormTemplate
+    uid = request._app_user_id
+    with get_db() as db:
+        doc = db.query(ApprovalDocument).get(doc_id)
+        if not doc:
+            return jsonify(ok=False, error='문서를 찾을 수 없습니다'), 404
+        # 열람권한
+        allowed = (doc.drafter_id == uid or any(s.approver_id == uid for s in doc.steps)
+                   or any(r.user_id == uid for r in doc.references))
+        if not allowed:
+            return jsonify(ok=False, error='열람 권한이 없습니다'), 403
+        form = db.query(ApprovalFormTemplate).filter_by(form_key=doc.form_key).first()
+        my_step = next((s for s in doc.steps if s.approver_id == uid and s.status == 'current'), None)
+        fields = []
+        for fld in (form.field_schema if form else []):
+            if fld.get('type') == 'lineitems':
+                fields.append({'label': fld['label'], 'type': 'lineitems',
+                               'columns': fld.get('columns', []),
+                               'rows': (doc.form_data or {}).get(fld['key']) or []})
+            else:
+                v = (doc.form_data or {}).get(fld['key'], '')
+                fields.append({'label': fld['label'], 'value': v, 'suffix': fld.get('suffix', '')})
+        return jsonify(ok=True, doc={
+            'amount': int(doc.amount) if doc.amount else None,
+            'attachments': [{'id': a.id, 'name': a.filename} for a in doc.attachments],
+            'id': doc.id, 'doc_no': doc.doc_no or '', 'form_name': doc.form_name,
+            'title': doc.title, 'status': doc.status, 'status_label': doc.status_label,
+            'drafter_name': doc.drafter_name, 'drafter_position': doc.drafter_position or '',
+            'drafter_dept': doc.drafter_dept or '',
+            'date': (doc.submitted_at or doc.created_at).strftime('%Y-%m-%d %H:%M') if (doc.submitted_at or doc.created_at) else '',
+            'content': doc.content or '',
+            'fields': fields,
+            'steps': [{'order': s.step_order, 'name': s.approver_name, 'position': s.approver_position or '',
+                       'role': s.role_label, 'status': s.status, 'status_label': s.status_label,
+                       'comment': s.comment or '',
+                       'acted_at': s.acted_at.strftime('%m-%d %H:%M') if s.acted_at else ''} for s in doc.steps],
+            'references': [{'name': r.user_name, 'type': r.ref_label} for r in doc.references],
+            'my_turn': bool(my_step),
+            'can_cancel': doc.drafter_id == uid and doc.status == 'pending' and not any(s.status == 'approved' for s in doc.steps),
+        })
+
+
+@app_api_bp.route('/approvals', methods=['POST'])
+@app_auth_required
+def app_approval_create():
+    """기안 작성 + 즉시 상신 (모바일 1탭 원칙)"""
+    from modules.models import User, ApprovalDocument, ApprovalFormTemplate, ApprovalStep
+    from modules.services import approval_service as svc
+    uid = request._app_user_id
+    data = request.get_json(silent=True) or {}
+    form_key = (data.get('form_key') or '').strip()
+    title = (data.get('title') or '').strip()
+    form_data = data.get('form_data') or {}
+    content = (data.get('content') or '').strip()
+    approver_ids = data.get('approver_ids') or []  # 비면 기본 결재선 사용
+    with get_db() as db:
+        me = db.query(User).get(uid)
+        form = db.query(ApprovalFormTemplate).filter_by(form_key=form_key, is_active=True).first()
+        if not form:
+            return jsonify(ok=False, error='양식을 찾을 수 없습니다'), 400
+        if not title:
+            return jsonify(ok=False, error='제목을 입력하세요'), 400
+
+        # 라인아이템(지출명세 등) 합계 계산 → amount
+        for field in (form.field_schema or []):
+            if field.get('type') == 'lineitems':
+                rows = form_data.get(field['key']) or []
+                total = 0
+                clean = []
+                for r in rows:
+                    if not any((str(v or '').strip()) for v in r.values()):
+                        continue
+                    try:
+                        total += int(str(r.get('amount', '') or '0').replace(',', '') or 0)
+                    except ValueError:
+                        pass
+                    clean.append(r)
+                form_data[field['key']] = clean
+                form_data['amount'] = total
+
+        amount = None
+        if form.amount_field and form_data.get(form.amount_field):
+            try:
+                amount = int(str(form_data[form.amount_field]).replace(',', ''))
+            except ValueError:
+                pass
+
+        doc = ApprovalDocument(
+            form_key=form.form_key, form_name=form.name, title=title,
+            drafter_id=me.id, drafter_name=me.full_name, drafter_dept=me.user_group,
+            drafter_position=me.position, form_data=form_data, content=content,
+            amount=amount, status='draft')
+        db.add(doc); db.flush()
+
+        # 결재선: 지정값 우선, 없으면 기본 결재선
+        if approver_ids:
+            order = 1
+            seen = set()
+            for aid in approver_ids:
+                try:
+                    aid = int(aid)
+                except (ValueError, TypeError):
+                    continue
+                if aid in seen or aid == me.id:
+                    continue
+                u = db.query(User).get(aid)
+                if not u:
+                    continue
+                seen.add(aid)
+                doc.steps.append(ApprovalStep(step_order=order, approver_id=u.id,
+                    approver_name=u.full_name, approver_position=u.position,
+                    approver_dept=u.user_group, role='approval', status='waiting'))
+                order += 1
+        else:
+            for i, s in enumerate(svc.resolve_default_line(db, me, form.default_line), 1):
+                doc.steps.append(ApprovalStep(step_order=i, status='waiting', **s))
+        db.flush()
+
+        try:
+            svc.submit_document(db, doc)
+        except ValueError as e:
+            db.rollback()
+            return jsonify(ok=False, error=str(e)), 400
+        log_activity(db, 'approval', 'submit', f'[{doc.doc_no}] {doc.title} 상신',
+                     ref_type='approval', ref_id=doc.id, ref_label=doc.title)
+        db.commit()
+        return jsonify(ok=True, doc_id=doc.id, doc_no=doc.doc_no)
+
+
+@app_api_bp.route('/approvals/<int:doc_id>/approve', methods=['POST'])
+@app_auth_required
+def app_approval_approve(doc_id):
+    from modules.models import ApprovalDocument
+    from modules.services import approval_service as svc
+    uid = request._app_user_id
+    data = request.get_json(silent=True) or {}
+    with get_db() as db:
+        doc = db.query(ApprovalDocument).get(doc_id)
+        if not doc:
+            return jsonify(ok=False, error='문서를 찾을 수 없습니다'), 404
+        step = next((s for s in doc.steps if s.approver_id == uid and s.status == 'current'), None)
+        if not step:
+            return jsonify(ok=False, error='현재 결재 차례가 아닙니다'), 400
+        try:
+            svc.approve_step(db, doc, step, (data.get('comment') or '').strip())
+        except ValueError as e:
+            db.rollback()
+            return jsonify(ok=False, error=str(e)), 400
+        log_activity(db, 'approval', 'approve', f'[{doc.doc_no}] {doc.title} 승인',
+                     ref_type='approval', ref_id=doc.id, ref_label=doc.title)
+        db.commit()
+        return jsonify(ok=True, status=doc.status)
+
+
+@app_api_bp.route('/approvals/<int:doc_id>/reject', methods=['POST'])
+@app_auth_required
+def app_approval_reject(doc_id):
+    from modules.models import ApprovalDocument
+    from modules.services import approval_service as svc
+    uid = request._app_user_id
+    data = request.get_json(silent=True) or {}
+    comment = (data.get('comment') or '').strip()
+    with get_db() as db:
+        doc = db.query(ApprovalDocument).get(doc_id)
+        if not doc:
+            return jsonify(ok=False, error='문서를 찾을 수 없습니다'), 404
+        step = next((s for s in doc.steps if s.approver_id == uid and s.status == 'current'), None)
+        if not step:
+            return jsonify(ok=False, error='현재 결재 차례가 아닙니다'), 400
+        if not comment:
+            return jsonify(ok=False, error='반려 사유를 입력하세요'), 400
+        try:
+            svc.reject_step(db, doc, step, comment)
+        except ValueError as e:
+            db.rollback()
+            return jsonify(ok=False, error=str(e)), 400
+        log_activity(db, 'approval', 'reject', f'[{doc.doc_no}] {doc.title} 반려',
+                     ref_type='approval', ref_id=doc.id, ref_label=doc.title)
+        db.commit()
+        return jsonify(ok=True, status=doc.status)
+
+
+@app_api_bp.route('/approvals/<int:doc_id>/cancel', methods=['POST'])
+@app_auth_required
+def app_approval_cancel(doc_id):
+    from modules.models import ApprovalDocument
+    from modules.services import approval_service as svc
+    uid = request._app_user_id
+    with get_db() as db:
+        doc = db.query(ApprovalDocument).get(doc_id)
+        if not doc or doc.drafter_id != uid:
+            return jsonify(ok=False, error='권한이 없습니다'), 403
+        try:
+            svc.cancel_document(db, doc)
+        except ValueError as e:
+            db.rollback()
+            return jsonify(ok=False, error=str(e)), 400
+        db.commit()
+        return jsonify(ok=True, status=doc.status)
+
+
+@app_api_bp.route('/approvals/<int:doc_id>/attachment', methods=['POST'])
+@app_auth_required
+def app_approval_attachment(doc_id):
+    """모바일 결재 첨부(증빙) 업로드 — multipart file=<...>."""
+    import os as _o
+    from werkzeug.utils import secure_filename as _sf
+    from modules.models import ApprovalDocument, ApprovalAttachment
+    from modules.storage_adapter import upload_bytes as _upload
+    _ALLOWED = {'pdf', 'jpg', 'jpeg', 'png', 'webp', 'xlsx', 'xls', 'docx', 'doc', 'hwp', 'hwpx', 'zip'}
+    uid = request._app_user_id
+    with get_db() as db:
+        doc = db.query(ApprovalDocument).get(doc_id)
+        if not doc:
+            return jsonify(ok=False, error='문서를 찾을 수 없습니다'), 404
+        if doc.drafter_id != uid:
+            return jsonify(ok=False, error='권한이 없습니다'), 403
+        if doc.status not in ('draft', 'pending'):
+            return jsonify(ok=False, error='첨부할 수 없는 상태입니다'), 400
+        f = request.files.get('file')
+        if not f or not f.filename:
+            return jsonify(ok=False, error='파일이 없습니다'), 400
+        data = f.read()
+        if not data or len(data) > 20 * 1024 * 1024:
+            return jsonify(ok=False, error='20MB 이하만 가능합니다'), 400
+        fname = _sf(f.filename) or 'file'
+        ext = _o.path.splitext(fname)[1].lstrip('.').lower()
+        if ext not in _ALLOWED:
+            return jsonify(ok=False, error='허용되지 않는 형식입니다'), 400
+        idx = len(doc.attachments) + 1
+        path = f"documents/approval/{doc.id}/{idx}_{fname}"
+        ok, err = _upload(path, data, f.mimetype or 'application/octet-stream')
+        if not ok:
+            return jsonify(ok=False, error=err), 500
+        db.add(ApprovalAttachment(document_id=doc.id, filename=f.filename,
+                                  storage_path=path, content_type=f.mimetype, size=len(data)))
+        db.commit()
+        return jsonify(ok=True)

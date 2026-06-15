@@ -8,7 +8,7 @@ from modules.models import (
     DETAIL_ITEM_OPTIONS, normalize_detail_item
 )
 from modules.history_board import append_history_log
-from modules.kakaowork_notifier import post_contract_summary
+from modules.notification_engine import notify
 
 contract_bp = Blueprint('contract', __name__)
 
@@ -103,9 +103,18 @@ def contract_create():
                 created_contracts = list(new_p.contracts)
                 db.commit()
 
-                notify_ok, notify_msg, _ = post_contract_summary(new_p, created_contracts)
-                if not notify_ok:
-                    flash(f"계약은 등록되었지만 카카오워크 알림은 실패했습니다: {notify_msg}", "warning")
+                # 알림 엔진: ERP 내부 + 카카오워크 동시 발송
+                first_c = created_contracts[0] if created_contracts else None
+                due_str = first_c.delivery_due_date.strftime('%Y-%m-%d') if first_c and first_c.delivery_due_date else '-'
+                notify(db, 'contract.created', {
+                    'project_name': new_p.temp_name or new_p.short_name or '-',
+                    'project_id': new_p.id,
+                    'contract_name': first_c.contract_name if first_c else '-',
+                    'delivery_due_date': due_str,
+                    'project': new_p,
+                    'contracts': created_contracts,
+                })
+                db.commit()
 
                 return redirect(url_for('project.contract_list'))
             except Exception as e:

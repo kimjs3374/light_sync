@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}인사관리{% endblock %}
+
+{% block content %}
+<style>
+  .hr-table th { font-size:.72rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:.03em; border-bottom:1px solid #e2e8f0; padding:6px 8px; white-space:nowrap; }
+  .hr-table td { font-size:.84rem; padding:7px 8px; border-bottom:1px solid #e2e8f0; vertical-align:middle; white-space:nowrap; }
+  .hr-table tbody tr { cursor:pointer; }
+  .hr-table tbody tr:hover { background:#f8fafc; }
+  .lv-pill { display:inline-block; min-width:34px; text-align:center; font-weight:700; font-size:.8rem; padding:2px 8px; border-radius:6px; }
+  .dept-title { font-size:.85rem; font-weight:700; color:#334155; margin:1.2rem 0 .4rem; }
+</style>
+
+<div class="page-hero mg-fade">
+  <div class="d-flex justify-content-between align-items-center gap-2">
+    <div>
+      <div class="hero-eyebrow">HR</div>
+      <h2>인사관리</h2>
+      <div class="hero-sub">직원 {{ total }}명 · 연차는 입사일 기준 자동 산정 + 전자결재 휴가 자동 차감</div>
+    </div>
+    <a href="{{ url_for('hr.hr_org') }}" class="btn btn-sm"><i class="bi bi-diagram-3"></i> 조직도</a>
+  </div>
+</div>
+
+{% for dept, rows in by_dept.items() %}
+<div class="dept-title mg-fade">{{ dept }} <span class="text-muted fw-normal">({{ rows|length }})</span></div>
+<div class="table-responsive mg-fade">
+  <table class="table hr-table mb-0">
+    <thead>
+      <tr>
+        <th>이름</th><th>직급</th><th>입사일</th><th>근속</th>
+        <th class="text-end">부여</th><th class="text-end">사용</th><th class="text-end">잔여</th><th>연락처</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      {% set lv = r.leave %}
+      <tr onclick="location.href='{{ url_for('hr.hr_detail', user_id=r.u.id) }}'">
+        <td class="fw-semibold">{{ r.u.full_name }}</td>
+        <td>{{ r.u.position or '-' }}</td>
+        <td>{{ r.u.hire_date.strftime('%Y-%m-%d') if r.u.hire_date else '미등록' }}</td>
+        <td>{{ (lv.years ~ '년') if lv.years is not none else '-' }}</td>
+        <td class="text-end">{{ lv.granted }}{% if lv.adjust %}<span class="text-muted" style="font-size:.72rem">({{ '%+g'|format(lv.adjust) }})</span>{% endif %}</td>
+        <td class="text-end">{{ lv.used }}</td>
+        <td class="text-end">
+          <span class="lv-pill" style="background:{{ '#fef2f2' if lv.remaining <= 2 else '#f0fdf4' }};color:{{ '#dc2626' if lv.remaining <= 2 else '#16a34a' }}">{{ lv.remaining }}</span>
+        </td>
+        <td class="text-muted">{{ r.u.phone_number or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endfor %}
+{% endblock %}

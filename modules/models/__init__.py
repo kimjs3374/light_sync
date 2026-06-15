@@ -47,6 +47,9 @@ from .entities import (
     SportsModule,
     User,
     UserPriorityPermission,
+    OAuthClient,
+    OAuthCode,
+    OAuthToken,
     Warranty,
     WarrantyCase,
     WarrantyCaseLog,
@@ -115,8 +118,23 @@ from .entities import (
     REUSABLE_ATTACH_TYPES,
     determine_org_type,
     generate_doc_number,
+    ChannelToolAcl,
+    PendingWriteSession,
 )
 from .mail_entities import MailAccount, MailSharedAccess, MailContact, MailReadReceipt, MailLargeFile
+from .hr_entities import LeaveAdjustment
+from .approval_entities import (
+    ApprovalFormTemplate,
+    ApprovalDocument,
+    ApprovalStep,
+    ApprovalReference,
+    ApprovalAttachment,
+    ApprovalComment,
+    DOC_STATUS,
+    STEP_STATUS,
+    STEP_ROLE,
+    REF_TYPE,
+)
 from .db import SessionLocal, engine, init_db
 
 __all__ = [
@@ -173,6 +191,9 @@ __all__ = [
     "GroupPermission",
     "User",
     "UserPriorityPermission",
+    "OAuthClient",
+    "OAuthCode",
+    "OAuthToken",
     "ProductCatalog",
     "ProjectDeleteRequest",
     "DailyReport",
@@ -242,4 +263,17 @@ __all__ = [
     "MailContact",
     "MailReadReceipt",
     "MailLargeFile",
+    "ChannelToolAcl",
+    "PendingWriteSession",
+    "ApprovalFormTemplate",
+    "ApprovalDocument",
+    "ApprovalStep",
+    "ApprovalReference",
+    "ApprovalAttachment",
+    "ApprovalComment",
+    "LeaveAdjustment",
+    "DOC_STATUS",
+    "STEP_STATUS",
+    "STEP_ROLE",
+    "REF_TYPE",
 ]

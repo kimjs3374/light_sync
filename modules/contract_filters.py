@@ -12,7 +12,7 @@ from modules.models import Contract, Project
 
 
 # 완료 상태 목록 (확장 시 여기만 수정)
-DONE_STATUSES = ('입금완료', '변경완료', '취소')
+DONE_STATUSES = ('청구완료', '입금완료', '변경완료', '취소')
 
 
 def active_contract_filter():

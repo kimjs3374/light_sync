@@ -3,6 +3,7 @@ import datetime
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -33,6 +34,9 @@ class User(Base):
     is_approved = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     must_change_password = Column(Boolean, default=False)  # 비밀번호 초기화 후 강제 변경
+    address = Column(String(300), nullable=True)          # 자택 주소 (현장대리인계용)
+    birth_date = Column(Date, nullable=True)               # 생년월일
+    hire_date = Column(Date, nullable=True)                # 입사일
     deactivated_at = Column(DateTime, nullable=True)
     deactivated_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
@@ -43,6 +47,33 @@ class User(Base):
         uselist=False,
         cascade="all, delete-orphan"
     )
+
+    _MAIL_DISCLAIMER = (
+        '위 메일 및 첨부자료는 지정된 수신인만을 위한 것이며 관련법령에 의해 보호대상이 되는 기밀사항을 포함할 수 있습니다.<br>'
+        '본 메일, 혹은 첨부자료에 포함된 내용을 무단으로 조사, 사용, 복사, 공개 혹은 배포하는 행위는 엄격히 금지되어 있습니다.<br>'
+        '이 메일이 잘못 전송된 경우에는 본 메일 및 첨부자료를 복사하거나 공개하지 마시고<br>'
+        '발신인에게 알려주시고 메일 및 첨부자료는 즉시 삭제해주시기 바랍니다.'
+    )
+
+    def to_signature_html(self):
+        """User 정보 기반 메일 서명 HTML 생성"""
+        parts = []
+        title = '<strong>(주)매그나텍</strong>'
+        if self.user_group:
+            title += f' {self.user_group}'
+        if self.full_name:
+            title += f' {self.full_name}'
+        if self.position:
+            title += f' {self.position}'
+        parts.append(title)
+        if self.phone_number:
+            parts.append(f'Mobile : {self.phone_number}')
+        parts.append('Office : 061-392-5508')
+        parts.append('Fax : 061-392-5518')
+        parts.append('홈페이지 : <a href="https://www.magnatech.co.kr">www.magnatech.co.kr</a>')
+        sep = '═' * 40
+        disclaimer = f'<div style="font-size:11px;color:#333;margin-bottom:8px;">{self._MAIL_DISCLAIMER}</div>'
+        return f'{disclaimer}{sep}<br>{"<br>".join(parts)}<br>{sep}'
 
 
 class GroupPermission(Base):
@@ -108,3 +139,76 @@ class EmailSignature(Base):
         lines.append('홈페이지 : https://www.magnatech.co.kr')
         lines.append('=' * 65)
         return '\n'.join(lines)
+
+    DISCLAIMER = (
+        '위 메일 및 첨부자료는 지정된 수신인만을 위한 것이며 관련법령에 의해 보호대상이 되는 기밀사항을 포함할 수 있습니다.<br>'
+        '본 메일, 혹은 첨부자료에 포함된 내용을 무단으로 조사, 사용, 복사, 공개 혹은 배포하는 행위는 엄격히 금지되어 있습니다.<br>'
+        '이 메일이 잘못 전송된 경우에는 본 메일 및 첨부자료를 복사하거나 공개하지 마시고<br>'
+        '발신인에게 알려주시고 메일 및 첨부자료는 즉시 삭제해주시기 바랍니다.'
+    )
+
+    def to_html(self):
+        """서명 HTML 생성"""
+        parts = []
+        title = '<strong>(주)매그나텍</strong>'
+        if self.department:
+            title += f' {self.department}'
+        if self.display_name:
+            title += f' {self.display_name}'
+        if self.position:
+            title += f' {self.position}'
+        parts.append(title)
+        if self.mobile:
+            parts.append(f'Mobile : {self.mobile}')
+        if self.office_tel:
+            parts.append(f'Office : {self.office_tel}')
+        if self.fax:
+            parts.append(f'Fax : {self.fax}')
+        parts.append('홈페이지 : <a href="https://www.magnatech.co.kr">www.magnatech.co.kr</a>')
+        sep = '<span style="color:#cbd5e1;">═' * 40 + '</span>'
+        disclaimer = f'<div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">{self.DISCLAIMER}</div>'
+        return f'{disclaimer}{sep}<br>{"<br>".join(parts)}<br>{sep}'
+
+
+# ==============================================================
+# OIDC Provider (사내 SSO) — Mattermost 등 외부 도구 인증용
+# ==============================================================
+class OAuthClient(Base):
+    __tablename__ = 'oauth_clients'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(String(80), unique=True, nullable=False, index=True)
+    client_secret_hash = Column(String(200), nullable=False)
+    name = Column(String(100), nullable=False)
+    redirect_uris = Column(Text, nullable=False)              # 줄바꿈 구분 다중 URI
+    allowed_scopes = Column(String(200), default='openid profile email')
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    notes = Column(Text, nullable=True)
+
+
+class OAuthCode(Base):
+    __tablename__ = 'oauth_codes'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(120), unique=True, nullable=False, index=True)
+    client_id = Column(String(80), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    redirect_uri = Column(String(500), nullable=False)
+    scope = Column(String(200), nullable=False)
+    nonce = Column(String(200), nullable=True)
+    code_challenge = Column(String(200), nullable=True)
+    code_challenge_method = Column(String(20), nullable=True)
+    used = Column(Boolean, default=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+
+class OAuthToken(Base):
+    __tablename__ = 'oauth_tokens'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    access_token = Column(String(200), unique=True, nullable=False, index=True)
+    client_id = Column(String(80), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    scope = Column(String(200), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    revoked = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.now)

@@ -40,7 +40,7 @@ class DrawingVersion(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     drawing_id = Column(Integer, ForeignKey('drawings.id'), nullable=False)
     version_no = Column(Integer, nullable=False, default=1)
-    dwg_path = Column(String(500), nullable=False)
+    dwg_path = Column(String(500), nullable=True)
     pdf_path = Column(String(500), nullable=True)
     convert_status = Column(String(20), nullable=False, default='UPLOADED')
     convert_message = Column(Text, nullable=True)

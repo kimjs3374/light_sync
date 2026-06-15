@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}전자결재{% endblock %}
+
+{% block content %}
+<style>
+  .ea-stat { border:none; border-radius:12px; }
+  .ea-stat .stat-num { font-size:1.8rem; font-weight:700; line-height:1.1; }
+  .ea-stat .stat-label { font-size:.78rem; color:#64748b; margin-top:2px; }
+  .ea-tabs { border-bottom:1px solid #e2e8f0; }
+  .ea-tabs .nav-link { color:#64748b; border:none; border-bottom:2px solid transparent; padding:.5rem .9rem; font-size:.85rem; font-weight:600; }
+  .ea-tabs .nav-link.active { color:#2563eb; border-bottom-color:#2563eb; background:none; }
+  .ea-table th { font-size:.72rem; color:#64748b; font-weight:700; border-bottom:1px solid #e2e8f0; text-transform:uppercase; letter-spacing:.03em; white-space:nowrap; padding:6px 8px; }
+  .ea-table td { font-size:.82rem; padding:6px 8px; border-bottom:1px solid #e2e8f0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle; }
+  .ea-table tbody tr { cursor:pointer; }
+  .ea-table tbody tr:hover { background:#f8fafc; }
+  .ea-table td.ea-title { max-width:360px; }
+</style>
+
+<div class="page-hero mg-fade">
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+    <div>
+      <div class="hero-eyebrow">Approval</div>
+      <h2>전자결재</h2>
+      <div class="hero-sub">사내 전자결재 · 순차 결재 (부서장 → 경영진)</div>
+    </div>
+    <div class="d-flex gap-2">
+    {% if session.role == 'admin' %}
+    <a href="{{ url_for('approval.admin_templates') }}" class="btn btn-sm" title="양식 관리"><i class="bi bi-gear"></i> 양식관리</a>
+    {% endif %}
+    <div class="dropdown">
+      <button class="btn btn-hi btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+        <i class="bi bi-pencil-square"></i> 새 기안
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        {% for f in forms %}
+        <li><a class="dropdown-item" href="{{ url_for('approval.approval_new', form=f.form_key) }}">
+          {{ f.icon or '📄' }} {{ f.name }}</a></li>
+        {% else %}
+        <li><span class="dropdown-item text-muted">등록된 양식이 없습니다</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+    </div>
+  </div>
+</div>
+
+{# ── 통계 ── #}
+<div class="row g-3 mb-3 mg-fade" style="animation-delay:.05s">
+  <div class="col-6 col-md-3">
+    <div class="card ea-stat shadow-sm text-center py-3" style="border-left:3px solid #f59e0b;">
+      <div class="stat-num" style="color:#f59e0b;">{{ stats.inbox }}</div>
+      <div class="stat-label">결재 대기</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card ea-stat shadow-sm text-center py-3" style="border-left:3px solid #3b82f6;">
+      <div class="stat-num" style="color:#3b82f6;">{{ stats.progress }}</div>
+      <div class="stat-label">진행 중</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card ea-stat shadow-sm text-center py-3" style="border-left:3px solid #6366f1;">
+      <div class="stat-num" style="color:#6366f1;">{{ stats.drafted }}</div>
+      <div class="stat-label">내가 올린</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card ea-stat shadow-sm text-center py-3" style="border-left:3px solid #22c55e;">
+      <div class="stat-num" style="color:#22c55e;">{{ stats.done }}</div>
+      <div class="stat-label">완료</div>
+    </div>
+  </div>
+</div>
+
+{# ── 탭 ── #}
+<ul class="nav ea-tabs mb-2 mg-fade" style="animation-delay:.08s">
+  {% set tabs = [('inbox','결재대기'),('progress','진행중'),('drafted','내가 올린'),('referenced','참조/수신'),('done','완료함')] %}
+  {% for key, label in tabs %}
+  <li class="nav-item">
+    <a class="nav-link {{ 'active' if tab == key }}" href="{{ url_for('approval.approval_list', tab=key) }}">
+      {{ label }}{% if key == 'inbox' and inbox_count %} <span class="badge bg-danger">{{ inbox_count }}</span>{% endif %}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+
+{# ── 목록 ── #}
+<div class="table-responsive mg-fade" style="animation-delay:.1s">
+  <table class="table ea-table mb-0">
+    <thead>
+      <tr>
+        <th style="width:120px">문서번호</th>
+        <th style="width:90px">양식</th>
+        <th>제목</th>
+        <th style="width:120px">기안자</th>
+        <th style="width:80px">상태</th>
+        <th style="width:150px">결재선</th>
+        <th style="width:100px">일자</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in docs %}
+      <tr onclick="location.href='{{ url_for('approval.approval_detail', doc_id=d.id) }}'">
+        <td class="text-muted" style="font-family:var(--mg-mono,monospace);font-size:.76rem">{{ d.doc_no or '임시저장' }}</td>
+        <td><span class="badge bg-light text-dark border">{{ d.form_name }}</span></td>
+        <td class="ea-title fw-semibold">{{ d.title }}</td>
+        <td>{{ d.drafter_name }} {{ d.drafter_position or '' }}</td>
+        <td>
+          {% if d.status == 'draft' %}<span class="badge bg-secondary">작성중</span>
+          {% elif d.status == 'pending' %}<span class="badge bg-warning text-dark">진행중</span>
+          {% elif d.status == 'approved' %}<span class="badge bg-success">완료</span>
+          {% elif d.status == 'rejected' %}<span class="badge bg-danger">반려</span>
+          {% else %}<span class="badge bg-secondary">회수</span>{% endif %}
+        </td>
+        <td>
+          {% for s in d.steps %}
+            {%- if s.status == 'approved' -%}<span title="{{ s.approver_name }} 승인">✅</span>
+            {%- elif s.status == 'rejected' -%}<span title="{{ s.approver_name }} 반려">⛔</span>
+            {%- elif s.status == 'current' -%}<span title="{{ s.approver_name }} 결재중">🔵</span>
+            {%- else -%}<span title="{{ s.approver_name }} 대기">⚪</span>{%- endif -%}
+          {% endfor %}
+        </td>
+        <td class="text-muted" style="font-size:.76rem">{{ (d.submitted_at or d.created_at).strftime('%Y-%m-%d') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="text-center text-muted py-5">문서가 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

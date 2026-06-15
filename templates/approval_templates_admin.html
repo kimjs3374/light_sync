@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}전자결재 양식 관리{% endblock %}
+
+{% block content %}
+<style>
+  .ea-section { background:#fff; border:1px solid #e2e8f0; border-radius:var(--mg-radius,.65rem); padding:1rem 1.2rem; margin-bottom:1rem; }
+  .ea-section-title { font-size:.72rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.04em; margin-bottom:.7rem; }
+  .form-label { font-size:.78rem; color:#475569; font-weight:600; margin-bottom:.25rem; }
+  .tmpl-table th { font-size:.72rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:.03em; border-bottom:1px solid #e2e8f0; padding:6px 8px; white-space:nowrap; }
+  .tmpl-table td { font-size:.84rem; padding:6px 8px; border-bottom:1px solid #e2e8f0; vertical-align:middle; }
+  .fld-row { display:flex; gap:.4rem; align-items:center; padding:.4rem; border:1px solid #e2e8f0; border-radius:.5rem; margin-bottom:.4rem; background:#f8fafc; flex-wrap:wrap; }
+  .fld-row input, .fld-row select { font-size:.8rem; }
+</style>
+
+<div class="page-hero mg-fade">
+  <div class="d-flex justify-content-between align-items-center gap-2">
+    <div>
+      <div class="hero-eyebrow">Approval · Admin</div>
+      <h2>전자결재 양식 관리</h2>
+      <div class="hero-sub">결재 양식을 추가·수정하고 기본 결재선을 설정합니다</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('approval.approval_list') }}" class="btn btn-sm">결재함</a>
+      <a href="{{ url_for('approval.admin_template_new') }}" class="btn btn-hi btn-sm"><i class="bi bi-plus-lg"></i> 새 양식</a>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  {# ── 양식 목록 ── #}
+  <div class="col-lg-5">
+    <div class="ea-section mg-fade">
+      <div class="ea-section-title">등록된 양식 ({{ forms|length }})</div>
+      <table class="table tmpl-table mb-0">
+        <thead><tr><th>양식</th><th>키</th><th>필드</th><th>사용</th><th>상태</th><th></th></tr></thead>
+        <tbody>
+          {% for f in forms %}
+          <tr>
+            <td>{{ f.icon or '📄' }} <strong>{{ f.name }}</strong></td>
+            <td class="text-muted" style="font-family:var(--mg-mono,monospace);font-size:.76rem">{{ f.form_key }}</td>
+            <td>{{ (f.field_schema or [])|length }}</td>
+            <td>{{ usage.get(f.id, '-') }}</td>
+            <td>{% if f.is_active %}<span class="badge bg-success">활성</span>{% else %}<span class="badge bg-secondary">숨김</span>{% endif %}</td>
+            <td><a href="{{ url_for('approval.admin_template_edit', tid=f.id) }}" class="btn btn-sm btn-outline-primary">편집</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-3">양식이 없습니다.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ── 편집기 ── #}
+  <div class="col-lg-7">
+    {% if edit_form %}
+    <form method="POST" action="{{ url_for('approval.admin_template_save') }}" class="ea-section mg-fade" id="tmplForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if not edit_form.is_new %}<input type="hidden" name="tid" value="{{ edit_form.id }}">{% endif %}
+      <div class="ea-section-title">{{ '새 양식' if edit_form.is_new else edit_form.name + ' 편집' }}</div>
+
+      <div class="row g-2 mb-2">
+        <div class="col-4">
+          <label class="form-label">양식 키 *</label>
+          {% if edit_form.is_new %}
+          <input type="text" name="form_key" class="form-control form-control-sm" required
+                 placeholder="leave" pattern="[a-z0-9_]+" title="영문 소문자/숫자/_">
+          {% else %}
+          <input type="text" class="form-control form-control-sm" value="{{ edit_form.form_key }}" disabled>
+          {% endif %}
+        </div>
+        <div class="col-2">
+          <label class="form-label">아이콘</label>
+          <input type="text" name="icon" class="form-control form-control-sm" value="{{ edit_form.icon }}" placeholder="📄">
+        </div>
+        <div class="col-6">
+          <label class="form-label">양식명 *</label>
+          <input type="text" name="name" class="form-control form-control-sm" required value="{{ edit_form.name or '' }}" placeholder="휴가신청서">
+        </div>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">설명</label>
+        <input type="text" name="description" class="form-control form-control-sm" value="{{ edit_form.description or '' }}">
+      </div>
+
+      {# ── 필드 빌더 ── #}
+      <div class="ea-section-title mt-3">입력 필드</div>
+      <div id="fldBox"></div>
+      <button type="button" class="btn btn-sm btn-outline-primary mb-3" onclick="addField()">+ 필드 추가</button>
+
+      {# ── 결재선 / 금액 / 정렬 ── #}
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">기본 결재선</label>
+          <div class="form-text mb-1">기안자 → 아래 선택 단계 (상신 시 수정 가능)</div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="line_dept_head" value="1" id="ldh"
+                   {{ 'checked' if (not edit_form.default_line) or ('dept_head' in edit_form.default_line) }}>
+            <label class="form-check-label" for="ldh">부서장</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="line_executive" value="1" id="lex"
+                   {{ 'checked' if (not edit_form.default_line) or ('executive' in edit_form.default_line) }}>
+            <label class="form-check-label" for="lex">경영진(부장 이상 전원)</label>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">금액 필드</label>
+          <select name="amount_field" class="form-select form-select-sm" id="amountField">
+            <option value="">없음</option>
+          </select>
+          <div class="form-text">집계용 금액 필드</div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">정렬순서</label>
+          <input type="number" name="sort_order" class="form-control form-control-sm" value="{{ edit_form.sort_order or 0 }}">
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" name="is_active" value="1" id="isact"
+                   {{ 'checked' if edit_form.is_new or edit_form.is_active }}>
+            <label class="form-check-label" for="isact">활성</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2 mt-4 pt-3 border-top">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 저장</button>
+        <a href="{{ url_for('approval.admin_templates') }}" class="btn btn-outline-secondary ms-auto">취소</a>
+      </div>
+    </form>
+
+    {% if not edit_form.is_new %}
+    <div class="d-flex gap-2">
+      <form method="POST" action="{{ url_for('approval.admin_template_toggle', tid=edit_form.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-warning">{{ '비활성화' if edit_form.is_active else '활성화' }}</button>
+      </form>
+      <form method="POST" action="{{ url_for('approval.admin_template_delete', tid=edit_form.id) }}"
+            onsubmit="return confirm('양식을 삭제하시겠습니까? (사용 문서가 있으면 차단됩니다)')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-danger">삭제</button>
+      </form>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="ea-section text-muted text-center py-5">
+      왼쪽에서 양식을 선택해 편집하거나 <a href="{{ url_for('approval.admin_template_new') }}">새 양식</a>을 추가하세요.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if edit_form %}
+<script>
+  const FIELD_TYPES = [['text','단문'],['textarea','장문'],['number','숫자'],['date','날짜'],['select','선택']];
+  let FIELDS = {{ (edit_form.field_schema if edit_form and not edit_form.is_new else [])|tojson }};
+  const SAVED_AMOUNT = {{ (edit_form.amount_field if (edit_form and not edit_form.is_new) else '')|tojson }};
+
+  function typeOptions(sel) {
+    return FIELD_TYPES.map(([v,l]) => `<option value="${v}" ${v===sel?'selected':''}>${l}</option>`).join('');
+  }
+  function renderFields() {
+    const box = document.getElementById('fldBox'); box.innerHTML = '';
+    FIELDS.forEach((f, i) => {
+      const div = document.createElement('div'); div.className = 'fld-row';
+      div.innerHTML = `
+        <input class="form-control form-control-sm" style="width:120px" name="field_key" placeholder="key(영문)" value="${f.key||''}" oninput="syncFields()">
+        <input class="form-control form-control-sm" style="width:130px" name="field_label" placeholder="라벨" value="${f.label||''}" oninput="syncFields()">
+        <select class="form-select form-select-sm" style="width:90px" name="field_type" onchange="syncFields();renderFields()">${typeOptions(f.type)}</select>
+        <input class="form-control form-control-sm" style="flex:1;min-width:120px" name="field_options" placeholder="${f.type==='select'?'선택지(쉼표구분)':'옵션(선택형만)'}" value="${(f.options||[]).join(', ')}" ${f.type==='select'?'':'disabled'} oninput="syncFields()">
+        <input class="form-control form-control-sm" style="width:70px" name="field_suffix" placeholder="단위" value="${f.suffix||''}" oninput="syncFields()">
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="field_required_${i}" value="1" ${f.required?'checked':''}><label class="form-check-label" style="font-size:.74rem">필수</label></div>
+        <button type="button" class="btn btn-sm btn-light text-danger" onclick="removeField(${i})">✕</button>`;
+      box.appendChild(div);
+    });
+    refreshAmountField();
+  }
+  function syncFields() {
+    const keys = document.querySelectorAll('#fldBox input[name=field_key]');
+    const labels = document.querySelectorAll('#fldBox input[name=field_label]');
+    const types = document.querySelectorAll('#fldBox select[name=field_type]');
+    const opts = document.querySelectorAll('#fldBox input[name=field_options]');
+    const sfx = document.querySelectorAll('#fldBox input[name=field_suffix]');
+    const reqs = document.querySelectorAll('#fldBox input[type=checkbox][name^=field_required_]');
+    FIELDS = [];
+    keys.forEach((k, i) => {
+      FIELDS.push({
+        key: k.value, label: labels[i].value, type: types[i].value,
+        options: opts[i].value.split(',').map(s=>s.trim()).filter(Boolean),
+        suffix: sfx[i].value, required: reqs[i] ? reqs[i].checked : false
+      });
+    });
+  }
+  function addField() { syncFields(); FIELDS.push({key:'',label:'',type:'text',options:[],suffix:'',required:false}); renderFields(); }
+  function removeField(i) { syncFields(); FIELDS.splice(i,1); renderFields(); }
+  function refreshAmountField() {
+    const sel = document.getElementById('amountField'); if(!sel) return;
+    const cur = sel.value || SAVED_AMOUNT;
+    let h = '<option value="">없음</option>';
+    FIELDS.filter(f=>f.type==='number' && f.key).forEach(f=>{
+      h += `<option value="${f.key}" ${f.key===cur?'selected':''}>${f.label||f.key}</option>`;
+    });
+    sel.innerHTML = h;
+  }
+  renderFields();
+</script>
+{% endif %}
+{% endblock %}

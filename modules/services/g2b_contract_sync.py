@@ -29,25 +29,44 @@ def _parse_g2b_item(g2b_item):
 
     Returns:
         (item_group, category, model_name)
-    """
-    raw_category = g2b_item.dtil_prdct_clsfc_no_nm or ''
-    raw_spec = g2b_item.prdct_idnt_no_nm or ''
 
-    # 1. item_group 매칭: G2B 세부품명 → DETAIL_ITEM_OPTIONS
-    item_group = DETAIL_ITEM_ALIASES.get(raw_category)
-    if not item_group:
-        # 부분 매칭 시도
+    개선 (project_id=4216 회귀 방지):
+    - raw_category 가 비어있거나 매칭 실패 시, 무조건 LED투광등기구로 fallback
+      하던 기존 로직이 등주/조명타워/태양광 등을 LED투광등으로 잘못 박는 원인이었음.
+    - 이제는 prdct_idnt_no_nm 의 첫 토큰(품목분류) 을 한 번 더 확인해서 매칭 시도.
+      그래도 매칭 안 되면 마지막 수단으로만 default 사용.
+    """
+    raw_category = (g2b_item.dtil_prdct_clsfc_no_nm or '').strip()
+    raw_spec = (g2b_item.prdct_idnt_no_nm or '').strip()
+
+    # 0. prdct_idnt_no_nm 의 첫 토큰을 보조 카테고리 후보로 사용
+    #    "스테인리스가로등주, 매그나텍, MTPS-203-5, 5m, ..." → "스테인리스가로등주"
+    spec_head = raw_spec.split(',', 1)[0].strip() if ',' in raw_spec else ''
+
+    def _resolve_category(token):
+        """주어진 문자열에서 spec_schema 정식 카테고리 결정 (None 가능)"""
+        if not token:
+            return None
+        # 정확 alias 매칭
+        if token in DETAIL_ITEM_ALIASES:
+            return DETAIL_ITEM_ALIASES[token]
+        # 정식 카테고리 그대로
+        if token in DETAIL_ITEM_OPTIONS:
+            return token
+        # 부분 alias 매칭
         for alias, option in DETAIL_ITEM_ALIASES.items():
-            if alias in raw_category:
-                item_group = option
-                break
-    if not item_group:
+            if alias in token:
+                return option
+        # 부분 정식 카테고리 매칭
         for opt in DETAIL_ITEM_OPTIONS:
-            if opt in raw_category:
-                item_group = opt
-                break
+            if opt in token:
+                return opt
+        return None
+
+    # 1. item_group 결정 — raw_category → spec_head → 최후 default
+    item_group = _resolve_category(raw_category) or _resolve_category(spec_head)
     if not item_group:
-        item_group = DETAIL_ITEM_OPTIONS[0]  # 기본값: 투광등기구
+        item_group = DETAIL_ITEM_OPTIONS[0]  # 기본값: LED투광등기구 (최후 수단)
 
     # 2. 모델명 추출: "LED투광등기구, 매그나텍, ARENA-600, 600W" → "ARENA-600"
     parts = [p.strip() for p in raw_spec.split(',')]
@@ -58,8 +77,9 @@ def _parse_g2b_item(g2b_item):
     elif len(parts) == 2:
         model_name = parts[1]
 
-    # 3. category = 세부품명 원본 (표시용)
-    category = raw_category or item_group
+    # 3. category = 세부품명 원본 우선, 비면 spec_head, 그것도 비면 item_group
+    #    raw_category 가 비어 있는데도 LED투광등기구로 박혀버리던 4216 회귀 차단.
+    category = raw_category or spec_head or item_group
 
     return item_group, category, model_name
 

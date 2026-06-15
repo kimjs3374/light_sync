@@ -752,9 +752,9 @@ def history_add_comment(project_id):
             log = append_history_log(db, project_id=project.id, user_name=user_name,
                                content=msg or '(첨부파일)', scope=write_scope, kind='comment')
             if mentions:
-                log.mentions_json = json.dumps(mentions, ensure_ascii=False)
+                log.mentions_json = mentions
             if attachments:
-                log.attachments_json = json.dumps(attachments, ensure_ascii=False)
+                log.attachments_json = attachments
         elif action == 'add_history_reply':
             msg = (request.form.get('reply_message') or '').strip()
             parent_id = request.form.get('parent_log_id', type=int)
@@ -767,9 +767,9 @@ def history_add_comment(project_id):
             log = append_history_log(db, project_id=project.id, user_name=user_name,
                                content=formatted, scope=write_scope, kind='comment')
             if mentions:
-                log.mentions_json = json.dumps(mentions, ensure_ascii=False)
+                log.mentions_json = mentions
             if attachments:
-                log.attachments_json = json.dumps(attachments, ensure_ascii=False)
+                log.attachments_json = attachments
         else:
             return jsonify({'ok': False, 'error': f'알 수 없는 action: {action}'}), 400
 

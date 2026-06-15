@@ -5,7 +5,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
 
 from modules.utils import validate_upload, safe_int, parse_date
-from modules.kakaowork_notifier import send_group_notification
+from modules.notification_engine import notify
 from modules.models import (
     Project,
     Contract,
@@ -94,7 +94,17 @@ def sync_deliveries(db, project_id=None):
             is_completed = bool(planned_total > 0 and delivered_total >= planned_total)
 
             if is_completed:
+                old_status = delivery.delivery_status
                 delivery.delivery_status = "done"
+                if old_status != "done":
+                    _proj_name = project.temp_name or project.short_name or f'현장#{project.id}'
+                    _c_name = contract.contract_name or _proj_name
+                    notify(db, 'delivery.completed', {
+                        'contract_name': _c_name,
+                        'project_name': _proj_name,
+                        'project_id': project.id,
+                        'detail': f'{_c_name} 전체 납품 완료',
+                    })
             elif has_loading_done or has_today_split:
                 delivery.delivery_status = "in_progress"
             elif has_confirmed_split:
@@ -178,11 +188,11 @@ def handle_add_split(db, project, form, current_user, **ctx):
             scope="delivery", kind="system",
         )
 
-        # 카카오워크 그룹채팅 알림
+        # 알림 엔진: ERP 내부 + 카카오워크 동시 발송
         project_name = project.temp_name or project.short_name or f"현장#{project.id}"
         sched_str = split.scheduled_date.strftime('%Y-%m-%d') if split.scheduled_date else '-'
         detail_url = f"https://work.mgnt.kr/delivery_management/{project.id}"
-        notify_text = (
+        kakao_text = (
             f"[납품일정등록]\n"
             f"{project_name}\n"
             f"\n"
@@ -193,7 +203,18 @@ def handle_add_split(db, project, form, current_user, **ctx):
             f"\n"
             f"{detail_url}"
         )
-        send_group_notification(notify_text)
+        # 계약명 조회
+        from modules.models import Contract as _C
+        _first_c = db.query(_C).filter(_C.project_id == project.id).first()
+        _contract_name = _first_c.contract_name if _first_c and _first_c.contract_name else project_name
+        notify(db, 'delivery.scheduled', {
+            'contract_name': _contract_name,
+            'project_name': project_name,
+            'project_id': project.id,
+            'detail': f"{split.split_no}차 {split.quantity}EA · {sched_str} 예정 · {current_user}",
+            'delivery_date': sched_str,
+            'manager_name': current_user,
+        }, kakao_text_override=kakao_text)
 
         return {'flash': ('회차가 추가되었습니다.', 'success')}
     return {}

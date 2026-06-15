@@ -15,12 +15,15 @@ class ApiClient {
   }
 
   async request(path, options = {}) {
-    const headers = { 'Content-Type': 'application/json', ...options.headers };
+    // absolute=true 일 때 path 를 그대로 사용 (e.g. /mail/api/* 호출용)
+    const { absolute, ...rest } = options;
+    const url = absolute ? path : `${API_BASE}${path}`;
+    const headers = { 'Content-Type': 'application/json', ...rest.headers };
     if (this.token) {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    const res = await fetch(url, { ...rest, headers });
 
     if (res.status === 401 && path !== '/login') {
       this.setToken(null);
@@ -33,7 +36,6 @@ class ApiClient {
     try {
       data = JSON.parse(text);
     } catch {
-      const preview = text.slice(0, 80);
       console.error('API 파싱 실패:', path, res.status, text.slice(0, 300));
       throw new Error(`[${path}] 서버 오류 (${res.status})`);
     }
@@ -43,15 +45,53 @@ class ApiClient {
     return data;
   }
 
-  get(path) {
-    return this.request(path);
+  get(path, options = {}) {
+    return this.request(path, options);
   }
 
-  post(path, body) {
+  post(path, body, options = {}) {
     return this.request(path, {
+      ...options,
       method: 'POST',
       body: JSON.stringify(body),
     });
+  }
+
+  del(path, body, options = {}) {
+    return this.request(path, {
+      ...options,
+      method: 'DELETE',
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
+
+  // FormData POST (multipart) — 첨부 메일 발송 등
+  async postForm(path, formData, options = {}) {
+    const { absolute } = options;
+    const url = absolute ? path : `${API_BASE}${path}`;
+    const headers = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    // FormData 는 fetch 가 Content-Type(boundary 포함) 자동 설정 — 직접 지정 금지
+    const res = await fetch(url, { method: 'POST', body: formData, headers });
+    if (res.status === 401) {
+      this.setToken(null);
+      window.location.href = '/m/login';
+      throw new Error('인증 만료');
+    }
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error(`[${path}] 서버 오류 (${res.status})`); }
+    if (!res.ok || data.error) throw new Error(data.error || '발송 실패');
+    return data;
+  }
+
+  // 첨부 등 binary 응답 (Bearer 토큰 포함) — Blob 반환
+  async fetchBlob(url) {
+    const headers = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error(`다운로드 실패 (${res.status})`);
+    return res.blob();
   }
 }
 

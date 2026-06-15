@@ -225,6 +225,7 @@ class ProcessingOrderFile(Base):
     file_path = Column(String(1000), nullable=False)
     file_size = Column(Integer, default=0)
     file_type = Column(String(20), nullable=True)
+    is_reference = Column(Boolean, default=False)  # True=도면참고용(메일 첨부 제외)
     uploaded_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     uploaded_at = Column(DateTime, default=datetime.datetime.now)
 

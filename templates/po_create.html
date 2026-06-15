@@ -18,6 +18,13 @@
     #itemsTable th { font-size: .78rem; color: #64748b; font-weight: 600; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
     #itemsTable td { vertical-align: middle; padding: 6px 8px; }
     #itemsTable input { font-size: .85rem; }
+    .item-cd-ac { position: fixed; z-index: 1050; background: #fff; border: 1px solid #dee2e6; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.12); max-height: 220px; overflow-y: auto; display: none; }
+    .item-cd-ac.show { display: block; }
+    .item-cd-ac .ac-row { padding: 6px 10px; cursor: pointer; font-size: .82rem; border-bottom: 1px solid #f1f5f9; }
+    .item-cd-ac .ac-row:hover { background: #eff6ff; }
+    .item-cd-ac .ac-row:last-child { border-bottom: none; }
+    .item-cd-ac .ac-code { font-weight: 700; color: #0f172a; }
+    .item-cd-ac .ac-name { color: #64748b; margin-left: 6px; }
     #itemsTable .form-control:focus { box-shadow: 0 0 0 2px rgba(59,130,246,.15); }
     .summary-row td { background: #f8fafc; border: none; }
     .summary-total td { background: #0f172a !important; color: #fff !important; font-size: 1rem; }
@@ -118,22 +125,26 @@
                 <table class="table table-sm mb-0 no-stack-table" id="itemsTable" style="table-layout:fixed;width:100%;">
                     <colgroup>
                         <col style="width:30px">
-                        <col style="width:28%">
-                        <col style="width:12%">
+                        <col style="width:80px">
+                        <col style="width:20%">
+                        <col style="width:10%">
                         <col style="width:55px">
                         <col style="width:38px">
+                        <col style="width:95px">
+                        <col style="width:75px">
                         <col style="width:80px">
-                        <col style="width:85px">
-                        <col style="width:12%">
+                        <col style="width:9%">
                         <col style="width:30px">
                     </colgroup>
                     <thead>
                         <tr>
                             <th class="ps-3">No</th>
+                            <th>품번</th>
                             <th>품명 <span class="text-danger">*</span></th>
                             <th>규격</th>
                             <th class="text-end">수량</th>
                             <th>단위</th>
+                            <th>납기일</th>
                             <th class="text-end">단가</th>
                             <th class="text-end">금액</th>
                             <th>비고</th>
@@ -301,6 +312,9 @@
             '<td class="text-muted ps-3">' + rowIndex + '</td>' +
             '<td>' +
                 '<input type="hidden" name="item_id[]" value="' + (data.id || '') + '">' +
+                '<input type="text" name="item_code[]" class="form-control form-control-sm item-cd-input" value="' + (data.item_cd || '') + '" placeholder="품번" autocomplete="off">' +
+            '</td>' +
+            '<td>' +
                 '<div class="input-group input-group-sm">' +
                     '<input type="text" name="item_name[]" class="form-control" value="' + (data.item_name || '') + '" placeholder="품명 입력" required>' +
                     '<button type="button" class="btn btn-outline-secondary search-item-btn" title="품목검색">Q</button>' +
@@ -309,6 +323,7 @@
             '<td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="' + (data.item_spec || '') + '"></td>' +
             '<td><input type="text" name="quantity[]" class="form-control form-control-sm text-end calc-field" value="' + (data.qty || '') + '" inputmode="numeric"></td>' +
             '<td><input type="text" name="unit[]" class="form-control form-control-sm text-center" value="' + (data.unit || 'EA') + '"></td>' +
+            '<td><input type="date" name="delivery_date[]" class="form-control form-control-sm" value="' + (data.delivery_date || '') + '"></td>' +
             '<td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end calc-field money-input" value="' + (data.unit_price || '') + '" inputmode="numeric" placeholder="0"></td>' +
             '<td class="text-end fw-bold row-amount" style="color:#0f172a;font-size:.82rem;">0</td>' +
             '<td><input type="text" name="item_note[]" class="form-control form-control-sm" value="' + (data.note || '') + '"></td>' +
@@ -351,6 +366,7 @@
         if (e.target.classList.contains('calc-field')) recalculate();
     });
 
+    window.recalculate = recalculate;
     function recalculate() {
         var total = 0;
         document.querySelectorAll('#itemsBody tr').forEach(function(tr) {
@@ -387,10 +403,10 @@
                     } else {
                         document.getElementById('itemSearchResults').innerHTML = '<div class="list-group">' + items.map(function(item) {
                             return '<a href="#" class="list-group-item list-group-item-action item-select-btn py-2" ' +
-                                'data-id="' + item.id + '" data-name="' + item.item_name + '" data-spec="' + (item.item_spec || '') + '" data-unit="' + (item.unit || '') + '">' +
+                                'data-id="' + item.id + '" data-cd="' + (item.item_cd || '') + '" data-name="' + item.item_name + '" data-spec="' + (item.item_spec || '') + '" data-unit="' + (item.unit || '') + '">' +
+                                (item.item_cd ? '<code class="me-1">' + item.item_cd + '</code>' : '') +
                                 '<strong>' + item.item_name + '</strong>' +
                                 (item.item_spec ? ' <small class="text-muted">(' + item.item_spec + ')</small>' : '') +
-                                (item.item_cd ? ' <code class="ms-1">' + item.item_cd + '</code>' : '') +
                                 '</a>';
                         }).join('') + '</div>';
                     }
@@ -404,11 +420,76 @@
         e.preventDefault();
         if (currentSearchRow) {
             currentSearchRow.querySelector('input[name="item_id[]"]').value = btn.dataset.id;
+            currentSearchRow.querySelector('input[name="item_code[]"]').value = btn.dataset.cd || '';
             currentSearchRow.querySelector('input[name="item_name[]"]').value = btn.dataset.name;
             currentSearchRow.querySelector('input[name="item_spec[]"]').value = btn.dataset.spec;
             currentSearchRow.querySelector('input[name="unit[]"]').value = btn.dataset.unit || 'EA';
         }
         bootstrap.Modal.getInstance(document.getElementById('itemSearchModal')).hide();
+    });
+})();
+
+// ── 품번 인라인 자동완성 ──
+(function() {
+    var timer = null;
+    var activeInput = null;
+    var dd = document.createElement('div');
+    dd.className = 'item-cd-ac';
+    document.body.appendChild(dd);
+
+    function positionDropdown(input) {
+        var rect = input.getBoundingClientRect();
+        dd.style.top = rect.bottom + 2 + 'px';
+        dd.style.left = rect.left + 'px';
+        dd.style.width = Math.max(rect.width, 280) + 'px';
+    }
+
+    document.getElementById('itemsBody').addEventListener('input', function(e) {
+        if (!e.target.classList.contains('item-cd-input')) return;
+        clearTimeout(timer);
+        activeInput = e.target;
+        var q = activeInput.value.trim();
+        if (q.length < 1) { dd.classList.remove('show'); return; }
+        timer = setTimeout(function() {
+            fetch('/api/items/search?q=' + encodeURIComponent(q))
+                .then(function(r) { return r.json(); })
+                .then(function(items) {
+                    if (!items.length) { dd.classList.remove('show'); return; }
+                    dd.innerHTML = items.map(function(it) {
+                        return '<div class="ac-row" data-id="' + it.id + '" data-cd="' + (it.item_cd||'') + '" data-name="' + it.item_name + '" data-spec="' + (it.item_spec||'') + '" data-unit="' + (it.unit||'') + '" data-price="' + (it.last_unit_price||0) + '">'
+                            + '<span class="ac-code">' + (it.item_cd||'') + '</span>'
+                            + '<span class="ac-name">' + it.item_name + (it.item_spec ? ' (' + it.item_spec + ')' : '') + '</span>'
+                            + '</div>';
+                    }).join('');
+                    positionDropdown(activeInput);
+                    dd.classList.add('show');
+                });
+        }, 250);
+    });
+
+    dd.addEventListener('mousedown', function(e) {
+        var row = e.target.closest('.ac-row');
+        if (!row || !activeInput) return;
+        e.preventDefault();
+        var tr = activeInput.closest('tr');
+        tr.querySelector('input[name="item_id[]"]').value = row.dataset.id;
+        tr.querySelector('input[name="item_code[]"]').value = row.dataset.cd;
+        tr.querySelector('input[name="item_name[]"]').value = row.dataset.name;
+        tr.querySelector('input[name="item_spec[]"]').value = row.dataset.spec;
+        tr.querySelector('input[name="unit[]"]').value = row.dataset.unit || 'EA';
+        var priceInput = tr.querySelector('input[name="unit_price[]"]');
+        if (row.dataset.price && parseFloat(row.dataset.price) > 0 && !priceInput.value) {
+            priceInput.value = parseInt(row.dataset.price).toLocaleString();
+        }
+        dd.classList.remove('show');
+        tr.querySelector('input[name="quantity[]"]').focus();
+        recalculate();
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!dd.contains(e.target) && !e.target.classList.contains('item-cd-input')) {
+            dd.classList.remove('show');
+        }
     });
 })();
 

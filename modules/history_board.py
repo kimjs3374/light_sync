@@ -29,6 +29,7 @@ def append_history_log(
     parent_log_id=None,
     root_log_id=None,
     origin_snapshot=None,
+    origin='system',
 ):
     resolved_kind = (kind or ('system' if '시스템' in (user_name or '') else 'comment')).strip().lower()
     if resolved_kind not in {'system', 'comment', 'reply'}:
@@ -48,6 +49,7 @@ def append_history_log(
         parent_log_id=parent_log_id,
         root_log_id=root_log_id,
         origin_snapshot=origin_snapshot,
+        origin=origin,
     )
     db.add(log)
     return log

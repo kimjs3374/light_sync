@@ -127,6 +127,7 @@
             <div class="tab-pane fade show active" id="login">
                 <form method="POST" action="{{ url_for('auth.login') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    {% if request.args.get('next') %}<input type="hidden" name="next" value="{{ request.args.get('next') }}"/>{% endif %}
                     <div class="mb-3">
                         <label class="form-label">아이디</label>
                         <input type="text" name="username" class="form-control" required>

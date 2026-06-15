@@ -15,6 +15,7 @@ MENU_REGISTRY = OrderedDict([
     ("dashboard",      {"label": "메인 현황판", "group": "워크보드", "endpoint": "dashboard.dashboard_view"}),
     ("overview",       {"label": "종합현황",   "group": "워크보드", "endpoint": "overview.project_overview"}),
     ("daily_report",   {"label": "업무보고",   "group": "워크보드", "endpoint": "daily_report.daily_report_view"}),
+    ("approval",       {"label": "전자결재",   "group": "워크보드", "endpoint": "approval.approval_list"}),
     # --- 이메일 ---
     ("mail_shared",    {"label": "공용메일",  "group": "이메일", "endpoint": "mail.mail_shared"}),
     ("mail_personal",  {"label": "개인메일",  "group": "이메일", "endpoint": "mail.mail_personal"}),
@@ -47,6 +48,7 @@ MENU_REGISTRY = OrderedDict([
     ("illuminance",    {"label": "조도검증",   "group": "영업부", "endpoint": "illuminance.index"}),
     ("lighting_layout",{"label": "조명배치도", "group": "영업부", "endpoint": "lighting_layout.layout_list"}),
     ("certification",  {"label": "인증서관리", "group": "관리부", "endpoint": "certification.cert_list"}),
+    ("hr",             {"label": "인사관리",   "group": "관리부", "endpoint": "hr.hr_list"}),
     ("business_trip",  {"label": "출장관리",   "group": "공통메뉴", "endpoint": "business_trip.trip_list"}),
     ("vehicle_log",    {"label": "운행일지",   "group": "공통메뉴", "endpoint": "vehicle_log.log_list"}),
     ("tools",          {"label": "공구관리",   "group": "공통메뉴", "endpoint": "tools.tool_list"}),
@@ -63,7 +65,7 @@ MENU_REGISTRY = OrderedDict([
     ("office",         {"label": "Office",     "group": "공통메뉴", "endpoint": "office.office_list", "always_show": True}),
 ])
 
-COMMON_MENU_KEYS = {"dashboard", "overview", "daily_report", "mail_personal", "mail_shared"}
+COMMON_MENU_KEYS = {"dashboard", "overview", "daily_report", "approval", "mail_personal", "mail_shared"}
 
 # 사이드바 그룹 아이콘 매핑
 GROUP_ICONS = {

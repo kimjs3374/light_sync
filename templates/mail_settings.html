@@ -1,0 +1,758 @@
+{% extends "base.html" %}
+{% block head %}
+<link href="{{ url_for('static', filename='css/mail.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3" style="max-width:900px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">{{ '공용메일 설정' if settings_mode == 'shared' else '개인메일 설정' }}</h5>
+        <a href="{{ url_for('mail.mail_shared') if settings_mode == 'shared' else url_for('mail.mail_personal') }}" class="btn btn-sm btn-outline-secondary">← 메일함으로</a>
+    </div>
+
+    <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabAccount">{{ '공용 계정' if settings_mode == 'shared' else '내 계정' }}</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabAutoReply">자동회신</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabAutoForward">자동전달</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabRules">자동분류</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabTemplates">템플릿</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabSignature">서명</a></li>
+        {% if settings_mode != 'shared' %}
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabContacts">주소록</a></li>
+        {% endif %}
+    </ul>
+
+    <div class="tab-content">
+        {# === 계정 설정 === #}
+        <div class="tab-pane fade show active" id="tabAccount">
+            {% if settings_mode == 'personal' %}
+                {% if personal_accounts %}
+                {% set acct = personal_accounts[0] %}
+                <div class="card">
+                    <div class="card-header py-2"><small class="fw-bold">{{ acct.email }}</small></div>
+                    <div class="card-body">
+                        <form id="accountForm">
+                            <input type="hidden" id="accountId" value="{{ acct.id }}">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">보내는 사람 이름</label>
+                                    <input type="text" class="form-control" id="acctDisplayName" value="{{ acct.display_name or '' }}">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">이메일 주소</label>
+                                    <input type="text" class="form-control bg-light" value="{{ acct.email }}" readonly>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">IMAP 서버</label>
+                                    <input type="text" class="form-control bg-light" value="{{ acct.imap_host }}:{{ acct.imap_port }}" readonly>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">SMTP 서버</label>
+                                    <input type="text" class="form-control bg-light" value="{{ acct.smtp_host }}:{{ acct.smtp_port }}" readonly>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <button type="submit" class="btn btn-primary btn-sm">저장</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% else %}
+                <div class="alert alert-info">개인 메일 계정이 없습니다. 로그아웃 후 다시 로그인하면 자동 등록됩니다.</div>
+                {% endif %}
+            {% else %}
+                {% if shared_accounts %}
+                {% for acct in shared_accounts %}
+                <div class="card mb-3">
+                    <div class="card-header py-2"><small class="fw-bold">{{ acct.email }}</small></div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">보내는 사람 이름</label>
+                                <input type="text" class="form-control shared-display-name" data-id="{{ acct.id }}" value="{{ acct.display_name or '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">이메일 주소</label>
+                                <input type="text" class="form-control bg-light" value="{{ acct.email }}" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">IMAP 서버</label>
+                                <input type="text" class="form-control bg-light" value="{{ acct.imap_host }}:{{ acct.imap_port }}" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">SMTP 서버</label>
+                                <input type="text" class="form-control bg-light" value="{{ acct.smtp_host }}:{{ acct.smtp_port }}" readonly>
+                            </div>
+                            <div class="col-12">
+                                <button class="btn btn-primary btn-sm" onclick="MailSettings.saveSharedName(this)">저장</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                <p class="text-muted small">* 서버 설정은 관리자만 시스템관리 → 메일설정에서 변경할 수 있습니다.</p>
+                {% else %}
+                <div class="alert alert-info">접근 가능한 공용 메일 계정이 없습니다.</div>
+                {% endif %}
+            {% endif %}
+        </div>
+
+        {# === 자동회신 === #}
+        <div class="tab-pane fade" id="tabAutoReply">
+            <div class="card">
+                <div class="card-body">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="arActive">
+                        <label class="form-check-label fw-bold" for="arActive">자동회신 활성화</label>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label small">시작일</label>
+                            <input type="date" id="arStart" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">종료일</label>
+                            <input type="date" id="arEnd" class="form-control form-control-sm">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small">회신 제목</label>
+                        <input type="text" id="arSubject" class="form-control form-control-sm" value="부재중 자동회신">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small">회신 내용</label>
+                        <textarea id="arBody" class="form-control form-control-sm" rows="5" placeholder="현재 부재중입니다. 복귀 후 연락드리겠습니다."></textarea>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="arOnce" checked>
+                        <label class="form-check-label small" for="arOnce">같은 발신자에게 한 번만 회신</label>
+                    </div>
+                    <button class="btn btn-sm btn-primary" onclick="MailAutoReply.save()">저장</button>
+                </div>
+            </div>
+        </div>
+
+        {# === 자동전달 === #}
+        <div class="tab-pane fade" id="tabAutoForward">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-muted small">수신 메일을 다른 주소로 자동 전달합니다.</span>
+                <button class="btn btn-sm btn-primary" onclick="MailAutoFwd.add()">+ 전달 규칙 추가</button>
+            </div>
+            <div id="fwdList"></div>
+            <div id="fwdForm" class="card border-primary mt-3" style="display:none;">
+                <div class="card-body p-3">
+                    <input type="hidden" id="fwdEditId">
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label small mb-0">전달 받을 이메일 <span class="text-danger">*</span></label>
+                            <input type="email" id="fwdTo" class="form-control form-control-sm" placeholder="someone@example.com">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small mb-0">원본 보관</label>
+                            <select id="fwdKeep" class="form-select form-select-sm">
+                                <option value="true">사본 보관</option>
+                                <option value="false">전달 후 삭제</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end gap-2">
+                            <button class="btn btn-sm btn-primary" onclick="MailAutoFwd.save()">저장</button>
+                            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('fwdForm').style.display='none'">취소</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# === 자동분류 === #}
+        <div class="tab-pane fade" id="tabRules">
+            {% if (personal_accounts + shared_accounts)|length > 1 %}
+            <div class="d-flex gap-2 flex-wrap mb-3">
+                {% for a in (personal_accounts + shared_accounts) %}
+                <button class="btn btn-sm btn-outline-primary mail-rule-acct-btn" data-aid="{{ a.id }}" onclick="MailRules.switchRuleAccount({{ a.id }});document.querySelectorAll('.mail-rule-acct-btn').forEach(b=>b.classList.remove('btn-primary','text-white'));this.classList.add('btn-primary','text-white');">
+                    {{ a.email }}
+                </button>
+                {% endfor %}
+            </div>
+            {% endif %}
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <span class="text-muted small">조건에 맞는 메일을 자동으로 폴더 이동 / 라벨 부여합니다.</span>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-warning" onclick="MailRules.applyAll()">일괄 적용 (받은편지함)</button>
+                    <button class="btn btn-sm btn-primary" onclick="MailRules.add()">+ 규칙 추가</button>
+                </div>
+            </div>
+
+            <div id="rulesContainer"></div>
+
+            {# 규칙 편집 폼 #}
+            <div id="ruleEditForm" class="card border-primary mt-3" style="display:none;">
+                <div class="card-header bg-primary text-white py-2"><small class="fw-bold" id="ruleFormTitle">규칙 추가</small></div>
+                <div class="card-body p-3">
+                    <input type="hidden" id="ruleEditId">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label small mb-0">규칙 이름 <span class="text-danger">*</span></label>
+                            <input type="text" id="ruleName" class="form-control form-control-sm" placeholder="예: 거래처 메일 → 거래처 폴더">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small mb-0">조건 논리</label>
+                            <select id="ruleLogic" class="form-select form-select-sm">
+                                <option value="AND">모든 조건 충족 (AND)</option>
+                                <option value="OR">하나라도 충족 (OR)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small mb-0">우선순위</label>
+                            <input type="number" id="rulePriority" class="form-control form-control-sm" value="0" min="0">
+                        </div>
+                    </div>
+
+                    <label class="form-label small fw-bold mb-1">조건</label>
+                    <div id="ruleConditions"></div>
+                    <button class="btn btn-sm btn-outline-secondary mt-1 mb-3" onclick="MailRules.addCondition()">+ 조건 추가</button>
+
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-4">
+                            <label class="form-label small mb-0">동작 <span class="text-danger">*</span></label>
+                            <select id="ruleAction" class="form-select form-select-sm" onchange="MailRules.onActionChange()">
+                                <option value="move_folder">폴더로 이동</option>
+                                <option value="add_label">라벨 부여</option>
+                                <option value="mark_read">읽음 표시</option>
+                                <option value="delete">삭제 (휴지통)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4" id="ruleActionValueWrap">
+                            <label class="form-label small mb-0" id="ruleActionValueLabel">폴더명</label>
+                            <select id="ruleActionValue" class="form-select form-select-sm">
+                                <option value="">-- 폴더 선택 --</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-0">이후 규칙</label>
+                            <select id="ruleStop" class="form-select form-select-sm">
+                                <option value="true">중단 (이 규칙만 적용)</option>
+                                <option value="false">계속 (다음 규칙도 적용)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 mt-3">
+                        <button class="btn btn-sm btn-primary" onclick="MailRules.save()">저장</button>
+                        <button class="btn btn-sm btn-secondary" onclick="MailRules.cancelEdit()">취소</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# === 템플릿 === #}
+        <div class="tab-pane fade" id="tabTemplates">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-muted small">자주 쓰는 메일 양식을 저장하고 작성 시 불러올 수 있습니다.</span>
+                <button class="btn btn-sm btn-primary" onclick="MailTpl.add()">+ 템플릿 추가</button>
+            </div>
+            <div id="tplList"></div>
+            <div id="tplForm" class="card border-primary mt-3" style="display:none;">
+                <div class="card-body p-3">
+                    <input type="hidden" id="tplEditId">
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-4">
+                            <label class="form-label small mb-0">템플릿 이름 <span class="text-danger">*</span></label>
+                            <input type="text" id="tplName" class="form-control form-control-sm" placeholder="견적 요청 양식">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-0">제목</label>
+                            <input type="text" id="tplSubject" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-0">받는사람 (기본값)</label>
+                            <input type="text" id="tplTo" class="form-control form-control-sm" placeholder="쉼표 구분">
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-0">본문</label>
+                        <textarea id="tplBody" class="form-control form-control-sm" rows="6"></textarea>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-primary" onclick="MailTpl.save()">저장</button>
+                        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('tplForm').style.display='none'">취소</button>
+                        <div class="form-check ms-3 d-flex align-items-center">
+                            <input class="form-check-input" type="checkbox" id="tplShared">
+                            <label class="form-check-label small ms-1" for="tplShared">팀 공유</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# === 서명 (사용자 정보 기반 자동 생성) === #}
+        <div class="tab-pane fade" id="tabSignature">
+            <div class="card">
+                <div class="card-body">
+                    <p class="text-muted small mb-3">서명은 내 계정 정보(부서, 이름, 직급, 연락처)에서 자동 생성됩니다. 수정하려면 관리자에게 정보 변경을 요청하세요.</p>
+                    <div id="signaturePreview" class="border rounded p-3 bg-light" style="font-size:13px;color:#64748b;"></div>
+                </div>
+            </div>
+        </div>
+
+        {# === 주소록 === #}
+        <div class="tab-pane fade" id="tabContacts">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <input type="text" id="contactSearch" class="form-control form-control-sm" placeholder="이름 또는 이메일 검색..." style="width:250px;">
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="MailSettings.addContact()">+ 연락처 추가</button>
+            </div>
+            <table class="table table-hover" style="font-size:.82rem;">
+                <thead>
+                    <tr>
+                        <th>이름</th>
+                        <th>이메일</th>
+                        <th>회사</th>
+                        <th>메모</th>
+                        <th style="width:100px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="contactsTableBody">
+                    <tr><td colspan="5" class="text-center py-3 text-muted">로딩 중...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# === 주소록 추가/수정 모달 === #}
+<div class="modal fade" id="contactEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="contactEditModalTitle">연락처 추가</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="contactEditForm" onsubmit="event.preventDefault(); MailSettings.saveContactFromModal();">
+                    <input type="hidden" id="contactEditId">
+                    <div class="mb-3">
+                        <label class="form-label small mb-1">이름 <span class="text-danger">*</span></label>
+                        <input type="text" id="contactEditName" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small mb-1">이메일 <span class="text-danger">*</span></label>
+                        <input type="email" id="contactEditEmail" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small mb-1">회사</label>
+                        <input type="text" id="contactEditCompany" class="form-control form-control-sm">
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label small mb-1">메모</label>
+                        <textarea id="contactEditMemo" class="form-control form-control-sm" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="MailSettings.saveContactFromModal()">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/mail.js') }}?v={{ range(100000,999999)|random }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    MailSettings.init();
+
+    // URL 해시로 탭 직접 이동 (예: #tabContacts)
+    if (location.hash) {
+        const tab = document.querySelector(`a[href="${location.hash}"]`);
+        if (tab) { new bootstrap.Tab(tab).show(); }
+    }
+
+    // 개인 계정 폼 — 보내는 사람 이름만 저장
+    document.getElementById('accountForm')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const id = document.getElementById('accountId').value;
+        const name = document.getElementById('acctDisplayName').value.trim();
+        if (!id) return;
+        const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
+        const r = await fetch('/mail/api/account', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+            body: JSON.stringify({id: parseInt(id), display_name: name})
+        });
+        if (r.ok) alert('저장되었습니다.');
+        else alert('저장 실패');
+    });
+});
+
+// 공용계정 보내는 사람 이름 저장
+if (!MailSettings.saveSharedName) {
+    MailSettings.saveSharedName = async function(btn) {
+        const input = btn.closest('.card-body').querySelector('.shared-display-name');
+        const id = input.dataset.id;
+        const name = input.value.trim();
+        const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
+        const r = await fetch('/mail/api/account', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+            body: JSON.stringify({id: parseInt(id), display_name: name})
+        });
+        if (r.ok) alert('저장되었습니다.');
+        else alert('저장 실패');
+    };
+}
+
+// ── 자동회신 ──
+const MailAutoReply = {
+    accountId: {{ (personal_accounts[0].id if personal_accounts else shared_accounts[0].id if shared_accounts else 'null') }},
+    _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+    async init() {
+        const r = await fetch(`/mail/api/auto-reply?account=${this.accountId}`);
+        const d = await r.json();
+        document.getElementById('arActive').checked = d.is_active;
+        document.getElementById('arSubject').value = d.subject || '';
+        document.getElementById('arBody').value = d.body || '';
+        document.getElementById('arStart').value = d.start_date || '';
+        document.getElementById('arEnd').value = d.end_date || '';
+        document.getElementById('arOnce').checked = d.reply_once !== false;
+    },
+    async save() {
+        const r = await fetch('/mail/api/auto-reply', {
+            method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': this._csrf()},
+            body: JSON.stringify({
+                account_id: this.accountId,
+                is_active: document.getElementById('arActive').checked,
+                subject: document.getElementById('arSubject').value,
+                body: document.getElementById('arBody').value,
+                start_date: document.getElementById('arStart').value || null,
+                end_date: document.getElementById('arEnd').value || null,
+                reply_once: document.getElementById('arOnce').checked,
+            })
+        });
+        if ((await r.json()).success) alert('저장되었습니다.'); else alert('저장 실패');
+    }
+};
+document.querySelector('a[href="#tabAutoReply"]')?.addEventListener('shown.bs.tab', () => MailAutoReply.init());
+
+// ── 자동전달 ──
+const MailAutoFwd = {
+    accountId: {{ (personal_accounts[0].id if personal_accounts else shared_accounts[0].id if shared_accounts else 'null') }},
+    _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+    async init() {
+        const r = await fetch(`/mail/api/auto-forward?account=${this.accountId}`);
+        const list = await r.json();
+        const el = document.getElementById('fwdList');
+        if (!list.length) { el.innerHTML = '<div class="text-center text-muted py-3 border rounded">등록된 전달 규칙이 없습니다.</div>'; return; }
+        el.innerHTML = `<table class="table table-sm table-hover" style="font-size:.8rem;">
+            <thead class="table-light"><tr><th>전달 주소</th><th>원본 보관</th><th>상태</th><th style="width:100px"></th></tr></thead>
+            <tbody>${list.map(f => `<tr>
+                <td>${f.forward_to}</td>
+                <td>${f.keep_copy ? '보관' : '삭제'}</td>
+                <td><span class="badge bg-${f.is_active?'success':'secondary'}">${f.is_active?'ON':'OFF'}</span></td>
+                <td><button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="MailAutoFwd.remove(${f.id})">삭제</button></td>
+            </tr>`).join('')}</tbody></table>`;
+    },
+    add() {
+        document.getElementById('fwdEditId').value = '';
+        document.getElementById('fwdTo').value = '';
+        document.getElementById('fwdKeep').value = 'true';
+        document.getElementById('fwdForm').style.display = '';
+    },
+    async save() {
+        const to = document.getElementById('fwdTo').value.trim();
+        if (!to) { alert('전달 주소를 입력하세요.'); return; }
+        const r = await fetch('/mail/api/auto-forward', {
+            method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': this._csrf()},
+            body: JSON.stringify({
+                account_id: this.accountId, forward_to: to,
+                keep_copy: document.getElementById('fwdKeep').value === 'true',
+                id: document.getElementById('fwdEditId').value || undefined,
+            })
+        });
+        if ((await r.json()).success) { document.getElementById('fwdForm').style.display = 'none'; this.init(); }
+    },
+    async remove(id) {
+        if (!confirm('삭제하시겠습니까?')) return;
+        await fetch(`/mail/api/auto-forward/${id}`, { method: 'DELETE', headers: {'X-CSRFToken': this._csrf()} });
+        this.init();
+    }
+};
+document.querySelector('a[href="#tabAutoForward"]')?.addEventListener('shown.bs.tab', () => MailAutoFwd.init());
+
+// ── 메일 템플릿 ──
+const MailTpl = {
+    _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+    async init() {
+        const r = await fetch('/mail/api/templates');
+        const list = await r.json();
+        const el = document.getElementById('tplList');
+        if (!list.length) { el.innerHTML = '<div class="text-center text-muted py-3 border rounded">등록된 템플릿이 없습니다.</div>'; return; }
+        el.innerHTML = `<table class="table table-sm table-hover" style="font-size:.8rem;">
+            <thead class="table-light"><tr><th>이름</th><th>제목</th><th>공유</th><th style="width:120px"></th></tr></thead>
+            <tbody>${list.map(t => `<tr>
+                <td class="fw-bold">${t.name}</td>
+                <td class="text-muted">${t.subject || ''}</td>
+                <td>${t.is_shared ? '<span class="badge bg-info">공유</span>' : ''}</td>
+                <td class="text-nowrap">
+                    ${t.is_mine ? `<button class="btn btn-sm btn-outline-warning py-0 px-2" onclick="MailTpl.edit(${t.id})">수정</button>` : ''}
+                    ${t.is_mine ? `<button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="MailTpl.remove(${t.id})">삭제</button>` : ''}
+                </td>
+            </tr>`).join('')}</tbody></table>`;
+    },
+    add() {
+        document.getElementById('tplEditId').value = '';
+        document.getElementById('tplName').value = '';
+        document.getElementById('tplSubject').value = '';
+        document.getElementById('tplTo').value = '';
+        document.getElementById('tplBody').value = '';
+        document.getElementById('tplShared').checked = false;
+        document.getElementById('tplForm').style.display = '';
+    },
+    async edit(id) {
+        const r = await fetch('/mail/api/templates');
+        const list = await r.json();
+        const t = list.find(x => x.id === id);
+        if (!t) return;
+        document.getElementById('tplEditId').value = t.id;
+        document.getElementById('tplName').value = t.name;
+        document.getElementById('tplSubject').value = t.subject || '';
+        document.getElementById('tplTo').value = t.to_addresses || '';
+        document.getElementById('tplBody').value = t.body || '';
+        document.getElementById('tplShared').checked = t.is_shared;
+        document.getElementById('tplForm').style.display = '';
+    },
+    async save() {
+        const name = document.getElementById('tplName').value.trim();
+        if (!name) { alert('템플릿 이름을 입력하세요.'); return; }
+        const data = {
+            name, subject: document.getElementById('tplSubject').value,
+            body: document.getElementById('tplBody').value,
+            to_addresses: document.getElementById('tplTo').value,
+            is_shared: document.getElementById('tplShared').checked,
+        };
+        const editId = document.getElementById('tplEditId').value;
+        if (editId) data.id = parseInt(editId);
+        const r = await fetch('/mail/api/templates', {
+            method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': this._csrf()},
+            body: JSON.stringify(data)
+        });
+        if ((await r.json()).success) { document.getElementById('tplForm').style.display = 'none'; this.init(); }
+    },
+    async remove(id) {
+        if (!confirm('삭제하시겠습니까?')) return;
+        await fetch(`/mail/api/templates/${id}`, { method: 'DELETE', headers: {'X-CSRFToken': this._csrf()} });
+        this.init();
+    }
+};
+document.querySelector('a[href="#tabTemplates"]')?.addEventListener('shown.bs.tab', () => MailTpl.init());
+
+// ── 자동분류 규칙 관리 ──
+const MailRules = {
+    accounts: [{% for a in (personal_accounts + shared_accounts) %}{id:{{ a.id }},email:'{{ a.email }}'}{{ ',' if not loop.last }}{% endfor %}],
+    accountId: {{ (personal_accounts[0].id if personal_accounts else shared_accounts[0].id if shared_accounts else 'null') }},
+    isSharedMode: {{ 'true' if settings_mode == 'shared' else 'false' }},
+    rules: [],
+    _condIdx: 0,
+    _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+
+    async init() {
+        const r = await fetch(`/mail/api/rules?account=${this.accountId}`);
+        this.rules = await r.json();
+        this.render();
+    },
+
+    switchRuleAccount(id) {
+        this.accountId = id;
+        this.init();
+    },
+
+    render() {
+        const c = document.getElementById('rulesContainer');
+        if (!c) return;
+        if (!this.rules.length) {
+            c.innerHTML = '<div class="text-center text-muted py-4 border rounded">등록된 자동분류 규칙이 없습니다.</div>';
+            return;
+        }
+        const actionLabel = {move_folder:'폴더 이동', add_label:'라벨 부여', mark_read:'읽음 표시', delete:'삭제'};
+        c.innerHTML = `<table class="table table-sm table-hover align-middle" style="font-size:.8rem;">
+            <thead class="table-light"><tr><th>순서</th><th>규칙명</th><th>조건</th><th>동작</th><th>상태</th><th style="width:100px"></th></tr></thead>
+            <tbody>${this.rules.map(r => {
+                const conds = JSON.parse(r.conditions_json || '[]');
+                const condText = conds.map(c => `${c.field} ${c.op} "${c.value}"`).join(` ${r.condition_logic} `);
+                return `<tr>
+                    <td>${r.priority}</td>
+                    <td class="fw-bold">${r.name}</td>
+                    <td class="text-muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${condText}</td>
+                    <td><span class="badge bg-info">${actionLabel[r.action_type] || r.action_type}</span> ${r.action_value || ''}</td>
+                    <td><span class="badge bg-${r.is_active ? 'success' : 'secondary'}">${r.is_active ? 'ON' : 'OFF'}</span></td>
+                    <td class="text-nowrap">
+                        <button class="btn btn-sm btn-outline-warning py-0 px-2" onclick="MailRules.edit(${r.id})">수정</button>
+                        <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="MailRules.remove(${r.id})">삭제</button>
+                    </td>
+                </tr>`;
+            }).join('')}</tbody></table>`;
+    },
+
+    async add() {
+        document.getElementById('ruleEditId').value = '';
+        document.getElementById('ruleName').value = '';
+        document.getElementById('ruleLogic').value = 'AND';
+        document.getElementById('rulePriority').value = this.rules.length;
+        document.getElementById('ruleAction').value = 'move_folder';
+        document.getElementById('ruleStop').value = 'true';
+        document.getElementById('ruleConditions').innerHTML = '';
+        document.getElementById('ruleFormTitle').textContent = '규칙 추가';
+        this._condIdx = 0;
+        this.addCondition();
+        await this.onActionChange();
+        document.getElementById('ruleEditForm').style.display = '';
+    },
+
+    async edit(id) {
+        const r = this.rules.find(x => x.id === id);
+        if (!r) return;
+        document.getElementById('ruleEditId').value = r.id;
+        document.getElementById('ruleName').value = r.name;
+        document.getElementById('ruleLogic').value = r.condition_logic;
+        document.getElementById('rulePriority').value = r.priority;
+        document.getElementById('ruleAction').value = r.action_type;
+        document.getElementById('ruleStop').value = r.stop_processing ? 'true' : 'false';
+        document.getElementById('ruleFormTitle').textContent = '규칙 수정';
+        const conds = JSON.parse(r.conditions_json || '[]');
+        const wrap = document.getElementById('ruleConditions');
+        wrap.innerHTML = '';
+        this._condIdx = 0;
+        conds.forEach(c => this.addCondition(c));
+        if (!conds.length) this.addCondition();
+        await this.onActionChange(r.action_value || '');
+        document.getElementById('ruleEditForm').style.display = '';
+    },
+
+    cancelEdit() { document.getElementById('ruleEditForm').style.display = 'none'; },
+
+    addCondition(preset) {
+        const idx = this._condIdx++;
+        const fields = [
+            ['from_email','보낸사람 이메일'],['from_domain','보낸사람 도메인'],['from_name','보낸사람 이름'],
+            ['to_email','받는사람 이메일'],['subject','제목'],['has_attachment','첨부파일 유무']
+        ];
+        const ops = [['contains','포함'],['equals','일치'],['starts_with','시작'],['ends_with','끝남'],['not_contains','미포함'],['regex','정규식']];
+        const f = preset?.field || 'from_domain';
+        const o = preset?.op || 'contains';
+        const v = preset?.value || '';
+        const html = `<div class="d-flex gap-2 mb-1 align-items-center" id="cond_${idx}">
+            <select class="form-select form-select-sm cond-field" style="width:160px;">
+                ${fields.map(([val,lbl]) => `<option value="${val}" ${val===f?'selected':''}>${lbl}</option>`).join('')}
+            </select>
+            <select class="form-select form-select-sm cond-op" style="width:120px;">
+                ${ops.map(([val,lbl]) => `<option value="${val}" ${val===o?'selected':''}>${lbl}</option>`).join('')}
+            </select>
+            <input type="text" class="form-control form-control-sm cond-value" value="${v}" placeholder="값" style="flex:1;">
+            <button class="btn btn-sm btn-outline-danger py-0" onclick="document.getElementById('cond_${idx}').remove()">×</button>
+        </div>`;
+        document.getElementById('ruleConditions').insertAdjacentHTML('beforeend', html);
+    },
+
+    _folderCache: {},
+
+    async loadFolders(selectedValue) {
+        const sel = document.getElementById('ruleActionValue');
+        const aid = this.accountId;
+        if (!this._folderCache[aid]) {
+            try {
+                const r = await fetch(`/mail/api/folders?account=${aid}`);
+                const data = await r.json();
+                this._folderCache[aid] = data.folders || [];
+            } catch { this._folderCache[aid] = []; }
+        }
+        sel.innerHTML = '<option value="">-- 폴더 선택 --</option>' +
+            this._folderCache[aid].map(f => {
+                const name = f.name || f;
+                return `<option value="${name}" ${name === selectedValue ? 'selected' : ''}>${name}</option>`;
+            }).join('');
+    },
+
+    async onActionChange(selectedValue) {
+        const action = document.getElementById('ruleAction').value;
+        const wrap = document.getElementById('ruleActionValueWrap');
+        const label = document.getElementById('ruleActionValueLabel');
+        if (action === 'move_folder') {
+            wrap.style.display = '';
+            label.textContent = '폴더명';
+            await this.loadFolders(selectedValue || '');
+        } else if (action === 'add_label') {
+            wrap.style.display = '';
+            label.textContent = '라벨명';
+            // 라벨은 텍스트 입력으로 전환
+            const sel = document.getElementById('ruleActionValue');
+            sel.innerHTML = `<option value="">-- 직접 입력 --</option>`;
+        } else { wrap.style.display = 'none'; }
+    },
+
+    async save() {
+        const conditions = [];
+        document.querySelectorAll('#ruleConditions > div').forEach(row => {
+            conditions.push({
+                field: row.querySelector('.cond-field').value,
+                op: row.querySelector('.cond-op').value,
+                value: row.querySelector('.cond-value').value,
+            });
+        });
+        const name = document.getElementById('ruleName').value.trim();
+        if (!name) { alert('규칙 이름을 입력하세요.'); return; }
+        if (!conditions.length) { alert('조건을 추가하세요.'); return; }
+
+        const data = {
+            account_id: this.accountId,
+            name,
+            priority: parseInt(document.getElementById('rulePriority').value) || 0,
+            condition_logic: document.getElementById('ruleLogic').value,
+            conditions,
+            action_type: document.getElementById('ruleAction').value,
+            action_value: document.getElementById('ruleActionValue').value.trim(),
+            stop_processing: document.getElementById('ruleStop').value === 'true',
+        };
+        const editId = document.getElementById('ruleEditId').value;
+        if (editId) data.id = parseInt(editId);
+
+        const r = await fetch('/mail/api/rules', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': this._csrf()},
+            body: JSON.stringify(data)
+        });
+        if (r.ok) { this.cancelEdit(); this.init(); }
+        else { const res = await r.json(); alert(res.error || '저장 실패'); }
+    },
+
+    async remove(id) {
+        if (!confirm('삭제하시겠습니까?')) return;
+        await fetch(`/mail/api/rules/${id}`, { method: 'DELETE', headers: {'X-CSRFToken': this._csrf()} });
+        this.init();
+    },
+
+    async applyAll() {
+        const acct = this.accounts.find(a => a.id === this.accountId);
+        const name = acct ? acct.email : '';
+        if (!confirm(`${name} 받은편지함 전체 메일에 규칙을 일괄 적용합니다.\n계속하시겠습니까?`)) return;
+        const btn = event.target;
+        btn.disabled = true; btn.textContent = '적용 중...';
+        const r = await fetch('/mail/api/rules/apply', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': this._csrf()},
+            body: JSON.stringify({ account_id: this.accountId, folder: 'INBOX' })
+        });
+        const res = await r.json();
+        btn.disabled = false; btn.textContent = '일괄 적용 (받은편지함)';
+        if (res.success) {
+            alert(`처리: ${res.processed}건\n적용된 액션: ${res.actions}건\n\n${(res.details || []).join('\n') || '매칭된 규칙 없음'}`);
+        } else { alert(res.error || '실패'); }
+    }
+};
+
+document.querySelector('a[href="#tabRules"]')?.addEventListener('shown.bs.tab', () => MailRules.init());
+</script>
+{% endblock %}

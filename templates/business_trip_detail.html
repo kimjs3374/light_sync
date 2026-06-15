@@ -16,31 +16,37 @@
     {% endif %}
   </div>
 
-  {# ── 상태 뱃지 + 빠른 변경 ── #}
+  {# ── 상태 뱃지 (자동: 출발/복귀 일시 기준) ── #}
   <div class="card mb-3">
     <div class="card-body py-2 d-flex align-items-center gap-2 flex-wrap">
       <span class="fw-bold">상태:</span>
-      {% if trip.status == '예정' %}
+      {% set es = trip.effective_status %}
+      {% if es == '예정' %}
       <span class="badge bg-primary fs-6">예정</span>
-      {% elif trip.status == '진행중' %}
+      {% elif es == '진행중' %}
       <span class="badge bg-warning text-dark fs-6">진행중</span>
-      {% elif trip.status == '완료' %}
+      {% elif es == '완료' %}
       <span class="badge bg-success fs-6">완료</span>
-      {% elif trip.status == '취소' %}
+      {% elif es == '취소' %}
       <span class="badge bg-secondary fs-6">취소</span>
       {% endif %}
+      <small class="text-muted ms-1">(출발·복귀 일시 기준 자동)</small>
 
       {% if writable %}
       <span class="ms-auto"></span>
-      {% for code, label in status_choices %}
-        {% if code != trip.status %}
+      {% if trip.status == '취소' %}
         <form method="POST" action="{{ url_for('business_trip.trip_status_change', trip_id=trip.id) }}" class="d-inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="status" value="{{ code }}">
-          <button class="btn btn-xs btn-outline-secondary" style="white-space:nowrap">{{ label }}</button>
+          <input type="hidden" name="status" value="예정">
+          <button class="btn btn-xs btn-outline-primary" style="white-space:nowrap">취소 해제</button>
         </form>
-        {% endif %}
-      {% endfor %}
+      {% else %}
+        <form method="POST" action="{{ url_for('business_trip.trip_status_change', trip_id=trip.id) }}" class="d-inline" onsubmit="return confirm('출장을 취소 처리하시겠습니까?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="status" value="취소">
+          <button class="btn btn-xs btn-outline-danger" style="white-space:nowrap">출장 취소</button>
+        </form>
+      {% endif %}
       {% endif %}
     </div>
   </div>

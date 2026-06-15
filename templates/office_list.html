@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block head %}
+<style>
+.office-tabs { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:16px; }
+.office-tab { padding:10px 24px; font-size:.9rem; font-weight:600; color:#64748b; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-2px; transition:all .15s; }
+.office-tab:hover { color:#1e293b; }
+.office-tab.active { color:#2563eb; border-bottom-color:#2563eb; }
+.tab-pane { display:none; }
+.tab-pane.active { display:block; }
+.office-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+.office-toolbar .btn { font-size:.85rem; padding:6px 14px; }
+.file-table { width:100%; border-collapse:collapse; }
+.file-table th { background:#f8f9fa; font-size:.8rem; color:#64748b; font-weight:600; padding:8px 12px; border-bottom:2px solid #e2e8f0; text-align:left; white-space:nowrap; }
+.file-table td { padding:10px 12px; border-bottom:1px solid #f1f5f9; font-size:.88rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.file-table tr:hover { background:#f8fafc; }
+.file-name { font-weight:500; color:#1e293b; cursor:pointer; text-decoration:none; max-width:400px; overflow:hidden; text-overflow:ellipsis; display:inline-block; vertical-align:middle; }
+.file-name:hover { color:#2563eb; text-decoration:underline; }
+.file-actions .btn { font-size:.78rem; padding:3px 10px; }
+.empty-state { text-align:center; padding:60px 20px; color:#94a3b8; }
+.drop-zone { border:2px dashed #cbd5e1; border-radius:12px; padding:32px 20px; text-align:center; color:#94a3b8; cursor:pointer; transition:all .15s; margin-bottom:16px; }
+.drop-zone:hover, .drop-zone.drag-over { border-color:#2563eb; background:#eff6ff; color:#2563eb; }
+.upload-progress { display:none; margin-top:8px; margin-bottom:12px; }
+.loading { text-align:center; padding:40px; color:#94a3b8; font-size:.9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0" style="font-weight:700;">Office</h5>
+</div>
+
+<div class="office-tabs">
+    <div class="office-tab {% if current_scope == 'shared' %}active{% endif %}" data-tab="shared">공유 파일</div>
+    <div class="office-tab {% if current_scope == 'private' %}active{% endif %}" data-tab="private">내 파일</div>
+</div>
+
+{% for scope in ['shared', 'private'] %}
+<div class="tab-pane {% if current_scope == scope %}active{% endif %}" id="tab-{{ scope }}">
+    <div class="drop-zone" onclick="document.getElementById('fi-{{ scope }}').click()" id="dz-{{ scope }}">
+        <input type="file" id="fi-{{ scope }}" style="display:none" accept=".xlsx,.xls,.csv,.docx,.doc,.pptx,.ppt,.pdf,.odt,.ods,.odp,.txt,.rtf" multiple>
+        <div style="font-size:.9rem; font-weight:500; color:#475569;">파일을 드래그하거나 클릭 ({{ '공유' if scope=='shared' else '개인' }})</div>
+    </div>
+    <div class="upload-progress" id="prog-{{ scope }}"><div class="progress" style="height:4px;"><div class="progress-bar bg-primary" id="bar-{{ scope }}" style="width:0%"></div></div><small class="text-muted" id="stat-{{ scope }}"></small></div>
+    <div class="office-toolbar">
+        <button class="btn btn-outline-success" onclick="showNewModal('xlsx','{{ scope }}')">+ 스프레드시트</button>
+        <button class="btn btn-outline-primary" onclick="showNewModal('docx','{{ scope }}')">+ 문서</button>
+        <button class="btn btn-outline-warning" onclick="showNewModal('pptx','{{ scope }}')">+ 프레젠테이션</button>
+        <span class="text-muted ms-auto" style="font-size:.8rem;" id="cnt-{{ scope }}"></span>
+    </div>
+    <div id="list-{{ scope }}"><div class="loading">불러오는 중...</div></div>
+</div>
+{% endfor %}
+
+<!-- 모달 -->
+<div class="modal fade" id="newDocModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header border-0"><h6 class="modal-title fw-bold">새 문서 만들기</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body"><input type="text" class="form-control" id="newDocTitle" placeholder="문서 제목"><input type="hidden" id="newDocType"><input type="hidden" id="newDocScope"></div>
+    <div class="modal-footer border-0"><button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button><button class="btn btn-primary btn-sm" onclick="createNewDoc()">만들기</button></div>
+</div></div></div>
+
+<script>
+const loaded = {};
+
+// 탭 전환
+document.querySelectorAll('.office-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        const t = tab.dataset.tab;
+        document.querySelectorAll('.office-tab').forEach(x => x.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(x => x.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-' + t).classList.add('active');
+        history.replaceState(null, '', '/office/tab/' + t);
+        if (!loaded[t]) loadFiles(t);
+    });
+});
+
+// 파일 목록 AJAX
+function loadFiles(scope) {
+    fetch('/office/api/files/' + scope).then(r => r.json()).then(files => {
+        loaded[scope] = true;
+        const el = document.getElementById('list-' + scope);
+        document.getElementById('cnt-' + scope).textContent = files.length + '개';
+        if (!files.length) { el.innerHTML = '<div class="empty-state"><h5>' + (scope==='shared'?'공유':'내') + ' 파일이 없습니다</h5></div>'; return; }
+        const icons = {cell:'📊',word:'📝',slide:'📽',pdf:'📕'};
+        const su = scope === 'shared';
+        let h = '<div class="table-responsive"><table class="file-table"><thead><tr><th style="width:45%">파일명</th>'+(su?'<th>작성자</th>':'')+'<th>크기</th><th>수정일</th><th style="width:140px">작업</th></tr></thead><tbody>';
+        files.forEach(f => {
+            let sz = '-';
+            if (f.size>1048576) sz=(f.size/1048576).toFixed(1)+' MB';
+            else if (f.size>1024) sz=Math.round(f.size/1024)+' KB';
+            else if (f.size) sz=f.size+' B';
+            h += '<tr><td><span style="margin-right:6px;">'+(icons[f.doc_type]||'📄')+'</span><a href="/office/edit/'+scope+'/'+f.storage_name+'" class="file-name">'+f.title+'.'+f.ext+'</a></td>';
+            if (su) h += '<td style="color:#64748b;font-size:.82rem;">'+(f.user||'-')+'</td>';
+            h += '<td style="color:#64748b;">'+sz+'</td>';
+            h += '<td style="color:#64748b;font-size:.82rem;">'+(f.updated?f.updated.substring(0,16).replace('T',' '):'-')+'</td>';
+            h += '<td class="file-actions"><a href="/office/download/'+scope+'/'+f.storage_name+'" class="btn btn-outline-secondary btn-sm">다운로드</a> ';
+            h += '<button class="btn btn-outline-danger btn-sm" onclick="deleteFile(\''+scope+'\',\''+f.storage_name+'\',\''+f.title.replace(/'/g,"\\'")+'\')">삭제</button></td></tr>';
+        });
+        h += '</tbody></table></div>';
+        el.innerHTML = h;
+    });
+}
+
+// 현재 탭 즉시 로드
+loadFiles('{{ current_scope }}');
+
+// 드래그 앤 드롭
+['shared','private'].forEach(scope => {
+    const dz = document.getElementById('dz-' + scope);
+    const fi = document.getElementById('fi-' + scope);
+    ['dragenter','dragover'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add('drag-over'); }));
+    ['dragleave','drop'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove('drag-over'); }));
+    dz.addEventListener('drop', ev => { if (ev.dataTransfer.files.length) uploadFiles(ev.dataTransfer.files, scope); });
+    fi.addEventListener('change', () => { if (fi.files.length) uploadFiles(fi.files, scope); });
+});
+
+function uploadFiles(files, scope) {
+    const bar = document.getElementById('bar-' + scope);
+    const stat = document.getElementById('stat-' + scope);
+    document.getElementById('prog-' + scope).style.display = 'block';
+    let done = 0, total = files.length, errors = [];
+    Array.from(files).forEach(file => {
+        const fd = new FormData(); fd.append('file', file); fd.append('scope', scope);
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/office/upload');
+        xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = Math.round(e.loaded/e.total*100)+'%'; };
+        xhr.onload = () => {
+            done++;
+            if (xhr.status >= 400) {
+                let msg = '오류';
+                try { msg = JSON.parse(xhr.responseText).error || msg; } catch(e) {}
+                errors.push(`${file.name}: ${msg}`);
+                stat.textContent = msg;
+            } else {
+                stat.textContent = done+'/'+total+' 완료';
+            }
+            if (done === total) {
+                loaded[scope] = false;
+                setTimeout(() => loadFiles(scope), 300);
+                if (errors.length) {
+                    alert('업로드 실패\n\n' + errors.join('\n'));
+                } else {
+                    document.getElementById('prog-' + scope).style.display = 'none';
+                }
+            }
+        };
+        xhr.onerror = () => {
+            done++;
+            errors.push(`${file.name}: 네트워크 오류`);
+            stat.textContent = '네트워크 오류';
+            if (done === total) {
+                loaded[scope] = false;
+                setTimeout(() => loadFiles(scope), 300);
+                alert('업로드 실패\n\n' + errors.join('\n'));
+            }
+        };
+        xhr.send(fd);
+    });
+}
+
+function showNewModal(type, scope) {
+    document.getElementById('newDocType').value = type;
+    document.getElementById('newDocScope').value = scope;
+    document.getElementById('newDocTitle').value = '';
+    document.getElementById('newDocTitle').placeholder = ({xlsx:'스프레드시트',docx:'문서',pptx:'프레젠테이션'}[type]||'문서') + ' 제목';
+    new bootstrap.Modal(document.getElementById('newDocModal')).show();
+    setTimeout(() => document.getElementById('newDocTitle').focus(), 300);
+}
+document.getElementById('newDocTitle').addEventListener('keydown', e => { if (e.key==='Enter') createNewDoc(); });
+
+function createNewDoc() {
+    const title = document.getElementById('newDocTitle').value.trim();
+    const type = document.getElementById('newDocType').value;
+    const scope = document.getElementById('newDocScope').value;
+    if (!title) { document.getElementById('newDocTitle').focus(); return; }
+    const fd = new FormData(); fd.append('title', title); fd.append('type', type); fd.append('scope', scope);
+    fetch('/office/new', { method:'POST', body:fd })
+    .then(r => r.json()).then(d => {
+        if (d.success) location.href = '/office/edit/' + (d.scope||scope) + '/' + d.storage_name;
+        else alert(d.error || '생성 실패');
+    });
+}
+
+function deleteFile(scope, name, title) {
+    if (!confirm('"'+title+'" 삭제?')) return;
+    fetch('/office/delete/'+scope+'/'+name, { method:'POST' })
+    .then(r => r.json()).then(d => { if (d.success) { loaded[scope]=false; loadFiles(scope); } else alert(d.error||'삭제 실패'); });
+}
+</script>
+{% endblock %}

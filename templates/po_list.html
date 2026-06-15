@@ -102,16 +102,17 @@
 <div class="card border-0 shadow-sm" style="border-radius:12px;overflow:hidden;">
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle no-stack-table tree-card-table mb-0 po-table" style="font-size:0.82rem;table-layout:fixed;min-width:880px;">
+            <table class="table table-hover align-middle no-stack-table tree-card-table mb-0 po-table" style="font-size:0.82rem;table-layout:fixed;min-width:960px;">
                 <colgroup>
-                    <col style="width:110px">
-                    <col style="width:90px">
-                    <col style="width:140px">
+                    <col style="width:120px">
+                    <col style="width:95px">
+                    <col style="width:18%">
                     <col>
-                    <col style="width:75px">
-                    {% if not hide_financial %}<col style="width:100px">{% endif %}
-                    <col style="width:55px">
+                    <col style="width:70px">
+                    <col style="width:80px">
+                    {% if not hide_financial %}<col style="width:95px">{% endif %}
                     <col style="width:50px">
+                    <col style="width:45px">
                 </colgroup>
                 <thead class="table-light" style="white-space:nowrap">
                     <tr>
@@ -120,6 +121,7 @@
                         <th class="po-col-contract">계약</th>
                         <th>거래처</th>
                         <th>상태</th>
+                        <th>입고진행</th>
                         {% if not hide_financial %}<th class="text-end">합계</th>{% endif %}
                         <th>발송</th>
                         <th></th>
@@ -151,6 +153,15 @@
                                 <span class="badge-status" style="background:#f1f5f9;color:#64748b;">{{ po.status }}</span>
                             {% endif %}
                         </td>
+                        <td>
+                            {% if po._recv_state == 'full' %}
+                                <span class="badge-status" style="background:#dcfce7;color:#166534;">입고완료</span>
+                            {% elif po._recv_state == 'partial' %}
+                                <span class="badge-status" style="background:#ffedd5;color:#9a3412;">부분입고</span>
+                            {% else %}
+                                <small class="text-muted">-</small>
+                            {% endif %}
+                        </td>
                         {% if not hide_financial %}<td class="text-end fw-bold" style="color:#0f172a;">{{ fmt_money((po.total_amount or 0) + (po.tax_amount or 0)) }}</td>{% endif %}
                         <td>
                             {% if po.email_sent_at %}
@@ -166,7 +177,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr class="po-empty-row"><td colspan="{% if hide_financial %}7{% else %}8{% endif %}" class="text-center text-muted py-4">발주서가 없습니다.</td></tr>
+                    <tr class="po-empty-row"><td colspan="{% if hide_financial %}8{% else %}9{% endif %}" class="text-center text-muted py-4">발주서가 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -334,7 +345,7 @@ function showHistoryDetail(id) {
 <script>
 /* ═══ 거래처 그룹핑 / 날짜순 토글 ═══ */
 (function(){
-    var COL_COUNT = {{ 7 if hide_financial else 8 }};
+    var COL_COUNT = {{ 8 if hide_financial else 9 }};
     var STORAGE_KEY = 'po_list_group_mode';
     var tbody = document.querySelector('.po-table tbody');
     if (!tbody) return;

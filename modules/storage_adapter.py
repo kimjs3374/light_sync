@@ -31,7 +31,7 @@ def is_storage_enabled() -> bool:
     return bool(get_storage_config()["enabled"])
 
 
-def upload_bytes(object_path: str, content: bytes, content_type: str = "application/octet-stream", upsert: bool = True) -> Tuple[bool, str]:
+def upload_bytes(object_path: str, content: bytes, content_type: str = "application/octet-stream", upsert: bool = True, cache_control: str = "no-cache, max-age=0") -> Tuple[bool, str]:
     cfg = get_storage_config()
     if not cfg["enabled"]:
         return False, "supabase storage 설정이 없습니다"
@@ -43,11 +43,30 @@ def upload_bytes(object_path: str, content: bytes, content_type: str = "applicat
         "Authorization": f"Bearer {cfg['key']}",
         "Content-Type": content_type,
         "x-upsert": "true" if upsert else "false",
+        "cache-control": cache_control,
     }
     resp = requests.post(url, headers=headers, data=content, timeout=120)
     if resp.status_code in (200, 201):
         return True, "ok"
     return False, f"{resp.status_code} {resp.text[:300]}"
+
+
+def exists(object_path: str) -> bool:
+    """파일 존재 여부만 확인 (HEAD 요청, 다운로드 안 함)."""
+    cfg = get_storage_config()
+    if not cfg["enabled"]:
+        return False
+    obj = quote(_normalize_path(object_path), safe="/")
+    url = f"{cfg['url']}/storage/v1/object/{cfg['bucket']}/{obj}"
+    headers = {
+        "apikey": cfg["key"],
+        "Authorization": f"Bearer {cfg['key']}",
+    }
+    try:
+        resp = requests.head(url, headers=headers, timeout=10)
+        return resp.status_code == 200
+    except Exception:
+        return False
 
 
 def download_bytes(object_path: str) -> Optional[bytes]:

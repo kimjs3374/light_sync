@@ -303,6 +303,7 @@ def fo_create():
                 file_rec = ProcessingOrderFile(
                     fo_id=fo.id, file_name=f.filename, file_path=obj_path,
                     file_size=len(content), file_type=ext,
+                    is_reference=ext in ('jpg', 'jpeg', 'png'),
                     uploaded_by=session.get('user_id'),
                 )
                 db.add(file_rec)
@@ -443,6 +444,19 @@ def fo_change_status(fo_id):
         _append_fo_history(fo, f'상태변경: {old_status} → {new_status}', session.get('full_name', ''))
         log_activity(db, '가공발주', 'status_change', f'{fo.fo_no} {old_status}→{new_status}',
                      ref_type='ProcessingOrder', ref_id=fo.id, ref_label=fo.fo_no, project_id=fo.project_id)
+
+        if new_status == '입고완료' and old_status != '입고완료':
+            try:
+                from modules.notification_engine import notify
+                from modules.models import Contract
+                _c = db.query(Contract).filter(Contract.project_id == fo.project_id).first() if fo.project_id else None
+                notify(db, 'processing.completed', {
+                    'order_name': fo.fo_no or f'가공발주#{fo.id}',
+                    'vendor_name': fo.vendor_name or '-',
+                })
+            except Exception:
+                pass
+
         db.commit()
         flash(f'상태가 {new_status}(으)로 변경되었습니다.', 'success')
         return redirect(url_for('processing_order.fo_detail', fo_id=fo.id))
@@ -493,6 +507,7 @@ def fo_upload_file(fo_id):
                 file_path=object_path,
                 file_size=len(content),
                 file_type=ext,
+                is_reference=ext in ('jpg', 'jpeg', 'png'),
                 uploaded_by=session.get('user_id'),
             )
             db.add(file_record)
@@ -514,6 +529,21 @@ def fo_upload_file(fo_id):
 
 # ===================================================================
 # 파일 삭제
+# ===================================================================
+@processing_order_bp.route('/processing-order/<int:fo_id>/file/<int:fid>/toggle-reference', methods=['POST'])
+@login_required
+@menu_required('processing_order', 'w')
+def fo_toggle_reference(fo_id, fid):
+    """파일 참고용 토글 (참고용=메일 첨부 제외)"""
+    with get_db() as db:
+        rec = db.query(ProcessingOrderFile).filter_by(id=fid, fo_id=fo_id).first()
+        if not rec:
+            return jsonify({'error': '파일을 찾을 수 없습니다.'}), 404
+        rec.is_reference = not rec.is_reference
+        db.commit()
+        return jsonify({'ok': True, 'is_reference': rec.is_reference})
+
+
 # ===================================================================
 @processing_order_bp.route('/processing-order/<int:fo_id>/file/<int:fid>/delete', methods=['POST'])
 @login_required
@@ -570,6 +600,42 @@ def fo_download_file(fo_id, fid):
 
 
 # ===================================================================
+# 파일 미리보기 (PDF/이미지 인라인 표시)
+# ===================================================================
+PREVIEW_MIME = {
+    'pdf': 'application/pdf',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+}
+
+
+@processing_order_bp.route('/processing-order/<int:fo_id>/file/<int:fid>/view')
+@login_required
+@menu_required('processing_order')
+def fo_view_file(fo_id, fid):
+    with get_db() as db:
+        rec = db.query(ProcessingOrderFile).filter_by(id=fid, fo_id=fo_id).first()
+        if not rec:
+            abort(404)
+
+        mime = PREVIEW_MIME.get(rec.file_type)
+        if not mime:
+            return redirect(url_for('processing_order.fo_download_file', fo_id=fo_id, fid=fid))
+
+        content = download_bytes(rec.file_path)
+        if content is None:
+            abort(404)
+
+        return send_file(
+            io.BytesIO(content),
+            mimetype=mime,
+            as_attachment=False,
+            download_name=rec.file_name,
+        )
+
+
+# ===================================================================
 # 품목 입고 확인
 # ===================================================================
 @processing_order_bp.route('/processing-order/<int:fo_id>/confirm-item/<int:item_id>', methods=['POST'])
@@ -614,6 +680,14 @@ def fo_confirm_item(fo_id, item_id):
         if all_confirmed and fo.status != '입고완료':
             fo.status = '입고완료'
             _append_fo_history(fo, '전체 입고 완료 → 상태변경', session.get('full_name', ''))
+            try:
+                from modules.notification_engine import notify
+                notify(db, 'processing.completed', {
+                    'order_name': fo.fo_no or f'가공발주#{fo.id}',
+                    'vendor_name': fo.vendor_name or '-',
+                })
+            except Exception:
+                pass
             # 입고관리 Receiving 자동 생성 (중복 방지)
             existing_rcv = db.query(Receiving).filter(Receiving.fo_id == fo.id).first()
             if not existing_rcv:
@@ -763,7 +837,7 @@ def fo_email_preview(fo_id):
             'vendor_name': vendor.name if vendor else '',
             'subject': subject,
             'body': '\n'.join(body_lines),
-            'files': [f.file_name for f in fo.files],
+            'files': [f.file_name for f in fo.files if not f.is_reference],
         })
 
 
@@ -788,10 +862,19 @@ def fo_send_email(fo_id):
         subject = request.form.get('email_subject', '').strip()
         body = request.form.get('email_body', '').strip()
 
-        # 발신자: 담당자 이메일 (없으면 로그인 사용자, 최종 fallback purchase@mgnt.kr)
+        # 발신자: 담당자 (없으면 로그인 사용자)
         sig_user_id = fo.assigned_to or session.get('user_id')
         sig_user = db.query(User).get(sig_user_id) if sig_user_id else None
-        from_email = (sig_user.email if sig_user and sig_user.email else None) or 'purchase@mgnt.kr'
+        from_email = sig_user.email if sig_user and sig_user.email else None
+        from_name = None
+        if sig_user:
+            name_parts = []
+            if sig_user.user_group:
+                name_parts.append(sig_user.user_group)
+            name_parts.append(sig_user.full_name or '')
+            if sig_user.position:
+                name_parts.append(sig_user.position)
+            from_name = ' '.join(name_parts).strip() or None
 
         if not to_email or not subject or not body:
             flash('수신자, 제목, 본문을 모두 입력해주세요.', 'warning')
@@ -799,6 +882,8 @@ def fo_send_email(fo_id):
 
         attachments = []
         for f in fo.files:
+            if f.is_reference:
+                continue  # 도면참고용 파일은 메일 첨부 제외
             content = download_bytes(f.file_path)
             if content:
                 attachments.append((f.file_name, content))
@@ -806,6 +891,7 @@ def fo_send_email(fo_id):
         result = send_email_with_attachments(
             to_email=to_email, subject=subject, body_text=body,
             attachments=attachments, from_email=from_email,
+            from_name=from_name, user_id=sig_user_id,
         )
 
         db.add(EmailHistory(

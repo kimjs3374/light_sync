@@ -2,6 +2,26 @@
 
 {% block head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+<style>
+/* ── 통합 피드 ── */
+.feed-filters{display:flex;gap:.25rem;flex-wrap:wrap;margin-bottom:.75rem;}
+.feed-btn{font-size:.72rem;padding:.2rem .5rem;border:1px solid #e2e8f0;border-radius:.35rem;background:#fff;color:#64748b;cursor:pointer;white-space:nowrap;transition:all .15s;}
+.feed-btn:hover{background:#f8fafc;color:#0f172a;}
+.feed-btn.active{background:#0f172a;color:#fff;border-color:#0f172a;}
+.feed-item{display:flex;gap:.5rem;padding:.6rem .75rem;border-bottom:1px solid #f1f5f9;transition:background .15s;text-decoration:none;color:inherit;}
+.feed-item:hover{background:#f8fafc;}
+.feed-item.urgent{background:#fff5f5;}
+.feed-bar{width:3px;border-radius:2px;flex-shrink:0;}
+.feed-body{flex:1;min-width:0;}
+.feed-title{font-size:.8rem;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.feed-msg{font-size:.74rem;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+.feed-meta{font-size:.65rem;color:#94a3b8;margin-top:2px;display:flex;gap:.5rem;align-items:center;}
+.feed-badge{font-size:.6rem;font-weight:700;padding:.1rem .35rem;border-radius:.25rem;white-space:nowrap;}
+.feed-new{display:inline-block;background:#dc2626;color:#fff;font-size:.55rem;font-weight:700;padding:0 .3rem;border-radius:.2rem;margin-right:.2rem;vertical-align:middle;}
+.feed-empty{text-align:center;color:#94a3b8;padding:2rem;font-size:.82rem;}
+.feed-more{text-align:center;padding:.75rem;}
+.feed-more a{font-size:.78rem;color:#2563eb;text-decoration:none;}
+</style>
 {% endblock %}
 
 {% block content %}
@@ -49,40 +69,17 @@
     </div>
 </div>
 
-{# ═══ TICKER ═══ #}
-<div id="globalTicker" class="cmd-ticker level-info a-in" style="animation-delay:.05s">
-    <span id="tickerTitle" class="ticker-pill">공지</span>
-    <div class="ticker-track">
-        <div id="tickerMessage" class="ticker-msg">전광판 공지를 불러오는 중...</div>
-    </div>
-    <div class="ticker-actions">
-        {% if session.role == 'admin' %}
-        <a href="{{ url_for('dashboard.dashboard_notice_admin') }}" class="btn btn-outline-secondary btn-sm">전광판 관리</a>
-        {% endif %}
-        <a id="tickerLink" href="{{ url_for('project.contract_list') }}" data-fallback-url="{{ url_for('project.contract_list') }}" class="btn btn-outline-primary btn-sm">상세 보기</a>
-    </div>
-</div>
-
 {# ═══ MAIN 2-COLUMN LAYOUT ═══ #}
 <div class="row g-3">
     {# ── Left Column (8/12) ── #}
     <div class="col-12 col-xl-8">
         <div class="d-flex flex-column gap-3">
 
-            {# Priority Brief #}
-            <div class="panel a-in" style="animation-delay:.1s">
-                <div class="panel-pad">
-                    {% include 'components/dashboard_priority_brief.html' %}
-                </div>
-            </div>
-
             {# Workflow Pipeline #}
-            <div class="panel a-in" style="animation-delay:.15s">
+            <div class="panel a-in" style="animation-delay:.08s">
                 <div class="panel-pad">
                     <div class="section-kicker">Flow Tracking</div>
                     <div class="section-title">파이프라인 워크플로우</div>
-                    <div class="section-sub">영업 → 자재 → 생산 → 출고 → 납품 흐름의 병목을 즉시 식별</div>
-
                     <div class="wf-board">
                         {% for node in workflow_nodes %}
                         <a href="{{ node.action_url }}" class="wf-node t-{{ node.tone }}">
@@ -107,7 +104,7 @@
 
             {# ── 입고예정 요약 카드 ── #}
             {% if dash_expected is defined %}
-            <div class="a-in" style="animation-delay:.18s">
+            <div class="a-in" style="animation-delay:.12s">
                 <a href="{{ url_for('receiving.receiving_list') }}?tab=expected" class="text-decoration-none">
                     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:.75rem;
                                 padding:.75rem 1rem; display:flex; align-items:center;
@@ -129,42 +126,46 @@
                         </div>
                         <div style="display:flex;gap:.4rem;align-items:center;flex-shrink:0;flex-wrap:nowrap;">
                             {% if dash_expected.overdue > 0 %}
-                            <span style="display:inline-flex;align-items:center;gap:.2rem;
-                                         background:#fee2e2;color:#dc2626;
-                                         font-size:.7rem;font-weight:700;
-                                         padding:.15rem .45rem;border-radius:.35rem;white-space:nowrap;">
-                                지연 {{ dash_expected.overdue }}
-                            </span>
+                            <span style="display:inline-flex;align-items:center;gap:.2rem;background:#fee2e2;color:#dc2626;font-size:.7rem;font-weight:700;padding:.15rem .45rem;border-radius:.35rem;white-space:nowrap;">지연 {{ dash_expected.overdue }}</span>
                             {% endif %}
-                            <span style="display:inline-flex;align-items:center;
-                                         {% if dash_expected.today > 0 %}background:#fef3c7;color:#d97706;{% else %}background:#f1f5f9;color:#64748b;{% endif %}
-                                         font-size:.7rem;font-weight:700;
-                                         padding:.15rem .45rem;border-radius:.35rem;white-space:nowrap;">
-                                오늘 {{ dash_expected.today }}
-                            </span>
-                            <span style="display:inline-flex;align-items:center;
-                                         background:#eff6ff;color:#2563eb;
-                                         font-size:.7rem;font-weight:700;
-                                         padding:.15rem .45rem;border-radius:.35rem;white-space:nowrap;">
-                                이번주 {{ dash_expected.this_week }}
-                            </span>
+                            <span style="display:inline-flex;align-items:center;{% if dash_expected.today > 0 %}background:#fef3c7;color:#d97706;{% else %}background:#f1f5f9;color:#64748b;{% endif %}font-size:.7rem;font-weight:700;padding:.15rem .45rem;border-radius:.35rem;white-space:nowrap;">오늘 {{ dash_expected.today }}</span>
+                            <span style="display:inline-flex;align-items:center;background:#eff6ff;color:#2563eb;font-size:.7rem;font-weight:700;padding:.15rem .45rem;border-radius:.35rem;white-space:nowrap;">이번주 {{ dash_expected.this_week }}</span>
                             {% if dash_expected.unknown is defined and dash_expected.unknown > 0 %}
-                            <span style="display:inline-flex;align-items:center;
-                                         background:#f1f5f9;color:#64748b;
-                                         font-size:.7rem;font-weight:700;
-                                         padding:.15rem .45rem;border-radius:.35rem;white-space:nowrap;">
-                                미정 {{ dash_expected.unknown }}
-                            </span>
+                            <span style="display:inline-flex;align-items:center;background:#f1f5f9;color:#64748b;font-size:.7rem;font-weight:700;padding:.15rem .45rem;border-radius:.35rem;white-space:nowrap;">미정 {{ dash_expected.unknown }}</span>
                             {% endif %}
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                                 stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round">
-                                <path d="M5 12h14M12 5l7 7-7 7"/>
-                            </svg>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                         </div>
                     </div>
                 </a>
             </div>
             {% endif %}
+
+            {# ═══ 통합 피드 ═══ #}
+            <div class="panel a-in" style="animation-delay:.16s">
+                <div class="panel-pad">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <div class="section-kicker">Live Feed</div>
+                            <div class="section-title">통합 업무 피드</div>
+                        </div>
+                        <a href="{{ url_for('notification.notification_list') }}" style="font-size:.72rem;color:#2563eb;text-decoration:none;">알림센터 →</a>
+                    </div>
+                    <div class="feed-filters">
+                        <button class="feed-btn active" data-filter="">전체</button>
+                        <button class="feed-btn" data-filter="notification">알림</button>
+                        <button class="feed-btn" data-filter="history">히스토리</button>
+                        <button class="feed-btn" data-filter="delivery">납품</button>
+                        <button class="feed-btn" data-filter="production">생산</button>
+                        <button class="feed-btn" data-filter="material">자재</button>
+                    </div>
+                    <div id="feedContainer">
+                        <div class="feed-empty">피드를 불러오는 중...</div>
+                    </div>
+                    <div class="feed-more" id="feedMore" style="display:none;">
+                        <a href="#" id="feedLoadMore">더 보기</a>
+                    </div>
+                </div>
+            </div>
 
             {# Action Tabs #}
             <div class="panel a-in" style="animation-delay:.2s">
@@ -302,33 +303,34 @@
                 </div>
             </div>
 
-            {# Timeline #}
+            {# 최근 코멘트 #}
+            {% if recent_comments %}
             <div class="panel a-in" style="animation-delay:.3s">
                 <div class="panel-pad">
-                    <div class="section-kicker">Live Feed</div>
-                    <div class="section-title">실시간 업무 타임라인</div>
-                    <div class="section-sub mb-3">최근 변경, 이슈 로그</div>
-
-                    <div class="tl-feed">
-                        {% for item in timeline_items %}
-                        <div class="tl-item {% if item.is_issue %}is-issue{% elif item.is_system %}is-system{% endif %}" style="animation-delay:{{ loop.index0 * 0.05 }}s">
-                            <div class="tl-dot"></div>
-                            <div class="tl-body">
-                                <div class="d-flex justify-content-between align-items-start gap-2">
-                                    <div class="tl-user">{{ item.user_name }} <span>· {{ item.project_name }}</span></div>
-                                    <div class="tl-time">{{ item.created_at.strftime('%m/%d %H:%M') if item.created_at else '-' }}</div>
-                                </div>
-                                <div class="tl-content">{{ item.content }}</div>
-                                {% set scope_labels = {'design':'설계관리','contract':'계약관리','sales':'영업관리','material':'자재관리','production':'생산관리','delivery':'납품관리','common':'코멘트'} %}
-                                <a href="{{ item.detail_url }}" class="tl-link"><span class="tl-scope-badge">{{ scope_labels.get(item.scope, '상세') }}</span> 바로가기 →</a>
-                            </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <div class="section-kicker">Recent Comments</div>
+                            <div class="section-title">최근 코멘트</div>
                         </div>
-                        {% else %}
-                        <div class="act-empty">최근 업무 이력이 없습니다.</div>
-                        {% endfor %}
+                        <a href="{{ url_for('notification.notification_list', type='comment') }}" style="font-size:.72rem;color:#2563eb;text-decoration:none;">전체보기 →</a>
                     </div>
+                    {% set scope_colors = {'design': '#8b5cf6', 'contract': '#2563eb', 'sales': '#8b5cf6', 'material': '#d97706', 'production': '#16a34a', 'delivery': '#dc2626', 'common': '#94a3b8'} %}
+                    {% set scope_labels = {'design': '설계', 'contract': '계약', 'sales': '영업', 'material': '자재', 'production': '생산', 'delivery': '납품', 'common': '일반'} %}
+                    {% for c in recent_comments %}
+                    <a href="{{ c.link }}" class="d-block text-decoration-none" style="padding:.5rem .4rem;border-bottom:1px solid #f1f5f9;transition:background .15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <span style="width:24px;height:24px;border-radius:50%;background:#e2e8f0;color:#475569;display:inline-flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;flex-shrink:0;">{{ c.user_name[:1] }}</span>
+                            <span style="font-size:.78rem;font-weight:700;color:#0f172a;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.user_name }}</span>
+                            <span style="font-size:.6rem;font-weight:700;padding:.1rem .3rem;border-radius:.25rem;white-space:nowrap;background:{{ scope_colors.get(c.scope, '#94a3b8') }}15;color:{{ scope_colors.get(c.scope, '#94a3b8') }};">{{ scope_labels.get(c.scope, '일반') }}</span>
+                        </div>
+                        <div style="font-size:.72rem;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:32px;">{{ c.project_name }}</div>
+                        <div style="font-size:.78rem;color:#334155;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:32px;margin-top:2px;">{{ c.content }}</div>
+                        <div style="font-size:.65rem;color:#94a3b8;padding-left:32px;margin-top:2px;">{{ c.created_at.strftime('%m/%d %H:%M') if c.created_at else '' }}</div>
+                    </a>
+                    {% endfor %}
                 </div>
             </div>
+            {% endif %}
 
         </div>
     </div>
@@ -336,8 +338,108 @@
 
 </div>
 
-{# ═══ BILLBOARD TICKER JS ═══ #}
-<script id="billboardData" type="application/json">{{ billboard_items|tojson }}</script>
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{# ═══ 통합 피드 JS ═══ #}
+<script>
+(function() {
+    var container = document.getElementById('feedContainer');
+    var moreBtn = document.getElementById('feedMore');
+    var loadMoreLink = document.getElementById('feedLoadMore');
+    var currentFilter = '';
+    var currentPage = 1;
+
+    var typeColors = {
+        delivery_urgent: '#dc2626', delivery_overdue: '#dc2626',
+        delivery: '#2563eb', contract: '#2563eb',
+        production: '#16a34a',
+        material: '#d97706', inventory: '#d97706',
+        issue: '#dc2626', trip: '#7c3aed',
+        document: '#6366f1', warranty: '#ea580c', cert: '#ea580c',
+        sales: '#8b5cf6', common: '#94a3b8', system: '#94a3b8',
+    };
+
+    function loadFeed(page, append) {
+        var url = '/api/dashboard/feed?page=' + page;
+        if (currentFilter) url += '&type=' + currentFilter;
+
+        fetch(url)
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (!d.items || d.items.length === 0) {
+                    if (!append) container.innerHTML = '<div class="feed-empty">피드 항목이 없습니다.</div>';
+                    moreBtn.style.display = 'none';
+                    return;
+                }
+
+                var html = '';
+                for (var i = 0; i < d.items.length; i++) {
+                    var item = d.items[i];
+                    var color = typeColors[item.noti_type] || '#94a3b8';
+                    var isNoti = item.source === 'notification';
+                    var unread = isNoti && !item.is_read;
+
+                    html += '<a href="' + (item.link || '#') + '" class="feed-item' + (item.is_urgent ? ' urgent' : '') + '"'
+                        + (isNoti && item.id ? ' onclick="markNotiRead(' + item.id.replace('n-','') + ')"' : '') + '>'
+                        + '<div class="feed-bar" style="background:' + color + '"></div>'
+                        + '<div class="feed-body">'
+                        + '<div class="feed-title">'
+                        + (unread ? '<span class="feed-new">N</span>' : '')
+                        + escHtml(item.title) + '</div>'
+                        + (item.message ? '<div class="feed-msg">' + escHtml(item.message) + '</div>' : '')
+                        + '<div class="feed-meta">'
+                        + '<span class="feed-badge" style="background:' + color + '15;color:' + color + ';">' + escHtml(item.noti_type_label) + '</span>'
+                        + '<span>' + (isNoti ? '알림' : '로그') + '</span>'
+                        + '<span>' + escHtml(item.created_at_display || '') + '</span>'
+                        + '</div></div></a>';
+                }
+
+                if (append) {
+                    container.innerHTML += html;
+                } else {
+                    container.innerHTML = html;
+                }
+
+                moreBtn.style.display = d.has_more ? '' : 'none';
+            })
+            .catch(function() {
+                if (!append) container.innerHTML = '<div class="feed-empty">피드 로딩 실패</div>';
+            });
+    }
+
+    // 필터 버튼
+    document.querySelectorAll('.feed-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.feed-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            currentFilter = btn.dataset.filter || '';
+            currentPage = 1;
+            loadFeed(1, false);
+        });
+    });
+
+    // 더 보기
+    if (loadMoreLink) {
+        loadMoreLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            currentPage++;
+            loadFeed(currentPage, true);
+        });
+    }
+
+    // 초기 로드
+    loadFeed(1, false);
+
+    // 알림 읽음 처리 (글로벌)
+    window.markNotiRead = window.markNotiRead || function(id) {
+        fetch('/api/notifications/' + id + '/read', {method: 'POST'}).catch(function() {});
+    };
+
+    function escHtml(s) {
+        if (!s) return '';
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+})();
+</script>
 
 {% endblock %}

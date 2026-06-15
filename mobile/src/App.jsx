@@ -48,6 +48,11 @@ import {
 } from './pages/lists';
 import DocumentDetail from './pages/DocumentDetail';
 import IncomingOverview from './pages/IncomingOverview';
+import MailInbox from './pages/MailInbox';
+import MailRead from './pages/MailRead';
+import MailCompose from './pages/MailCompose';
+import Approvals from './pages/Approvals';
+import ApprovalDetail from './pages/ApprovalDetail';
 
 function P({ children }) {
   const isLoggedIn = useAuth((s) => s.isLoggedIn);
@@ -66,6 +71,9 @@ export default function App() {
         <Route path="/projects/:id" element={<P><ProjectDetail /></P>} />
         <Route path="/notifications" element={<P><Notifications /></P>} />
         <Route path="/more" element={<P><More /></P>} />
+        <Route path="/mail" element={<P><MailInbox /></P>} />
+        <Route path="/mail/read/:uid" element={<P><MailRead /></P>} />
+        <Route path="/mail/compose" element={<P><MailCompose /></P>} />
 
         {/* 영업부 */}
         <Route path="/contracts" element={<P><Contracts /></P>} />
@@ -126,6 +134,8 @@ export default function App() {
         <Route path="/receiving-photos" element={<P><ReceivingPhotos /></P>} />
         <Route path="/business-trips" element={<P><BusinessTrips /></P>} />
         <Route path="/vehicle-logs" element={<P><VehicleLogs /></P>} />
+        <Route path="/approvals" element={<P><Approvals /></P>} />
+        <Route path="/approvals/:id" element={<P><ApprovalDetail /></P>} />
         <Route path="/tools" element={<P><Tools /></P>} />
 
         <Route path="/create" element={<P><CreateForm /></P>} />

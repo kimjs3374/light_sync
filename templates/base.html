@@ -9,6 +9,20 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,700;9..40,800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/magnatech.css') }}" rel="stylesheet">
     {% block head %}{% endblock %}
+    <style>
+    /* ── 알림 드롭다운 + 토스트 ── */
+    .noti-item{display:flex;text-decoration:none;padding:.5rem .75rem;border-bottom:1px solid #f1f5f9;transition:background .15s;}
+    .noti-item:hover{background:#f8fafc;}
+    .noti-item.unread{background:#f0f9ff;}
+    .noti-color-bar{width:3px;border-radius:2px;flex-shrink:0;margin-right:.5rem;}
+    .noti-body{flex:1;min-width:0;}
+    .noti-title{font-size:.78rem;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .noti-new{display:inline-block;background:#dc2626;color:#fff;font-size:.55rem;font-weight:700;padding:0 .3rem;border-radius:.2rem;margin-right:.25rem;vertical-align:middle;}
+    .noti-msg{font-size:.72rem;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+    .noti-time{font-size:.65rem;color:#94a3b8;margin-top:2px;}
+    @keyframes notiSlideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+    @media(max-width:576px){[id="notiDropdown"]{width:calc(100vw - 2rem)!important;right:-1rem!important;max-width:340px;}[id="notiToastContainer"]{max-width:calc(100vw - 2rem)!important;}}
+    </style>
 </head>
 <body>
     <script>
@@ -38,9 +52,6 @@
         <div class="sidebar-user text-center mb-3">
             <small style="color: #94a3b8;">{{ session.user_group }}</small><br>
             <strong>👤 {{ session.full_name }}</strong> 님
-            <a href="{{ url_for('notification.notification_list') }}" class="text-white text-decoration-none position-relative ms-2" id="notiBtn" style="display:inline;">
-                🔔<span class="badge bg-danger rounded-pill position-absolute" id="notiBadge" style="display:none; top:-8px; right:-12px; font-size:.6rem;">0</span>
-            </a>
             <div class="d-flex justify-content-center gap-0 mt-2">
                 <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-danger" style="font-size:.85rem;padding:4px 16px;">로그아웃</a>
                 <a href="{{ url_for('auth.my_profile') }}" class="btn btn-sm btn-outline-light" style="font-size:.85rem;padding:4px 16px;">내정보</a>
@@ -65,6 +76,35 @@
             <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
         </a>
 
+        {# === 공통: 이메일 === #}
+        <div class="sidebar-group">
+            <div class="sidebar-group-header" data-group-id="mail">
+                <span class="sidebar-icon">✉️</span>
+                <span class="sidebar-label">이메일</span>
+            </div>
+            <div class="sidebar-sub" id="menu-grp-mail">
+                <a href="{{ url_for('mail.mail_shared') }}" data-menu-key="mail_shared" data-menu-label="공용메일">
+                    <span class="sidebar-label">공용메일</span>
+                    <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
+                </a>
+                <a href="{{ url_for('mail.mail_personal') }}" data-menu-key="mail_personal" data-menu-label="개인메일">
+                    <span class="sidebar-label">개인메일</span>
+                    <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
+                </a>
+                <a href="{{ url_for('mail.mail_external') }}" data-menu-key="mail_external" data-menu-label="외부메일">
+                    <span class="sidebar-label">외부메일</span>
+                    <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
+                </a>
+            </div>
+        </div>
+
+        {# === 공통: 전자결재 (직접 링크) === #}
+        <a href="{{ url_for('approval.approval_list') }}" data-menu-key="approval" data-menu-label="전자결재">
+            <span class="sidebar-icon">📋</span>
+            <span class="sidebar-label">전자결재</span>
+            <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
+        </a>
+
         {# === 공통: 업무보고 === #}
         <div class="sidebar-group">
             <div class="sidebar-group-header" data-group-id="report">
@@ -85,7 +125,7 @@
 
         {# === 부서별 동적 메뉴 === #}
         {% for group_name, menus in (sidebar_menu_groups or {}).items() %}
-        {% if group_name != '시스템' and menus %}
+        {% if group_name not in ('시스템', '이메일') and menus %}
         <div class="sidebar-group">
             <div class="sidebar-group-header" data-group-id="grp-{{ loop.index }}">
                 <span class="sidebar-icon">{{ (sidebar_group_icons or {}).get(group_name, '📁') }}</span>
@@ -158,9 +198,26 @@
             <span class="sticky-forecast" id="stickyForecast"></span>
         </div>
         <div class="sticky-kpi" id="stickyKpi"></div>
+        <span id="stickyNotiBell" style="cursor:pointer;font-size:1rem;margin-left:8px;" onclick="document.getElementById('notiBtn').click()">🔔<span id="stickyNotiBadge" class="badge bg-danger rounded-pill" style="display:none;position:relative;top:-8px;right:4px;font-size:.55rem;">0</span></span>
     </div>
 
     <div class="main-content">
+        {# 알림 벨 #}
+        <div id="notiFixedBell" style="position:fixed;top:8px;right:16px;z-index:1050;transition:top .2s;">
+            <span class="position-relative" style="cursor:pointer;">
+                <span id="notiBtn" style="font-size:1.2rem;">🔔<span class="badge bg-danger rounded-pill position-absolute" id="notiBadge" style="display:none;top:-6px;right:-10px;font-size:.55rem;">0</span></span>
+                <div id="notiDropdown" style="display:none;position:absolute;right:0;top:2.2rem;width:340px;background:#fff;border:1px solid #e2e8f0;border-radius:.6rem;box-shadow:0 12px 32px rgba(0,0,0,.12);z-index:9999;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem .75rem;border-bottom:1px solid #f1f5f9;">
+                        <span style="font-size:.82rem;font-weight:700;color:#0f172a;">알림</span>
+                        <div style="display:flex;gap:.5rem;align-items:center;">
+                            <a href="#" class="noti-read-all" style="font-size:.72rem;color:#2563eb;text-decoration:none;">전체 읽음</a>
+                            <a href="{{ url_for('notification.notification_list') }}" style="font-size:.72rem;color:#64748b;text-decoration:none;">전체보기 →</a>
+                        </div>
+                    </div>
+                    <div class="noti-list" style="max-height:360px;overflow-y:auto;"></div>
+                </div>
+            </span>
+        </div>
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
@@ -338,11 +395,11 @@
     </script>
     <script src="{{ url_for('static', filename='js/csrf-inject.js') }}"></script>
     {% if request.path != '/production/display' %}
-    <script src="{{ url_for('static', filename='js/chatbot-panel.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chatbot-panel.js') }}?v=20260331b"></script>
     {% endif %}
     <script src="{{ url_for('static', filename='js/mobile-table.js') }}"></script>
     {% include 'components/change_password_modal.html' %}
-    <script src="{{ url_for('static', filename='js/notification-badge.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/notification-panel.js') }}"></script>
     <script>window.__activeMenuKey = {{ (g.active_menu_key or '')|tojson }};</script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 {% include 'components/catalog_autocomplete.html' %}

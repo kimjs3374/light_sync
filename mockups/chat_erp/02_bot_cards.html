@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>02 · 봇 메시지 카드 5종</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    background: #f8f9fa;
+    color: #202124;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+    padding: 32px 24px 64px;
+  }
+  button { font-family: inherit; cursor: pointer; }
+
+  .page { max-width: 720px; margin: 0 auto; }
+  .page-title { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+  .page-sub { color: #5f6368; margin-bottom: 32px; }
+
+  .nav { font-size: 12px; margin-bottom: 24px; }
+  .nav a { color: #1a73e8; text-decoration: none; }
+
+  .section {
+    background: #fff; border: 1px solid #e8eaed; border-radius: 8px;
+    margin-bottom: 24px; padding: 20px 24px;
+  }
+  .section-num { font-size: 11px; color: #1a73e8; font-weight: 600; letter-spacing: .05em; }
+  .section-title { font-size: 16px; font-weight: 600; margin: 4px 0 6px; }
+  .section-when { font-size: 12px; color: #5f6368; margin-bottom: 16px; }
+
+  /* shared message style */
+  .msg { display: flex; gap: 12px; padding-top: 12px; border-top: 1px dashed #e8eaed; }
+  .msg-avatar.bot { width: 32px; height: 32px; border-radius: 50%; background: #10b981; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+  .msg-body { flex: 1; min-width: 0; }
+  .msg-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+  .msg-name { font-weight: 600; font-size: 13px; }
+  .msg-time { color: #9aa0a6; font-size: 11px; }
+  .msg-text { color: #202124; line-height: 1.55; margin-bottom: 8px; }
+
+  /* shared bot card */
+  .bc { max-width: 480px; border-radius: 8px; overflow: hidden; border: 1px solid #d1fae5; background: #fff; }
+  .bc-head {
+    padding: 10px 14px; background: #f0fdf4; border-bottom: 1px solid #d1fae5;
+    font-weight: 600; font-size: 12px; color: #047857;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .bc-body { padding: 12px 14px; }
+  .bc-row { display: flex; gap: 12px; padding: 4px 0; font-size: 13px; }
+  .bc-label { color: #5f6368; min-width: 64px; }
+  .bc-value { color: #202124; font-weight: 500; flex: 1; }
+  .bc-value .old { color: #9aa0a6; text-decoration: line-through; margin-right: 6px; }
+  .bc-value .new { color: #047857; font-weight: 600; }
+
+  .bc-actions { padding: 10px 14px; border-top: 1px solid #f0fdf4; display: flex; gap: 8px; }
+  .btn { border: 1px solid #dadce0; background: #fff; color: #3c4043; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; }
+  .btn:hover { background: #f8f9fa; }
+  .btn-primary { background: #047857; border-color: #047857; color: #fff; }
+  .btn-primary:hover { background: #065f46; }
+  .btn-ghost { border-color: transparent; color: #5f6368; }
+  .btn-blue { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+
+  /* candidate list */
+  .cand {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-top: 1px solid #f1f3f4; cursor: pointer;
+  }
+  .cand:hover { background: #f8f9fa; }
+  .cand:first-of-type { border-top: none; }
+  .cand-info { flex: 1; min-width: 0; }
+  .cand-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cand-sub { font-size: 11px; color: #5f6368; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cand-num { font-size: 14px; font-weight: 700; color: #1a73e8; width: 18px; text-align: center; }
+  .cand-pill { font-size: 10px; padding: 2px 8px; border-radius: 10px; background: #e8f0fe; color: #1a73e8; font-weight: 600; white-space: nowrap; }
+
+  /* quick choices */
+  .choices { padding: 10px 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .choice {
+    padding: 6px 14px; border: 1px solid #dadce0; border-radius: 16px;
+    font-size: 12px; cursor: pointer; background: #fff;
+  }
+  .choice:hover { border-color: #1a73e8; color: #1a73e8; }
+
+  /* result card */
+  .bc-success .bc-head { background: #ecfdf5; color: #047857; }
+  .result-msg { padding: 14px; display: flex; gap: 12px; align-items: center; }
+  .result-icon { width: 32px; height: 32px; border-radius: 50%; background: #d1fae5; color: #047857; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .result-text { flex: 1; }
+  .result-title { font-size: 13px; font-weight: 600; }
+  .result-sub { font-size: 11px; color: #5f6368; margin-top: 2px; }
+  .result-undo { font-size: 11px; color: #d93025; padding: 4px 10px; border: 1px solid #fce8e6; background: #fff; border-radius: 4px; cursor: pointer; }
+
+  /* summary card */
+  .bc-summary { max-width: 580px; }
+  .bc-summary .bc-head { background: #eff6ff; color: #1a56db; border-bottom-color: #dbeafe; }
+  .bc-summary { border-color: #dbeafe; }
+  table.summary {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+  }
+  table.summary th, table.summary td {
+    padding: 8px 14px; text-align: left;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border-bottom: 1px solid #f1f3f4;
+  }
+  table.summary th { color: #5f6368; font-weight: 600; background: #f8f9fa; font-size: 11px; }
+  table.summary td.right { text-align: right; }
+  table.summary tr:last-child td { border-bottom: none; }
+  .pill { display: inline-block; padding: 1px 8px; font-size: 10px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
+  .pill.danger { background: #fce8e6; color: #d93025; }
+  .pill.success { background: #d1fae5; color: #047857; }
+  .pill.warn { background: #fef3c7; color: #92400e; }
+
+  .summary-actions { padding: 8px 14px; border-top: 1px solid #f1f3f4; display: flex; gap: 8px; align-items: center; font-size: 11px; color: #5f6368; }
+  .summary-actions a { color: #1a73e8; text-decoration: none; margin-left: auto; }
+
+  .annotate {
+    margin-top: 12px; padding: 10px 14px;
+    background: #fff8e1; border-left: 3px solid #f59e0b; border-radius: 4px;
+    font-size: 12px; color: #78350f; max-width: 480px;
+  }
+  .annotate b { color: #92400e; }
+
+  .user-line { color: #5f6368; font-size: 12px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed #f1f3f4; }
+  .user-line b { color: #1a73e8; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="nav"><a href="index.html">← 시안 목록</a></div>
+  <div class="page-title">봇 메시지 카드 5종</div>
+  <div class="page-sub">봇이 사용자에게 응답하는 모든 패턴. 동일한 디자인 토큰을 공유합니다.</div>
+
+  <!-- ===== 1. 확정 카드 ===== -->
+  <div class="section">
+    <div class="section-num">CARD 01</div>
+    <div class="section-title">확정 카드 — 단일 액션 추출 성공</div>
+    <div class="section-when">엔티티·액션·값이 모두 명확할 때. 가장 일반적.</div>
+
+    <div class="user-line"><b>김민수 과장:</b> @봇 ○○초등학교 납품일정 내일로 등록해줘</div>
+
+    <div class="msg">
+      <div class="msg-avatar bot">🤖</div>
+      <div class="msg-body">
+        <div class="msg-meta"><span class="msg-name">봇</span><span class="msg-time">방금</span></div>
+        <div class="msg-text">납품일정을 아래와 같이 등록할게요. 확인해주세요.</div>
+        <div class="bc">
+          <div class="bc-head">📋 납품일정 등록 확인</div>
+          <div class="bc-body">
+            <div class="bc-row"><span class="bc-label">현장</span><span class="bc-value">○○초등학교 LED교체 (G-2026-0123)</span></div>
+            <div class="bc-row"><span class="bc-label">변경</span><span class="bc-value"><span class="old">미정</span><span class="new">2026-05-13 (수)</span></span></div>
+            <div class="bc-row"><span class="bc-label">담당자</span><span class="bc-value">생산부 이대리 (자동지정)</span></div>
+          </div>
+          <div class="bc-actions">
+            <button class="btn btn-primary">✓ 확정</button>
+            <button class="btn">✎ 수정</button>
+            <button class="btn btn-ghost">✗ 취소</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 2. 후보선택 카드 ===== -->
+  <div class="section">
+    <div class="section-num">CARD 02</div>
+    <div class="section-title">후보선택 카드 — 엔티티 매칭 다건</div>
+    <div class="section-when">"○○현장"이 여러 개일 때. 사용자가 1번을 고르면 학습 데이터로 누적.</div>
+
+    <div class="user-line"><b>박정호 부장:</b> @봇 매그나초 AS 케이스 등록</div>
+
+    <div class="msg">
+      <div class="msg-avatar bot">🤖</div>
+      <div class="msg-body">
+        <div class="msg-meta"><span class="msg-name">봇</span><span class="msg-time">방금</span></div>
+        <div class="msg-text">"매그나초"로 검색된 현장이 3건입니다. 어느 현장인가요?</div>
+        <div class="bc">
+          <div class="bc-head">🔍 현장 후보 3건</div>
+          <div class="cand">
+            <div class="cand-num">1</div>
+            <div class="cand-info">
+              <div class="cand-title">매그나초등학교 LED교체</div>
+              <div class="cand-sub">G-2026-0098 · 2026.03 납품완료 · 하자보증 진행중</div>
+            </div>
+            <div class="cand-pill">최근</div>
+          </div>
+          <div class="cand">
+            <div class="cand-num">2</div>
+            <div class="cand-info">
+              <div class="cand-title">매그나초 LED 교체 2차</div>
+              <div class="cand-sub">G-2025-0487 · 2025.11 납품완료</div>
+            </div>
+          </div>
+          <div class="cand">
+            <div class="cand-num">3</div>
+            <div class="cand-info">
+              <div class="cand-title">매그나초등학교 강당 보안등</div>
+              <div class="cand-sub">G-2024-1102 · 2024.08 하자만료</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="annotate">
+      💡 <b>학습 효과:</b> 사용자가 1번을 고르면 다음부터 "매그나초" → 1번 우선순위. 사용한 채널·사용자별로 가중치 누적.
+    </div>
+  </div>
+
+  <!-- ===== 3. 질문 카드 ===== -->
+  <div class="section">
+    <div class="section-num">CARD 03</div>
+    <div class="section-title">질문 카드 — 액션 모호성 해소</div>
+    <div class="section-when">엔티티는 명확한데 무엇을 할지가 모호할 때. 빠른선택 칩으로.</div>
+
+    <div class="user-line"><b>이대리:</b> @봇 ○○초 납품 5/15</div>
+
+    <div class="msg">
+      <div class="msg-avatar bot">🤖</div>
+      <div class="msg-body">
+        <div class="msg-meta"><span class="msg-name">봇</span><span class="msg-time">방금</span></div>
+        <div class="msg-text">"○○초등학교 LED교체"의 납품 정보를 변경하시는 거 맞나요? 어떤 항목을 수정할까요?</div>
+        <div class="bc">
+          <div class="bc-head">❓ 어떤 정보인가요?</div>
+          <div class="choices">
+            <button class="choice">📅 납품 일정 (날짜)</button>
+            <button class="choice">📦 납품 수량</button>
+            <button class="choice">🚚 납품 기사</button>
+            <button class="choice">📍 납품 장소</button>
+          </div>
+          <div class="bc-actions">
+            <button class="btn btn-ghost">✗ 다시 입력</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 4. 결과 카드 ===== -->
+  <div class="section">
+    <div class="section-num">CARD 04</div>
+    <div class="section-title">결과 카드 — 적용 완료 + 되돌리기</div>
+    <div class="section-when">확정 후 실제 DB write 성공. 5분 내 [되돌리기] 노출.</div>
+
+    <div class="msg">
+      <div class="msg-avatar bot">🤖</div>
+      <div class="msg-body">
+        <div class="msg-meta"><span class="msg-name">봇</span><span class="msg-time">방금</span></div>
+        <div class="bc bc-success">
+          <div class="bc-head">✅ 등록 완료</div>
+          <div class="result-msg">
+            <div class="result-icon">📋</div>
+            <div class="result-text">
+              <div class="result-title">○○초 납품일정: 2026-05-13 (수)</div>
+              <div class="result-sub">담당 이대리에게 자동 알림 전송 · 히스토리 기록됨</div>
+            </div>
+            <button class="result-undo">↩ 되돌리기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="annotate">
+      💡 <b>안전장치:</b> 5분 카운트다운 후 되돌리기 버튼은 사라짐. 그 이후엔 일반 변경 절차로만 수정 가능.
+    </div>
+  </div>
+
+  <!-- ===== 5. 요약 카드 ===== -->
+  <div class="section">
+    <div class="section-num">CARD 05</div>
+    <div class="section-title">요약 카드 — 조회 결과</div>
+    <div class="section-when">"오늘 납품 뭐 있어?" 같은 read-only 질의. MCP Tool 결과를 표/차트로.</div>
+
+    <div class="user-line"><b>박부장:</b> @봇 이번주 납품 일정 알려줘</div>
+
+    <div class="msg">
+      <div class="msg-avatar bot">🤖</div>
+      <div class="msg-body">
+        <div class="msg-meta"><span class="msg-name">봇</span><span class="msg-time">방금</span></div>
+        <div class="msg-text">이번주(5/11~5/17) 납품 예정 4건입니다.</div>
+        <div class="bc bc-summary">
+          <div class="bc-head">📦 이번주 납품 예정 · 4건</div>
+          <table class="summary">
+            <thead>
+              <tr>
+                <th>날짜</th><th>현장</th><th class="right">금액</th><th>상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>5/13(수)</td>
+                <td>○○초등학교 LED교체</td>
+                <td class="right">12,480,000</td>
+                <td><span class="pill warn">생산중</span></td>
+              </tr>
+              <tr>
+                <td>5/14(목)</td>
+                <td>△△청사 보안등 교체</td>
+                <td class="right">8,250,000</td>
+                <td><span class="pill success">출하준비</span></td>
+              </tr>
+              <tr>
+                <td>5/15(금)</td>
+                <td>□□시청 가로등 교체</td>
+                <td class="right">22,100,000</td>
+                <td><span class="pill warn">생산중</span></td>
+              </tr>
+              <tr>
+                <td>5/17(일)</td>
+                <td>××여중 강당 LED</td>
+                <td class="right">5,640,000</td>
+                <td><span class="pill danger">자재부족</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="summary-actions">
+            합계 48,470,000원
+            <a href="#">납품관리에서 보기 →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

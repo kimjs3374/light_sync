@@ -5,7 +5,7 @@ from typing import Optional
 from mcp.server.fastmcp import FastMCP
 
 from ..db import get_session
-from ._helpers import _s, _sd
+from ._helpers import _s, _sd, _erp_url
 
 
 def register(mcp: FastMCP):
@@ -45,6 +45,7 @@ def register(mcp: FastMCP):
                     "status": _s(c.status),
                     "reported_date": _sd(c.reported_date),
                     "assigned_to": _s(c.assigned_to),
+                    "erp_url": _erp_url(f"/warranty/case/{c.id}"),
                 })
             return json.dumps(result, ensure_ascii=False)
         finally:

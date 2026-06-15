@@ -14,6 +14,13 @@
 
 <form method="POST" id="rcvForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if highlight_poi %}
+    <input type="hidden" name="force_confirm_poi" value="{{ highlight_poi }}">
+    <div class="alert alert-info py-2 mg-fade" style="font-size:.85rem; border-radius:10px;">
+        <strong>입고확인</strong> — 강조된 품목의 실제 입고 수량을 확인/수정한 뒤 <strong>입고 등록</strong>을 누르세요.
+        등록 시 발주 품목은 입고완료 처리되며 (수량이 발주량보다 적어도) 발주서 단가는 변경되지 않습니다.
+    </div>
+    {% endif %}
 
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-header bg-white py-2"><strong>기본정보</strong></div>
@@ -74,26 +81,24 @@
                 <table class="table table-sm mb-0 no-stack-table" id="itemsTable" style="font-size:.82rem; width:100%; table-layout:fixed;">
                     <colgroup>
                         <col style="width:30px">
-                        {% if not po and not fo %}<col style="width:12%">{% endif %}
+                        <col style="width:12%">
                         <col style="width:22%">
                         <col style="width:16%">
-                        <col style="width:8%">
-                        <col style="width:5%">
                         <col style="width:9%">
-                        <col style="width:9%">
-                        <col style="width:12%">
+                        <col style="width:10%">
+                        <col style="width:10%">
+                        <col style="width:14%">
                         <col style="width:32px">
                     </colgroup>
                     <thead class="table-light">
                         <tr>
                             <th>#</th>
-                            {% if not po and not fo %}<th>품번</th>{% endif %}
+                            <th>품번</th>
                             <th>품명</th>
                             <th>규격</th>
-                            <th>수량</th>
-                            <th>단위</th>
-                            <th>단가</th>
-                            <th>금액</th>
+                            <th class="text-end">수량</th>
+                            <th class="text-end">단위단가</th>
+                            <th class="text-end">금액</th>
                             <th>비고</th>
                             <th></th>
                         </tr>
@@ -101,22 +106,22 @@
                     <tbody id="itemsBody">
                         {% if po_items %}
                         {% for pi in po_items %}
-                        <tr>
-                            <td>{{ loop.index }}</td>
+                        <tr {% if pi._is_highlighted %}id="row-poi-{{ pi.id }}" class="row-highlight" style="background:#fefce8;box-shadow:inset 4px 0 0 #f59e0b;"{% endif %}>
+                            <td>{{ loop.index }}{% if pi._is_highlighted %}<span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;">확인대상</span>{% endif %}</td>
                             <td>
                                 <input type="hidden" name="po_item_id[]" value="{{ pi.id }}">
                                 <input type="hidden" name="fo_item_id[]" value="">
-                                <input type="hidden" name="item_cd[]" value="{{ pi.item_code or '' }}">
-                                <input type="text" name="item_name[]" class="form-control form-control-sm" value="{{ pi.item_name }}" readonly>
+                                <input type="hidden" name="unit[]" value="{{ pi.unit or '' }}">
+                                <input type="text" name="item_cd[]" class="form-control form-control-sm" value="{{ pi.item_code or '' }}" readonly style="font-family:var(--mg-mono);font-size:.78rem;">
                             </td>
+                            <td><input type="text" name="item_name[]" class="form-control form-control-sm" value="{{ pi.item_name }}" readonly></td>
                             <td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="{{ pi.item_spec or '' }}" readonly></td>
                             <td>
-                                <input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="{{ pi._remaining }}" step="any" min="0" max="{{ pi._remaining }}">
-                                <small class="text-muted">잔량: {{ pi._remaining|int }}</small>
+                                <input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="{{ pi._prefill_qty|int }}" step="1" min="0">
+                                <small class="text-muted">발주 {{ pi.quantity|int }}{{ pi.unit or '' }} / 잔 {{ pi._remaining|int }}</small>
                             </td>
-                            <td><input type="text" name="unit[]" class="form-control form-control-sm" value="{{ pi.unit or '' }}" readonly></td>
-                            <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="{{ pi.unit_price|int }}" readonly></td>
-                            <td class="amount-cell text-end fw-bold">{{ (pi._remaining * (pi.unit_price or 0))|int|e }}</td>
+                            <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="{{ pi.unit_price|int }}" step="any" min="0"></td>
+                            <td class="amount-cell text-end fw-bold">{{ (pi._prefill_qty * (pi.unit_price or 0))|int|e }}</td>
                             <td><input type="text" name="item_note[]" class="form-control form-control-sm" value=""></td>
                             <td></td>
                         </tr>
@@ -128,16 +133,16 @@
                             <td>
                                 <input type="hidden" name="po_item_id[]" value="">
                                 <input type="hidden" name="fo_item_id[]" value="{{ fi.id }}">
-                                <input type="hidden" name="item_cd[]" value="">
-                                <input type="text" name="item_name[]" class="form-control form-control-sm" value="{{ fi.item_name }}" readonly>
+                                <input type="hidden" name="unit[]" value="{{ fi.unit or '' }}">
+                                <input type="text" name="item_cd[]" class="form-control form-control-sm" value="" readonly style="font-family:var(--mg-mono);font-size:.78rem;">
                             </td>
+                            <td><input type="text" name="item_name[]" class="form-control form-control-sm" value="{{ fi.item_name }}" readonly></td>
                             <td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="{{ fi.item_spec or '' }}" readonly></td>
                             <td>
-                                <input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="{{ fi._remaining }}" step="any" min="0" max="{{ fi._remaining }}">
-                                <small class="text-muted">잔량: {{ fi._remaining|int }}</small>
+                                <input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="{{ fi._remaining|int }}" step="1" min="0" max="{{ fi._remaining|int }}">
+                                <small class="text-muted">잔 {{ fi._remaining|int }}{{ fi.unit or '' }}</small>
                             </td>
-                            <td><input type="text" name="unit[]" class="form-control form-control-sm" value="{{ fi.unit or '' }}" readonly></td>
-                            <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="{{ fi.unit_price|int }}" readonly></td>
+                            <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="{{ fi.unit_price|int }}" step="any" min="0"></td>
                             <td class="amount-cell text-end fw-bold">{{ (fi._remaining * (fi.unit_price or 0))|int|e }}</td>
                             <td><input type="text" name="item_note[]" class="form-control form-control-sm" value="">
                                 {% if fi.processing_note %}<small class="text-muted d-block">{{ fi.processing_note }}</small>{% endif %}
@@ -149,11 +154,10 @@
                         {# 직접입고: 첫 행 자동 생성 #}
                         <tr>
                             <td>1</td>
-                            <td><input type="hidden" name="po_item_id[]" value=""><input type="hidden" name="fo_item_id[]" value=""><input type="text" name="item_cd[]" class="form-control form-control-sm item-cd-input" placeholder="품번" autocomplete="off"></td>
+                            <td><input type="hidden" name="po_item_id[]" value=""><input type="hidden" name="fo_item_id[]" value=""><input type="hidden" name="unit[]" value="EA"><input type="text" name="item_cd[]" class="form-control form-control-sm item-cd-input" placeholder="품번" autocomplete="off"></td>
                             <td><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" autocomplete="off" required></td>
                             <td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" placeholder="규격" autocomplete="off"></td>
                             <td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="0" step="any" min="0"></td>
-                            <td><input type="text" name="unit[]" class="form-control form-control-sm" value="EA"></td>
                             <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="0" step="any"></td>
                             <td class="amount-cell text-end fw-bold">0</td>
                             <td><input type="text" name="item_note[]" class="form-control form-control-sm"></td>
@@ -197,6 +201,19 @@
 
 <script>
 (function() {
+    {% if highlight_poi %}
+    // 강조된 행으로 스크롤 + 수량 입력 포커스
+    document.addEventListener('DOMContentLoaded', function() {
+        var row = document.getElementById('row-poi-{{ highlight_poi }}');
+        if (row) {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            var qtyInput = row.querySelector('.qty-input');
+            if (qtyInput) {
+                setTimeout(function() { qtyInput.focus(); qtyInput.select(); }, 350);
+            }
+        }
+    });
+    {% endif %}
     var itemIndex = {{ po_items|length if po_items else fo_items|length if fo_items else 1 }};
     var isPoBased = {{ 'true' if po or fo else 'false' }};
 
@@ -285,10 +302,10 @@
         if (isPoBased) {
             tr.innerHTML =
                 '<td>' + itemIndex + '</td>' +
-                '<td><input type="hidden" name="po_item_id[]" value=""><input type="hidden" name="fo_item_id[]" value=""><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" required></td>' +
+                '<td><input type="hidden" name="po_item_id[]" value=""><input type="hidden" name="fo_item_id[]" value=""><input type="hidden" name="unit[]" value="EA"><input type="text" name="item_cd[]" class="form-control form-control-sm" placeholder="품번" style="font-family:var(--mg-mono);font-size:.78rem;"></td>' +
+                '<td><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" required></td>' +
                 '<td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" placeholder="규격"></td>' +
                 '<td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="0" step="any" min="0"></td>' +
-                '<td><input type="text" name="unit[]" class="form-control form-control-sm" value="EA"></td>' +
                 '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="0" step="any"></td>' +
                 '<td class="amount-cell text-end fw-bold">0</td>' +
                 '<td><input type="text" name="item_note[]" class="form-control form-control-sm"></td>' +
@@ -296,11 +313,10 @@
         } else {
             tr.innerHTML =
                 '<td>' + itemIndex + '</td>' +
-                '<td><input type="hidden" name="po_item_id[]" value=""><input type="hidden" name="fo_item_id[]" value=""><input type="text" name="item_cd[]" class="form-control form-control-sm item-cd-input" placeholder="품번" autocomplete="off"></td>' +
+                '<td><input type="hidden" name="po_item_id[]" value=""><input type="hidden" name="fo_item_id[]" value=""><input type="hidden" name="unit[]" value="EA"><input type="text" name="item_cd[]" class="form-control form-control-sm item-cd-input" placeholder="품번" autocomplete="off"></td>' +
                 '<td><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" autocomplete="off" required></td>' +
                 '<td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" placeholder="규격" autocomplete="off"></td>' +
                 '<td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="0" step="any" min="0"></td>' +
-                '<td><input type="text" name="unit[]" class="form-control form-control-sm" value="EA"></td>' +
                 '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="0" step="any"></td>' +
                 '<td class="amount-cell text-end fw-bold">0</td>' +
                 '<td><input type="text" name="item_note[]" class="form-control form-control-sm"></td>' +

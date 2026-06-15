@@ -51,34 +51,129 @@ def parse_contract_pdf(file_bytes):
 
     result = {}
 
+    # 물품계약서(최종) 양식 판별
+    is_contract_form = '물품계약서' in text and '계약일자' in text
+
+    if is_contract_form:
+        _parse_contract_form(text, result)
+    else:
+        _parse_delivery_req_form(text, result)
+
+    # --- 품목 정보 (공통) ---
+    result['items'] = _parse_items(text)
+
+    logger.info("PDF 파싱 결과: 납품요구번호=%s, 계약번호=%s, 수수료=%s",
+                result.get('delivery_req_no'), result.get('contract_no'), result.get('fee'))
+
+    return result
+
+
+def _parse_date(s):
+    """날짜 문자열 → date 객체. 2026/04/01, 2026.04.01 등 지원."""
+    if not s:
+        return None
+    s = s.replace('/', '.').replace('-', '.')
+    parts = s.split('.')
+    if len(parts) == 3:
+        try:
+            return date(int(parts[0]), int(parts[1]), int(parts[2]))
+        except (ValueError, IndexError):
+            pass
+    return None
+
+
+def _parse_contract_form(text, result):
+    """물품계약서(최종) 양식 파싱."""
+    # 공백 제거 텍스트 (필드명 매칭용)
+    stripped = re.sub(r'\s+', '', text)
+
+    # --- 계약번호 (R26TA..., R25TB... 등) ---
+    m = re.search(r'계\s*약\s*번\s*호\s*:?\s*([A-Za-z0-9]+)', text)
+    if m:
+        result['delivery_req_no'] = m.group(1).strip()
+        result['contract_no'] = m.group(1).strip()
+
+    # --- 계약일자 ---
+    m = re.search(r'계약일자\s*:?\s*(\d{4}/\d{2}/\d{2})', text)
+    if m:
+        result['contract_date'] = _parse_date(m.group(1))
+
+    # --- 계약건명 ---
+    m = re.search(r'계\s*약\s*건\s*명\s*:?\s*(.+?)(?:\n|$)', text)
+    if m:
+        result['business_name'] = re.sub(r'\s+', ' ', m.group(1)).strip()
+
+    # --- 계약금액 ---
+    m = re.search(r'계\s*약\s*금\s*액\s*:?\s*([\d,]+)\s*원', text)
+    if m:
+        result['supply_amount'] = int(m.group(1).replace(',', ''))
+
+    # --- 수수료 ---
+    m = re.search(r'수\s*수\s*료\s*:?\s*([\d,]+)\s*원', text)
+    if m:
+        result['fee'] = int(m.group(1).replace(',', ''))
+
+    # --- 합계금액 (계약금액 + 수수료) ---
+    if result.get('supply_amount') and result.get('fee'):
+        result['total_amount'] = result['supply_amount'] + result['fee']
+
+    # --- 납품기한 ---
+    m = re.search(r'납\s*품\s*기\s*한\s*:?\s*(\d{4}/\d{2}/\d{2})', text)
+    if m:
+        result['delivery_due'] = _parse_date(m.group(1))
+
+    # --- 수요기관명 ---
+    m = re.search(r'수\s*요\s*기\s*관\s*명\s*:?\s*(.+?)(?:\s{2,}|분)', text)
+    if m:
+        result['demand_org'] = m.group(1).strip()
+
+    # --- 검사기관, 검수기관 ---
+    m = re.search(r'검\s*사\s*기\s*관\s*:?\s*(.+?)(?:\s{2,}|검\s*수)', text)
+    if m:
+        result['inspection_org'] = m.group(1).strip()
+    m = re.search(r'검\s*수\s*기\s*관\s*:?\s*(.+?)(?:\n|$)', text)
+    if m:
+        result['acceptance_org'] = m.group(1).strip()
+
+    # --- 하자담보책임기간 ---
+    m = re.search(r'하자담보책임기간\s*:?\s*(\d+)\s*년', text)
+    if m:
+        result['warranty_period'] = f"{m.group(1)}년"
+
+    # --- 지체상금률 ---
+    m = re.search(r'지\s*체\s*상\s*금\s*률\s*:?\s*([\d.]+)\s*%', text)
+    if m:
+        result['penalty_rate'] = m.group(1)
+
+    # --- 하자보수보증금률 ---
+    m = re.search(r'하자보수보증금률\s*:?\s*([\d.]+)\s*%', text)
+    if m:
+        result['warranty_bond_rate'] = m.group(1)
+
+    # --- 품명, 수량 ---
+    m = re.search(r'품\s*명\s*:?\s*(.+?)\s+수\s*량\s*:?\s*(\d+)', text)
+    if m:
+        result['product_name'] = m.group(1).strip()
+        result['quantity'] = int(m.group(2))
+
+
+def _parse_delivery_req_form(text, result):
+    """분할납품요구서 양식 파싱 (기존 로직)."""
     # --- 납품요구번호 ---
     m = re.search(r'납\s*품\s*요\s*구\s*번\s*호\s*:?\s*([A-Za-z0-9\-]+)', text)
     if m:
         result['delivery_req_no'] = m.group(1).strip()
 
     # --- 계약번호 + 계약일자 ---
-    # 패턴: 계약번호 제002280992-01호(2025/04/24) 또는 제00-22-7-0159-00호(2022.05.12)
     m = re.search(r'계약번호\s*제\s*([A-Za-z0-9\-]+)\s*호\s*\(\s*(\d{4}[./]\d{2}[./]\d{2})\s*\)', text)
     if m:
         result['contract_no'] = m.group(1).strip()
-        date_str = m.group(2).replace('/', '.').replace('-', '.')
-        parts = date_str.split('.')
-        if len(parts) == 3:
-            try:
-                result['contract_date'] = date(int(parts[0]), int(parts[1]), int(parts[2]))
-            except (ValueError, IndexError):
-                pass
+        result['contract_date'] = _parse_date(m.group(2))
 
     # --- 납품요구일자 ---
     m = re.search(r'납\s*품\s*요\s*구\s*일\s*자\s*:?\s*(\d{4}[./]\d{2}[./]\d{2})', text)
     if m:
-        date_str = m.group(1).replace('/', '.').replace('-', '.')
-        parts = date_str.split('.')
-        if len(parts) == 3:
-            try:
-                result['req_date'] = date(int(parts[0]), int(parts[1]), int(parts[2]))
-            except (ValueError, IndexError):
-                pass
+        result['req_date'] = _parse_date(m.group(1))
 
     # --- 수요기관 ---
     m = re.search(r'수\s*요\s*기\s*관\s*:?\s*([^\s계나사문하][\w\s]*?)(?:\s{2,}|계)', text)
@@ -96,22 +191,12 @@ def parse_contract_pdf(file_bytes):
         result['warranty_period'] = f"{m.group(1)}년"
 
     # --- 품대계, 수수료, 합계금액, 분할납품, 검사, 검수 ---
-    # 요약 테이블 행: 품대계 수수료 합계금액 분할납품 검사 검수
-    # 예: 9,720,000 47,230 9,767,230 가능 전라남도 전라남도
     _parse_summary_table(text, result)
 
     # --- 사업명 ---
     m = re.search(r'사\s*업\s*명\s*:\s*(.+?)(?:\n|순)', text)
     if m:
         result['business_name'] = re.sub(r'\s+', ' ', m.group(1)).strip()
-
-    # --- 품목 정보 ---
-    result['items'] = _parse_items(text)
-
-    logger.info("PDF 파싱 결과: 납품요구번호=%s, 계약번호=%s, 수수료=%s",
-                result.get('delivery_req_no'), result.get('contract_no'), result.get('fee'))
-
-    return result
 
 
 def _parse_summary_table(text, result):
@@ -188,10 +273,13 @@ def update_procurement_from_pdf(db_session, parsed_data):
     """
     from modules.models.misc_entities import G2bProcurement
 
-    req_no = parsed_data.get('delivery_req_no')
-    if not req_no:
+    req_no_raw = parsed_data.get('delivery_req_no')
+    if not req_no_raw:
         logger.warning("납품요구번호 없음 — PDF 파싱 결과를 저장할 수 없습니다.")
         return 0
+
+    # 변경차수 suffix(-00 등) 제거
+    req_no = re.sub(r'-\d{2}$', '', req_no_raw)
 
     records = db_session.query(G2bProcurement).filter(
         G2bProcurement.cntrct_dlvr_req_no == req_no
@@ -201,30 +289,23 @@ def update_procurement_from_pdf(db_session, parsed_data):
         logger.warning("납품요구번호 %s에 해당하는 조달내역이 없습니다.", req_no)
         return 0
 
+    # 재업로드(변경계약 PDF) 대응 — 파싱된 값이 있으면 항상 덮어쓴다.
     updated = 0
     for rec in records:
         changed = False
-        if parsed_data.get('contract_no') and not rec.pdf_contract_no:
-            rec.pdf_contract_no = parsed_data['contract_no']
-            changed = True
-        if parsed_data.get('contract_date') and not rec.pdf_contract_date:
-            rec.pdf_contract_date = parsed_data['contract_date']
-            changed = True
-        if parsed_data.get('fee') and not rec.pdf_fee:
-            rec.pdf_fee = parsed_data['fee']
-            changed = True
-        if parsed_data.get('total_amount') and not rec.pdf_total_amount:
-            rec.pdf_total_amount = parsed_data['total_amount']
-            changed = True
-        if parsed_data.get('warranty_period') and not rec.pdf_warranty_period:
-            rec.pdf_warranty_period = parsed_data['warranty_period']
-            changed = True
-        if parsed_data.get('inspection_org') and not rec.pdf_inspection_org:
-            rec.pdf_inspection_org = parsed_data['inspection_org']
-            changed = True
-        if parsed_data.get('acceptance_org') and not rec.pdf_acceptance_org:
-            rec.pdf_acceptance_org = parsed_data['acceptance_org']
-            changed = True
+        for src_key, attr in (
+            ('contract_no', 'pdf_contract_no'),
+            ('contract_date', 'pdf_contract_date'),
+            ('fee', 'pdf_fee'),
+            ('total_amount', 'pdf_total_amount'),
+            ('warranty_period', 'pdf_warranty_period'),
+            ('inspection_org', 'pdf_inspection_org'),
+            ('acceptance_org', 'pdf_acceptance_org'),
+        ):
+            new_val = parsed_data.get(src_key)
+            if new_val and getattr(rec, attr) != new_val:
+                setattr(rec, attr, new_val)
+                changed = True
         if changed:
             updated += 1
 

@@ -1,6 +1,20 @@
 {% extends 'base.html' %}
 {% block content %}
 
+{# rcv.items에서 distinct PO 추출 (다건 PO 연결 대응) #}
+{% set linked_pos = [] %}
+{% set linked_po_ids = [] %}
+{% if rcv.purchase_order and rcv.purchase_order.id not in linked_po_ids %}
+    {% set _ = linked_pos.append(rcv.purchase_order) %}
+    {% set _ = linked_po_ids.append(rcv.purchase_order.id) %}
+{% endif %}
+{% for ri in rcv.items %}
+    {% if ri.po_item and ri.po_item.purchase_order and ri.po_item.purchase_order.id not in linked_po_ids %}
+        {% set _ = linked_pos.append(ri.po_item.purchase_order) %}
+        {% set _ = linked_po_ids.append(ri.po_item.purchase_order.id) %}
+    {% endif %}
+{% endfor %}
+
 <div class="page-hero mg-fade">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
         <div>
@@ -10,8 +24,8 @@
         </div>
         <div class="d-flex gap-2">
             <a href="{{ url_for('receiving.receiving_list') }}" class="btn btn-outline-light btn-sm">목록</a>
-            {% if rcv.po_id %}
-            <a href="{{ url_for('purchase_order.po_detail', po_id=rcv.po_id) }}" class="btn btn-outline-light btn-sm">발주서 보기</a>
+            {% if linked_pos|length == 1 %}
+            <a href="{{ url_for('purchase_order.po_detail', po_id=linked_pos[0].id) }}" class="btn btn-outline-light btn-sm">발주서 보기</a>
             {% endif %}
         </div>
     </div>
@@ -39,10 +53,15 @@
                 <div>{{ rcv.vendor.name if rcv.vendor else '-' }}</div>
             </div>
             <div class="col-md-3">
-                <small class="text-muted">발주서</small>
+                <small class="text-muted">연결 발주서</small>
                 <div>
-                    {% if rcv.purchase_order %}
-                    <a href="{{ url_for('purchase_order.po_detail', po_id=rcv.po_id) }}">{{ rcv.purchase_order.po_no }}</a>
+                    {% if linked_pos %}
+                        {% for po in linked_pos %}
+                        <a href="{{ url_for('purchase_order.po_detail', po_id=po.id) }}">{{ po.po_no }}</a>{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                        {% if linked_pos|length == 1 and linked_pos[0].po_date %}
+                        <small class="text-muted ms-1">({{ linked_pos[0].po_date.strftime('%Y-%m-%d') }} 발주)</small>
+                        {% endif %}
                     {% else %}
                     <span class="text-muted">직접 입고</span>
                     {% endif %}
@@ -122,41 +141,48 @@
     </div>
 </div>
 
-{# --- 발주 대비 입고 현황 --- #}
-{% if rcv.po_id %}
+{# --- 발주 대비 입고 현황 (다건 PO 지원) --- #}
+{% if linked_pos %}
+{% for po in linked_pos %}
 <div class="card border-0 shadow-sm mb-3">
     <div class="card-header bg-white py-2">
         <strong>발주 vs 입고 대사</strong>
-        <small class="text-muted ms-2">{{ rcv.purchase_order.po_no }}</small>
+        <small class="text-muted ms-2">{{ po.po_no }}</small>
     </div>
-    <div class="card-body p-0" id="comparisonBody">
+    <div class="card-body p-0" id="comparisonBody_{{ po.id }}">
         <p class="text-center text-muted py-3">로딩 중...</p>
     </div>
 </div>
 <script>
 (function() {
-    fetch('/api/receiving/po-comparison/{{ rcv.po_id }}')
+    fetch('/api/receiving/po-comparison/{{ po.id }}')
         .then(function(r) { return r.json(); })
         .then(function(d) {
-            var body = document.getElementById('comparisonBody');
+            var body = document.getElementById('comparisonBody_{{ po.id }}');
             if (d.error) { body.innerHTML = '<p class="text-danger p-3">' + d.error + '</p>'; return; }
-            var html = '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light"><tr><th>품명</th><th>규격</th><th class="text-end">발주</th><th class="text-end">입고</th><th class="text-end">차이</th><th>상태</th></tr></thead><tbody>';
+            var html = '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light"><tr><th>품번</th><th>품명</th><th>규격</th><th class="text-end">발주</th><th class="text-end">입고</th><th class="text-end">차이</th><th>상태</th></tr></thead><tbody>';
             d.items.forEach(function(item) {
                 var cls = item.status === '완료' ? 'text-success' : (item.status === '과입고' ? 'text-warning' : 'text-danger');
-                html += '<tr><td>' + item.item_name + '</td><td>' + item.item_spec + '</td><td class="text-end">' + item.ordered_qty + '</td><td class="text-end">' + item.received_qty + '</td><td class="text-end ' + cls + '">' + item.diff + '</td><td><span class="badge ' + (item.status === '완료' ? 'bg-success' : (item.status === '과입고' ? 'bg-warning text-dark' : 'bg-danger')) + '">' + item.status + '</span></td></tr>';
+                var code = item.item_code ? '<code style="font-size:.78rem;">' + item.item_code + '</code>' : '<span class="text-muted">-</span>';
+                html += '<tr><td>' + code + '</td><td>' + item.item_name + '</td><td>' + item.item_spec + '</td><td class="text-end">' + item.ordered_qty + '</td><td class="text-end">' + item.received_qty + '</td><td class="text-end ' + cls + '">' + item.diff + '</td><td><span class="badge ' + (item.status === '완료' ? 'bg-success' : (item.status === '과입고' ? 'bg-warning text-dark' : 'bg-danger')) + '">' + item.status + '</span></td></tr>';
             });
             html += '</tbody></table></div>';
             body.innerHTML = html;
         });
 })();
 </script>
+{% endfor %}
 {% endif %}
 
 {# --- 액션 버튼 --- #}
 <div class="card border-0 shadow-sm mb-3">
     <div class="card-body">
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
             <a href="{{ url_for('receiving.receiving_edit', rcv_id=rcv.id) }}" class="btn btn-outline-primary btn-sm">수정</a>
+            <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#linkPoModal">
+                + 발주서 연동{% if linked_pos %} 추가{% endif %}
+            </button>
+            <small class="text-muted">발주서를 여러 건 연결할 수 있습니다. 품목별 부분입고 처리 가능</small>
             <form method="POST" action="{{ url_for('receiving.receiving_delete', rcv_id=rcv.id) }}" class="d-inline ms-auto">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('이 입고를 삭제하시겠습니까?');">삭제</button>
@@ -164,5 +190,249 @@
         </div>
     </div>
 </div>
+
+{# --- 발주서 사후 연동 모달 (2단계: PO 선택 → 품목 선택+수량) --- #}
+<div class="modal fade" id="linkPoModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <form method="POST" action="{{ url_for('receiving.receiving_link_po', rcv_id=rcv.id) }}" id="linkPoForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="po_id" id="linkPoId">
+            <div class="modal-content" style="border-radius:12px; overflow:hidden;">
+                <div class="modal-header py-2" style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                    <h6 class="modal-title fw-bold">발주서 연동 — {{ rcv.rcv_no }} <span class="text-muted ms-2" id="linkPoStepLabel" style="font-size:.78rem;font-weight:normal;">1단계: 발주서 선택</span></h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    {# Step 1: PO 검색/선택 #}
+                    <div id="linkStep1">
+                        <div class="alert alert-info py-2" style="font-size:.82rem;">
+                            연결할 발주서를 선택하세요. 다음 단계에서 품목별 입고 수량을 조정할 수 있습니다.
+                            여러 발주서를 연결하려면 작업 후 다시 [발주서 연동 추가]를 누르세요.
+                        </div>
+                        <div class="d-flex gap-2 mb-2 align-items-center">
+                            <input type="text" class="form-control form-control-sm" id="linkPoSearch" placeholder="발주번호 또는 거래처명으로 검색">
+                            <div class="btn-group btn-group-sm" role="group" id="linkPoVendorFilter">
+                                <button type="button" class="btn btn-outline-secondary active" data-vendor="self" style="white-space:nowrap;">이 거래처만</button>
+                                <button type="button" class="btn btn-outline-secondary" data-vendor="all" style="white-space:nowrap;">전체</button>
+                            </div>
+                        </div>
+                        <div id="linkPoResults" style="max-height:360px; overflow-y:auto;">
+                            <p class="text-muted text-center py-3">불러오는 중...</p>
+                        </div>
+                    </div>
+
+                    {# Step 2: 품목 체크 + 수량 #}
+                    <div id="linkStep2" style="display:none;">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div>
+                                <strong id="linkStep2PoNo"></strong>
+                                <small class="text-muted ms-2" id="linkStep2Vendor"></small>
+                            </div>
+                            <button type="button" class="btn btn-link btn-sm p-0" id="linkBackBtn">← 발주서 다시 선택</button>
+                        </div>
+                        <div class="alert alert-warning py-2" style="font-size:.82rem;">
+                            체크된 품목만 이번 입고건에 연결됩니다. 수량은 잔량으로 prefill되어 있으며 부분입고도 가능합니다 (잔량 미만 입력 시 부분입고로 기록).
+                        </div>
+                        <div class="d-flex gap-2 mb-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="linkSelectAll">전체 선택</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="linkSelectNone">전체 해제</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="linkPrefillRemaining">잔량으로 채우기</button>
+                        </div>
+                        <div class="table-responsive" style="max-height:400px; overflow-y:auto;">
+                            <table class="table table-sm mb-0" style="font-size:.82rem;">
+                                <thead class="table-light" style="position:sticky; top:0; z-index:1;">
+                                    <tr>
+                                        <th style="width:36px;"><input type="checkbox" id="linkHeaderCheck" checked></th>
+                                        <th>품번</th>
+                                        <th>품명</th>
+                                        <th>규격</th>
+                                        <th class="text-end">발주</th>
+                                        <th class="text-end">기입고</th>
+                                        <th class="text-end">잔량</th>
+                                        <th>이번 수량</th>
+                                        <th class="text-end">단가</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="linkItemsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="linkPoSubmitBtn" disabled>연동</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+(function() {
+    var rcvVendorId = {{ rcv.vendor_id or 0 }};
+    var rcvId = {{ rcv.id }};
+    var step1 = document.getElementById('linkStep1');
+    var step2 = document.getElementById('linkStep2');
+    var stepLabel = document.getElementById('linkStepLabel') || document.getElementById('linkPoStepLabel');
+    var searchInput = document.getElementById('linkPoSearch');
+    var resultsDiv = document.getElementById('linkPoResults');
+    var hiddenId = document.getElementById('linkPoId');
+    var submitBtn = document.getElementById('linkPoSubmitBtn');
+    var vendorFilter = document.getElementById('linkPoVendorFilter');
+    var modalEl = document.getElementById('linkPoModal');
+    var step2PoNo = document.getElementById('linkStep2PoNo');
+    var step2Vendor = document.getElementById('linkStep2Vendor');
+    var backBtn = document.getElementById('linkBackBtn');
+    var itemsBody = document.getElementById('linkItemsBody');
+    var headerCheck = document.getElementById('linkHeaderCheck');
+    var selectAllBtn = document.getElementById('linkSelectAll');
+    var selectNoneBtn = document.getElementById('linkSelectNone');
+    var prefillBtn = document.getElementById('linkPrefillRemaining');
+    var timer = null;
+    var vendorMode = 'self';
+
+    function showStep(n) {
+        if (n === 1) {
+            step1.style.display = '';
+            step2.style.display = 'none';
+            stepLabel.textContent = '1단계: 발주서 선택';
+            submitBtn.disabled = true;
+        } else {
+            step1.style.display = 'none';
+            step2.style.display = '';
+            stepLabel.textContent = '2단계: 품목 선택 및 수량 조정';
+            updateSubmitState();
+        }
+    }
+
+    function updateSubmitState() {
+        var anyChecked = itemsBody.querySelectorAll('input[type="checkbox"][name="po_item_id[]"]:checked').length > 0;
+        submitBtn.disabled = !anyChecked;
+    }
+
+    function renderPoList(items) {
+        if (!items.length) {
+            resultsDiv.innerHTML = '<p class="text-muted text-center py-3">미입고 잔량이 있는 발주서가 없습니다 (거래처 필터를 변경해보세요)</p>';
+            return;
+        }
+        var html = '<table class="table table-sm table-hover mb-0" style="font-size:.82rem;"><thead class="table-light"><tr><th>발주번호</th><th>발주일</th><th>거래처</th><th>상태</th><th class="text-end">금액</th></tr></thead><tbody>';
+        items.forEach(function(po) {
+            if (po.order_type === 'fo') return;
+            html += '<tr style="cursor:pointer;" data-po-id="' + po.id + '" data-po-no="' + po.po_no + '" data-vendor="' + po.vendor_name + '">' +
+                    '<td><code>' + po.po_no + '</code></td>' +
+                    '<td>' + (po.po_date || '-') + '</td>' +
+                    '<td>' + po.vendor_name + '</td>' +
+                    '<td>' + po.status + '</td>' +
+                    '<td class="text-end">' + (po.total_amount ? po.total_amount.toLocaleString() : '0') + '</td>' +
+                    '</tr>';
+        });
+        html += '</tbody></table>';
+        resultsDiv.innerHTML = html;
+        resultsDiv.querySelectorAll('tr[data-po-id]').forEach(function(tr) {
+            tr.addEventListener('click', function() {
+                hiddenId.value = tr.dataset.poId;
+                step2PoNo.textContent = tr.dataset.poNo;
+                step2Vendor.textContent = tr.dataset.vendor;
+                loadPoItems(tr.dataset.poId);
+            });
+        });
+    }
+
+    function loadPoItems(poId) {
+        itemsBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">품목 불러오는 중...</td></tr>';
+        showStep(2);
+        fetch('/api/receiving/po-items/' + poId + '?rcv_id=' + rcvId)
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.error) { itemsBody.innerHTML = '<tr><td colspan="9" class="text-danger text-center py-3">' + d.error + '</td></tr>'; return; }
+                if (!d.items || !d.items.length) {
+                    itemsBody.innerHTML = '<tr><td colspan="9" class="text-muted text-center py-3">미입고 잔량 품목이 없습니다.</td></tr>';
+                    return;
+                }
+                var html = '';
+                d.items.forEach(function(it) {
+                    html += '<tr>' +
+                        '<td><input type="checkbox" name="po_item_id[]" value="' + it.id + '" checked></td>' +
+                        '<td>' + (it.item_code ? '<code>' + it.item_code + '</code>' : '<span class="text-muted">-</span>') + '</td>' +
+                        '<td>' + it.item_name + '</td>' +
+                        '<td>' + (it.item_spec || '-') + '</td>' +
+                        '<td class="text-end">' + it.ordered + '</td>' +
+                        '<td class="text-end text-muted">' + it.already + '</td>' +
+                        '<td class="text-end fw-bold text-primary">' + it.remaining + '</td>' +
+                        '<td><input type="number" name="link_qty[]" value="' + it.remaining + '" min="0" step="1" class="form-control form-control-sm" data-remaining="' + it.remaining + '" style="width:90px;"></td>' +
+                        '<td class="text-end"><input type="number" name="link_unit_price[]" value="' + it.unit_price + '" min="0" step="1" class="form-control form-control-sm" style="width:100px;display:inline-block;"></td>' +
+                    '</tr>';
+                });
+                itemsBody.innerHTML = html;
+                itemsBody.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+                    cb.addEventListener('change', updateSubmitState);
+                });
+                updateSubmitState();
+            })
+            .catch(function() { itemsBody.innerHTML = '<tr><td colspan="9" class="text-danger text-center py-3">품목 조회 실패</td></tr>'; });
+    }
+
+    function fetchPos() {
+        var q = searchInput.value.trim();
+        var vendorParam = (vendorMode === 'self' && rcvVendorId) ? ('&vendor_id=' + rcvVendorId) : '';
+        resultsDiv.innerHTML = '<p class="text-muted text-center py-3">불러오는 중...</p>';
+        fetch('/api/receiving/po-search?q=' + encodeURIComponent(q) + vendorParam)
+            .then(function(r) { return r.json(); })
+            .then(function(d) { renderPoList(d.results || d || []); })
+            .catch(function() { resultsDiv.innerHTML = '<p class="text-danger text-center py-3">검색 실패</p>'; });
+    }
+
+    searchInput.addEventListener('input', function() {
+        clearTimeout(timer);
+        timer = setTimeout(fetchPos, 250);
+    });
+
+    vendorFilter.addEventListener('click', function(e) {
+        var btn = e.target.closest('button[data-vendor]');
+        if (!btn) return;
+        vendorFilter.querySelectorAll('button').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        vendorMode = btn.dataset.vendor;
+        fetchPos();
+    });
+
+    backBtn.addEventListener('click', function() {
+        showStep(1);
+        hiddenId.value = '';
+    });
+
+    headerCheck.addEventListener('change', function() {
+        var checked = headerCheck.checked;
+        itemsBody.querySelectorAll('input[type="checkbox"][name="po_item_id[]"]').forEach(function(cb) {
+            cb.checked = checked;
+        });
+        updateSubmitState();
+    });
+
+    selectAllBtn.addEventListener('click', function() {
+        itemsBody.querySelectorAll('input[type="checkbox"][name="po_item_id[]"]').forEach(function(cb) { cb.checked = true; });
+        headerCheck.checked = true;
+        updateSubmitState();
+    });
+
+    selectNoneBtn.addEventListener('click', function() {
+        itemsBody.querySelectorAll('input[type="checkbox"][name="po_item_id[]"]').forEach(function(cb) { cb.checked = false; });
+        headerCheck.checked = false;
+        updateSubmitState();
+    });
+
+    prefillBtn.addEventListener('click', function() {
+        itemsBody.querySelectorAll('input[name="link_qty[]"]').forEach(function(inp) {
+            inp.value = inp.dataset.remaining || 0;
+        });
+    });
+
+    modalEl.addEventListener('shown.bs.modal', function() {
+        showStep(1);
+        hiddenId.value = '';
+        searchInput.focus();
+        fetchPos();
+    });
+})();
+</script>
 
 {% endblock %}

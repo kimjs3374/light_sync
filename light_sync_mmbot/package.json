@@ -1,0 +1,10 @@
+{
+  "name": "light_sync_mmbot",
+  "version": "0.1.0",
+  "description": "Light-Sync ERP Mattermost bot (MCP + Claude Code OAuth session)",
+  "main": "mmbot.mjs",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1"
+  }
+}

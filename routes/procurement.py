@@ -12,7 +12,7 @@ from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.models import G2bProcurement, Contract, ContractItem, Project, TaxInvoice
 from modules.history_board import append_history_log
-from modules.services.g2b_procurement_sync import sync_daily, sync_bulk
+from modules.services.g2b_procurement_sync import sync_daily, sync_bulk, auto_create_contracts
 from modules.services.procurement_summary import (
     get_filter_options, get_summary_pivot, build_chart_data, generate_excel,
 )
@@ -23,26 +23,34 @@ procurement_bp = Blueprint('procurement', __name__)
 # --- ACTION HANDLERS ---
 
 def handle_sync_daily(db, form, user_name):
-    """일일 동기화 (전일 데이터)"""
+    """일일 동기화 (전일 데이터) + 자동 계약 생성"""
     if session.get('role') != 'admin':
         return {'flash': ('권한이 없습니다.', 'danger')}
     result = sync_daily(db)
+    db.commit()
+    auto_result = auto_create_contracts(db)
     total = result['created'] + result['updated']
-    if total == 0:
+    if total == 0 and auto_result['created'] == 0:
         return {'flash': ('새로운 조달내역이 없습니다.', 'info')}
     msg = f"일일 동기화 완료: 신규 {result['created']}건, 갱신 {result['updated']}건"
+    if auto_result['created']:
+        msg += f", 자동계약 {auto_result['created']}건 생성"
     return {'flash': (msg, 'success')}
 
 
 def handle_sync_bulk(db, form, user_name):
-    """벌크 동기화 (시작연도~현재)"""
+    """벌크 동기화 (시작연도~현재) + 자동 계약 생성"""
     if session.get('role') != 'admin':
         return {'flash': ('권한이 없습니다.', 'danger')}
     start_year = safe_int(form.get('bulk_start_year'), 2015)
     result = sync_bulk(db, start_year=start_year)
+    db.commit()
+    auto_result = auto_create_contracts(db)
     msg = f"벌크 동기화 완료: 신규 {result['created']}건, 갱신 {result['updated']}건"
     if result.get('errors'):
         msg += f", 오류 {result['errors']}건"
+    if auto_result['created']:
+        msg += f", 자동계약 {auto_result['created']}건 생성"
     return {'flash': (msg, 'success')}
 
 

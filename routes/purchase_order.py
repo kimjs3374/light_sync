@@ -24,7 +24,7 @@ from modules.models import (
     Vendor, Item, PurchaseOrder, PurchaseOrderItem,
     EmailHistory, EmailSignature, PurchaseOrderHistory, PO_STATUS_CHOICES,
     User, Contract, ContractItem, Project, MaterialOrder,
-    BomItem, BomHeader,
+    BomItem, BomHeader, ReceivingItem,
 )
 from modules.activity import log_activity
 
@@ -179,6 +179,50 @@ def po_list():
         orders = query.order_by(desc(PurchaseOrder.po_date), desc(PurchaseOrder.id)) \
                       .offset(offset).limit(per_page).all()
 
+        # 입고진행 상태 계산: 각 PO 품목별 입고수량 vs 발주수량
+        # 결과: 'none'(미입고) / 'partial'(부분입고) / 'full'(입고완료)
+        order_ids = [o.id for o in orders]
+        recv_state_map = {}
+        if order_ids:
+            poi_rows = db.query(
+                PurchaseOrderItem.po_id,
+                PurchaseOrderItem.id,
+                PurchaseOrderItem.quantity,
+                PurchaseOrderItem.in_confirmed,
+                func.coalesce(func.sum(ReceivingItem.received_qty), 0).label('rcv_qty'),
+            ).outerjoin(
+                ReceivingItem, ReceivingItem.po_item_id == PurchaseOrderItem.id
+            ).filter(
+                PurchaseOrderItem.po_id.in_(order_ids)
+            ).group_by(
+                PurchaseOrderItem.po_id, PurchaseOrderItem.id,
+                PurchaseOrderItem.quantity, PurchaseOrderItem.in_confirmed,
+            ).all()
+
+            agg = {}  # po_id -> {total_items, done_items, any_recv}
+            for po_id, _poi_id, qty, confirmed, rcv_qty in poi_rows:
+                rec = agg.setdefault(po_id, {'total': 0, 'done': 0, 'any_recv': False})
+                rec['total'] += 1
+                ordered = float(qty or 0)
+                rcv = float(rcv_qty or 0)
+                if rcv > 0:
+                    rec['any_recv'] = True
+                if bool(confirmed) or (ordered > 0 and rcv >= ordered):
+                    rec['done'] += 1
+
+            for po_id, rec in agg.items():
+                if rec['total'] == 0:
+                    recv_state_map[po_id] = 'none'
+                elif rec['done'] >= rec['total']:
+                    recv_state_map[po_id] = 'full'
+                elif rec['any_recv'] or rec['done'] > 0:
+                    recv_state_map[po_id] = 'partial'
+                else:
+                    recv_state_map[po_id] = 'none'
+
+        for o in orders:
+            o._recv_state = recv_state_map.get(o.id, 'none')
+
         # 통계
         stats = {
             'total': db.query(func.count(PurchaseOrder.id)).scalar() or 0,
@@ -269,6 +313,8 @@ def po_create():
             item_units = request.form.getlist('unit[]')
             item_notes = request.form.getlist('item_note[]')
             item_ids = request.form.getlist('item_id[]')
+            item_codes = request.form.getlist('item_code[]')
+            delivery_dates = request.form.getlist('delivery_date[]')
 
             total_amount = 0
             for i in range(len(item_names)):
@@ -284,9 +330,20 @@ def po_create():
                 linked_item_id = safe_int(item_ids[i] if i < len(item_ids) else '', 0) or None
                 amount = qty * price
 
+                item_code = (item_codes[i] if i < len(item_codes) else '').strip()
+                dlv_date_str = (delivery_dates[i] if i < len(delivery_dates) else '').strip()
+                dlv_date = None
+                if dlv_date_str:
+                    try:
+                        from datetime import datetime as _dt
+                        dlv_date = _dt.strptime(dlv_date_str, '%Y-%m-%d').date()
+                    except ValueError:
+                        pass
+
                 po_item = PurchaseOrderItem(
                     po_id=po.id,
                     item_id=linked_item_id,
+                    item_code=item_code or None,
                     item_name=name,
                     item_spec=spec,
                     quantity=qty,
@@ -294,6 +351,7 @@ def po_create():
                     amount=amount,
                     unit=unit,
                     note=item_note,
+                    delivery_date=dlv_date,
                 )
                 db.add(po_item)
                 total_amount += amount
@@ -376,6 +434,8 @@ def po_edit(po_id):
         item_units = request.form.getlist('unit[]')
         item_notes = request.form.getlist('item_note[]')
         item_ids = request.form.getlist('item_id[]')
+        item_codes = request.form.getlist('item_code[]')
+        delivery_dates = request.form.getlist('delivery_date[]')
 
         total_amount = 0
         for i in range(len(item_names)):
@@ -389,11 +449,21 @@ def po_edit(po_id):
             unit = (item_units[i] if i < len(item_units) else '').strip()
             item_note = (item_notes[i] if i < len(item_notes) else '').strip()
             linked_item_id = safe_int(item_ids[i] if i < len(item_ids) else '', 0) or None
+            item_code = (item_codes[i] if i < len(item_codes) else '').strip()
+            dlv_date_str = (delivery_dates[i] if i < len(delivery_dates) else '').strip()
+            dlv_date = None
+            if dlv_date_str:
+                try:
+                    from datetime import datetime as _dt
+                    dlv_date = _dt.strptime(dlv_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    pass
             amount = qty * price
 
             db.add(PurchaseOrderItem(
                 po_id=po.id,
                 item_id=linked_item_id,
+                item_code=item_code or None,
                 item_name=name,
                 item_spec=spec,
                 quantity=qty,
@@ -401,6 +471,7 @@ def po_edit(po_id):
                 amount=amount,
                 unit=unit,
                 note=item_note,
+                delivery_date=dlv_date,
             ))
             total_amount += amount
 

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block head %}
+<link href="{{ url_for('static', filename='css/mail.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+{% if not has_account %}
+<div class="container-fluid py-3">
+    <div class="text-center py-5">
+        {% if mail_mode == 'external' %}
+        <h5>외부메일 계정이 등록되지 않았습니다</h5>
+        <p class="text-muted">Naver, Daum, Gmail 등 외부 메일을 연결해보세요.</p>
+        <a href="{{ url_for('mail.mail_external_settings') }}" class="btn btn-primary">외부메일 설정하기</a>
+        {% else %}
+        <h5>메일 계정이 설정되지 않았습니다</h5>
+        <p class="text-muted">메일을 사용하려면 먼저 계정을 등록해주세요.</p>
+        <a href="{{ url_for('mail.mail_settings') }}" class="btn btn-primary">메일 설정하기</a>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div class="container-fluid pt-1 pb-0">
+    {# 계정 탭 버튼 — mail-wrap 위 #}
+    {% set all_accounts = (personal_accounts or []) + (shared_accounts or []) + (external_accounts or []) %}
+    {% if all_accounts|length > 1 %}
+    <div class="mail-account-tabs">
+        {% for a in all_accounts %}
+        <button class="mail-account-tab{% if a.id == current_account_id %} active{% endif %}" data-account-id="{{ a.id }}" onclick="Mail.switchAccount({{ a.id }})">
+            {% if a.account_type == 'external' %}<span class="mail-account-tab-icon" title="외부메일">🌐</span>{% endif %}
+            <span class="mail-account-tab-email">{{ a.email.split('@')[0] }}</span>
+            <span class="mail-account-tab-domain">@{{ a.email.split('@')[1] }}</span>
+        </button>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <input type="hidden" id="mailMode" value="{{ mail_mode or 'personal' }}">
+    <div class="mail-wrap">
+        {# 폴더 사이드바 — 캐시에서 즉시 복원 #}
+        <div class="mail-sidebar" id="folderSidebar" data-settings-url="{% if mail_mode == 'external' %}{{ url_for('mail.mail_external_settings') }}{% else %}{{ url_for('mail.mail_settings', mode='personal') }}{% endif %}"></div>
+        <script>
+        (function(){
+            var aid = {{ current_account_id or 'null' }};
+            if (!aid) return;
+            try {
+                var cached = sessionStorage.getItem('mail_folders_' + aid);
+                if (cached) {
+                    var el = document.getElementById('folderSidebar');
+                    if (el) el.innerHTML = sessionStorage.getItem('mail_sidebar_html_' + aid) || '';
+                }
+            } catch(e) {}
+        })();
+        </script>
+
+        {# 메인 영역 #}
+        <div class="mail-body">
+
+            <div class="mail-toolbar">
+                <div class="d-flex align-items-center gap-2">
+                    <select id="accountSelect" class="form-select form-select-sm" style="display:none;">
+                        {% for a in all_accounts %}
+                        <option value="{{ a.id }}" {% if a.id == current_account_id %}selected{% endif %}>{{ a.email }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="checkbox" id="selectAll" title="전체 선택">
+                    <span id="folderTitle" class="fw-bold" style="font-size:.82rem;">받은편지함</span>
+                    <span id="mailCount" class="text-muted" style="font-size:.72rem;"></span>
+                    <button class="btn btn-sm btn-outline-secondary py-0 px-2" id="unreadFilterBtn" style="font-size:.72rem;" onclick="Mail.toggleUnreadFilter()">안읽은 메일만</button>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex gap-1" id="bulkActions" style="display:none;">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="Mail.markRead()">읽음</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="Mail.markUnread()">안읽음</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="Mail.moveSelected()">이동</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="Mail.deleteSelected()">삭제</button>
+                    </div>
+                    <div class="input-group input-group-sm" style="max-width:200px;">
+                        <input type="text" id="searchInput" class="form-control" placeholder="검색...">
+                        <button class="btn btn-outline-secondary" id="searchBtn">🔍</button>
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary" id="refreshBtn">↻</button>
+                    <a href="#" id="newMailBtn" class="btn btn-sm btn-primary" onclick="event.preventDefault();location.href='/mail/compose?mode='+(document.getElementById('mailMode')?.value||'personal')+'&account='+Mail.accountId;">✏️ 새 메일</a>
+                    {% if mail_mode == 'external' %}
+                    <a href="{{ url_for('mail.mail_external_settings') }}" class="btn btn-sm btn-outline-secondary">⚙️</a>
+                    {% else %}
+                    <a href="{{ url_for('mail.mail_settings', mode=mail_mode or 'personal') }}" class="btn btn-sm btn-outline-secondary">⚙️</a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div id="mailListBody" class="mail-list-area">
+                <div class="text-center py-4 text-muted" style="font-size:.82rem;">로딩 중...</div>
+            </div>
+            <div class="mail-pagination" id="paginationBar"></div>
+
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/mail.js') }}?v=1779200000"></script>
+{% if has_account %}
+<script>
+document.addEventListener('DOMContentLoaded', () => Mail.init({{ current_account_id or 'null' }}));
+window.addEventListener('pageshow', (e) => {
+    if (e.persisted) { Mail.loadFolders(true); Mail.loadMessages(); }
+});
+</script>
+{% endif %}
+{% endblock %}

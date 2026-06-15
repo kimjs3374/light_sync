@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    .bill-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; white-space: nowrap; background: #f8fafc; position: sticky; top: 0; z-index: 1; }
+    .bill-table td { vertical-align: middle; font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+    .bill-table tbody tr { transition: background .12s; }
+    .bill-table tbody tr:hover { background: #eef2ff; }
+    .stat-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 8px; font-size: .82rem; font-weight: 600; background: #f1f5f9; }
+    .stat-pill .num { font-size: 1.1rem; font-weight: 700; }
+    .tab-bar .btn { font-size: .82rem; padding: 5px 14px; border-radius: 8px; }
+    .tab-bar .btn.active { background: #1e293b; color: #fff; }
+    .tab-bar .btn:not(.active) { background: #f1f5f9; color: #475569; }
+</style>
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Billing</div>
+            <h2>청구관리</h2>
+            <div class="hero-sub">납품완료 건의 대금청구 상태를 관리합니다</div>
+        </div>
+    </div>
+
+    {# 통계 #}
+    <div class="d-flex flex-wrap gap-3 mt-3">
+        <div class="stat-pill" style="border-left: 3px solid #ef4444;">
+            <span>미청구</span>
+            <span class="num text-danger">{{ stats['미청구'] }}</span>
+        </div>
+        <div class="stat-pill" style="border-left: 3px solid #3b82f6;">
+            <span>청구완료</span>
+            <span class="num text-primary">{{ stats['청구완료'] }}</span>
+        </div>
+        <div class="stat-pill" style="border-left: 3px solid #f59e0b;">
+            <span>부분입금</span>
+            <span class="num" style="color:#d97706;">{{ stats['부분입금'] }}</span>
+        </div>
+    </div>
+</div>
+
+{# 탭 + 검색 #}
+<div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
+    <div class="tab-bar d-flex gap-1">
+        <a href="?tab=pending&q={{ q }}" class="btn {% if tab == 'pending' %}active{% endif %}">미청구 ({{ stats['미청구'] }})</a>
+        <a href="?tab=partial&q={{ q }}" class="btn {% if tab == 'partial' %}active{% endif %}">선금(잔금대기) ({{ stats['부분입금'] }})</a>
+        <a href="?tab=billed&q={{ q }}" class="btn {% if tab == 'billed' %}active{% endif %}">청구완료 ({{ stats['청구완료'] }})</a>
+        <a href="?tab=all&q={{ q }}" class="btn {% if tab == 'all' %}active{% endif %}">전체</a>
+    </div>
+    <form class="d-flex gap-2" method="get" action="{{ url_for('billing.billing_list') }}" style="max-width:320px;">
+        <input type="hidden" name="tab" value="{{ tab }}">
+        <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="계약명, 현장명, G2B번호 검색">
+        <button class="btn btn-sm btn-dark" style="white-space:nowrap;">검색</button>
+    </form>
+</div>
+
+{# 테이블 #}
+<div class="table-responsive">
+    <table class="table bill-table mb-0">
+        <thead>
+            <tr>
+                <th style="width:110px;">G2B 계약번호</th>
+                <th>계약명</th>
+                <th class="text-end" style="width:120px;">계약금액</th>
+                <th class="text-center" style="width:80px;">납품기일</th>
+                <th class="text-center" style="width:80px;">세금계산서</th>
+                <th class="text-center" style="width:90px;">청구상태</th>
+                <th class="text-center" style="width:90px;">처리</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            {% set c = row.contract %}
+            {% set p = row.project %}
+            <tr>
+                <td style="white-space:nowrap;"><small class="text-muted">{{ c.g2b_contract_no or '-' }}</small></td>
+                <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0;" title="{{ c.contract_name or '' }}">
+                    {% if p %}
+                    <a href="{{ url_for('project.contract_detail', project_id=p.id) }}#contract-{{ c.id }}" class="text-decoration-none">{{ c.contract_name or '-' }}</a>
+                    {% else %}
+                    {{ c.contract_name or '-' }}
+                    {% endif %}
+                </td>
+                {% if not hide_financial %}<td class="text-end fw-bold" style="white-space:nowrap;">{{ "{:,}".format(row.amount) }}원</td>{% endif %}
+                <td class="text-center" style="white-space:nowrap;">
+                    {% if c.delivery_due_date %}
+                    <small{% if row.dday is not none and row.dday < 0 %} class="text-danger fw-bold"{% endif %}>{{ c.delivery_due_date.strftime('%Y-%m-%d') }}</small>
+                    {% else %}-{% endif %}
+                </td>
+                <td class="text-center">
+                    {% if row.is_invoiced %}
+                    <span class="badge bg-success" style="font-size:.65rem;white-space:nowrap;">발행</span>
+                    {% else %}
+                    <span class="badge bg-secondary" style="font-size:.65rem;white-space:nowrap;">미발행</span>
+                    {% endif %}
+                </td>
+                <td class="text-center">
+                    {% if c.payment_status == '미청구' %}
+                    <span class="badge bg-danger" style="font-size:.68rem;white-space:nowrap;">미청구</span>
+                    {% elif c.payment_status == '청구완료' %}
+                    <span class="badge bg-primary" style="font-size:.68rem;white-space:nowrap;">청구완료</span>
+                    {% elif c.payment_status == '부분입금' %}
+                    <span class="badge bg-warning text-dark" style="font-size:.68rem;white-space:nowrap;">부분입금</span>
+                    {% else %}
+                    <span class="badge bg-secondary" style="font-size:.68rem;white-space:nowrap;">{{ c.payment_status }}</span>
+                    {% endif %}
+                </td>
+                <td class="text-center" style="white-space:nowrap;">
+                    {% if c.payment_status == '미청구' %}
+                    <button class="btn btn-primary btn-sm" style="font-size:.72rem;padding:2px 10px;"
+                        onclick="markBilled({{ c.id }}, '{{ (c.contract_name or '')|e }}')">청구완료</button>
+                    {% elif c.payment_status == '부분입금' %}
+                    <button class="btn btn-warning btn-sm" style="font-size:.72rem;padding:2px 10px;"
+                        onclick="markBilled({{ c.id }}, '{{ (c.contract_name or '')|e }}')">잔금청구</button>
+                    {% elif c.payment_status == '청구완료' %}
+                    <button class="btn btn-outline-secondary btn-sm" style="font-size:.72rem;padding:2px 10px;"
+                        onclick="revertBilled({{ c.id }}, '{{ (c.contract_name or '')|e }}')">복원</button>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7" class="text-center text-muted py-4">조회된 건이 없습니다.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# 페이지네이션 #}
+{% macro pagination_query(p) %}tab={{ tab }}&q={{ q }}&page={{ p }}{% endmacro %}
+{% if pagination.total_pages > 1 %}
+<nav class="d-flex justify-content-center mt-3">
+    <ul class="pagination pagination-sm">
+        {% if pagination.has_prev %}
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(pagination.prev_page) }}">&laquo;</a></li>
+        {% endif %}
+        {% if pagination.show_first %}
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(1) }}">1</a></li>
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+        {% for p in pagination.page_range %}
+        <li class="page-item {% if p == pagination.page %}active{% endif %}">
+            <a class="page-link" href="?{{ pagination_query(p) }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+        {% if pagination.show_last %}
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(pagination.total_pages) }}">{{ pagination.total_pages }}</a></li>
+        {% endif %}
+        {% if pagination.has_next %}
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(pagination.next_page) }}">&raquo;</a></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+<script>
+function markBilled(contractId, name) {
+    if (!confirm(`"${name}" 청구완료 처리하시겠습니까?`)) return;
+    fetch('/billing/api/mark-billed', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
+        body: JSON.stringify({contract_id: contractId})
+    }).then(r => r.json()).then(d => {
+        if (d.ok) location.reload();
+        else alert(d.error || '오류 발생');
+    }).catch(() => alert('서버 오류'));
+}
+
+function revertBilled(contractId, name) {
+    if (!confirm(`"${name}" 미청구로 복원하시겠습니까?`)) return;
+    fetch('/billing/api/revert-billed', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
+        body: JSON.stringify({contract_id: contractId})
+    }).then(r => r.json()).then(d => {
+        if (d.ok) location.reload();
+        else alert(d.error || '오류 발생');
+    }).catch(() => alert('서버 오류'));
+}
+</script>
+{% endblock %}

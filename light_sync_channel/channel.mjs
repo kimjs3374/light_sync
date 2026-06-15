@@ -4,9 +4,6 @@
  *
  * 웹 채팅 UI → HTTP POST (localhost:8788) → Claude Code session
  * Claude reply tool → HTTP POST → Flask (/channel-chat/channel-reply)
- *
- * 양방향 Channel: 웹 유저의 질문을 Claude Code에 전달하고,
- * Claude의 응답을 Flask 서버로 돌려보냄
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -19,9 +16,12 @@ import http from "node:http";
 const FLASK_PORT = parseInt(process.env.FLASK_PORT || "5000", 10);
 const CHANNEL_PORT = parseInt(process.env.CHANNEL_PORT || "8788", 10);
 
+// request_id → 원본 요청 메타 매핑 (reply 시 Flask에 전달)
+const requestMeta = new Map();
+
 // ── MCP Server (Channel) ─────────────────────────────────────────────
 const mcp = new Server(
-  { name: "lightsync-erp-chat", version: "0.1.0" },
+  { name: "lightsync-erp-chat", version: "0.2.0" },
   {
     capabilities: {
       experimental: { "claude/channel": {} },
@@ -77,9 +77,28 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { request_id, text, partial } = req.params.arguments;
     const label = partial ? "partial" : "final";
     process.stderr.write(`[channel] reply tool called (${label}): ${request_id} → Flask:${FLASK_PORT}\n`);
+
+    // request_id에서 원본 메타 찾기 (prefix 매칭)
+    let meta = null;
+    for (const [key, value] of requestMeta) {
+      if (key.startsWith(request_id) || request_id.startsWith(key)) {
+        meta = value;
+        break;
+      }
+    }
+
     try {
-      await postToFlask(request_id, text, !!partial);
+      await postToFlask(request_id, text, !!partial, meta);
       process.stderr.write(`[channel] reply delivered (${label}): ${request_id}\n`);
+      // 최종 응답이면 메타 삭제
+      if (!partial && meta) {
+        for (const [key] of requestMeta) {
+          if (key.startsWith(request_id) || request_id.startsWith(key)) {
+            requestMeta.delete(key);
+            break;
+          }
+        }
+      }
       return { content: [{ type: "text", text: "sent" }] };
     } catch (err) {
       process.stderr.write(`[channel] reply FAILED: ${err.message}\n`);
@@ -92,9 +111,17 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
 });
 
 // ── Flask 서버로 POST ─────────────────────────────────────────────────
-function postToFlask(requestId, text, partial = false) {
+function postToFlask(requestId, text, partial = false, meta = null) {
   return new Promise((resolve, reject) => {
-    const payload = JSON.stringify({ request_id: requestId, text, partial });
+    const payload = JSON.stringify({
+      request_id: requestId,
+      text,
+      partial,
+      // 원본 요청 메타 포함 (pending 불필요)
+      session_id: meta?.session_id || "",
+      user: meta?.user || "",
+      user_text: meta?.user_text || "",
+    });
     const options = {
       hostname: "127.0.0.1",
       port: FLASK_PORT,
@@ -146,12 +173,18 @@ const httpServer = http.createServer(async (req, res) => {
       return;
     }
 
-    // 허용 도구 제한 메시지 구성
+    // 원본 메타 저장 (reply 시 Flask에 전달용)
+    requestMeta.set(request_id, { user, session_id, user_text: text });
+    // 오래된 메타 정리 (50개 초과 시)
+    if (requestMeta.size > 50) {
+      const oldest = requestMeta.keys().next().value;
+      requestMeta.delete(oldest);
+    }
+
     const toolNote = allowed_tools
       ? `\n[허용 도구: ${allowed_tools}]\n위 목록에 없는 MCP 도구는 사용하지 마세요.`
       : "";
 
-    // Claude Code 세션에 channel notification 전송
     process.stderr.write(`[channel] incoming: ${request_id} from ${user}: ${text.slice(0, 50)}\n`);
     await mcp.notification({
       method: "notifications/claude/channel",
@@ -175,7 +208,6 @@ const httpServer = http.createServer(async (req, res) => {
 });
 
 httpServer.listen(CHANNEL_PORT, "127.0.0.1", () => {
-  // stderr로 출력 (stdout은 MCP stdio가 사용)
   process.stderr.write(
     `[channel] HTTP listening on 127.0.0.1:${CHANNEL_PORT}\n`
   );

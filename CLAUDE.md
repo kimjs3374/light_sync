@@ -35,6 +35,15 @@
 - sql_editer.sql에 마이그레이션 SQL 기록 (스키마 접두사 `light_sync.` 필수)
 - DB 컬럼 추가 시 ORM만으로 부족, ALTER TABLE 직접 실행 필요
 
+## 파일 저장 규칙
+- **static/ 디렉토리에 사용자 파일 저장 금지** — 모든 업로드 파일은 Supabase Storage에 저장
+- 계약서/납품요구서: `documents/contracts/{req_no}.pdf`
+- 착수계 편집 결과: `documents/commencement/{req_no}.xlsx`
+- 공통서류: `documents/common/{key}.pdf`
+- 제작도면: `documents/drawings/{model_code}.pdf`
+- 템플릿: `documents/templates/{type}_template.xlsx`
+- static/은 코드에 포함된 정적 자산(JS, CSS, 이미지, 엑셀 템플릿 원본)만 허용
+
 ## 코딩 규칙
 - 응답은 존댓말
 - 테이블: 줄바꿈 금지, ellipsis 필수, 뱃지/버튼 white-space:nowrap

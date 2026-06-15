@@ -1,23 +1,15 @@
 {
   "mcpServers": {
     "playwright": {
-      "command": "cmd",
-      "args": ["/c", "npx", "@playwright/mcp@latest"]
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
     },
     "light-sync-erp": {
-      "command": "D:/light_sync/venv/Scripts/python.exe",
+      "command": "/web/light_sync/venv/bin/python",
       "args": ["-m", "light_sync_mcp"],
-      "cwd": "D:/light_sync",
+      "cwd": "/web/light_sync",
       "env": {
         "DATABASE_URL": "postgresql://postgres:blues55088--@192.168.0.110:5433/postgres"
-      }
-    },
-    "lightsync-erp-chat": {
-      "command": "node",
-      "args": ["D:/light_sync/light_sync_channel/channel.mjs"],
-      "env": {
-        "CHANNEL_PORT": "8788",
-        "FLASK_PORT": "8501"
       }
     }
   }

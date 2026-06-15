@@ -15,7 +15,12 @@ from modules.auth_decorators import login_required, menu_required
 from modules.pagination import make_pagination
 from modules.utils import safe_int
 from modules.db_context import get_db
-from modules.models import Vendor, PurchaseOrderHistory, ReceivingHistory
+from modules.models import (
+    Vendor, PurchaseOrderHistory, ReceivingHistory,
+    Receiving, ReceivingItem,
+    PurchaseOrder, PurchaseOrderItem,
+    ProcessingOrder, ProcessingOrderItem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -148,12 +153,72 @@ def vendor_detail(tr_cd):
             'note': vendor_obj.note or '',
         }
 
-        # 발주 이력 (PurchaseOrderHistory에서 vendor_tr_cd로 조회)
+        # 발주 이력: 신규 발주 + 가공발주 + iCUBE 기존 발주 통합
+        purchase_orders = []
+
+        # (A) 신규 발주 (purchase_orders 테이블)
+        new_pos = db.query(PurchaseOrder).filter(
+            PurchaseOrder.vendor_id == vendor_obj.id
+        ).order_by(desc(PurchaseOrder.po_date)).all()
+
+        for po in new_pos:
+            detail_rows = []
+            for pi in po.items:
+                detail_rows.append({
+                    'CLS_SQ': '',
+                    'ITEM_NM': pi.item_name or '',
+                    'ITEM_CD': pi.item_code or '',
+                    'ITEM_DC': pi.item_spec or '',
+                    'UNIT_DC': pi.unit or '',
+                    'CLS_QT': pi.quantity or 0,
+                    'CLS_UM': pi.unit_price or 0,
+                    'CLSH_AM': pi.amount or 0,
+                    'ITEM_REMARK': pi.note or '',
+                })
+            purchase_orders.append({
+                'CLS_NB': po.po_no,
+                'CLS_DT': po.po_date.strftime('%Y-%m-%d') if po.po_date else '',
+                'REMARK_DC': po.note or '',
+                'detail_rows': detail_rows,
+                'total': int(po.total_amount or 0),
+                'po_id': po.id,
+                'source': 'po',
+            })
+
+        # (B) 가공발주 (processing_orders 테이블)
+        new_fos = db.query(ProcessingOrder).filter(
+            ProcessingOrder.vendor_id == vendor_obj.id
+        ).order_by(desc(ProcessingOrder.fo_date)).all()
+
+        for fo in new_fos:
+            detail_rows = []
+            for fi in fo.items:
+                detail_rows.append({
+                    'CLS_SQ': '',
+                    'ITEM_NM': fi.item_name or '',
+                    'ITEM_CD': '',
+                    'ITEM_DC': fi.item_spec or '',
+                    'UNIT_DC': fi.unit or '',
+                    'CLS_QT': fi.quantity or 0,
+                    'CLS_UM': fi.unit_price or 0,
+                    'CLSH_AM': fi.amount or 0,
+                    'ITEM_REMARK': fi.note or '',
+                })
+            purchase_orders.append({
+                'CLS_NB': fo.fo_no,
+                'CLS_DT': fo.fo_date.strftime('%Y-%m-%d') if fo.fo_date else '',
+                'REMARK_DC': fo.note or '',
+                'detail_rows': detail_rows,
+                'total': int(fo.total_amount or 0),
+                'fo_id': fo.id,
+                'source': 'fo',
+            })
+
+        # (C) iCUBE 기존 발주 (purchase_order_history 테이블)
         po_history = db.query(PurchaseOrderHistory).filter(
             PurchaseOrderHistory.vendor_tr_cd == vendor_obj.icube_tr_cd
         ).order_by(desc(PurchaseOrderHistory.order_date)).all()
 
-        purchase_orders = []
         for po in po_history:
             items_list = _parse_items_json(po.items_json)
             detail_rows = []
@@ -175,14 +240,49 @@ def vendor_detail(tr_cd):
                 'REMARK_DC': po.remark or '',
                 'detail_rows': detail_rows,
                 'total': int(po.total_amount or 0),
+                'source': 'icube',
             })
 
-        # 입고 이력 (ReceivingHistory에서 vendor_tr_cd로 조회)
+        # 날짜 기준 내림차순 정렬
+        purchase_orders.sort(key=lambda x: x['CLS_DT'] or '', reverse=True)
+
+        # 입고 이력: 신규 입고(receivings) + iCUBE 기존 입고(receiving_history) 통합
+        receivings = []
+
+        # (A) 신규 입고 (receivings 테이블)
+        new_rcvs = db.query(Receiving).filter(
+            Receiving.vendor_id == vendor_obj.id
+        ).order_by(desc(Receiving.rcv_date)).all()
+
+        for rcv in new_rcvs:
+            detail_rows = []
+            for ri in rcv.items:
+                detail_rows.append({
+                    'RCV_SQ': '',
+                    'ITEM_NM': ri.item_name or '',
+                    'ITEM_CD': ri.item_cd or '',
+                    'ITEM_DC': ri.item_spec or '',
+                    'UNIT_DC': ri.unit or '',
+                    'RCV_QT': ri.received_qty or 0,
+                    'RCV_UM': ri.unit_price or 0,
+                    'RCVH_AM': ri.amount or 0,
+                    'REMARK_DC': ri.note or '',
+                })
+            receivings.append({
+                'RCV_NB': rcv.rcv_no,
+                'RCV_DT': rcv.rcv_date.strftime('%Y-%m-%d') if rcv.rcv_date else '',
+                'WH_CD': '',
+                'detail_rows': detail_rows,
+                'total': int(sum(ri.amount or 0 for ri in rcv.items)),
+                'rcv_id': rcv.id,
+                'source': 'new',
+            })
+
+        # (B) iCUBE 기존 입고 (receiving_history 테이블)
         rcv_history = db.query(ReceivingHistory).filter(
             ReceivingHistory.vendor_tr_cd == vendor_obj.icube_tr_cd
         ).order_by(desc(ReceivingHistory.receive_date)).all()
 
-        receivings = []
         for rcv in rcv_history:
             items_list = _parse_items_json(rcv.items_json)
             detail_rows = []
@@ -204,7 +304,11 @@ def vendor_detail(tr_cd):
                 'WH_CD': rcv.warehouse or '',
                 'detail_rows': detail_rows,
                 'total': int(rcv.total_amount or 0),
+                'source': 'icube',
             })
+
+        # 날짜 기준 내림차순 정렬 (신규 + iCUBE 통합)
+        receivings.sort(key=lambda x: x['RCV_DT'] or '', reverse=True)
 
         # 거래 통계
         trade_stats = {
@@ -244,6 +348,47 @@ def api_vendor_note(vendor_id):
         if not vendor:
             return jsonify({'error': '거래처를 찾을 수 없습니다.'}), 404
         vendor.note = (data.get('note') or '').strip() or None
+        db.commit()
+        return jsonify({'ok': True})
+
+
+# ===================================================================
+# 3-2. 거래처 정보 수정 (AJAX)
+# ===================================================================
+@vendor_bp.route('/api/vendor/<int:vendor_id>/edit', methods=['POST'])
+@login_required
+@menu_required('vendor', write=True)
+def api_vendor_edit(vendor_id):
+    """거래처 기본정보 수정"""
+    data = request.get_json(silent=True) or {}
+    with get_db() as db:
+        vendor = db.query(Vendor).get(vendor_id)
+        if not vendor:
+            return jsonify({'ok': False, 'error': '거래처를 찾을 수 없습니다.'}), 404
+
+        def _s(key, max_len=None):
+            v = (data.get(key) or '').strip()
+            if max_len:
+                v = v[:max_len]
+            return v or None
+
+        new_name = _s('name', 200)
+        if not new_name:
+            return jsonify({'ok': False, 'error': '거래처명은 필수입니다.'}), 400
+
+        vendor.name = new_name
+        vendor.ceo_name = _s('ceo_name', 100)
+        vendor.business_no = _s('business_no', 50)
+        vendor.email = _s('email', 200)
+        vendor.tel = _s('tel', 100)
+        vendor.fax = _s('fax', 100)
+        vendor.address = _s('address', 500)
+        vendor.business = _s('business', 200)
+        vendor.jongmok = _s('jongmok', 200)
+        is_active_val = data.get('is_active')
+        if is_active_val is not None:
+            vendor.is_active = bool(is_active_val) if not isinstance(is_active_val, str) else is_active_val.lower() in ('y', 'true', '1', 'yes')
+
         db.commit()
         return jsonify({'ok': True})
 

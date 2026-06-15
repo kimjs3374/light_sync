@@ -3,34 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 
 const FORMS = {
-  'purchase-order': {
-    title: '발주서 생성',
-    endpoint: '/purchase-orders/create',
-    fields: [
-      { key: 'vendor_name', label: '거래처 *', required: true },
-      { key: 'project_name', label: '현장명' },
-      { key: 'note', label: '비고', multiline: true },
-    ],
-    onSuccess: (data, nav) => nav(`/purchase-orders/${data.po_id}`),
-  },
-  'receiving': {
-    title: '입고 등록',
-    endpoint: '/receivings/create',
-    fields: [
-      { key: 'vendor_name', label: '거래처 *', required: true },
-      { key: 'note', label: '비고', multiline: true },
-    ],
-    onSuccess: (data, nav) => nav(`/receivings/${data.rcv_id}`),
-  },
-  'quotation': {
-    title: '견적서 생성',
-    endpoint: '/quotations/create',
-    fields: [
-      { key: 'title', label: '제목 *', required: true },
-      { key: 'project_name', label: '현장명' },
-    ],
-    onSuccess: (data, nav) => nav('/quotations'),
-  },
   'warranty': {
     title: 'AS 접수',
     endpoint: '/warranty-cases/create',
@@ -44,17 +16,6 @@ const FORMS = {
     ],
     onSuccess: (data, nav) => nav(`/warranty/${data.case_id}`),
   },
-  'processing-order': {
-    title: '가공발주 생성',
-    endpoint: '/processing-orders/create',
-    fields: [
-      { key: 'vendor_name', label: '거래처 *', required: true },
-      { key: 'project_name', label: '현장명' },
-      { key: 'processing_type', label: '유형 (외주가공/사급가공)' },
-      { key: 'note', label: '비고', multiline: true },
-    ],
-    onSuccess: (data, nav) => nav('/processing-orders'),
-  },
   'business-trip': {
     title: '출장 등록',
     endpoint: '/business-trips/create',
@@ -67,19 +28,6 @@ const FORMS = {
       { key: 'note', label: '비고', multiline: true },
     ],
     onSuccess: (data, nav) => nav('/business-trips'),
-  },
-  'vendor': {
-    title: '거래처 등록',
-    endpoint: '/vendors/create',
-    fields: [
-      { key: 'name', label: '업체명 *', required: true },
-      { key: 'ceo_name', label: '대표자명' },
-      { key: 'business_no', label: '사업자번호' },
-      { key: 'tel', label: '전화번호' },
-      { key: 'email', label: '이메일' },
-      { key: 'address', label: '주소' },
-    ],
-    onSuccess: (data, nav) => nav('/vendors'),
   },
   'item': {
     title: '품목 등록',
@@ -103,19 +51,6 @@ const FORMS = {
       { key: 'current_location', label: '보관위치' },
     ],
     onSuccess: (data, nav) => nav('/tools'),
-  },
-  'certification': {
-    title: '인증서 등록',
-    endpoint: '/certifications/create',
-    fields: [
-      { key: 'cert_name', label: '인증서명 *', required: true },
-      { key: 'cert_type', label: '유형' },
-      { key: 'cert_no', label: '인증번호' },
-      { key: 'issuer', label: '발급기관' },
-      { key: 'issue_date', label: '발급일', type: 'date' },
-      { key: 'expiry_date', label: '만료일', type: 'date' },
-    ],
-    onSuccess: (data, nav) => nav('/certifications'),
   },
 };
 

@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% block head %}
+<link href="{{ url_for('static', filename='css/mail.css') }}" rel="stylesheet">
+<style>
+.mail-tag-wrap { display:flex; flex-wrap:wrap; gap:4px; align-items:center; padding:4px 8px; border:1px solid #dee2e6; border-radius:4px; min-height:34px; cursor:text; background:#fff; }
+.mail-tag-wrap:focus-within { border-color:#86b7fe; box-shadow:0 0 0 .2rem rgba(13,110,253,.15); }
+.mail-tag { display:inline-flex; align-items:center; gap:3px; background:#e2e8f0; border-radius:3px; padding:2px 6px; font-size:.78rem; white-space:nowrap; max-width:260px; }
+.mail-tag .tag-email { overflow:hidden; text-overflow:ellipsis; }
+.mail-tag .tag-remove { cursor:pointer; color:#94a3b8; font-size:.9rem; line-height:1; }
+.mail-tag .tag-remove:hover { color:#ef4444; }
+.mail-tag-input { border:none; outline:none; flex:1; min-width:120px; font-size:.82rem; background:transparent; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid pt-1 pb-0">
+    <div class="mail-wrap">
+        <div class="mail-sidebar" id="folderSidebar"></div>
+        <script>
+        (function(){
+            try {
+                var aid = {{ current_account_id or (compose_accounts[0].id if compose_accounts else 'null') }};
+                var el = document.getElementById('folderSidebar');
+                if (el) el.innerHTML = sessionStorage.getItem('mail_sidebar_html_' + aid) || '';
+            } catch(e) {}
+        })();
+        </script>
+        <div class="mail-body" style="display:flex;flex-direction:column;overflow:hidden;">
+            <div class="mail-toolbar">
+                <div class="d-flex align-items-center gap-2">
+                    <a href="{% if mail_mode == 'external' %}{{ url_for('mail.mail_external') }}{% elif mail_mode == 'shared' %}{{ url_for('mail.mail_shared') }}{% else %}{{ url_for('mail.mail_personal') }}{% endif %}" class="btn btn-sm btn-outline-secondary">← 목록</a>
+                    <button class="btn btn-sm btn-outline-info" onclick="MailCompose.showContacts()">📒 주소록</button>
+                </div>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-sm btn-outline-info" onclick="MailCompose.loadTemplate()">📋 템플릿</button>
+                    <button class="btn btn-sm btn-outline-secondary" id="draftBtn">임시저장</button>
+                    <button class="btn btn-sm btn-outline-warning" onclick="MailCompose.scheduleSend()">⏰ 예약</button>
+                    <button class="btn btn-sm btn-primary" id="sendBtn">보내기</button>
+                </div>
+            </div>
+
+            <form id="composeForm" enctype="multipart/form-data" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+                <input type="hidden" name="account_id" id="accountId" value="{{ current_account_id or '' }}">
+                <input type="hidden" id="mailMode" value="{{ mail_mode or 'personal' }}">
+
+                <div style="padding:0 24px;flex-shrink:0;">
+                    <div class="mail-compose-row">
+                        <div class="mail-compose-label">보낸사람</div>
+                        <div class="mail-compose-field">
+                            <select name="from_account" id="fromAccount" class="form-select form-select-sm">
+                                {% for a in compose_accounts %}
+                                <option value="{{ a.id }}" {% if a.id == current_account_id %}selected{% endif %}>
+                                    {% if mail_mode == 'shared' %}📮 {% endif %}{{ a.display_name or '' }} &lt;{{ a.email }}&gt;
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mail-compose-row">
+                        <div class="mail-compose-label">받는사람</div>
+                        <div class="mail-compose-field" style="position:relative;">
+                            <div class="mail-tag-wrap" id="toTagWrap" onclick="this.querySelector('.mail-tag-input').focus()">
+                                <input type="text" class="mail-tag-input" id="toTagInput" placeholder="이메일 주소" autocomplete="off">
+                            </div>
+                            <input type="hidden" name="to" id="toInput">
+                            <div class="mail-suggest-dropdown" id="toSuggest"></div>
+                        </div>
+                    </div>
+                    <div class="mail-compose-row">
+                        <div class="mail-compose-label">참조</div>
+                        <div class="mail-compose-field" style="position:relative;">
+                            <div class="mail-tag-wrap" id="ccTagWrap" onclick="this.querySelector('.mail-tag-input').focus()">
+                                <input type="text" class="mail-tag-input" id="ccTagInput" placeholder="CC" autocomplete="off">
+                            </div>
+                            <input type="hidden" name="cc" id="ccInput">
+                            <div class="mail-suggest-dropdown" id="ccSuggest"></div>
+                        </div>
+                    </div>
+                    <div class="mail-compose-row" id="bccRow" style="display:none;">
+                        <div class="mail-compose-label">숨은참조</div>
+                        <div class="mail-compose-field">
+                            <div class="mail-tag-wrap" id="bccTagWrap" onclick="this.querySelector('.mail-tag-input').focus()">
+                                <input type="text" class="mail-tag-input" id="bccTagInput" placeholder="BCC" autocomplete="off">
+                            </div>
+                            <input type="hidden" name="bcc" id="bccInput">
+                        </div>
+                    </div>
+                    <div class="mail-compose-row">
+                        <div class="mail-compose-label">제목</div>
+                        <div class="mail-compose-field">
+                            <input type="text" name="subject" id="subjectInput" class="form-control form-control-sm" style="font-weight:600;"
+                                   value="{% if reply_data and resend_uid %}{{ reply_data.subject }}{% elif reply_data and reply_uid %}Re: {{ reply_data.subject }}{% elif reply_data and reply_all %}Re: {{ reply_data.subject }}{% elif reply_data and forward_uid %}Fwd: {{ reply_data.subject }}{% endif %}" placeholder="제목">
+                        </div>
+                        <a href="#" class="text-muted" style="font-size:.72rem;white-space:nowrap;" onclick="document.getElementById('bccRow').style.display='flex';this.style.display='none';return false;">+BCC</a>
+                    </div>
+                    <div style="padding:8px 0;">
+                        <div id="dropZone" class="mail-dropzone">
+                            <div class="dropzone-content">📎 파일을 드래그하거나 <label for="fileInput" class="dropzone-browse">찾아보기</label></div>
+                            <div class="dropzone-hint">25MB 이하 직접 첨부 · 초과 시 다운로드 링크 자동 전환</div>
+                            <input type="file" id="fileInput" multiple style="display:none;">
+                        </div>
+                        <div id="fileList"></div>
+                        {% if reply_data and reply_data.attachments and (forward_uid or resend_uid) %}
+                        <div id="forwardAttachments">
+                            {% for att in reply_data.attachments %}
+                            <div class="mail-file-item" data-idx="{{ loop.index0 }}">
+                                <div>📎 {{ att.filename }} <span class="file-size">{{ "%.1f"|format(att.size / 1024) }}KB</span> <span style="color:#64748b;font-size:.72rem;">(원본)</span></div>
+                                <button type="button" class="file-remove" onclick="MailCompose.removeForwardAttachment(this)" title="제거">×</button>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="mail-editor-toolbar" style="flex-shrink:0;">
+                    <button type="button" onclick="document.execCommand('bold')" title="굵게"><b>B</b></button>
+                    <button type="button" onclick="document.execCommand('italic')" title="기울임"><i>I</i></button>
+                    <button type="button" onclick="document.execCommand('underline')" title="밑줄"><u>U</u></button>
+                    <button type="button" onclick="document.execCommand('strikeThrough')" title="취소선"><s>S</s></button>
+                    <span class="toolbar-sep"></span>
+                    <select onchange="document.execCommand('fontSize',false,this.value);this.value=''" style="font-size:.75rem;border:1px solid #dee2e6;border-radius:3px;padding:2px;">
+                        <option value="">크기</option>
+                        <option value="1">작게</option>
+                        <option value="3">보통</option>
+                        <option value="5">크게</option>
+                        <option value="7">매우 크게</option>
+                    </select>
+                    <input type="color" onchange="document.execCommand('foreColor',false,this.value)" title="글자색" style="width:24px;height:24px;border:none;padding:0;cursor:pointer;">
+                    <span class="toolbar-sep"></span>
+                    <button type="button" onclick="document.execCommand('justifyLeft')" title="왼쪽">≡</button>
+                    <button type="button" onclick="document.execCommand('justifyCenter')" title="가운데">≡</button>
+                    <button type="button" onclick="document.execCommand('justifyRight')" title="오른쪽">≡</button>
+                    <span class="toolbar-sep"></span>
+                    <button type="button" onclick="document.execCommand('insertUnorderedList')" title="글머리 기호">• 목록</button>
+                    <button type="button" onclick="document.execCommand('insertOrderedList')" title="번호 목록">1. 목록</button>
+                    <button type="button" onclick="document.execCommand('indent')" title="들여쓰기">→</button>
+                    <button type="button" onclick="document.execCommand('outdent')" title="내어쓰기">←</button>
+                    <span class="toolbar-sep"></span>
+                    <button type="button" onclick="var u=prompt('URL:');if(u)document.execCommand('createLink',false,u)" title="링크">🔗</button>
+                    <button type="button" onclick="document.execCommand('insertHorizontalRule')" title="구분선">─</button>
+                    <button type="button" onclick="document.execCommand('removeFormat')" title="서식 제거">✕</button>
+                </div>
+                <div id="mailBody" class="mail-editor" contenteditable="true" style="flex:1;overflow-y:auto;max-height:none;" tabindex="0">
+{% if reply_data and resend_uid %}
+{{ reply_data.html_body|sanitize_html|safe if reply_data.html_body else reply_data.text_body }}
+{% elif reply_data and (reply_uid or reply_all) %}
+<br><br>
+<div style="border-left:2px solid #cbd5e1;padding-left:10px;color:#64748b;">
+<p style="font-size:.78rem;">{{ reply_data.date }} {{ reply_data.from.name }} &lt;{{ reply_data.from.email }}&gt;</p>
+{{ reply_data.html_body|sanitize_html|safe if reply_data.html_body else reply_data.text_body }}
+</div>
+{% elif reply_data and forward_uid %}
+<br><br>
+<div style="border-top:1px solid #e2e8f0;padding-top:10px;color:#64748b;">
+<p style="font-size:.78rem;">---------- 전달된 메일 ----------<br>From: {{ reply_data.from.name }} &lt;{{ reply_data.from.email }}&gt;<br>Date: {{ reply_data.date }}<br>Subject: {{ reply_data.subject }}</p>
+{{ reply_data.html_body|sanitize_html|safe if reply_data.html_body else reply_data.text_body }}
+</div>
+{% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# 템플릿 모달 #}
+<div class="modal fade" id="templateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">📋 템플릿 선택</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="templateList" style="max-height:400px;overflow-y:auto;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# 주소록 모달 #}
+<div class="modal fade" id="contactsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">📒 주소록</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="contactModalSearch" class="form-control form-control-sm mb-2" placeholder="이름 또는 이메일 검색...">
+                <div style="max-height:400px;overflow-y:auto;">
+                    <table class="table table-sm table-hover" style="font-size:.82rem;">
+                        <thead><tr><th></th><th>이름</th><th>이메일</th><th>회사</th></tr></thead>
+                        <tbody id="contactModalBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">닫기</button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="MailCompose.insertContacts()">받는사람에 추가</button>
+            </div>
+        </div>
+    </div>
+</div>
+{# 발송 확인 모달 #}
+<div class="modal fade" id="sendConfirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2 bg-primary text-white">
+                <h6 class="modal-title">메일 발송 확인</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label small fw-bold mb-1">보내는 사람</label>
+                    <select id="confirmFromAccount" class="form-select form-select-sm">
+                        {% for a in compose_accounts %}
+                        <option value="{{ a.id }}" {% if a.id == current_account_id %}selected{% endif %}>
+                            {% if mail_mode == 'shared' %}📮 {% endif %}{{ a.display_name or '' }} &lt;{{ a.email }}&gt;
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold mb-1">받는 사람</label>
+                    <div id="confirmTo" class="border rounded p-2 bg-light" style="font-size:.82rem;min-height:32px;"></div>
+                </div>
+                <div class="mb-3" id="confirmCcRow" style="display:none;">
+                    <label class="form-label small fw-bold mb-1">참조</label>
+                    <div id="confirmCc" class="border rounded p-2 bg-light" style="font-size:.82rem;"></div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small fw-bold mb-1">제목</label>
+                    <div id="confirmSubject" class="border rounded p-2 bg-light" style="font-size:.82rem;"></div>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-sm btn-primary" id="confirmSendBtn" onclick="MailCompose.confirmedSend()">발송</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/mail.js') }}?v={{ range(100000,999999)|random }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    Mail.accountId = {{ current_account_id or (compose_accounts[0].id if compose_accounts else 'null') }};
+    Mail.loadFolders(false);
+    MailCompose._userSignatureHtml = {{ user_signature_html|default('')|tojson }};
+    MailCompose._isResend = {{ 'true' if resend_uid else 'false' }};
+    {% if reply_data and reply_data.attachments and (forward_uid or resend_uid) %}
+    MailCompose._forwardAttachments = {{ reply_data.attachments|tojson }};
+    MailCompose._forwardSourceUid = {{ (forward_uid or resend_uid)|tojson }};
+    MailCompose._forwardAccountId = {{ (current_account_id or 'null')|tojson }};
+    MailCompose._forwardFolder = {{ request.args.get('folder', 'INBOX')|tojson }};
+    {% endif %}
+    MailCompose.init();
+
+    {% if resend_uid and reply_data %}
+    {% for addr in reply_data.to or [] %}
+    MailCompose.addTag('toTagWrap', '{{ addr.email }}');
+    {% endfor %}
+    MailCompose._syncHidden('toTagWrap', 'toInput');
+    {% for addr in reply_data.cc or [] %}
+    MailCompose.addTag('ccTagWrap', '{{ addr.email }}');
+    {% endfor %}
+    MailCompose._syncHidden('ccTagWrap', 'ccInput');
+    {% if reply_data.bcc %}
+    document.getElementById('bccRow').style.display = 'flex';
+    {% for addr in reply_data.bcc or [] %}
+    MailCompose.addTag('bccTagWrap', '{{ addr.email }}');
+    {% endfor %}
+    MailCompose._syncHidden('bccTagWrap', 'bccInput');
+    {% endif %}
+    {% elif reply_data and (reply_uid or reply_all) %}
+    MailCompose.addTag('toTagWrap', '{{ reply_data.from.email }}');
+    MailCompose._syncHidden('toTagWrap', 'toInput');
+    {% endif %}
+    {% if reply_all and reply_data %}
+    {% for addr in reply_data.to or [] %}
+    MailCompose.addTag('ccTagWrap', '{{ addr.email }}');
+    {% endfor %}
+    {% for addr in reply_data.cc or [] %}
+    MailCompose.addTag('ccTagWrap', '{{ addr.email }}');
+    {% endfor %}
+    MailCompose._syncHidden('ccTagWrap', 'ccInput');
+    {% endif %}
+
+    // URL to= 파라미터로 받는사람 자동 채우기
+    const urlTo = new URLSearchParams(window.location.search).get('to');
+    if (urlTo) {
+        urlTo.split(',').forEach(e => { if (e.trim()) MailCompose.addTag('toTagWrap', e.trim()); });
+        MailCompose._syncHidden('toTagWrap', 'toInput');
+    }
+});
+</script>
+{% endblock %}

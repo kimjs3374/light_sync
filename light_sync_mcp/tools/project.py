@@ -163,32 +163,120 @@ def register(mcp: FastMCP):
             session.close()
 
     @mcp.tool()
-    def get_delivery_summary(year: int, month: Optional[int] = None, project_id: Optional[int] = None) -> str:
-        """현장별 납품집계. 연월 기준 납품 실적(G2B 조달내역)을 반환합니다."""
+    def get_project_contacts(
+        project_id: Optional[int] = None,
+        query: Optional[str] = None,
+        category: Optional[str] = None,
+        limit: int = 30,
+    ) -> str:
+        """현장 담당자/연락처 검색. 발주처/감리/감독관/시공사 담당 등.
+
+        Args:
+            project_id: 특정 현장만 (생략 시 전체)
+            query: 이름/전화/이메일/구분 부분 검색
+            category: 구분 필터 (예: '감독관', '감리', '시공사', '발주처')
+            limit: 최대 반환 건수 (기본 30)
+        """
+        from modules.models.entities import Contact, Project
+        from sqlalchemy import or_
+        session = get_session()
+        try:
+            q = session.query(Contact)
+            if project_id:
+                q = q.filter(Contact.project_id == project_id)
+            if category:
+                q = q.filter(Contact.category.ilike(f'%{category}%'))
+            if query:
+                q = q.filter(or_(
+                    Contact.name.ilike(f'%{query}%'),
+                    Contact.phone.ilike(f'%{query}%'),
+                    Contact.email.ilike(f'%{query}%'),
+                    Contact.category.ilike(f'%{query}%'),
+                ))
+            contacts = q.order_by(Contact.id.desc()).limit(limit).all()
+
+            items = []
+            for c in contacts:
+                proj = session.get(Project, c.project_id) if c.project_id else None
+                items.append({
+                    "id": c.id,
+                    "project_id": c.project_id,
+                    "project_name": _s(proj.temp_name) if proj else "",
+                    "name": _s(c.name),
+                    "category": _s(c.category),
+                    "phone": _s(c.phone),
+                    "email": _s(c.email),
+                })
+            return json.dumps({
+                "count": len(items),
+                "items": items,
+            }, ensure_ascii=False)
+        finally:
+            session.close()
+
+    @mcp.tool()
+    def get_delivery_summary(
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+        project_id: Optional[int] = None,
+        months_back: int = 24,
+        include_old: bool = False,
+    ) -> str:
+        """현장별 납품집계. 연월 기준 납품 실적(G2B 조달내역)을 반환합니다.
+
+        기본은 **최근 24개월** 데이터만 (옛날 G2B 누적분이 검색에 섞이는 오염 방지).
+        year 또는 project_id 명시 시 기간 필터 자동 해제.
+
+        Args:
+            year: 연도 (명시 시 해당 연도만, 기간 필터 자동 해제)
+            month: 월 (1~12, year 와 함께)
+            project_id: 특정 현장만 (명시 시 기간 필터 자동 해제)
+            months_back: 최근 N개월 (기본 24). year/project_id 명시 시 무시.
+            include_old: True 시 전체 기간 (기본 False).
+
+        수정 이력 (2026-05-14): 기존 코드가 G2bProcurement.project_id /
+        total_amount / contract_date 같이 모델에 없는 컬럼을 참조해
+        `ToolError: Error executing tool get_delivery_summary` 로 항상 실패.
+        실제 모델에 맞춰 Contract.g2b_contract_no = G2bProcurement.cntrct_dlvr_req_no
+        join 으로 Project 매핑, prdct_amt 합계, cntrct_dlvr_req_date 기준 연/월 필터.
+        """
         from modules.models.entities import G2bProcurement, Project
+        from modules.models.contract_entities import Contract
         from sqlalchemy import func, extract
+        import datetime
         session = get_session()
         try:
             q = session.query(
-                G2bProcurement.project_id,
-                func.sum(G2bProcurement.total_amount).label("total_amount"),
+                Project.id.label("project_id"),
+                Project.temp_name.label("project_name"),
+                func.sum(G2bProcurement.prdct_amt).label("total_amount"),
                 func.count(G2bProcurement.id).label("count"),
-            ).filter(extract("year", G2bProcurement.contract_date) == year)
+            ).join(
+                Contract, Contract.g2b_contract_no == G2bProcurement.cntrct_dlvr_req_no
+            ).join(
+                Project, Project.id == Contract.project_id
+            )
+            if year:
+                q = q.filter(extract("year", G2bProcurement.cntrct_dlvr_req_date) == year)
             if month:
-                q = q.filter(extract("month", G2bProcurement.contract_date) == month)
+                q = q.filter(extract("month", G2bProcurement.cntrct_dlvr_req_date) == month)
             if project_id:
-                q = q.filter(G2bProcurement.project_id == project_id)
-            rows = q.group_by(G2bProcurement.project_id).all()
+                q = q.filter(Project.id == project_id)
+            # 기간 필터 — year/project_id 명시 안 됐을 때만 적용
+            cutoff = None
+            if not year and not project_id and not include_old and months_back > 0:
+                cutoff = datetime.date.today() - datetime.timedelta(days=30 * months_back)
+                q = q.filter(G2bProcurement.cntrct_dlvr_req_date >= cutoff)
+            rows = q.group_by(Project.id, Project.temp_name).all()
 
             items = []
             total = 0
             for row in rows:
-                proj = session.get(Project, row.project_id) if row.project_id else None
                 amount = int(row.total_amount or 0)
                 total += amount
                 items.append({
                     "project_id": row.project_id,
-                    "project_name": _s(proj.temp_name) if proj else "미연결",
+                    "project_name": _s(row.project_name) if row.project_name else "미연결",
                     "count": row.count,
                     "total_amount": amount,
                 })
@@ -197,7 +285,11 @@ def register(mcp: FastMCP):
             return json.dumps({
                 "year": year,
                 "month": month,
+                "filter_months_back": None if (include_old or year or project_id) else months_back,
+                "filter_cutoff_date": str(cutoff) if cutoff else None,
+                "include_old": include_old,
                 "grand_total": total,
+                "count_projects": len(items),
                 "items": items,
             }, ensure_ascii=False)
         finally:

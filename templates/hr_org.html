@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}조직도{% endblock %}
+
+{% block content %}
+<style>
+  .org-wrap { max-width:1000px; }
+  .org-col { background:#fff; border:1px solid #e2e8f0; border-radius:var(--mg-radius,.65rem); overflow:hidden; }
+  .org-col-hd { background:#f8fafc; padding:.6rem .9rem; font-weight:700; font-size:.85rem; color:#334155; border-bottom:1px solid #e2e8f0; }
+  .org-person { display:flex; align-items:center; gap:.6rem; padding:.55rem .9rem; border-bottom:1px solid #f1f5f9; text-decoration:none; color:var(--mg-ink,#0f172a); }
+  .org-person:hover { background:#f8fafc; }
+  .org-avatar { width:30px; height:30px; border-radius:50%; background:#2563eb; color:#fff; display:flex; align-items:center; justify-content:center; font-size:.8rem; font-weight:700; flex:0 0 auto; }
+  .org-rank { font-size:.7rem; color:#64748b; }
+  .auth-badge { font-size:.66rem; font-weight:700; padding:1px 6px; border-radius:4px; white-space:nowrap; margin-left:auto; }
+  .senior-bar { background:linear-gradient(135deg,#1e3a8a,#2563eb); color:#fff; border-radius:var(--mg-radius,.65rem); padding:1rem 1.2rem; }
+  .senior-chip { display:inline-flex; align-items:center; gap:.4rem; background:rgba(255,255,255,.14); border-radius:20px; padding:.3rem .8rem; font-size:.82rem; margin:.2rem; }
+</style>
+
+<div class="container-fluid org-wrap">
+  <div class="page-hero mg-fade">
+    <div class="d-flex justify-content-between align-items-center gap-2">
+      <div>
+        <div class="hero-eyebrow">HR · 조직도</div>
+        <h2>조직도 & 결재권한</h2>
+        <div class="hero-sub">부서별 직급 체계 · 전자결재 기본 결재선은 부서장 → 경영진(부장 이상)</div>
+      </div>
+      <a href="{{ url_for('hr.hr_list') }}" class="btn btn-sm">인사관리</a>
+    </div>
+  </div>
+
+  {# 경영진 (최종 결재 라인) #}
+  {% if seniors %}
+  <div class="senior-bar mg-fade mb-3">
+    <div style="font-size:.72rem;font-weight:700;letter-spacing:.05em;opacity:.85;text-transform:uppercase;margin-bottom:.4rem">경영진 · 최종 결재</div>
+    {% for u in seniors %}
+    <a href="{{ url_for('hr.hr_detail', user_id=u.id) }}" class="senior-chip text-white text-decoration-none">
+      <span style="font-weight:700">{{ u.full_name }}</span> <span style="opacity:.85">{{ u.position }}</span>
+      <span style="opacity:.7;font-size:.72rem">({{ u.user_group }})</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# 부서별 #}
+  <div class="row g-3 mg-fade" style="animation-delay:.05s">
+    {% for dept, members in by_dept.items() %}
+    <div class="col-md-6 col-lg-4">
+      <div class="org-col">
+        <div class="org-col-hd">{{ dept }} <span class="text-muted fw-normal">({{ members|length }})</span></div>
+        {% for u in members %}
+        <a href="{{ url_for('hr.hr_detail', user_id=u.id) }}" class="org-person">
+          <div class="org-avatar">{{ u.full_name[:1] }}</div>
+          <div>
+            <div style="font-size:.85rem;font-weight:600">{{ u.full_name }}</div>
+            <div class="org-rank">{{ u.position or '-' }}</div>
+          </div>
+          {% if loop.first and rank_fn(u.position) > 0 %}
+          <span class="auth-badge" style="background:#dbeafe;color:#1d4ed8">부서장</span>
+          {% elif rank_fn(u.position) >= 60 %}
+          <span class="auth-badge" style="background:#fef3c7;color:#b45309">경영진</span>
+          {% endif %}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -45,14 +45,37 @@ INSTRUCTIONS = """
 | 소진/자재 소진/썼어 | 소진 이력 | `get_inventory_consumption()` |
 | 전체 현황/종합/요약 | KPI 요약 | `get_dashboard_summary()` |
 | 입고 상세/입고번호 | 입고 상세 | `get_receiving_detail(rcv_no=번호)` |
+| 거래처 이메일/메일주소 | 이메일 주소록 | `get_mail_contacts(query=키워드)` |
+| 메일 보낸 이력/누구한테 메일 | 메일 송수신 이력 (DB) | `get_email_history(query/receiver/po_ref)` |
+| 누가 뭐 했어/시스템 이력/변경 이력 | 시스템 활동 로그 | `get_activity_logs(user_name/module/date_from)` |
+| 현장 담당자/감독관/감리/시공사 | 현장 연락처 | `get_project_contacts(project_id 또는 query=현장명)` |
+| 내 메일 계정 뭐 있어/공유메일함 | 접근 가능 메일 계정 | `list_mail_accounts(requester_username)` |
+| 받은편지함/안 읽은 메일/메일 왔어 | 메일함 메시지 목록 | `list_inbox_messages(requester_username, unseen_only?)` |
+| 메일 검색/OO 보낸 메일 있어 | 메일함 검색 (IMAP) | `search_mailbox(requester_username, query)` |
+| 이 메일 내용/본문/첨부 | 메일 본문 조회 | `read_mail_message(requester_username, uid)` |
+| 메일 폴더/보관함 구조 | 폴더 목록 | `list_mail_folders(requester_username)` |
+| 메일 보내줘/메일 발송/회신해줘 | 메일 발송 (확인 후 SMTP) | `write_preview_email_send(requester_username, to, subject, body, cc?, bcc?, account_id?)` |
 
-## Tool 분류 (73개)
+## ⚠️ 메일 도구 권한 정책 (필독)
 
-### 현장/프로젝트 (7개)
+메일 도구 5종(`list_mail_accounts`, `list_mail_folders`, `list_inbox_messages`,
+`search_mailbox`, `read_mail_message`)은 **반드시 `requester_username` 인자
+필수**. 챗봇 채널 태그의 `user="..."` 값을 그대로 전달하세요.
+
+- 사용자 본인 개인 계정(`mail_accounts.user_id == 발신자 user_id`) 만 접근.
+- 공유 계정(`is_shared=True`)은 `mail_shared_access` 권한 있을 때만 접근.
+- admin role 은 모든 공유 계정 접근 (개인 계정은 본인만).
+- 다른 사용자의 개인 계정은 **절대 접근 불가** — `account_id` 명시해도 차단됨.
+- `requester_username` 없거나 식별 실패 시 모든 도구가 error 반환.
+
+## Tool 분류 (83개)
+
+### 현장/프로젝트 (8개)
 - `get_projects(status, year, month, search)` — 현장 목록
 - `get_project_detail(project_id)` — 현장 상세
 - `search_projects(query)` — 현장명/약칭/주소 통합 검색
 - `get_project_timeline(project_id)` — 납품/생산 타임라인
+- `get_project_contacts(project_id, query, category)` — 현장 담당자(감독관/감리/시공사)
 - `get_delivery_summary(year, month)` — 납품집계 (G2B 조달 실적)
 - `get_overdue_projects()` — 납기 초과 현장
 - `get_project_progress(project_id)` — 설계→자재→생산→납품 진행률
@@ -65,7 +88,11 @@ INSTRUCTIONS = """
 - `get_revenue_summary(year, month)` — 세금계산서 기준 매출 집계
 - `get_tax_invoices(year, payment_status)` — 세금계산서 목록
 - `get_financial_overview()` — 총매출/미수금/수금 요약
-- `get_unpaid_invoices()` — 미수금 현황
+- `get_unpaid_invoices(months_back=24, include_old=False, status, include_exception=False)` — 미수금 현황
+  · 기준: Contract.payment_status (조달내역). 통장입금 무관.
+  · 기본 대상: 미청구 + 부분입금 (예외 자동 제외)
+  · 부분입금 잔액 = G2B 총액 − 매칭 세금계산서 발행합계
+  · 기본 최근 24개월. 사용자가 "전체"/"5년치" 명시 시 include_old=True
 
 ### 납품 (3개)
 - `get_deliveries(project_id, status)` — 납품 현황
@@ -176,6 +203,38 @@ INSTRUCTIONS = """
 ### 대시보드 (1개)
 - `get_dashboard_summary()` — 전체 KPI 종합 (진행현장/재고부족/입고대기/출장)
 
+### 메일 — DB 기록 (2개)
+- `get_mail_contacts(query, is_shared)` — 거래처 이메일 주소록 검색 (1,000+건)
+- `get_email_history(query, sender, receiver, po_ref, date_from, date_to, months_back=24, include_old)` — 자동발송 송수신 이력 (PO 자동 메일 등)
+  · 기본 최근 24개월 (옛날 데이터 오염 차단). 사용자가 "전체" 명시 시 include_old=True
+  · 발주 연결 메일 검색은 po_ref 사용 (예: po_ref="PO-2026-001")
+
+### 메일함 — IMAP 실시간 조회 (5개, 권한 격리 ⚠️ requester_username 필수)
+- `list_mail_accounts(requester_username)` — 접근 가능 메일 계정 (개인+공유)
+- `list_mail_folders(requester_username, account_id?)` — 폴더 목록 (INBOX/Sent/Drafts/라벨)
+- `list_inbox_messages(requester_username, account_id?, folder=INBOX, limit=30, unseen_only?)` — 메일 목록
+- `search_mailbox(requester_username, query, account_id?, folder?, limit=30)` — 서버측 IMAP SEARCH
+- `read_mail_message(requester_username, uid, account_id?, folder?, body_max_chars=10000)` — 본문+첨부 메타
+  · 모든 도구에서 본인 계정 또는 공유권한 있는 계정만 접근 (다른 사용자 계정 차단)
+
+### 메일 발송 — write_preview 패턴 (1개, 권한 격리 ⚠️)
+- `write_preview_email_send(requester_username, to, subject, body, cc?, bcc?, account_id?, request_read_receipt=True, large_file_ids?)` — 메일 발송 preview
+  · 사용자 확인 버튼 클릭 후 confirm_email_send 액션 → 실 SMTP 송신
+  · 권한 검증 2회 (preview + confirm) — 다른 사람 계정 발송 차단
+  · 공유 계정 사용 시 `mail_shared_access.can_send` 권한 필수 (admin 예외)
+  · 본문 plain text 면 자동 HTML 변환 (\n → <br>)
+  · 수신확인 트래킹 픽셀 자동 삽입 (기본 활성)
+  · MailContact 자동 수집 (외부 이메일만), MailReadReceipt 생성
+  · **첨부파일**: `large_file_ids=["abc123", ...]` 로 ERP 메일 화면에서
+    미리 업로드한 파일(`mail_large_files`) 의 file_id 배열 전달.
+    본문 끝에 다운로드 링크 자동 삽입 (외부 수신자도 클릭 다운로드).
+    권한: **본인 업로드 파일만 첨부 가능** (admin 예외).
+
+### 시스템 활동 로그 (1개)
+- `get_activity_logs(user_name, module, action, project_id, ref_type, date_from, date_to, query, months_back=12, include_old)` — 시스템 활동 1,000+건
+  · 기본 최근 12개월. 사용자/모듈/액션/현장/참조타입 다축 필터
+  · "오늘 누가 뭐 했어?" / "OO현장 작업 이력" 같은 질문에 사용
+
 ## 자주 묻는 질문 패턴 (1개 Tool로 해결)
 
 | 질문 | 사용할 Tool (1개만!) |
@@ -196,6 +255,20 @@ INSTRUCTIONS = """
 | "직원 몇 명이야?" | `get_employees()` |
 | "오늘 근무 인원?" | `get_today_attendance()` |
 | "누가 연차야?" | `get_today_attendance()` |
+| "OO 거래처 이메일?" | `get_mail_contacts(query="OO")` |
+| "최근 누구한테 메일 보냈어?" | `get_email_history()` (기본 24개월) |
+| "PO-2026-001 관련 메일?" | `get_email_history(po_ref="PO-2026-001")` |
+| "오늘 누가 뭐 했어?" | `get_activity_logs(date_from="오늘")` |
+| "김정수가 협의관리 뭐 변경했어?" | `get_activity_logs(user_name="김정수", module="협의관리")` |
+| "OO현장 작업 이력?" | `get_activity_logs(project_id=N)` |
+| "OO현장 감독관 누구야?" | `search_projects(query="OO")` → `get_project_contacts(project_id=ID)` |
+| "OO현장 시공사 연락처?" | `get_project_contacts(project_id=N, category="공사업체")` |
+| "내 메일계정 뭐 있어?" | `list_mail_accounts(requester_username)` |
+| "받은편지함 보여줘" | `list_inbox_messages(requester_username)` |
+| "안 읽은 메일 있어?" | `list_inbox_messages(requester_username, unseen_only=True)` |
+| "OO한테 받은 메일 검색" | `search_mailbox(requester_username, query="OO")` |
+| "이 메일 내용 알려줘" | `read_mail_message(requester_username, uid=N)` |
+| "OO한테 메일 보내줘" | `write_preview_email_send(requester_username, to, subject, body)` |
 
 ## Resource
 

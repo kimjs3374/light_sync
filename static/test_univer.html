@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Univer Test - xlsx import</title>
+
+<!-- Univer dependencies -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/rxjs/dist/bundles/rxjs.umd.min.js"></script>
+<script src="https://unpkg.com/echarts@5.6.0/dist/echarts.min.js"></script>
+
+<!-- Univer core -->
+<script src="https://unpkg.com/@univerjs/presets/lib/umd/index.js"></script>
+<script src="https://unpkg.com/@univerjs/preset-sheets-core/lib/umd/index.js"></script>
+<script src="https://unpkg.com/@univerjs/preset-sheets-core/lib/umd/locales/ko-KR.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@univerjs/preset-sheets-core/lib/index.css" />
+
+<!-- SheetJS for xlsx parsing -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<style>
+html, body { margin: 0; padding: 0; height: 100%; font-family: '맑은 고딕', sans-serif; }
+#toolbar { padding: 8px 16px; background: #f5f5f5; border-bottom: 1px solid #ddd; display: flex; gap: 12px; align-items: center; }
+#toolbar button { padding: 6px 16px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; }
+#toolbar button:hover { background: #e8e8e8; }
+#toolbar select { padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+#app { height: calc(100% - 45px); }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button onclick="loadTemplate()">엑셀 템플릿 로드</button>
+  <select id="sheetSelect" onchange="switchSheet(this.value)">
+    <option value="">시트 선택...</option>
+  </select>
+  <span id="status" style="color:#666; font-size:13px;"></span>
+</div>
+<div id="app"></div>
+
+<script>
+const { createUniver } = UniverPresets;
+const { LocaleType, mergeLocales } = UniverCore;
+const { UniverSheetsCorePreset } = UniverPresetSheetsCore;
+
+let univerAPI = null;
+let workbookData = null;
+
+// Univer init
+function initUniver() {
+  const result = createUniver({
+    locale: LocaleType.KO_KR,
+    locales: {
+      [LocaleType.KO_KR]: mergeLocales(UniverPresetSheetsCoreKoKR),
+    },
+    presets: [
+      UniverSheetsCorePreset({ container: 'app' }),
+    ],
+  });
+  univerAPI = result.univerAPI;
+  document.getElementById('status').textContent = 'Univer ready';
+}
+
+// xlsx -> Univer IWorkbookData
+function xlsxToUniverData(wb) {
+  const sheets = {};
+  const sheetOrder = [];
+
+  wb.SheetNames.forEach((name, idx) => {
+    const ws = wb.Sheets[name];
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    const sheetId = 'sheet_' + idx;
+    sheetOrder.push(sheetId);
+
+    const cellData = {};
+
+    for (let r = range.s.r; r <= range.e.r; r++) {
+      cellData[r] = {};
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        const cell = ws[addr];
+        if (cell) {
+          const univerCell = { v: cell.v || '' };
+          // Basic type mapping
+          if (cell.t === 'n') univerCell.t = 2; // number
+          else if (cell.t === 's') univerCell.t = 1; // string
+          else if (cell.t === 'b') univerCell.t = 4; // boolean
+
+          // Basic style
+          univerCell.s = {};
+          cellData[r][c] = univerCell;
+        }
+      }
+    }
+
+    // Merge cells
+    const merges = [];
+    if (ws['!merges']) {
+      ws['!merges'].forEach(m => {
+        merges.push({
+          startRow: m.s.r,
+          startColumn: m.s.c,
+          endRow: m.e.r,
+          endColumn: m.e.c,
+        });
+      });
+    }
+
+    // Column widths
+    const colInfo = {};
+    if (ws['!cols']) {
+      ws['!cols'].forEach((col, i) => {
+        if (col && col.wpx) {
+          colInfo[i] = { w: col.wpx };
+        }
+      });
+    }
+
+    // Row heights
+    const rowInfo = {};
+    if (ws['!rows']) {
+      ws['!rows'].forEach((row, i) => {
+        if (row && row.hpx) {
+          rowInfo[i] = { h: row.hpx };
+        }
+      });
+    }
+
+    sheets[sheetId] = {
+      id: sheetId,
+      name: name,
+      cellData: cellData,
+      mergeData: merges,
+      columnData: colInfo,
+      rowData: rowInfo,
+      rowCount: range.e.r + 2,
+      columnCount: range.e.c + 2,
+    };
+  });
+
+  return {
+    id: 'workbook_1',
+    name: 'commencement',
+    sheetOrder: sheetOrder,
+    sheets: sheets,
+  };
+}
+
+async function loadTemplate() {
+  const status = document.getElementById('status');
+  status.textContent = '로딩 중...';
+
+  try {
+    const resp = await fetch('/static/templates/commencement_template.xlsx');
+    const buf = await resp.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array', cellStyles: true, cellFormula: true });
+
+    workbookData = xlsxToUniverData(wb);
+
+    // Sheet selector
+    const sel = document.getElementById('sheetSelect');
+    sel.innerHTML = '';
+    wb.SheetNames.forEach((name, idx) => {
+      const opt = document.createElement('option');
+      opt.value = 'sheet_' + idx;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+
+    // Default to 공문 sheet (index 1)
+    sel.value = 'sheet_1';
+
+    univerAPI.createWorkbook(workbookData);
+    status.textContent = '로드 완료 - ' + wb.SheetNames.length + '개 시트';
+
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    console.error(e);
+  }
+}
+
+initUniver();
+</script>
+</body>
+</html>

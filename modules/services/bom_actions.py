@@ -97,17 +97,27 @@ def _normalize_model_name(model_name):
 def _extract_model_candidates(model_name):
     """G2B 전체 제품명에서 매칭 후보 모델명 추출.
 
-    G2B 형식: "LED투광등기구, 매그나텍, ARENA(M)-600, 600W"
-    → 후보: ["ARENA(M)-600", "ARENA-600", "LED투광등기구, 매그나텍, ARENA(M)-600, 600W"]
+    G2B 형식:
+      "LED투광등기구, 매그나텍, ARENA(M)-600, 600W"
+      → 후보: ["ARENA(M)-600", "ARENA-600", ...]
+      "조명타워, 매그나텍, MTT15A, 15m, 6등용"
+      → 후보: ["MTT15A", ...]  (하이픈 없는 코드도 추출)
+
+    C 단계 보강 (2026-05-14): 기존 정규식 `^[A-Z].*-\\d` 가 MTT15A 처럼
+    하이픈 없는 코드를 못 잡던 문제 해결. 두 패턴으로 시도:
+      1) 하이픈+숫자 포함 (ARENA-600, MT-FL-300A) — 기존
+      2) 영문 prefix + 숫자 (MTT15A, MTPS701) — 신규
     """
     import re
     candidates = []
-    # 쉼표로 분리된 토큰 중 모델코드 패턴 추출 (영문+숫자+하이픈)
+    # 쉼표로 분리된 토큰 중 모델코드 패턴 추출
     if ',' in model_name:
         for token in model_name.split(','):
             token = token.strip()
-            # 모델코드 패턴: 영문으로 시작, 하이픈+숫자 포함 (예: ARENA-600, BATOO-1000, MT-FL-300A)
-            if re.match(r'^[A-Z].*-\d', token, re.IGNORECASE):
+            # 1순위: 하이픈+숫자 포함 (예: ARENA-600, BATOO-1000, MT-FL-300A)
+            # 2순위: 하이픈 없는 영문+숫자 (예: MTT15A, MTPS701, MTSA060)
+            if re.match(r'^[A-Z].*-\d', token, re.IGNORECASE) \
+               or re.match(r'^[A-Z]{2,}[A-Z0-9]*\d+[A-Z0-9]*$', token, re.IGNORECASE):
                 candidates.append(token)
                 normalized = _normalize_model_name(token)
                 if normalized != token:

@@ -203,6 +203,8 @@
                         {% if c.linked.is_excluded %}
                             <span class="badge bg-dark" style="font-size:.65rem;white-space:nowrap">예외</span>&#32;<button class="btn btn-outline-dark btn-xs" style="font-size:.6rem;padding:1px 5px;white-space:nowrap;line-height:1.4"
                                 onclick="openExcludeEdit('{{ c.req_no }}', '{{ (c.req_nm or "")|e }}')">수정</button>
+                        {% elif ps == '청구완료' %}
+                            <span class="badge bg-primary" style="font-size:.65rem;white-space:nowrap">청구완료</span>
                         {% elif ps == '입금완료' %}
                             <span class="badge bg-success" style="font-size:.65rem;white-space:nowrap">입금완료</span>
                         {% elif ps == '변경완료' %}

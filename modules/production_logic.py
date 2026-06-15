@@ -252,7 +252,7 @@ def compute_item_production_status(item):
 
 
 def refresh_production_statuses(db, project_id=None):
-    from modules.kakaowork_notifier import notify_production_complete, notify_site_complete
+    from modules.notification_engine import notify
 
     q = db.query(ContractItem).options(
         joinedload(ContractItem.production_processes),
@@ -262,7 +262,7 @@ def refresh_production_statuses(db, project_id=None):
         q = q.join(Contract).filter(Contract.project_id == project_id)
 
     # 품목별 상태 변경 감지 + 알림 대상 수집
-    newly_completed = []  # (project_id, item)
+    newly_completed = []
     for item in q.all():
         old_status = (item.status_prod or '').strip()
         target = compute_item_production_status(item)
@@ -273,12 +273,13 @@ def refresh_production_statuses(db, project_id=None):
 
     # 알림 발송 (non-blocking)
     if newly_completed:
-        _send_production_complete_notifications(db, newly_completed, notify_production_complete, notify_site_complete)
+        _send_production_complete_notifications(db, newly_completed, notify)
 
 
-def _send_production_complete_notifications(db, completed_items, notify_item_fn, notify_site_fn):
+def _send_production_complete_notifications(db, completed_items, notify_fn):
     """생산완료 알림 발송 — 품목 단위 + 현장 전체 완료 감지"""
     from modules.models import Project
+    from modules.kakaowork_notifier import build_production_complete_text, build_site_complete_text
 
     # 프로젝트별 그룹핑
     project_items = {}
@@ -290,12 +291,24 @@ def _send_production_complete_notifications(db, completed_items, notify_item_fn,
     for pid, items in project_items.items():
         project = db.query(Project).get(pid)
         project_name = (project.temp_name or project.short_name or f'현장 #{pid}') if project else f'현장 #{pid}'
+        # 대표 계약명 조회
+        first_contract = db.query(Contract).filter(Contract.project_id == pid).first()
+        contract_name = first_contract.contract_name if first_contract and first_contract.contract_name else project_name
 
         # 품목 단위 알림
         for item in items:
-            notify_item_fn(project_name, item.model_name or '-', int(item.quantity or 0), item.category or '')
+            kakao_text = build_production_complete_text(
+                project_name, item.model_name or '-', int(item.quantity or 0), item.category or ''
+            )
+            notify_fn(db, 'production.item_complete', {
+                'contract_name': contract_name,
+                'project_name': project_name,
+                'project_id': pid,
+                'model_name': item.model_name or '-',
+                'quantity': int(item.quantity or 0),
+            }, kakao_text_override=kakao_text)
 
-        # 현장 전체 완료 체크: 해당 프로젝트의 모든 품목이 생산완료인지
+        # 현장 전체 완료 체크
         all_items = (
             db.query(ContractItem)
             .join(Contract)
@@ -304,7 +317,12 @@ def _send_production_complete_notifications(db, completed_items, notify_item_fn,
         )
         if all_items and all((ci.status_prod or '').strip() == '생산완료' for ci in all_items):
             summary = [{'model_name': ci.model_name or '-', 'quantity': int(ci.quantity or 0)} for ci in all_items]
-            notify_site_fn(project_name, summary)
+            kakao_text = build_site_complete_text(project_name, summary)
+            notify_fn(db, 'production.site_complete', {
+                'contract_name': contract_name,
+                'project_name': project_name,
+                'project_id': pid,
+            }, kakao_text_override=kakao_text)
 
 
 def can_start_process(item, process_obj):

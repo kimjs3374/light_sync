@@ -37,6 +37,7 @@
             <div class="hero-sub">발주 자재의 입고 현황을 관리합니다</div>
         </div>
         <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('receiving.receiving_monthly') }}" class="btn btn-outline-light btn-sm">월별 마감</a>
             <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#poSelectModal">발주서 기반 입고</button>
             <a href="{{ url_for('receiving.receiving_create') }}" class="btn btn-outline-primary btn-sm">+ 직접 입고</a>
         </div>
@@ -48,7 +49,7 @@
     <div class="col-6 col-md-3">
         <div class="card stat-card-rcv shadow-sm text-center py-3">
             <div class="stat-num" style="color:#0f172a;">{{ stats.total }}</div>
-            <div class="stat-label">전체 입고</div>
+            <div class="stat-label">전체 입고 <span style="font-size:.65rem;color:#94a3b8;">(신규 {{ stats.new_count }} + iCUBE {{ stats.icube_count }})</span></div>
         </div>
     </div>
     <div class="col-6 col-md-3">
@@ -146,14 +147,19 @@
                     {% for rcv in receivings %}
                     {% set rows = rcv.detail_rows if rcv.detail_rows else [{}] %}
                     {% for item in rows %}
-                    <tr style="cursor:{% if loop.first %}pointer{% else %}default{% endif %};" {% if loop.first %}onclick="location.href='{{ url_for('receiving.receiving_detail', rcv_id=rcv.id) }}'"{% endif %}>
+                    <tr style="cursor:{% if loop.first and rcv.source == 'new' %}pointer{% else %}default{% endif %};" {% if loop.first and rcv.source == 'new' %}onclick="location.href='{{ url_for('receiving.receiving_detail', rcv_id=rcv.id) }}'"{% endif %}>
                         {% if loop.first %}
                         <td rowspan="{{ rows|length }}" class="align-top" style="border-right:1px solid #e2e8f0;">
+                            {% if rcv.source == 'new' %}
                             <a href="{{ url_for('receiving.receiving_detail', rcv_id=rcv.id) }}" class="rcv-no-link" onclick="event.stopPropagation();">{{ rcv.rcv_no }}</a>
                             {% if rcv.fo_no %}
                             <br><a href="{{ url_for('processing_order.fo_detail', fo_id=rcv.fo_id) }}" class="badge bg-info text-decoration-none" style="font-size:.65rem;white-space:nowrap;" onclick="event.stopPropagation();">{{ rcv.fo_no }}</a>
                             {% elif rcv.po_no %}
                             <br><span class="badge bg-light text-secondary" style="font-size:.65rem;white-space:nowrap;">{{ rcv.po_no }}</span>
+                            {% endif %}
+                            {% else %}
+                            <span style="font-family:var(--mg-mono);font-size:.78rem;color:#64748b;">{{ rcv.rcv_no }}</span>
+                            <br><span class="badge" style="background:#f1f5f9;color:#64748b;font-size:.6rem;white-space:nowrap;">iCUBE</span>
                             {% endif %}
                         </td>
                         <td rowspan="{{ rows|length }}" class="align-top" style="border-right:1px solid #e2e8f0;">{{ rcv.rcv_date.strftime('%Y-%m-%d') if rcv.rcv_date else '-' }}</td>
@@ -165,8 +171,15 @@
                         <td class="spec-cell" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="{{ item.spec or '' }}">{{ item.spec or '' }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(item.qty or 0) }}</td>
                         <td class="text-center">{{ item.unit or '' }}</td>
-                        {% if not hide_financial %}<td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
-                        <td class="text-end amount-cell">{{ "{:,.0f}".format(item.amount or 0) }}</td>{% endif %}
+                        {% if not hide_financial %}
+                        {% if rcv.source == 'icube' %}
+                        <td class="text-end icube-editable" data-history-id="{{ rcv.history_id }}" data-item-idx="{{ loop.index0 }}" data-field="unit_price" title="더블클릭하여 수정" style="cursor:pointer;color:#2563eb;">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
+                        <td class="text-end amount-cell">{{ "{:,.0f}".format(item.amount or 0) }}</td>
+                        {% else %}
+                        <td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
+                        <td class="text-end amount-cell">{{ "{:,.0f}".format(item.amount or 0) }}</td>
+                        {% endif %}
+                        {% endif %}
                         <td class="remark-cell" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="{{ item.remark or '' }}">{{ item.remark or '' }}</td>
                         {% else %}
                         <td colspan="{% if hide_financial %}6{% else %}8{% endif %}" class="text-muted">품목 없음</td>
@@ -207,89 +220,6 @@
 </nav>
 {% endif %}
 
-{# ─── iCUBE 기존 입고이력 ─── #}
-{% if history_count > 0 %}
-<div class="card border-0 shadow-sm" style="border-radius:12px; overflow:hidden;">
-    <div class="card-header py-2" style="background:linear-gradient(135deg,#f8fafc,#f1f5f9); border-bottom:2px solid #e2e8f0;">
-        <strong style="font-size:.88rem;">iCUBE 기존 입고이력</strong>
-        <span class="badge-status ms-1" style="background:#e2e8f0; color:#475569;">{{ history_count }}건</span>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle no-stack-table tree-card-table mb-0 rcv-table" style="font-size:0.82rem;table-layout:fixed;min-width:780px;">
-                <colgroup>
-                    <col style="width:90px">
-                    <col style="width:80px">
-                    <col style="width:100px">
-                    <col style="width:10%">
-                    <col style="width:18%">
-                    <col style="width:15%">
-                    <col style="width:45px">
-                    <col style="width:32px">
-                    {% if not hide_financial %}<col style="width:65px">
-                    <col style="width:75px">{% endif %}
-                    <col style="width:10%">
-                </colgroup>
-                <thead class="table-light" style="white-space:nowrap">
-                    <tr>
-                        <th class="py-2 text-center">입고번호</th>
-                        <th class="py-2 text-center">입고일</th>
-                        <th class="py-2 text-center">거래처</th>
-                        <th class="py-2 text-center">품번</th>
-                        <th class="py-2 text-center">품명</th>
-                        <th class="py-2 text-center">규격</th>
-                        <th class="py-2 text-center">수량</th>
-                        <th class="py-2 text-center">단위</th>
-                        {% if not hide_financial %}<th class="py-2 text-end">단가</th>
-                        <th class="py-2 text-end">금액</th>{% endif %}
-                        <th class="py-2 text-center">비고</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for rh in history_items %}
-                    {% for item in rh.detail_rows %}
-                    <tr>
-                        {% if loop.first %}
-                        <td rowspan="{{ rh.detail_rows|length }}" class="align-top" style="border-right:1px solid #e2e8f0;">{{ rh.icube_rcv_nb }}</td>
-                        <td rowspan="{{ rh.detail_rows|length }}" class="align-top" style="border-right:1px solid #e2e8f0;">{{ rh.receive_date.strftime('%Y-%m-%d') if rh.receive_date else '-' }}</td>
-                        <td rowspan="{{ rh.detail_rows|length }}" class="align-top vendor-cell" style="border-right:1px solid #e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0">{{ rh.vendor_name }}</td>
-                        {% endif %}
-                        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0;font-family:var(--mg-mono);font-size:.78rem;" title="{{ item.item_cd or '' }}">{{ item.item_cd or '' }}</td>
-                        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="{{ item.item_name or '' }}">{{ item.item_name or '' }}</td>
-                        <td class="spec-cell" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="{{ item.spec or '' }}">{{ item.spec or '' }}</td>
-                        <td class="text-end">{{ "{:,.0f}".format(item.qty or 0) }}</td>
-                        <td class="text-center">{{ item.unit or '' }}</td>
-                        {% if not hide_financial %}<td class="text-end">{{ "{:,.0f}".format(item.unit_price or 0) }}</td>
-                        <td class="text-end amount-cell">{{ "{:,.0f}".format(item.amount or 0) }}</td>{% endif %}
-                        <td class="remark-cell" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="{{ item.remark or '' }}">{{ item.remark or '' }}</td>
-                    </tr>
-                    {% endfor %}
-                    {% if not rh.detail_rows %}
-                    <tr>
-                        <td>{{ rh.icube_rcv_nb }}</td>
-                        <td>{{ rh.receive_date.strftime('%Y-%m-%d') if rh.receive_date else '-' }}</td>
-                        <td class="vendor-cell">{{ rh.vendor_name }}</td>
-                        <td colspan="{% if hide_financial %}6{% else %}8{% endif %}" class="text-muted">상세 없음</td>
-                    </tr>
-                    {% endif %}
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    {% if hist_total_pages > 1 %}
-    <div class="card-footer bg-white text-center py-2">
-        <ul class="pagination pagination-sm justify-content-center mb-0">
-            {% for hp in range(1, hist_total_pages + 1) %}
-            {% if hp <= 10 %}
-            <li class="page-item {{ 'active' if hp == hist_page }}"><a class="page-link" href="?hp={{ hp }}{% if filters.q %}&q={{ filters.q }}{% endif %}">{{ hp }}</a></li>
-            {% endif %}
-            {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
-</div>
-{% endif %}
 
 </div>{# /pane-list #}
 
@@ -398,12 +328,15 @@
                             {% endif %}
                         </td>
                         <td class="text-center">
-                            <button type="button"
-                                    class="btn btn-outline-success btn-confirm-expected"
-                                    style="font-size:0.7rem; padding:2px 8px; white-space:nowrap; border-radius:6px;"
-                                    data-id="{{ poi.id }}">
+                            {% if po %}
+                            <a href="{{ url_for('receiving.receiving_create', po_id=po.id, highlight_poi=poi.id) }}"
+                               class="btn btn-outline-success"
+                               style="font-size:0.7rem; padding:2px 8px; white-space:nowrap; border-radius:6px;">
                                 입고확인
-                            </button>
+                            </a>
+                            {% else %}
+                            <span class="text-muted" style="font-size:0.7rem;">-</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -546,43 +479,7 @@
     });
 })();
 
-/* ─── 입고확인 AJAX ─── */
-(function() {
-    document.addEventListener('click', function(e) {
-        var btn = e.target.closest('.btn-confirm-expected');
-        if (!btn) return;
-        var id = btn.dataset.id;
-        if (!id) return;
-        if (!confirm('해당 품목을 입고확인 처리하시겠습니까?')) return;
-        btn.disabled = true;
-        btn.textContent = '처리중...';
-        fetch('/api/receiving/confirm-expected/' + id, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.ok || data.success) {
-                var row = btn.closest('tr');
-                row.style.transition = 'opacity .4s';
-                row.style.opacity = '0';
-                setTimeout(function() {
-                    row.remove();
-                    if (window.updateExpectedCounts) updateExpectedCounts();
-                }, 420);
-            } else {
-                alert(data.message || '처리 실패');
-                btn.disabled = false;
-                btn.textContent = '입고확인';
-            }
-        })
-        .catch(function() {
-            alert('서버 오류가 발생했습니다.');
-            btn.disabled = false;
-            btn.textContent = '입고확인';
-        });
-    });
-})();
+/* 입고확인 버튼은 입고 등록 폼으로 이동(B안). 즉시 처리 AJAX 제거 — 사용자가 폼에서 수량/단가 검토 후 등록 */
 
 /* ─── 발주서 검색 모달 ─── */
 (function() {
@@ -634,6 +531,64 @@
         searchInput.value = '';
         searchInput.focus();
         loadPoList('');
+    });
+})();
+</script>
+
+{# ── iCUBE 단가 인라인 수정 ── #}
+<script>
+(function() {
+    document.addEventListener('dblclick', function(e) {
+        var td = e.target.closest('.icube-editable');
+        if (!td || td.querySelector('input')) return;
+        e.stopPropagation();
+
+        var historyId = td.dataset.historyId;
+        var itemIdx = td.dataset.itemIdx;
+        var oldVal = td.textContent.trim().replace(/,/g, '');
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.value = oldVal;
+        input.className = 'form-control form-control-sm text-end';
+        input.style.cssText = 'width:80px;padding:1px 4px;font-size:.8rem;';
+        td.textContent = '';
+        td.appendChild(input);
+        input.focus();
+        input.select();
+
+        function save() {
+            var newVal = input.value.trim().replace(/,/g, '');
+            if (!newVal || newVal === oldVal) {
+                td.textContent = parseInt(oldVal).toLocaleString();
+                return;
+            }
+            fetch('/api/receiving-history/' + historyId + '/update-item', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({index: parseInt(itemIdx), unit_price: parseFloat(newVal), _old_unit_price: parseFloat(oldVal)})
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.ok) {
+                    td.textContent = parseInt(d.unit_price).toLocaleString();
+                    var amtTd = td.nextElementSibling;
+                    if (amtTd) amtTd.textContent = parseInt(d.amount).toLocaleString();
+                } else {
+                    alert(d.error || '수정 실패');
+                    td.textContent = parseInt(oldVal).toLocaleString();
+                }
+            })
+            .catch(function() {
+                td.textContent = parseInt(oldVal).toLocaleString();
+            });
+        }
+
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+            if (ev.key === 'Escape') { td.textContent = parseInt(oldVal).toLocaleString(); }
+        });
     });
 })();
 </script>

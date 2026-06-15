@@ -34,13 +34,19 @@
             </h2>
             <div class="hero-sub">거래처코드: {{ vendor.TR_CD }}</div>
         </div>
-        <a href="{{ url_for('vendor.vendor_list') }}" class="btn btn-outline-light btn-sm">목록</a>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#vendorEditModal">정보 수정</button>
+            <a href="{{ url_for('vendor.vendor_list') }}" class="btn btn-outline-light btn-sm">목록</a>
+        </div>
     </div>
 </div>
 
 {# ─── 기본정보 카드 ─── #}
 <div class="card info-card shadow-sm mb-4">
-    <div class="card-header"><strong>기본정보</strong></div>
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>기본정보</strong>
+        <button type="button" class="btn btn-outline-primary btn-xs" data-bs-toggle="modal" data-bs-target="#vendorEditModal" style="font-size:.75rem;">수정</button>
+    </div>
     <div class="card-body">
         <div class="row g-3">
             <div class="col-md-3 col-6">
@@ -163,7 +169,17 @@
             <tbody>
                 {% for po in purchase_orders %}
                 <tr style="cursor:pointer;" onclick="this.nextElementSibling.classList.toggle('d-none')">
-                    <td><span style="font-family:var(--mg-mono);font-size:.78rem;color:#2563eb;">{{ po.CLS_NB }}</span></td>
+                    <td>
+                        {% if po.po_id %}
+                        <a href="{{ url_for('purchase_order.po_detail', po_id=po.po_id) }}" class="text-decoration-none" style="font-family:var(--mg-mono);font-size:.78rem;color:#2563eb;font-weight:700;" onclick="event.stopPropagation();">{{ po.CLS_NB }}</a>
+                        {% elif po.fo_id %}
+                        <a href="{{ url_for('processing_order.fo_detail', fo_id=po.fo_id) }}" class="text-decoration-none" style="font-family:var(--mg-mono);font-size:.78rem;color:#0891b2;font-weight:700;" onclick="event.stopPropagation();">{{ po.CLS_NB }}</a>
+                        <span class="badge ms-1" style="background:#ecfeff;color:#0891b2;font-size:.55rem;">가공</span>
+                        {% else %}
+                        <span style="font-family:var(--mg-mono);font-size:.78rem;color:#64748b;">{{ po.CLS_NB }}</span>
+                        <span class="badge ms-1" style="background:#f1f5f9;color:#94a3b8;font-size:.55rem;">iCUBE</span>
+                        {% endif %}
+                    </td>
                     <td style="font-size:.78rem;color:#64748b;">{{ po.CLS_DT }}</td>
                     <td style="overflow:hidden;text-overflow:ellipsis;max-width:300px;">
                         {% if po.detail_rows %}{{ po.detail_rows[0].ITEM_NM or po.detail_rows[0].ITEM_CD }}{% if po.detail_rows|length > 1 %} <span style="color:#94a3b8;">외 {{ po.detail_rows|length - 1 }}건</span>{% endif %}{% endif %}
@@ -214,7 +230,14 @@
             <tbody>
                 {% for rcv in receivings %}
                 <tr style="cursor:pointer;" onclick="this.nextElementSibling.classList.toggle('d-none')">
-                    <td><span style="font-family:var(--mg-mono);font-size:.78rem;color:#16a34a;">{{ rcv.RCV_NB }}</span></td>
+                    <td>
+                        {% if rcv.rcv_id %}
+                        <a href="{{ url_for('receiving.receiving_detail', rcv_id=rcv.rcv_id) }}" class="text-decoration-none" style="font-family:var(--mg-mono);font-size:.78rem;color:#16a34a;font-weight:700;" onclick="event.stopPropagation();">{{ rcv.RCV_NB }}</a>
+                        {% else %}
+                        <span style="font-family:var(--mg-mono);font-size:.78rem;color:#64748b;">{{ rcv.RCV_NB }}</span>
+                        <span class="badge ms-1" style="background:#f1f5f9;color:#94a3b8;font-size:.55rem;">iCUBE</span>
+                        {% endif %}
+                    </td>
                     <td style="font-size:.78rem;color:#64748b;">{{ rcv.RCV_DT }}</td>
                     <td style="overflow:hidden;text-overflow:ellipsis;max-width:300px;">
                         {% if rcv.detail_rows %}{{ rcv.detail_rows[0].ITEM_NM or rcv.detail_rows[0].ITEM_CD }}{% if rcv.detail_rows|length > 1 %} <span style="color:#94a3b8;">외 {{ rcv.detail_rows|length - 1 }}건</span>{% endif %}{% endif %}
@@ -283,6 +306,106 @@
             } else { alert(d.error || '저장 실패'); }
         })
         .catch(function(e) { alert('오류: ' + e.message); });
+    });
+})();
+</script>
+
+{# ─── 거래처 정보 수정 모달 ─── #}
+<div class="modal fade" id="vendorEditModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <div class="modal-header py-2" style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+                <h6 class="modal-title fw-bold">거래처 정보 수정 — {{ vendor.TR_NM }}</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="vendorEditForm">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">거래처명 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" name="name" value="{{ vendor.TR_NM or '' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">대표자</label>
+                            <input type="text" class="form-control form-control-sm" name="ceo_name" value="{{ vendor.CEO_NM or '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">사업자번호</label>
+                            <input type="text" class="form-control form-control-sm" name="business_no" value="{{ vendor.REG_NB or '' }}" style="font-family:monospace;">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">업종</label>
+                            <input type="text" class="form-control form-control-sm" name="business" value="{{ vendor.BUSINESS or '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">종목</label>
+                            <input type="text" class="form-control form-control-sm" name="jongmok" value="{{ vendor.JONGMOK or '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">전화</label>
+                            <input type="text" class="form-control form-control-sm" name="tel" value="{{ vendor.TEL or '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">팩스</label>
+                            <input type="text" class="form-control form-control-sm" name="fax" value="{{ vendor.FAX or '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">이메일</label>
+                            <input type="email" class="form-control form-control-sm" name="email" value="{{ vendor.EMAIL or '' }}">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-bold">주소</label>
+                            <input type="text" class="form-control form-control-sm" name="address" value="{{ (vendor.DIV_ADDR1 or '') + ' ' + (vendor.ADDR2 or '') }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">상태</label>
+                            <select class="form-select form-select-sm" name="is_active">
+                                <option value="Y" {{ 'selected' if vendor.USE_YN == 'Y' }}>사용</option>
+                                <option value="N" {{ 'selected' if vendor.USE_YN != 'Y' }}>미사용</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="vendorEditSubmit">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var form = document.getElementById('vendorEditForm');
+    if (!form) return;
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var btn = document.getElementById('vendorEditSubmit');
+        var fd = new FormData(form);
+        var payload = {};
+        fd.forEach(function(v, k) { payload[k] = v; });
+        payload.is_active = (payload.is_active === 'Y');
+
+        btn.disabled = true; btn.textContent = '저장중...';
+        fetch('/api/vendor/{{ vendor.vendor_id }}/edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+            body: JSON.stringify(payload),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.ok) {
+                location.reload();
+            } else {
+                alert(d.error || '저장 실패');
+                btn.disabled = false; btn.textContent = '저장';
+            }
+        })
+        .catch(function(err) {
+            alert('오류: ' + err.message);
+            btn.disabled = false; btn.textContent = '저장';
+        });
     });
 })();
 </script>

@@ -33,6 +33,10 @@
             </div>
         </div>
         <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('document.edit_commencement', req_no=package.procurement_req_no) }}" class="btn btn-warning btn-sm" target="_blank">착수계 편집</a>
+            <a href="{{ url_for('document.edit_delivery', req_no=package.procurement_req_no) }}" class="btn btn-warning btn-sm" target="_blank">납품계 편집</a>
+            <button class="btn btn-danger btn-sm" onclick="openAssemblyModal('commencement')">착수계 패키지</button>
+            <button class="btn btn-danger btn-sm" onclick="openAssemblyModal('delivery')">납품계 패키지</button>
             <a href="{{ url_for('document.document_list') }}" class="btn btn-outline-light btn-sm">목록으로</a>
         </div>
     </div>
@@ -64,7 +68,7 @@
             </div>
         </div>
         <div class="col-4 col-md-2">
-            <div class="step-badge {{ 'step-done' if package.delivery_generated else ('step-ready' if package.commencement_generated else 'step-wait') }}">
+            <div class="step-badge {{ 'step-done' if package.delivery_generated else ('step-ready' if package.req_pdf_path else 'step-wait') }}">
                 {% if package.delivery_generated %}&#10003;{% else %}3{% endif %}
                 납품계
             </div>
@@ -93,7 +97,11 @@
                         </div>
                         <div class="col-md-4 col-6">
                             <div class="doc-info-label">계약체결일</div>
-                            <div class="doc-info-value">{{ package.contract_date.strftime('%Y-%m-%d') if package.contract_date else '-' }}</div>
+                            {# G2B cntrct_dlvr_req_date 우선: 변경계약 반영. PDF/package 값은 fallback. #}
+                            {% set _cdate = procurements[0].cntrct_dlvr_req_date if procurements else None %}
+                            {% if not _cdate %}{% set _cdate = procurements[0].pdf_contract_date if procurements else None %}{% endif %}
+                            {% if not _cdate %}{% set _cdate = package.contract_date %}{% endif %}
+                            <div class="doc-info-value">{{ _cdate.strftime('%Y-%m-%d') if _cdate else '-' }}</div>
                         </div>
                         <div class="col-md-4 col-6">
                             <div class="doc-info-label">하자담보기간</div>
@@ -141,11 +149,6 @@
                     {% endif %}
                 </div>
                 <div class="card-body">
-                    {% if not package.req_pdf_path %}
-                    <div class="alert alert-warning border-0 py-2 px-3 mb-0">
-                        <div class="small">계약서(납품요구서)를 먼저 업로드해주세요.</div>
-                    </div>
-                    {% else %}
                     <form method="POST">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="save_commencement">
@@ -175,14 +178,18 @@
                         <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-primary btn-sm">정보 저장</button>
                             {% if package.commencement_doc_no %}
-                            <a href="{{ url_for('document.download_commencement_pdf', req_no=package.procurement_req_no) }}"
-                               class="btn btn-dark btn-sm fw-bold" target="_blank">
-                                착수계 PDF 생성
+                            <a href="{{ url_for('document.edit_commencement', req_no=package.procurement_req_no) }}"
+                               class="btn btn-warning btn-sm fw-bold" target="_blank">
+                                착수계 편집
+                            </a>
+                            <a href="{{ url_for('document.edit_commencement', req_no=package.procurement_req_no, regen=1) }}"
+                               class="btn btn-outline-secondary btn-sm" target="_blank"
+                               onclick="return confirm('템플릿에서 새로 생성합니다. 기존 편집 내용이 초기화됩니다.')">
+                                재생성
                             </a>
                             {% endif %}
                         </div>
                     </form>
-                    {% endif %}
                 </div>
             </div>
 
@@ -196,11 +203,6 @@
                     {% endif %}
                 </div>
                 <div class="card-body">
-                    {% if not package.req_pdf_path %}
-                    <div class="alert alert-warning border-0 py-2 px-3 mb-0">
-                        <div class="small">계약서(납품요구서)를 먼저 업로드해주세요.</div>
-                    </div>
-                    {% else %}
                     <form method="POST">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="save_delivery">
@@ -219,14 +221,18 @@
                         <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-primary btn-sm">정보 저장</button>
                             {% if package.delivery_doc_no %}
-                            <a href="{{ url_for('document.download_delivery_pdf', req_no=package.procurement_req_no) }}"
-                               class="btn btn-dark btn-sm fw-bold" target="_blank">
-                                납품계 PDF 생성
+                            <a href="{{ url_for('document.edit_delivery', req_no=package.procurement_req_no) }}"
+                               class="btn btn-warning btn-sm fw-bold" target="_blank">
+                                납품계 편집
+                            </a>
+                            <a href="{{ url_for('document.edit_delivery', req_no=package.procurement_req_no, regen=1) }}"
+                               class="btn btn-outline-secondary btn-sm" target="_blank"
+                               onclick="return confirm('템플릿에서 새로 생성합니다. 기존 편집 내용이 초기화됩니다.')">
+                                재생성
                             </a>
                             {% endif %}
                         </div>
                     </form>
-                    {% endif %}
                 </div>
             </div>
 
@@ -365,4 +371,143 @@
         </div>
     </div>
 </div>
+
+<!-- 서류 패키지 조립 모달 -->
+<div class="modal fade" id="assemblyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <div class="modal-header" style="background:#f8fafc;">
+                <h6 class="modal-title fw-bold" id="assemblyModalTitle">서류 패키지 순서</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-2">드래그하여 순서를 변경하세요. 체크 해제하면 패키지에서 제외됩니다.</p>
+                <div class="d-flex gap-1 mb-3">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="loadGlobalOrder()">전체 기본순서 불러오기</button>
+                    <button class="btn btn-outline-danger btn-sm" id="btnResetCustom" style="display:none" onclick="resetCustomOrder()">개별설정 초기화</button>
+                </div>
+                <ul id="assemblyList" class="list-group" style="min-height:100px;"></ul>
+            </div>
+            <div class="modal-footer" style="background:#f8fafc;">
+                <button class="btn btn-sm btn-outline-secondary" onclick="saveAsGlobal()">전체 기본순서로 저장</button>
+                <button class="btn btn-sm btn-primary" onclick="saveAndDownload()">이 현장에 저장 + PDF 다운로드</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var _asmDocType = 'commencement';
+var _asmReqNo = '{{ package.procurement_req_no }}';
+var _asmItems = {};
+var _asmOrder = [];
+
+function openAssemblyModal(docType) {
+    _asmDocType = docType;
+    document.getElementById('assemblyModalTitle').textContent =
+        (docType === 'commencement' ? '착수계' : '납품계') + ' 패키지 순서';
+    fetch('/documents/' + _asmReqNo + '/assembly-order?doc_type=' + docType)
+        .then(r => r.json())
+        .then(data => {
+            _asmItems = {};
+            data.items.forEach(it => _asmItems[it.key] = it);
+            _asmOrder = data.order;
+            document.getElementById('btnResetCustom').style.display = data.is_custom ? '' : 'none';
+            renderList();
+            new bootstrap.Modal(document.getElementById('assemblyModal')).show();
+        });
+}
+
+function renderList() {
+    var ul = document.getElementById('assemblyList');
+    ul.innerHTML = '';
+    // 순서에 있는 항목
+    var inOrder = new Set(_asmOrder);
+    _asmOrder.forEach(function(key) {
+        var it = _asmItems[key];
+        if (!it) return;
+        ul.appendChild(makeItem(key, it.label, true));
+    });
+    // 순서에 없는 항목 (체크 해제 상태로 아래 추가)
+    Object.keys(_asmItems).forEach(function(key) {
+        if (!inOrder.has(key)) {
+            ul.appendChild(makeItem(key, _asmItems[key].label, false));
+        }
+    });
+    initDrag();
+}
+
+function makeItem(key, label, checked) {
+    var li = document.createElement('li');
+    li.className = 'list-group-item d-flex align-items-center gap-2';
+    li.draggable = true;
+    li.dataset.key = key;
+    li.style.cursor = 'grab';
+    li.innerHTML = '<span style="cursor:grab;color:#94a3b8;">&#9776;</span>' +
+        '<input type="checkbox" class="form-check-input" ' + (checked ? 'checked' : '') +
+        ' data-key="' + key + '">' +
+        '<span class="small">' + label + '</span>';
+    return li;
+}
+
+function initDrag() {
+    var ul = document.getElementById('assemblyList');
+    var dragged = null;
+    ul.querySelectorAll('li').forEach(function(li) {
+        li.addEventListener('dragstart', function(e) { dragged = li; li.style.opacity = '.4'; });
+        li.addEventListener('dragend', function() { dragged.style.opacity = ''; });
+        li.addEventListener('dragover', function(e) { e.preventDefault(); });
+        li.addEventListener('drop', function(e) {
+            e.preventDefault();
+            if (dragged !== li) { ul.insertBefore(dragged, li); }
+        });
+    });
+}
+
+function getCheckedOrder() {
+    var result = [];
+    document.querySelectorAll('#assemblyList li').forEach(function(li) {
+        var cb = li.querySelector('input[type=checkbox]');
+        if (cb && cb.checked) result.push(li.dataset.key);
+    });
+    return result;
+}
+
+function saveAsGlobal() {
+    var order = getCheckedOrder();
+    fetch('/documents/assembly-order', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: JSON.stringify({doc_type: _asmDocType, order: order})
+    }).then(r => r.json()).then(() => alert('전체 기본순서 저장 완료'));
+}
+
+function saveAndDownload() {
+    var order = getCheckedOrder();
+    fetch('/documents/' + _asmReqNo + '/assembly-order', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: JSON.stringify({doc_type: _asmDocType, order: order})
+    }).then(r => r.json()).then(() => {
+        window.open('/documents/' + _asmReqNo + '/assemble-pdf?type=' + _asmDocType, '_blank');
+    });
+}
+
+function loadGlobalOrder() {
+    fetch('/documents/assembly-order?doc_type=' + _asmDocType)
+        .then(r => r.json())
+        .then(data => { _asmOrder = data.order; renderList(); });
+}
+
+function resetCustomOrder() {
+    fetch('/documents/' + _asmReqNo + '/assembly-order/reset', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: JSON.stringify({doc_type: _asmDocType})
+    }).then(r => r.json()).then(() => {
+        document.getElementById('btnResetCustom').style.display = 'none';
+        loadGlobalOrder();
+    });
+}
+</script>
 {% endblock %}

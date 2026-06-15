@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title }}{% endblock %}
+
+{% block content %}
+<style>
+  .ea-doc { max-width:880px; }
+  .ea-section { background:#fff; border:1px solid #e2e8f0; border-radius:var(--mg-radius,.65rem); padding:1rem 1.2rem; margin-bottom:1rem; }
+  .ea-section-title { font-size:.72rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.04em; margin-bottom:.7rem; }
+  .ea-stamp-box { display:flex; border:1px solid #cbd5e1; border-radius:.5rem; overflow:hidden; }
+  .ea-stamp-box .cell { flex:1; text-align:center; border-right:1px solid #e2e8f0; min-width:74px; }
+  .ea-stamp-box .cell:last-child { border-right:none; }
+  .ea-stamp-box .cell .hd { font-size:.66rem; font-weight:700; color:#64748b; background:#f8fafc; border-bottom:1px solid #e2e8f0; padding:3px; letter-spacing:.03em; }
+  .ea-stamp-box .cell .body { height:60px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:2px; }
+  .ea-stamp-box .stamp { font-weight:700; font-size:.82rem; }
+  .ea-field-table { width:100%; border-collapse:collapse; }
+  .ea-field-table th { background:#f8fafc; width:150px; white-space:nowrap; text-align:left; color:#475569; font-size:.78rem; }
+  .ea-field-table th, .ea-field-table td { padding:.55rem .8rem; border:1px solid #e2e8f0; vertical-align:top; font-size:.84rem; }
+  .ea-prog-item { display:flex; justify-content:space-between; padding:.5rem 0; border-bottom:1px solid #f1f5f9; font-size:.82rem; }
+  .form-label.req::after { content:' *'; color:#dc2626; }
+</style>
+
+<div class="container-fluid ea-doc">
+
+  {# ── 헤더 ── #}
+  <div class="page-hero mg-fade">
+    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+      <div>
+        <div class="hero-eyebrow">{{ doc.form_name }} · {{ doc.doc_no or '임시저장' }}</div>
+        <h2>{{ doc.title }}</h2>
+        <div class="hero-sub">
+          기안 {{ doc.drafter_name }} {{ doc.drafter_position or '' }} ({{ doc.drafter_dept or '' }})
+          · {{ (doc.submitted_at or doc.created_at).strftime('%Y-%m-%d %H:%M') }}
+        </div>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        {% if doc.status == 'draft' %}<span class="badge bg-secondary">작성중</span>
+        {% elif doc.status == 'pending' %}<span class="badge bg-warning text-dark">진행중</span>
+        {% elif doc.status == 'approved' %}<span class="badge bg-success">결재완료</span>
+        {% elif doc.status == 'rejected' %}<span class="badge bg-danger">반려</span>
+        {% else %}<span class="badge bg-secondary">회수</span>{% endif %}
+        <a href="{{ url_for('approval.approval_list') }}" class="btn btn-sm">목록</a>
+      </div>
+    </div>
+  </div>
+
+  {# ── 결재 도장 박스 ── #}
+  <div class="d-flex justify-content-end mb-3 mg-fade" style="animation-delay:.04s">
+    <div class="ea-stamp-box">
+      <div class="cell">
+        <div class="hd">기안</div>
+        <div class="body"><div class="stamp">{{ doc.drafter_name }}</div>
+          <small class="text-muted" style="font-size:.66rem">{{ doc.drafter_position or '' }}</small></div>
+      </div>
+      {% for s in doc.steps %}
+      <div class="cell">
+        <div class="hd">{{ s.role_label }}</div>
+        <div class="body">
+          {% if s.status == 'approved' %}<div class="stamp text-success">{{ s.approver_name }}</div>
+            <small class="text-success" style="font-size:.66rem">승인</small>
+          {% elif s.status == 'rejected' %}<div class="stamp text-danger">{{ s.approver_name }}</div>
+            <small class="text-danger" style="font-size:.66rem">반려</small>
+          {% elif s.status == 'current' %}<div class="stamp text-primary">{{ s.approver_name }}</div>
+            <small class="text-primary" style="font-size:.66rem">결재중</small>
+          {% else %}<div class="stamp text-muted">{{ s.approver_name }}</div>
+            <small class="text-muted" style="font-size:.66rem">대기</small>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {# ── 양식 내용 ── #}
+  <div class="ea-section mg-fade" style="animation-delay:.06s">
+    <div class="ea-section-title">내용</div>
+    <table class="ea-field-table">
+      {% if form %}
+        {% for fld in form.field_schema %}
+        {% if fld.type == 'lineitems' %}
+        {% set _rows = (doc.form_data.get(fld.key) if doc.form_data else []) or [] %}
+        <tr>
+          <th>{{ fld.label }}</th>
+          <td style="padding:0">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr>
+                {% for c in fld.columns %}<th style="background:#f1f5f9;text-align:{{ 'right' if c.key=='amount' else 'left' }};padding:4px 8px;border-bottom:1px solid #e2e8f0;font-size:.76rem">{{ c.label }}</th>{% endfor %}
+              </tr></thead>
+              <tbody>
+                {% for r in _rows %}
+                <tr>
+                  {% for c in fld.columns %}
+                  <td style="padding:4px 8px;border-bottom:1px solid #f1f5f9;text-align:{{ 'right' if c.key=='amount' else 'left' }}">{% if c.key=='amount' and r.get(c.key) %}{{ '{:,}'.format(r.get(c.key)|int) }}{% else %}{{ r.get(c.key) or '' }}{% endif %}</td>
+                  {% endfor %}
+                </tr>
+                {% else %}
+                <tr><td colspan="{{ fld.columns|length }}" style="padding:6px;color:#94a3b8">내역 없음</td></tr>
+                {% endfor %}
+              </tbody>
+              {% if doc.amount %}
+              <tfoot><tr><td style="text-align:right;padding:5px 8px;font-weight:700;border-top:2px solid #e2e8f0">합계</td><td style="text-align:right;padding:5px 8px;font-weight:700;border-top:2px solid #e2e8f0">{{ '{:,}'.format(doc.amount|int) }} 원</td><td style="border-top:2px solid #e2e8f0"></td></tr></tfoot>
+              {% endif %}
+            </table>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <th>{{ fld.label }}</th>
+          <td>{{ (doc.form_data.get(fld.key) if doc.form_data else '') or '-' }}{{ ' ' + fld.suffix if fld.suffix and doc.form_data and doc.form_data.get(fld.key) else '' }}</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      {% endif %}
+      {% if doc.content %}
+      <tr><th>본문/비고</th><td style="white-space:pre-wrap">{{ doc.content }}</td></tr>
+      {% endif %}
+    </table>
+
+    {% if doc.references %}
+    <div class="mt-3" style="font-size:.8rem">
+      <span class="text-muted">참조/수신:</span>
+      {% for r in doc.references %}
+      <span class="badge bg-light text-dark border">{{ r.ref_label }} · {{ r.user_name }}{% if r.is_read %} ✓{% endif %}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── 첨부파일 ── #}
+  <div class="ea-section mg-fade" style="animation-delay:.07s">
+    <div class="ea-section-title">첨부파일</div>
+    <ul class="list-unstyled mb-2" style="font-size:.82rem">
+      {% for a in doc.attachments %}
+      <li class="d-flex align-items-center gap-2 py-1">
+        <i class="bi bi-paperclip text-muted"></i>
+        <a href="{{ url_for('approval.approval_attachment_download', doc_id=doc.id, att_id=a.id) }}">{{ a.filename }}</a>
+        <span class="text-muted">({{ (a.size or 0) // 1024 }}KB)</span>
+        {% if doc.drafter_id == session.user_id and doc.status in ['draft','pending'] %}
+        <form method="POST" action="{{ url_for('approval.approval_attachment_delete', doc_id=doc.id, att_id=a.id) }}"
+              class="d-inline" onsubmit="return confirm('삭제?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-link text-danger p-0">삭제</button>
+        </form>
+        {% endif %}
+      </li>
+      {% else %}
+      <li class="text-muted">없음</li>
+      {% endfor %}
+    </ul>
+    {% if doc.drafter_id == session.user_id and doc.status in ['draft','pending'] %}
+    <form method="POST" action="{{ url_for('approval.approval_attachment_upload', doc_id=doc.id) }}"
+          enctype="multipart/form-data" class="d-flex gap-2 align-items-center">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="file" name="file" class="form-control form-control-sm" style="max-width:320px" required>
+      <button class="btn btn-sm btn-outline-secondary">업로드</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {# ── 결재 진행 ── #}
+  <div class="ea-section mg-fade" style="animation-delay:.08s">
+    <div class="ea-section-title">결재 진행</div>
+    {% for s in doc.steps %}
+    <div class="ea-prog-item">
+      <span>{{ loop.index }}. {{ s.approver_name }} {{ s.approver_position or '' }}
+        <span class="badge bg-light text-dark border">{{ s.role_label }}</span>
+        {% if s.comment %}<span class="text-muted">— {{ s.comment }}</span>{% endif %}
+      </span>
+      <span>
+        {% if s.status == 'approved' %}<span class="text-success fw-semibold">승인</span>
+        {% elif s.status == 'rejected' %}<span class="text-danger fw-semibold">반려</span>
+        {% elif s.status == 'current' %}<span class="text-primary fw-semibold">결재중</span>
+        {% else %}<span class="text-muted">대기</span>{% endif %}
+        {% if s.acted_at %}<small class="text-muted ms-1">{{ s.acted_at.strftime('%m-%d %H:%M') }}</small>{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# ── 액션 버튼 ── #}
+  <div class="d-flex gap-2 mb-3 flex-wrap mg-fade" style="animation-delay:.09s">
+    {% if my_step %}
+    <button class="btn btn-success" onclick="document.getElementById('approveBox').classList.toggle('d-none')"><i class="bi bi-check-lg"></i> 승인</button>
+    <button class="btn btn-outline-danger" onclick="document.getElementById('rejectBox').classList.toggle('d-none')"><i class="bi bi-x-lg"></i> 반려</button>
+    {% endif %}
+    {% if can_edit %}
+    <a href="{{ url_for('approval.approval_edit', doc_id=doc.id) }}" class="btn btn-outline-primary"><i class="bi bi-pencil"></i> 수정</a>
+    {% endif %}
+    {% if can_cancel %}
+    <form method="POST" action="{{ url_for('approval.approval_cancel', doc_id=doc.id) }}"
+          onsubmit="return confirm('상신을 회수하시겠습니까?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-warning"><i class="bi bi-arrow-counterclockwise"></i> 회수</button>
+    </form>
+    {% endif %}
+    {% if doc.drafter_id == session.user_id and doc.status in ['draft','canceled','rejected'] %}
+    <form method="POST" action="{{ url_for('approval.approval_delete', doc_id=doc.id) }}"
+          onsubmit="return confirm('삭제하시겠습니까?')" class="ms-auto">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-danger"><i class="bi bi-trash"></i> 삭제</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if my_step %}
+  <div id="approveBox" class="d-none ea-section" style="background:#f0fdf4;border-color:#bbf7d0">
+    <form method="POST" action="{{ url_for('approval.approval_approve', doc_id=doc.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label">승인 의견 (선택)</label>
+      <textarea name="comment" class="form-control mb-2" rows="2"></textarea>
+      <button class="btn btn-success btn-sm">승인 확정</button>
+    </form>
+  </div>
+  <div id="rejectBox" class="d-none ea-section" style="background:#fef2f2;border-color:#fecaca">
+    <form method="POST" action="{{ url_for('approval.approval_reject', doc_id=doc.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label req">반려 사유 (필수)</label>
+      <textarea name="comment" class="form-control mb-2" rows="2" required></textarea>
+      <button class="btn btn-danger btn-sm">반려 확정</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {# ── 의견 ── #}
+  <div class="ea-section mg-fade" style="animation-delay:.1s">
+    <div class="ea-section-title">의견</div>
+    {% for c in doc.comments %}
+    <div class="py-2" style="border-bottom:1px solid #f1f5f9;font-size:.82rem">
+      <strong>{{ c.user_name }}</strong>
+      <span class="text-muted" style="font-size:.74rem">{{ c.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      <div style="white-space:pre-wrap">{{ c.content }}</div>
+    </div>
+    {% else %}
+    <div class="text-muted py-2" style="font-size:.82rem">의견이 없습니다.</div>
+    {% endfor %}
+    <form method="POST" action="{{ url_for('approval.approval_comment', doc_id=doc.id) }}" class="d-flex gap-2 mt-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="content" class="form-control form-control-sm" placeholder="의견 입력..." required>
+      <button class="btn btn-sm btn-outline-secondary">등록</button>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

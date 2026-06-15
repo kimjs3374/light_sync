@@ -1,53 +1,90 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page-hero mg-fade">
-    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
-        <div>
-            <div class="hero-eyebrow">Notifications</div>
-            <h2>알림센터</h2>
-            <div class="hero-sub">시스템 알림과 업무 변경 사항을 확인합니다</div>
-        </div>
-        <div class="d-flex flex-wrap gap-2">
-            <button class="btn btn-sm btn-outline-primary" id="readAllBtn">전체 읽음</button>
-        </div>
+<div style="max-width:800px;margin:0 auto;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 style="font-weight:700;margin:0;">알림센터</h5>
+        <button class="btn btn-sm btn-outline-primary" id="readAllBtn">전체 읽음</button>
     </div>
-</div>
 
-{% if items %}
-<div class="list-group mg-fade" style="animation-delay:.05s">
-    {% for noti in items %}
-    <a href="{{ noti.link or '#' }}"
-       class="list-group-item list-group-item-action {% if not noti.is_read %}list-group-item-light border-start border-primary border-3{% endif %}"
-       data-noti-id="{{ noti.id }}"
-       onclick="markRead({{ noti.id }})">
-        <div class="d-flex justify-content-between align-items-start">
-            <div>
-                <h6 class="mb-1">
-                    {% if not noti.is_read %}<span class="badge bg-primary me-1">NEW</span>{% endif %}
-                    {{ noti.title }}
-                </h6>
-                {% if noti.message %}
-                <p class="mb-1 text-muted small">{{ noti.message }}</p>
+    {# 필터 탭 #}
+    <div class="d-flex gap-1 flex-wrap mb-3">
+        {% set filters = [
+            ('', '전체'), ('unread', '안읽음'),
+            ('comment', '코멘트'),
+            ('delivery', '납품'), ('production', '생산'),
+            ('material', '자재'), ('document', '서류'),
+        ] %}
+        {% for key, label in filters %}
+        <a href="{{ url_for('notification.notification_list', type=key) }}"
+           class="btn btn-sm {% if filter_type == key %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+           style="font-size:.75rem;padding:.25rem .6rem;">{{ label }}</a>
+        {% endfor %}
+    </div>
+
+    {% if items %}
+    <div class="list-group">
+        {% set type_colors = {
+            'delivery_urgent': '#dc2626', 'delivery_overdue': '#dc2626',
+            'delivery': '#2563eb', 'contract': '#2563eb',
+            'production': '#16a34a',
+            'material': '#d97706', 'inventory': '#d97706',
+            'issue': '#dc2626', 'trip': '#7c3aed',
+            'document': '#6366f1', 'warranty': '#ea580c', 'cert': '#ea580c',
+            'daily_digest': '#0891b2',
+            'comment': '#f59e0b',
+        } %}
+        {% set scope_labels = {'design': '설계', 'contract': '계약', 'sales': '영업', 'material': '자재', 'production': '생산', 'delivery': '납품', 'common': '일반'} %}
+        {% for noti in items %}
+        {% set is_dict = noti is mapping %}
+        {% set noti_link = noti.link if is_dict else (noti.link or '#') %}
+        {% set noti_id = noti.id if is_dict else noti.id %}
+        {% set noti_read = noti.is_read if is_dict else noti.is_read %}
+        {% set noti_type = noti.noti_type if is_dict else noti.noti_type %}
+        {% set noti_title = noti.title if is_dict else noti.title %}
+        {% set noti_message = noti.message if is_dict else noti.message %}
+        {% set noti_created = noti.created_at if is_dict else noti.created_at %}
+        {% set is_comment = noti.get('is_comment', false) if is_dict else false %}
+        <a href="{{ noti_link }}"
+           class="list-group-item list-group-item-action d-flex align-items-start gap-2 {% if not noti_read %}bg-light{% endif %}"
+           data-noti-id="{{ noti_id }}"
+           {% if not is_comment %}onclick="markRead({{ noti_id }})"{% endif %}
+           style="border-left:3px solid {{ type_colors.get(noti_type, '#94a3b8') }};">
+            <div style="flex:1;min-width:0;">
+                <div class="d-flex align-items-center gap-2">
+                    {% if not noti_read %}<span class="badge bg-danger" style="font-size:.55rem;">NEW</span>{% endif %}
+                    {% if is_comment %}
+                    <span style="font-size:.75rem;font-weight:700;color:#d97706;white-space:nowrap;">💬 {{ scope_labels.get(noti.log_scope, '코멘트') }}</span>
+                    {% else %}
+                    <span style="font-size:.75rem;font-weight:700;color:#475569;white-space:nowrap;">{{ noti_type_labels.get(noti_type, noti_type) }}</span>
+                    {% endif %}
+                    <span style="font-size:.82rem;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ noti_title }}</span>
+                </div>
+                {% if noti_message %}
+                {% if noti_type == 'daily_digest' %}
+                {% set clean_msg = noti_message.split(' [dk:')[0] if ' [dk:' in noti_message else noti_message %}
+                <pre class="mb-0 text-muted" style="font-size:.75rem;font-family:inherit;white-space:pre-line;margin-top:.25rem;">{{ clean_msg }}</pre>
+                {% else %}
+                <p class="mb-0 text-muted" style="font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ noti_message }}</p>
+                {% endif %}
                 {% endif %}
             </div>
-            <small class="text-muted text-nowrap ms-2">{{ noti.created_at.strftime('%m/%d %H:%M') if noti.created_at else '' }}</small>
-        </div>
-    </a>
-    {% endfor %}
-</div>
-{% else %}
-<div class="text-center text-muted py-5">
-    <p>알림이 없습니다.</p>
-</div>
-{% endif %}
+            <small class="text-muted text-nowrap" style="font-size:.72rem;">{{ noti_created.strftime('%m/%d %H:%M') if noti_created else '' }}</small>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-5">
+        <p>{% if filter_type == 'comment' %}코멘트가 없습니다.{% else %}알림이 없습니다.{% endif %}</p>
+    </div>
+    {% endif %}
 
-{% include 'components/pagination.html' %}
+    {% include 'components/pagination.html' %}
+</div>
 
 <script>
 function markRead(notiId) {
     fetch('/api/notifications/' + notiId + '/read', {method: 'POST'}).catch(function(){});
 }
-
 document.getElementById('readAllBtn').addEventListener('click', function(){
     fetch('/api/notifications/read-all', {method: 'POST'}).then(function(){
         location.reload();

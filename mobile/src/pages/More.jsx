@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { api } from '../api/client';
 
 const CHANNELS = [
   { group: '💼 영업부', items: [
@@ -32,6 +34,7 @@ const CHANNELS = [
     { label: '발주/입고현황', path: '/incoming' },
   ]},
   { group: '🔗 공통메뉴', items: [
+    { label: '전자결재', path: '/approvals' },
     { label: '조달내역', path: '/procurements' },
     { label: '하자관리', path: '/warranty' },
     { label: '사진관리', path: '/photos' },
@@ -46,6 +49,17 @@ const CHANNELS = [
 export default function More() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const [mailUnread, setMailUnread] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.get('/mail/api/unread-count', { absolute: true })
+      .then((r) => { if (alive) setMailUnread(r.total ?? 0); })
+      .catch(() => { if (alive) setMailUnread(null); });
+    return () => { alive = false; };
+  }, []);
+
+  const openMail = () => navigate('/mail');
 
   return (
     <div>
@@ -72,11 +86,27 @@ export default function More() {
         </div>
       </div>
 
+      {/* 메일함 진입점 */}
+      <div onClick={openMail} style={s.mailCard}>
+        <span style={{ fontSize: 18 }}>📧</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-bright)' }}>메일</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+            {mailUnread === null ? '안 읽음 계산 중…'
+              : mailUnread > 0 ? `안 읽은 메일 ${mailUnread}건`
+              : '새 메일이 없습니다'}
+          </div>
+        </div>
+        {mailUnread > 0 && <span style={s.mailBadge}>{mailUnread}</span>}
+        <span style={{ color: 'var(--text-muted)', fontSize: 16 }}>›</span>
+      </div>
+
       {/* 신규 생성 */}
       <div style={{ padding: '8px 12px 0' }}>
         <div style={s.groupLabel}>신규 생성</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
           {[
+            { label: '+ 전자결재', path: '/approvals' },
             { label: '+ 발주서', path: '/purchase-orders/create' },
             { label: '+ 가공발주', path: '/processing-orders/create' },
             { label: '+ 입고', path: '/receivings/create' },
@@ -131,4 +161,15 @@ const s = {
   menuItem: { padding: '8px 16px 8px 28px', cursor: 'pointer', fontSize: 14, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 },
   createBtn: { padding: '8px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: 'var(--surface)', color: 'var(--accent)', border: '1px solid var(--border)', cursor: 'pointer' },
   logoutBtn: { width: '100%', padding: 10, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--red)', fontSize: 13, cursor: 'pointer' },
+  mailCard: {
+    display: 'flex', alignItems: 'center', gap: 12,
+    padding: '12px 16px', borderBottom: '1px solid var(--border)',
+    cursor: 'pointer', background: 'var(--surface)',
+  },
+  mailBadge: {
+    minWidth: 20, height: 20, padding: '0 6px', borderRadius: 10,
+    background: 'var(--red)', color: '#fff',
+    fontSize: 11, fontWeight: 700,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  },
 };

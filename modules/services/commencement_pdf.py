@@ -255,10 +255,12 @@ def generate_commencement_pdf(package, procurements, agent_user=None,
         # Step 1: LibreOffice로 수식 계산 + 값으로 변환된 중간 파일 생성
         # macro로 수식→값 변환 후 저장하는 대신,
         # 먼저 전체 PDF 생성 후 필요한 페이지만 추출하는 방식 사용
+        env = os.environ.copy()
+        env['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:' + env.get('PATH', '')
         result = subprocess.run([
             soffice, '--headless', '--calc', '--convert-to', 'pdf',
             '--outdir', tmpdir, xlsx_path
-        ], capture_output=True, text=True, timeout=120)
+        ], capture_output=True, text=True, timeout=120, env=env)
 
         if result.returncode != 0:
             logger.error("LibreOffice 변환 실패: %s", result.stderr)
@@ -388,15 +390,20 @@ def generate_commencement_pdf(package, procurements, agent_user=None,
         # 10. 물품계약서 (업로드한 납품요구서 PDF)
         if package.req_pdf_path:
             req_path = package.req_pdf_path
-            if not os.path.isabs(req_path):
-                req_path = os.path.join(os.path.dirname(__file__), '..', '..', req_path)
-            if os.path.exists(req_path):
-                try:
-                    req_reader = pypdf.PdfReader(req_path)
-                    for page in req_reader.pages:
-                        writer.add_page(page)
-                except Exception as e:
-                    logger.warning("납품요구서 PDF 읽기 실패: %s", e)
+            if req_path.startswith('documents/'):
+                # Supabase Storage
+                _add_supabase_pdf(req_path)
+            else:
+                # 레거시 로컬 경로
+                if not os.path.isabs(req_path):
+                    req_path = os.path.join(os.path.dirname(__file__), '..', '..', req_path)
+                if os.path.exists(req_path):
+                    try:
+                        req_reader = pypdf.PdfReader(req_path)
+                        for page in req_reader.pages:
+                            writer.add_page(page)
+                    except Exception as e:
+                        logger.warning("납품요구서 PDF 읽기 실패: %s", e)
 
         # 11. 예정공정표
         if 'MTT' in first_model_upper:

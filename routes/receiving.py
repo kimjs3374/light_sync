@@ -8,12 +8,13 @@
 """
 
 import datetime
+import json as _json
 import logging
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
     flash, jsonify, abort, session,
 )
-from sqlalchemy import case, desc, func
+from sqlalchemy import case, desc, func, extract
 from sqlalchemy.orm import joinedload
 from modules.auth_decorators import login_required, menu_required
 from modules.pagination import make_pagination
@@ -66,7 +67,12 @@ def _fmt_money(val):
 
 
 def _update_po_status_on_receiving(db, po_id):
-    """발주서 전체 입고 시 상태 자동 전환 + MaterialOrder 입고완료"""
+    """발주서 전체 입고 시 상태 자동 전환 + MaterialOrder 입고완료.
+
+    완료 판정 기준 (둘 중 하나):
+    - po_item.in_confirmed = True (사용자가 입고확인 처리)
+    - total_received >= po_item.quantity (자동 전량 입고)
+    """
     if not po_id:
         return
 
@@ -74,20 +80,23 @@ def _update_po_status_on_receiving(db, po_id):
     if not po:
         return
 
-    # 발주 품목별 입고 수량 합산
+    # 발주 품목별 입고 완료 여부 판정
+    any_in = False
     for po_item in po.items:
         total_received = db.query(func.coalesce(func.sum(ReceivingItem.received_qty), 0)).filter(
             ReceivingItem.po_item_id == po_item.id,
         ).scalar() or 0
+        if total_received > 0:
+            any_in = True
 
-        # 아직 미입고 품목이 있으면 리턴
-        if total_received < (po_item.quantity or 0):
-            # 일부 입고 상태
+        is_done = bool(po_item.in_confirmed) or total_received >= (po_item.quantity or 0)
+        if not is_done:
+            # 미완료 품목 존재 — 일부 입고 상태
             if po.status not in ('입고완료', '취소'):
-                po.status = '입고대기'
+                po.status = '입고대기' if any_in or any(p.in_confirmed for p in po.items) else po.status
             return
 
-    # 모든 품목 입고 완료
+    # 모든 품목 입고 완료 (실수량 기준 또는 강제확인 기준)
     po.status = '입고완료'
 
     # MaterialOrder 입고완료 연동 + 입고 시 stock_qty 증가 (FR-07)
@@ -144,34 +153,30 @@ def receiving_list():
     per_page = 50
 
     with get_db() as db:
+        import json as _json
         from modules.models import ProcessingOrder as _FO
-        query = db.query(Receiving).join(Vendor).outerjoin(
+
+        tokens = [t.strip().lower() for t in q.split() if t.strip()] if q else []
+
+        # ── (A) 신규 입고 (receivings 테이블) ──
+        new_query = db.query(Receiving).join(Vendor).outerjoin(
             ReceivingItem, ReceivingItem.receiving_id == Receiving.id
         ).outerjoin(_FO, _FO.id == Receiving.fo_id)
 
         if q:
-            # 공백으로 분리해서 AND 조건: "태영스텐 10t" → *태영스텐* AND *10t*
-            # 거래처명+입고번호+품명+규격 합쳐서 검색
-            tokens = [t.strip() for t in q.split() if t.strip()]
-            for token in tokens:
+            for token in [t.strip() for t in q.split() if t.strip()]:
                 like_t = f"%{token}%"
-                query = query.filter(
+                new_query = new_query.filter(
                     (Vendor.name.ilike(like_t)) |
                     (Receiving.rcv_no.ilike(like_t)) |
                     (ReceivingItem.item_name.ilike(like_t)) |
                     (ReceivingItem.item_spec.ilike(like_t))
                 )
-            query = query.distinct()
-        total = query.count()
-        pagination = make_pagination(page, per_page, total)
-        offset = (pagination['page'] - 1) * per_page
+            new_query = new_query.distinct()
 
-        receivings_raw = query.order_by(desc(Receiving.rcv_date), desc(Receiving.id)) \
-                              .offset(offset).limit(per_page).all()
+        receivings_raw = new_query.order_by(desc(Receiving.rcv_date), desc(Receiving.id)).all()
 
-        # 자체 입고를 플랫 구조로 변환 (검색어 있으면 매칭 품목만 필터)
-        tokens = [t.strip().lower() for t in q.split() if t.strip()] if q else []
-        receivings = []
+        all_receivings = []
         for rcv in receivings_raw:
             detail_rows = []
             for ri in rcv.items:
@@ -180,7 +185,6 @@ def receiving_list():
                 if not spec and note:
                     spec = note
                     note = ''
-                # 품번: ReceivingItem 우선, 없으면 PO 품목에서
                 item_cd = ri.item_cd or ''
                 if not item_cd and ri.po_item:
                     item_cd = ri.po_item.item_code or ''
@@ -194,26 +198,21 @@ def receiving_list():
                     'amount': ri.amount or 0,
                     'remark': note,
                 }
-                # 검색어가 있으면 품목 레벨에서 매칭 필터
-                # 거래처명은 입고건 검색에만 사용, 품목 필터는 품명+규격으로만
                 if tokens:
                     item_text = f"{ri.item_name or ''} {spec}".lower()
                     vendor_text = (rcv.vendor.name or '').lower()
-                    # 각 토큰이 거래처명 또는 품목텍스트에 있는지 체크
-                    # 단, 품목텍스트에 하나도 안 걸리는 토큰이 전부 거래처에만 있으면 → 거래처 필터일 뿐이므로 통과
                     item_tokens = [t for t in tokens if t not in vendor_text]
-                    # item_tokens: 거래처명에 없는 토큰들 → 이것들은 반드시 품명+규격에 있어야 함
                     row['_matched'] = all(t in item_text for t in item_tokens)
                 detail_rows.append(row)
-            # 검색 시 매칭 품목만 표시
             if tokens:
                 detail_rows = [r for r in detail_rows if r.get('_matched')]
                 if not detail_rows:
                     continue
-            receivings.append({
+            all_receivings.append({
                 'id': rcv.id,
                 'rcv_no': rcv.rcv_no,
                 'rcv_date': rcv.rcv_date,
+                'sort_date': rcv.rcv_date.isoformat() if rcv.rcv_date else '',
                 'vendor_name': rcv.vendor.name if rcv.vendor else '',
                 'po_no': rcv.purchase_order.po_no if rcv.purchase_order else '',
                 'po_id': rcv.po_id,
@@ -221,48 +220,33 @@ def receiving_list():
                 'fo_id': rcv.fo_id,
                 'status': rcv.status,
                 'detail_rows': detail_rows,
+                'source': 'new',
             })
 
-        # 통계
-        stats = {
-            'total': db.query(func.count(Receiving.id)).scalar() or 0,
-        }
-
-        # iCUBE 기존 입고이력
+        # ── (B) iCUBE 기존 입고이력 (receiving_history 테이블) ──
         hist_query = db.query(ReceivingHistory)
         if q:
-            tokens = [t.strip() for t in q.split() if t.strip()]
-            for token in tokens:
+            for token in [t.strip() for t in q.split() if t.strip()]:
                 like_t = f"%{token}%"
                 hist_query = hist_query.filter(
                     (ReceivingHistory.vendor_name.ilike(like_t)) |
                     (ReceivingHistory.icube_rcv_nb.ilike(like_t)) |
                     (ReceivingHistory.items_json.ilike(like_t))
                 )
-        history_count = hist_query.count() if not status else 0
-        hist_page = safe_int(request.args.get('hp'), 1)
-        hist_per_page = 50
-        hist_offset = (hist_page - 1) * hist_per_page
-        history_raw = hist_query.order_by(desc(ReceivingHistory.receive_date)) \
-                                .offset(hist_offset).limit(hist_per_page).all() if not status else []
-        hist_total_pages = (history_count + hist_per_page - 1) // hist_per_page if history_count else 0
 
-        # items_json 미리 파싱
-        import json as _json
-        history_items = []
+        history_raw = hist_query.order_by(desc(ReceivingHistory.receive_date)).all()
+
         for rh in history_raw:
             try:
                 items = _json.loads(rh.items_json or '[]')
             except Exception:
                 items = []
-            # 규격 빈칸 + 비고 있으면 → 비고를 규격으로 이동
             for item in items:
                 spec = (item.get('spec') or '').strip()
                 remark = (item.get('remark') or '').strip()
                 if not spec and remark:
                     item['spec'] = remark
                     item['remark'] = ''
-            # 검색어 있으면 매칭 품목만 필터
             if tokens:
                 vendor_lower = (rh.vendor_name or '').lower()
                 item_tokens = [t.lower() for t in tokens if t.lower() not in vendor_lower]
@@ -273,15 +257,50 @@ def receiving_list():
                     )]
                     if not items:
                         continue
-            history_items.append({
-                'id': rh.id,
-                'icube_rcv_nb': rh.icube_rcv_nb,
-                'receive_date': rh.receive_date,
+            all_receivings.append({
+                'id': None,
+                'history_id': rh.id,
+                'rcv_no': rh.icube_rcv_nb,
+                'rcv_date': rh.receive_date,
+                'sort_date': rh.receive_date.isoformat() if rh.receive_date else '',
                 'vendor_name': rh.vendor_name or '',
-                'warehouse': rh.warehouse or '',
-                'total_amount': rh.total_amount or 0,
-                'detail_rows': items,
+                'po_no': '',
+                'po_id': None,
+                'fo_no': '',
+                'fo_id': None,
+                'status': '',
+                'detail_rows': [
+                    {
+                        'item_cd': item.get('item_cd', ''),
+                        'item_name': item.get('item_name', ''),
+                        'spec': item.get('spec', ''),
+                        'qty': item.get('qty', 0),
+                        'unit': item.get('unit', ''),
+                        'unit_price': item.get('unit_price', 0) or 0,
+                        'amount': round((item.get('qty', 0) or 0) * (item.get('unit_price', 0) or 0)),
+                        'remark': item.get('remark', ''),
+                    } for item in items
+                ],
+                'source': 'icube',
             })
+
+        # 날짜 내림차순 통합 정렬
+        all_receivings.sort(key=lambda x: x['sort_date'] or '', reverse=True)
+
+        # 통합 페이지네이션
+        total = len(all_receivings)
+        pagination = make_pagination(page, per_page, total)
+        offset = (pagination['page'] - 1) * per_page
+        receivings = all_receivings[offset:offset + per_page]
+
+        # 통계
+        new_count = sum(1 for r in all_receivings if r['source'] == 'new')
+        icube_count = sum(1 for r in all_receivings if r['source'] == 'icube')
+        stats = {
+            'total': total,
+            'new_count': new_count,
+            'icube_count': icube_count,
+        }
 
         # ── 입고예정 데이터 (발주서 품목 직접 조회) ──
         from datetime import date as _date
@@ -346,10 +365,6 @@ def receiving_list():
         return render_template(
             'receiving_list.html',
             receivings=receivings,
-            history_items=history_items,
-            history_count=history_count,
-            hist_page=hist_page,
-            hist_total_pages=hist_total_pages,
             pagination=pagination,
             stats=stats,
             filters={'q': q},
@@ -488,10 +503,12 @@ def receiving_create():
                         note=f'직접입고 {rcv.rcv_no}',
                     )
 
+            # 입고예정 단건 흐름: 강제 입고확인 처리할 PO 품목 ID
+            force_confirm_poi = safe_int(request.form.get('force_confirm_poi'), 0) or None
+
             # 발주서 상태 업데이트 + po_item.in_confirmed 동기화
             if po_id:
-                _update_po_status_on_receiving(db, po_id)
-                # 발주 품목별 입고 완료 여부 반영
+                # 발주 품목별 입고 완료 여부 반영 (먼저 동기화 → status 계산이 in_confirmed 참조)
                 po_obj = db.query(PurchaseOrder).options(joinedload(PurchaseOrder.items)).get(po_id)
                 if po_obj:
                     now_dt = datetime.datetime.now()
@@ -499,9 +516,15 @@ def receiving_create():
                         total_rcv = db.query(func.coalesce(func.sum(ReceivingItem.received_qty), 0)).filter(
                             ReceivingItem.po_item_id == po_item.id,
                         ).scalar() or 0
+                        # 자동 완료: 전량 입고 시
                         if total_rcv >= (po_item.quantity or 0) and not po_item.in_confirmed:
                             po_item.in_confirmed = True
                             po_item.in_confirmed_at = now_dt
+                        # 강제 완료: 입고예정 단건 흐름에서 사용자가 확인한 품목 (수량 부족이어도)
+                        if force_confirm_poi and po_item.id == force_confirm_poi and not po_item.in_confirmed:
+                            po_item.in_confirmed = True
+                            po_item.in_confirmed_at = now_dt
+                _update_po_status_on_receiving(db, po_id)
 
             # 가공발주 품목 입고확인 동기화
             if fo_id:
@@ -534,6 +557,8 @@ def receiving_create():
         # 발주서 기반 입고 시 po_id 또는 fo_id 파라미터로 전달
         po_id = safe_int(request.args.get('po_id'), 0) or None
         fo_id = safe_int(request.args.get('fo_id'), 0) or None
+        # 입고예정 탭 → 단일 품목 입고확인 흐름: 강조할 PO 품목 ID
+        highlight_poi = safe_int(request.args.get('highlight_poi'), 0) or None
         po = None
         fo = None
         po_items = []
@@ -551,6 +576,12 @@ def receiving_create():
                     ).scalar() or 0
                     pi._already_received = float(already)
                     pi._remaining = max(0, float(pi.quantity or 0) - float(already))
+                    # 단일 품목 입고확인 모드: 강조 대상이 아닌 행은 prefill 0
+                    pi._is_highlighted = (highlight_poi is not None and pi.id == highlight_poi)
+                    if highlight_poi is not None:
+                        pi._prefill_qty = pi._remaining if pi._is_highlighted else 0
+                    else:
+                        pi._prefill_qty = pi._remaining
                 po_items = po.items
         elif fo_id:
             fo = db.query(ProcessingOrder).options(
@@ -572,6 +603,7 @@ def receiving_create():
             po_items=po_items,
             fo=fo,
             fo_items=fo_items,
+            highlight_poi=highlight_poi,
         )
 
 
@@ -643,9 +675,14 @@ def receiving_edit(rcv_id):
             rcv.vendor_id = vendor_id
             rcv.note = note
 
-            # 기존 품목 삭제 후 재등록
+            # 다건 PO 연동 보호: 현재 폼이 다루는 범위(=주발주서 PO + 직접입고)만 삭제,
+            # 다른 PO에 연결된 ReceivingItem은 보존
+            primary_po_item_ids = set()
+            if rcv.po_id and rcv.purchase_order:
+                primary_po_item_ids = {pi.id for pi in rcv.purchase_order.items}
             for old_item in list(rcv.items):
-                db.delete(old_item)
+                if old_item.po_item_id is None or old_item.po_item_id in primary_po_item_ids:
+                    db.delete(old_item)
             db.flush()
 
             # 품목 추가
@@ -712,10 +749,11 @@ def receiving_edit(rcv_id):
                 ).scalar() or 0
                 pi._already_received = float(already)
                 pi._remaining = max(0, float(pi.quantity or 0) - float(already))
-                # 현재 입고건에서의 수량
+                # 현재 입고건에서의 값 (receiving_item 우선)
                 current_ri = next((ri for ri in rcv.items if ri.po_item_id == pi.id), None)
                 pi._current_qty = float(current_ri.received_qty) if current_ri else 0
-                pi._current_note = current_ri.note or '' if current_ri else ''
+                pi._current_note = (current_ri.note or '') if current_ri else ''
+                pi._current_price = float(current_ri.unit_price) if current_ri and current_ri.unit_price else float(pi.unit_price or 0)
             po_items = po.items
 
         # 직접입고 품목 (po_item_id 없는 것들)
@@ -731,6 +769,224 @@ def receiving_edit(rcv_id):
 
 
 # ===================================================================
+# 4-1. 직접입고 → 발주서 사후 연동 (다건 PO + 품목 선택 + 부분입고)
+# ===================================================================
+@receiving_bp.route('/receiving/<int:rcv_id>/link-po', methods=['POST'])
+@login_required
+@menu_required('receiving', write=True)
+def receiving_link_po(rcv_id):
+    """직접입고 건에 발주서를 사후 연동. 같은 입고건에 여러 발주서를 반복 연결할 수 있다.
+
+    Form data:
+        po_id (int)               : 연결할 발주서 (필수)
+        po_item_id[] (int[])      : 이번 연결에서 처리할 발주 품목 ID 목록
+        link_qty[] (float[])      : 각 품목의 이번 입고 수량 (잔량 prefill)
+        link_unit_price[] (float[]): 각 품목의 단가 (PO 단가 prefill)
+
+    동작:
+        - rcv.po_id가 비어있으면 첫 연결분으로 set (legacy 표시용)
+        - 선택된 각 PO 품목에 대해:
+            * 직접입고 ReceivingItem 중 매칭(item_cd → name+spec → name)되는 것이 있으면
+              po_item_id 세팅 (수량은 사용자가 입력한 값으로 갱신)
+            * 매칭 없으면 ReceivingItem을 새로 생성 (입력 수량/단가 기준)
+            * 입고수량 합계 >= 발주수량 이면 in_confirmed=True (전량입고)
+              부족하면 in_confirmed=False 유지 (부분입고)
+        - PO 상태 자동 재계산
+    """
+    po_id_form = safe_int(request.form.get('po_id'), 0) or None
+    if not po_id_form:
+        flash('연동할 발주서를 선택해주세요.', 'warning')
+        return redirect(url_for('receiving.receiving_detail', rcv_id=rcv_id))
+
+    poi_ids = request.form.getlist('po_item_id[]')
+    link_qtys = request.form.getlist('link_qty[]')
+    link_prices = request.form.getlist('link_unit_price[]')
+
+    if not poi_ids:
+        flash('연결할 품목을 1개 이상 선택해주세요.', 'warning')
+        return redirect(url_for('receiving.receiving_detail', rcv_id=rcv_id))
+
+    with get_db() as db:
+        rcv = db.query(Receiving).options(joinedload(Receiving.items)).get(rcv_id)
+        if not rcv:
+            abort(404)
+
+        po = db.query(PurchaseOrder).options(joinedload(PurchaseOrder.items)).get(po_id_form)
+        if not po:
+            flash('선택한 발주서를 찾을 수 없습니다.', 'danger')
+            return redirect(url_for('receiving.receiving_detail', rcv_id=rcv_id))
+
+        warn_vendor_mismatch = (po.vendor_id != rcv.vendor_id)
+
+        # legacy: 첫 연결분만 rcv.po_id에 보존 (상세 페이지 일부 호환)
+        if not rcv.po_id:
+            rcv.po_id = po.id
+        if po.contract_id and not rcv.contract_id:
+            rcv.contract_id = po.contract_id
+
+        now_dt = datetime.datetime.now()
+        matched = 0
+        created = 0
+
+        for idx, poi_str in enumerate(poi_ids):
+            poi_id = safe_int(poi_str, 0) or None
+            if not poi_id:
+                continue
+            target_pi = next((pi for pi in po.items if pi.id == poi_id), None)
+            if not target_pi:
+                continue
+
+            try:
+                qty = float(link_qtys[idx]) if idx < len(link_qtys) and link_qtys[idx] else 0
+            except (ValueError, TypeError):
+                qty = 0
+            if qty <= 0:
+                continue
+
+            try:
+                unit_price = float(link_prices[idx]) if idx < len(link_prices) and link_prices[idx] else float(target_pi.unit_price or 0)
+            except (ValueError, TypeError):
+                unit_price = float(target_pi.unit_price or 0)
+
+            # 직접입고 ReceivingItem 중 매칭 시도
+            ri_match = None
+            pi_code = (target_pi.item_code or '').strip()
+            pi_name = (target_pi.item_name or '').strip()
+            pi_spec = (target_pi.item_spec or '').strip()
+            for ri in rcv.items:
+                if ri.po_item_id:
+                    continue
+                if pi_code and (ri.item_cd or '').strip() == pi_code:
+                    ri_match = ri
+                    break
+            if not ri_match:
+                for ri in rcv.items:
+                    if ri.po_item_id:
+                        continue
+                    if (ri.item_name or '').strip() == pi_name and (ri.item_spec or '').strip() == pi_spec:
+                        ri_match = ri
+                        break
+            if not ri_match:
+                for ri in rcv.items:
+                    if ri.po_item_id:
+                        continue
+                    if (ri.item_name or '').strip() == pi_name:
+                        ri_match = ri
+                        break
+
+            if ri_match:
+                ri_match.po_item_id = target_pi.id
+                ri_match.received_qty = qty
+                if unit_price > 0:
+                    ri_match.unit_price = unit_price
+                ri_match.amount = qty * (ri_match.unit_price or 0)
+                if not ri_match.item_cd and pi_code:
+                    ri_match.item_cd = pi_code
+                matched += 1
+            else:
+                # 새 ReceivingItem 생성
+                new_ri = ReceivingItem(
+                    receiving_id=rcv.id,
+                    po_item_id=target_pi.id,
+                    item_cd=pi_code or None,
+                    item_name=pi_name,
+                    item_spec=pi_spec,
+                    received_qty=qty,
+                    unit=target_pi.unit or '',
+                    unit_price=unit_price,
+                    amount=qty * unit_price,
+                )
+                db.add(new_ri)
+                rcv.items.append(new_ri)
+                created += 1
+
+            # 발주수량 대비 입고수량 합계 확인 → 전량이면 in_confirmed
+            db.flush()
+            total_rcv = db.query(func.coalesce(func.sum(ReceivingItem.received_qty), 0)).filter(
+                ReceivingItem.po_item_id == target_pi.id,
+            ).scalar() or 0
+            if total_rcv >= (target_pi.quantity or 0) and not target_pi.in_confirmed:
+                target_pi.in_confirmed = True
+                target_pi.in_confirmed_at = now_dt
+            elif total_rcv < (target_pi.quantity or 0) and target_pi.in_confirmed:
+                # 사용자가 부족 수량으로 재조정한 케이스 → 부분입고로 되돌림
+                target_pi.in_confirmed = False
+                target_pi.in_confirmed_at = None
+
+        # PO 상태 재계산
+        _update_po_status_on_receiving(db, po.id)
+
+        log_activity(
+            db, '입고관리', 'link_po',
+            f'{rcv.rcv_no} ↔ {po.po_no} 사후 연동 (매칭 {matched}건, 신규 {created}건)',
+            ref_type='Receiving', ref_id=rcv.id,
+        )
+        db.commit()
+
+    total_processed = matched + created
+    msg = f'입고 {rcv.rcv_no}가 발주서 {po.po_no}에 연동되었습니다. (품목 {total_processed}건 처리)'
+    if warn_vendor_mismatch:
+        msg += ' ⚠️ 거래처가 다릅니다 — 확인 필요'
+    flash(msg, 'success' if total_processed > 0 else 'warning')
+    return redirect(url_for('receiving.receiving_detail', rcv_id=rcv_id))
+
+
+# ===================================================================
+# 4-2. 사후 연동용 PO 품목 조회 API (잔량/단가 포함)
+# ===================================================================
+@receiving_bp.route('/api/receiving/po-items/<int:po_id>')
+@login_required
+def api_po_items_for_link(po_id):
+    """사후 연동 모달 2단계: 선택된 PO의 미입고 잔량 품목 목록.
+
+    잔량 = (발주수량 - 다른 입고건에서 이미 입고된 합계). 0이하인 품목은 제외.
+    """
+    rcv_id = safe_int(request.args.get('rcv_id'), 0) or None
+
+    with get_db() as db:
+        po = db.query(PurchaseOrder).options(
+            joinedload(PurchaseOrder.items),
+            joinedload(PurchaseOrder.vendor),
+        ).get(po_id)
+        if not po:
+            return jsonify({'error': 'PO not found'}), 404
+
+        items = []
+        for pi in po.items:
+            # 현재 입고건은 잔량 계산에서 제외 (재연결 가능하도록)
+            q = db.query(func.coalesce(func.sum(ReceivingItem.received_qty), 0)).filter(
+                ReceivingItem.po_item_id == pi.id,
+            )
+            if rcv_id:
+                q = q.filter(ReceivingItem.receiving_id != rcv_id)
+            already = float(q.scalar() or 0)
+            ordered = float(pi.quantity or 0)
+            remaining = max(0, ordered - already)
+            if remaining <= 0 and not pi.in_confirmed:
+                # 잔량 없으면서 미확인이면 표시 (드문 케이스)
+                pass
+            if remaining <= 0:
+                continue
+            items.append({
+                'id': pi.id,
+                'item_code': pi.item_code or '',
+                'item_name': pi.item_name or '',
+                'item_spec': pi.item_spec or '',
+                'unit': pi.unit or '',
+                'ordered': int(ordered),
+                'already': int(already),
+                'remaining': int(remaining),
+                'unit_price': float(pi.unit_price or 0),
+            })
+
+        return jsonify({
+            'po_no': po.po_no,
+            'vendor_name': po.vendor.name if po.vendor else '',
+            'items': items,
+        })
+
+
+# ===================================================================
 # 5. 입고 삭제
 # ===================================================================
 @receiving_bp.route('/receiving/<int:rcv_id>/delete', methods=['POST'])
@@ -738,18 +994,25 @@ def receiving_edit(rcv_id):
 @menu_required('receiving')
 def receiving_delete(rcv_id):
     with get_db() as db:
-        rcv = db.query(Receiving).get(rcv_id)
+        rcv = db.query(Receiving).options(joinedload(Receiving.items).joinedload(ReceivingItem.po_item)).get(rcv_id)
         if not rcv:
             abort(404)
 
-        po_id = rcv.po_id
+        # 다건 PO 대응: 이 입고건이 연결된 모든 PO id 수집
+        po_ids = set()
+        if rcv.po_id:
+            po_ids.add(rcv.po_id)
+        for ri in rcv.items:
+            if ri.po_item and ri.po_item.po_id:
+                po_ids.add(ri.po_item.po_id)
+
         rcv_no = rcv.rcv_no
         log_activity(db, '입고관리', 'delete', f'{rcv_no} 입고 삭제', ref_type='Receiving')
         db.delete(rcv)
         db.flush()
 
-        # 발주서 상태 재계산
-        if po_id:
+        # 연결된 모든 발주서 상태 재계산
+        for po_id in po_ids:
             _update_po_status_on_receiving(db, po_id)
 
         db.commit()
@@ -787,11 +1050,12 @@ def api_po_comparison(po_id):
                 status = '과입고'
 
             comparison.append({
+                'item_code': pi.item_code or '',
                 'item_name': pi.item_name,
                 'item_spec': pi.item_spec or '',
-                'ordered_qty': ordered,
-                'received_qty': float(received),
-                'diff': diff,
+                'ordered_qty': int(ordered),
+                'received_qty': int(received),
+                'diff': int(diff),
                 'unit': pi.unit or '',
                 'status': status,
             })
@@ -811,11 +1075,14 @@ def api_po_comparison(po_id):
 def api_po_search():
     q = (request.args.get('q') or '').strip()
     vendor_id = safe_int(request.args.get('vendor_id'), 0)
+    # link 모드: 사후 연동용 — 입고완료까지 포함해서 검색 (취소만 제외)
+    include_complete = (request.args.get('include_complete') in ('1', 'true', 'yes'))
 
     with get_db() as db:
         # ── 자재발주서 ──
+        po_statuses = ['발송완료', '입고대기', '입고완료'] if include_complete else ['발송완료', '입고대기']
         po_query = db.query(PurchaseOrder).join(Vendor, PurchaseOrder.vendor_id == Vendor.id).filter(
-            PurchaseOrder.status.in_(['발송완료', '입고대기'])
+            PurchaseOrder.status.in_(po_statuses)
         )
         if vendor_id:
             po_query = po_query.filter(PurchaseOrder.vendor_id == vendor_id)
@@ -882,14 +1149,82 @@ def api_receiving_history_detail(history_id):
         except Exception:
             pass
 
+        # amount를 공급가(qty * unit_price)로 재계산해서 반환
+        for item in items:
+            item['amount'] = round((item.get('qty', 0) or 0) * (item.get('unit_price', 0) or 0))
+        supply_total = sum(i['amount'] for i in items)
+
         return jsonify({
             'rcv_nb': rh.icube_rcv_nb,
             'receive_date': rh.receive_date.strftime('%Y-%m-%d') if rh.receive_date else '',
             'vendor_name': rh.vendor_name or '',
             'warehouse': rh.warehouse or '',
             'remark': rh.remark or '',
-            'total_amount': float(rh.total_amount or 0),
+            'total_amount': supply_total,
             'detail_rows': items,
+        })
+
+
+
+# ===================================================================
+# 8-1. iCUBE 입고이력 단가/금액 수정
+# ===================================================================
+@receiving_bp.route('/api/receiving-history/<int:history_id>/update-item', methods=['POST'])
+@login_required
+@menu_required('receiving')
+def api_update_history_item(history_id):
+    """iCUBE 입고이력 품목의 단가/금액을 수정한다. (공급가 기준으로 입력받아 부가세포함가로 저장)"""
+    import json as _json
+    data = request.get_json(silent=True) or {}
+    item_index = data.get('index')
+    new_unit_price = data.get('unit_price')
+    new_qty = data.get('qty')
+
+    if item_index is None:
+        return jsonify({'error': '품목 인덱스가 필요합니다.'}), 400
+
+    with get_db() as db:
+        rh = db.query(ReceivingHistory).get(history_id)
+        if not rh:
+            return jsonify({'error': '이력을 찾을 수 없습니다.'}), 404
+
+        try:
+            items = _json.loads(rh.items_json or '[]')
+        except Exception:
+            return jsonify({'error': 'items_json 파싱 실패'}), 500
+
+        idx = int(item_index)
+        if idx < 0 or idx >= len(items):
+            return jsonify({'error': '잘못된 품목 인덱스'}), 400
+
+        item = items[idx]
+        if new_unit_price is not None:
+            item['unit_price'] = float(str(new_unit_price).replace(',', ''))
+        if new_qty is not None:
+            item['qty'] = float(str(new_qty).replace(',', ''))
+
+        qty = item.get('qty', 0) or 0
+        up = item.get('unit_price', 0) or 0
+        item['amount'] = round(qty * up)
+
+        old_up = float(str(data.get('_old_unit_price', up)).replace(',', '')) if data.get('_old_unit_price') else None
+        rh.items_json = _json.dumps(items, ensure_ascii=False)
+        rh.total_amount = sum(i.get('amount', 0) or 0 for i in items)
+
+        item_name = item.get('item_name', '')
+        log_msg = f'{rh.icube_rcv_nb} iCUBE 입고 단가수정 [{item_name}]'
+        if new_unit_price is not None:
+            log_msg += f' 단가: {old_up or "?"} → {up}'
+        if new_qty is not None:
+            log_msg += f' 수량: {qty}'
+        log_activity(db, '입고관리', 'update', log_msg, ref_type='ReceivingHistory', ref_id=rh.id)
+        db.commit()
+
+        return jsonify({
+            'ok': True,
+            'unit_price': round(item['unit_price']),
+            'amount': round(item['amount']),
+            'total_amount': round(rh.total_amount),
         })
 
 
@@ -960,6 +1295,22 @@ def api_confirm_expected(poi_id):
                     kind='system'
                 )
         log_activity(db, '입고관리', 'confirm', f'{poi.item_name} 입고확인 ({confirm_qty}개)', ref_type='Receiving')
+
+        # 알림: 자재 입고 완료
+        try:
+            from modules.notification_engine import notify
+            from modules.models import Contract
+            _proj = po.project if po else None
+            _proj_name = _proj.temp_name if _proj else '미지정'
+            _c = db.query(Contract).filter(Contract.project_id == po.project_id).first() if po and po.project_id else None
+            notify(db, 'material.received', {
+                'material_name': poi.item_name or f'자재#{poi.id}',
+                'contract_name': _c.contract_name if _c and _c.contract_name else _proj_name,
+                'project_name': _proj_name,
+            })
+        except Exception:
+            pass
+
         db.commit()
     return jsonify({'ok': True})
 
@@ -1022,3 +1373,132 @@ def api_update_expected_date(poi_id):
             dday_state = 'unknown'
 
         return jsonify({'ok': True, 'dday': d, 'dday_state': dday_state})
+
+
+# ===================================================================
+# 월별 거래처 마감
+# ===================================================================
+@receiving_bp.route('/receiving/monthly')
+@login_required
+def receiving_monthly():
+    """월별 거래처 입고 마감 — 해당월 입고 거래처별 정리"""
+    today = datetime.date.today()
+    year = safe_int(request.args.get('year'), today.year)
+    month = safe_int(request.args.get('month'), today.month)
+
+    with get_db() as db:
+        # (A) 신규 입고
+        new_rcvs = db.query(Receiving).join(Vendor).options(
+            joinedload(Receiving.items).joinedload(ReceivingItem.po_item),
+            joinedload(Receiving.vendor),
+        ).filter(
+            extract('year', Receiving.rcv_date) == year,
+            extract('month', Receiving.rcv_date) == month,
+        ).order_by(Receiving.vendor_id, Receiving.rcv_date).all()
+
+        # (B) iCUBE 입고
+        icube_rcvs = db.query(ReceivingHistory).filter(
+            extract('year', ReceivingHistory.receive_date) == year,
+            extract('month', ReceivingHistory.receive_date) == month,
+        ).order_by(ReceivingHistory.vendor_tr_cd, ReceivingHistory.receive_date).all()
+
+        # vendor_tr_cd → Vendor 매핑 (iCUBE용)
+        icube_tr_cds = list({r.vendor_tr_cd for r in icube_rcvs if r.vendor_tr_cd})
+        vendor_map = {}
+        if icube_tr_cds:
+            vendors = db.query(Vendor).filter(Vendor.icube_tr_cd.in_(icube_tr_cds)).all()
+            vendor_map = {v.icube_tr_cd: v for v in vendors}
+
+        # 거래처별로 그룹핑 (key: vendor_id 또는 vendor_tr_cd)
+        from collections import OrderedDict
+        vendor_groups = OrderedDict()
+
+        # 신규 입고 → 그룹핑
+        for rcv in new_rcvs:
+            vid = rcv.vendor_id
+            if vid not in vendor_groups:
+                v = rcv.vendor
+                vendor_groups[vid] = {
+                    'vendor_name': v.name if v else '',
+                    'business_no': v.business_no if v else '',
+                    'tel': v.tel if v else '',
+                    'rows': [],
+                    'total': 0,
+                }
+            for ri in rcv.items:
+                spec = (ri.item_spec or '').strip()
+                note = (ri.note or '').strip()
+                if not spec and note:
+                    spec = note
+                    note = ''
+                amt = ri.amount or 0
+                item_cd = ri.item_cd or ''
+                if not item_cd and ri.po_item:
+                    item_cd = ri.po_item.item_code or ''
+                vendor_groups[vid]['rows'].append({
+                    'rcv_no': rcv.rcv_no,
+                    'rcv_date': rcv.rcv_date.strftime('%m-%d') if rcv.rcv_date else '',
+                    'item_cd': item_cd,
+                    'item_name': ri.item_name or '',
+                    'spec': spec,
+                    'qty': ri.received_qty or 0,
+                    'unit': ri.unit or '',
+                    'unit_price': ri.unit_price or 0,
+                    'amount': amt,
+                    'remark': note,
+                })
+                vendor_groups[vid]['total'] += amt
+
+        # iCUBE 입고 → 그룹핑
+        for rh in icube_rcvs:
+            tr_cd = rh.vendor_tr_cd or ''
+            v_obj = vendor_map.get(tr_cd)
+            # vendor_id가 있으면 기존 그룹에 합치기
+            vid = v_obj.id if v_obj else f'icube_{tr_cd}'
+            if vid not in vendor_groups:
+                vendor_groups[vid] = {
+                    'vendor_name': v_obj.name if v_obj else (rh.vendor_name or tr_cd),
+                    'business_no': v_obj.business_no if v_obj else '',
+                    'tel': v_obj.tel if v_obj else '',
+                    'rows': [],
+                    'total': 0,
+                }
+            try:
+                items = _json.loads(rh.items_json or '[]')
+            except Exception:
+                items = []
+            for item in items:
+                raw_up = item.get('unit_price', 0) or 0
+                raw_amt = item.get('amount', 0) or 0
+                supply_up = round(raw_up)
+                supply_amt = round(raw_up * (item.get('qty', 0) or 0))
+                vendor_groups[vid]['rows'].append({
+                    'rcv_no': rh.icube_rcv_nb,
+                    'rcv_date': rh.receive_date.strftime('%m-%d') if rh.receive_date else '',
+                    'item_cd': item.get('item_cd', ''),
+                    'item_name': item.get('item_name', ''),
+                    'spec': item.get('spec', ''),
+                    'qty': item.get('qty', 0),
+                    'unit': item.get('unit', ''),
+                    'unit_price': supply_up,
+                    'amount': supply_amt,
+                    'remark': item.get('remark', ''),
+                })
+                vendor_groups[vid]['total'] += supply_amt
+
+        # 거래처명 기준 정렬
+        sorted_groups = sorted(vendor_groups.values(), key=lambda g: g['vendor_name'])
+
+        # 전체 합계
+        grand_total = sum(g['total'] for g in sorted_groups)
+        total_items = sum(len(g['rows']) for g in sorted_groups)
+
+        return render_template(
+            'receiving_monthly.html',
+            year=year,
+            month=month,
+            vendor_groups=sorted_groups,
+            vendor_count=len(sorted_groups),
+            grand_total=grand_total,
+            total_items=total_items,
+        )

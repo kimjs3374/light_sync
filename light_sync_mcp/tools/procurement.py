@@ -37,7 +37,7 @@ def register(mcp: FastMCP):
                 "po_no": _s(po.po_no),
                 "po_date": _sd(po.po_date),
                 "status": _s(po.status),
-                "vendor_name": _s(po.vendor.vendor_name) if po.vendor else "",
+                "vendor_name": _s(po.vendor.name) if po.vendor else "",
                 "project_name": _s(po.project.temp_name) if po.project else "",
                 "total_amount": int(po.total_amount or 0),
                 "item_count": len(po.items),
@@ -82,7 +82,7 @@ def register(mcp: FastMCP):
                 "po_no": _s(po.po_no),
                 "po_date": _sd(po.po_date),
                 "status": _s(po.status),
-                "vendor_name": _s(po.vendor.vendor_name) if po.vendor else "",
+                "vendor_name": _s(po.vendor.name) if po.vendor else "",
                 "project_name": _s(po.project.temp_name) if po.project else "",
                 "total_amount": int(po.total_amount or 0),
                 "tax_amount": int(po.tax_amount or 0),
@@ -139,7 +139,7 @@ def register(mcp: FastMCP):
                     "rcv_no": _s(rcv.rcv_no),
                     "rcv_date": _sd(rcv.rcv_date),
                     "status": _s(rcv.status),
-                    "vendor_name": _s(rcv.vendor.vendor_name) if rcv.vendor else "",
+                    "vendor_name": _s(rcv.vendor.name) if rcv.vendor else "",
                     "total_amount": sum(i["amount"] for i in items),
                     "items": items,
                 })
@@ -185,7 +185,7 @@ def register(mcp: FastMCP):
                 "rcv_no": _s(rcv.rcv_no),
                 "rcv_date": _sd(rcv.rcv_date),
                 "status": _s(rcv.status),
-                "vendor_name": _s(rcv.vendor.vendor_name) if rcv.vendor else "",
+                "vendor_name": _s(rcv.vendor.name) if rcv.vendor else "",
                 "po_no": _s(rcv.purchase_order.po_no) if rcv.purchase_order else "",
                 "fo_no": _s(rcv.processing_order.fo_no) if rcv.processing_order else "",
                 "note": _s(rcv.note),
@@ -200,20 +200,21 @@ def register(mcp: FastMCP):
 
     @mcp.tool()
     def get_vendor_list(search: Optional[str] = None) -> str:
-        """거래처 목록 조회. 거래처명, 담당자, 연락처를 반환합니다."""
+        """거래처 목록 조회. 거래처명, 대표자, 연락처를 반환합니다."""
         from modules.models.entities import Vendor
         session = get_session()
         try:
             q = session.query(Vendor)
             if search:
-                q = q.filter(Vendor.vendor_name.ilike(f"%{search}%"))
-            vendors = q.order_by(Vendor.vendor_name).all()
+                q = q.filter(Vendor.name.ilike(f"%{search}%"))
+            vendors = q.order_by(Vendor.name).all()
 
             result = []
             for v in vendors:
-                row = {"id": v.id}
-                for col in ["vendor_name", "vendor_type", "contact_name", "contact_phone",
-                            "contact_email", "business_no", "address"]:
+                row = {"id": v.id, "name": _s(v.name)}
+                for col in ["ceo_name", "business_no", "tel", "fax",
+                            "email", "address", "business", "jongmok",
+                            "is_active", "icube_tr_cd"]:
                     if hasattr(v, col):
                         row[col] = _s(getattr(v, col))
                 result.append(row)

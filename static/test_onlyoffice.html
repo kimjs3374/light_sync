@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>ONLYOFFICE Test</title>
+<script src="https://docs.mgnt.kr/web-apps/apps/api/documents/api.js"></script>
+<style>
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+#editor { height: 100%; }
+</style>
+</head>
+<body>
+<div id="editor"></div>
+<script>
+new DocsAPI.DocEditor("editor", {
+  document: {
+    fileType: "xlsx",
+    key: "doc_" + Date.now(),
+    title: "착수계_템플릿.xlsx",
+    url: "http://host.internal:8501/static/templates/commencement_template.xlsx",
+  },
+  documentType: "cell",
+  editorConfig: {
+    mode: "edit",
+    lang: "ko",
+    callbackUrl: "http://host.internal:8501/api/onlyoffice/callback",
+  },
+});
+</script>
+</body>
+</html>

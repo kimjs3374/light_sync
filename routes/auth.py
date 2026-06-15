@@ -134,6 +134,10 @@ def _post_auth_redirect():
     """로그인 성공/이미 로그인 시 PC/모바일 분기 리다이렉트."""
     if request.args.get('pc') == '1':
         session['force_pc'] = True
+    # OIDC 등 외부 흐름에서 ?next=/oauth/authorize?... 로 돌아가야 하는 경우
+    next_url = request.args.get('next') or request.form.get('next')
+    if next_url and next_url.startswith('/') and not next_url.startswith('//'):
+        return redirect(next_url)
     if _should_force_mobile():
         return redirect('/m/')
     return redirect(url_for('dashboard.dashboard_view'))
@@ -223,6 +227,19 @@ def login():
                     from modules.services.mailcow_api import sync_password as _mc_sync
                     _mc_sync(user.username, login_pw)
                     _auto_register_mail_account(db, user, login_pw)
+
+                    # Mattermost 자격증명 + 이름/직책 동기화 (실패해도 ERP 로그인은 계속)
+                    try:
+                        from modules.services.mattermost_api import sync_password as _mm_sync
+                        _mm_sync(
+                            user.username, login_pw,
+                            email=user.email,
+                            full_name=user.full_name,
+                            position=user.position or None,
+                            department=user.user_group or None,
+                        )
+                    except Exception:
+                        pass
 
                     session.update({
                         'user_id': user.id, 'username': user.username, 'full_name': user.full_name,

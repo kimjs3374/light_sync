@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}계약서 일괄 업로드{% endblock %}
+{% block content %}
+<style>
+.drop-zone{border:2px dashed #adb5bd;border-radius:12px;padding:48px 24px;text-align:center;cursor:pointer;transition:all .2s;background:#f8f9fa}
+.drop-zone:hover,.drop-zone.drag-over{border-color:#0d6efd;background:#e8f0fe}
+.drop-zone.uploading{border-color:#ffc107;background:#fff8e1;pointer-events:none}
+.file-queue{max-height:200px;overflow-y:auto}
+.file-item{display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:13px;border-bottom:1px solid #eee}
+.file-item .remove{cursor:pointer;color:#dc3545;font-weight:bold}
+.result-item{padding:6px 12px;margin:2px 0;border-radius:6px;font-size:13px}
+.result-item.success{background:#d1e7dd;color:#0f5132}
+.result-item.fail{background:#f8d7da;color:#842029}
+.result-item.skip{background:#fff3cd;color:#664d03}
+.contract-table{font-size:13px}
+.contract-table th{background:#f1f3f5;position:sticky;top:0;z-index:1;white-space:nowrap}
+.contract-table td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:250px}
+.badge-ok{background:#198754;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px}
+.badge-no{background:#dc3545;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px}
+.progress-ring{width:80px;height:80px}
+.stat-num{font-size:28px;font-weight:700}
+</style>
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <h5 class="mb-0">계약서 일괄 업로드</h5>
+    <a href="{{ url_for('document.document_list') }}" class="btn btn-outline-secondary btn-sm">서류관리로 돌아가기</a>
+</div>
+
+<!-- 상단 요약 -->
+<div class="row g-3 mb-4">
+    <div class="col-auto">
+        <div class="card border-0 shadow-sm text-center px-4 py-3">
+            <div class="stat-num text-primary">{{ total }}</div>
+            <div class="text-muted small">전체</div>
+        </div>
+    </div>
+    <div class="col-auto">
+        <div class="card border-0 shadow-sm text-center px-4 py-3">
+            <div class="stat-num text-success" id="stat-uploaded">{{ uploaded }}</div>
+            <div class="text-muted small">업로드 완료</div>
+        </div>
+    </div>
+    <div class="col-auto">
+        <div class="card border-0 shadow-sm text-center px-4 py-3">
+            <div class="stat-num text-danger" id="stat-remaining">{{ total - uploaded }}</div>
+            <div class="text-muted small">미업로드</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- 왼쪽: 드래그앤드롭 + 업로드 -->
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="drop-zone" id="dropZone">
+                    <div style="font-size:48px;color:#adb5bd;margin-bottom:12px">&#128196;</div>
+                    <div class="fw-bold mb-1">계약서 PDF 파일을 여기에 드래그하세요</div>
+                    <div class="text-muted small mb-3">또는 클릭하여 파일 선택</div>
+                    <input type="file" id="fileInput" accept=".pdf" multiple hidden>
+                </div>
+
+                <!-- 파일 큐 -->
+                <div id="fileQueue" class="file-queue mt-3" style="display:none"></div>
+
+                <button id="uploadBtn" class="btn btn-primary w-100 mt-3" style="display:none" disabled>
+                    <span id="uploadBtnText">업로드</span>
+                    <span id="uploadSpinner" class="spinner-border spinner-border-sm ms-1" style="display:none"></span>
+                </button>
+
+                <!-- 업로드 결과 -->
+                <div id="uploadResults" class="mt-3" style="display:none">
+                    <h6 class="mb-2">업로드 결과</h6>
+                    <div id="resultList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 오른쪽: 계약 목록 -->
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex align-items-center justify-content-between py-2">
+                <span class="fw-bold small">계약서 업로드 현황</span>
+                <div>
+                    <button class="btn btn-outline-secondary btn-sm active" onclick="filterTable('all')">전체</button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="filterTable('no')">미업로드</button>
+                    <button class="btn btn-outline-success btn-sm" onclick="filterTable('ok')">완료</button>
+                </div>
+            </div>
+            <div style="max-height:600px;overflow-y:auto">
+                <table class="table table-hover contract-table mb-0">
+                    <thead><tr>
+                        <th>상태</th>
+                        <th>납품요구번호</th>
+                        <th>사업명</th>
+                        <th>수수료</th>
+                        <th>하자</th>
+                    </tr></thead>
+                    <tbody id="contractBody">
+                    {% for item in items %}
+                    <tr data-req="{{ item.req_no }}" data-status="{{ 'ok' if item.has_pdf else 'no' }}">
+                        <td>
+                            {% if item.has_pdf %}
+                            <span class="badge-ok">완료</span>
+                            {% else %}
+                            <span class="badge-no">미등록</span>
+                            {% endif %}
+                        </td>
+                        <td><code style="font-size:11px">{{ item.req_no }}</code></td>
+                        <td title="{{ item.name }}">{{ item.name }}</td>
+                        <td>{{ '{:,}'.format(item.fee) if item.fee else '-' }}</td>
+                        <td>{{ item.warranty or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const fileQueue = document.getElementById('fileQueue');
+const uploadBtn = document.getElementById('uploadBtn');
+const uploadBtnText = document.getElementById('uploadBtnText');
+const uploadSpinner = document.getElementById('uploadSpinner');
+const uploadResults = document.getElementById('uploadResults');
+const resultList = document.getElementById('resultList');
+let selectedFiles = [];
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    addFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => addFiles(fileInput.files));
+
+function addFiles(files) {
+    for (const f of files) {
+        if (f.type === 'application/pdf' && !selectedFiles.some(s => s.name === f.name)) {
+            selectedFiles.push(f);
+        }
+    }
+    renderQueue();
+}
+
+function removeFile(idx) {
+    selectedFiles.splice(idx, 1);
+    renderQueue();
+}
+
+function renderQueue() {
+    if (!selectedFiles.length) {
+        fileQueue.style.display = 'none';
+        uploadBtn.style.display = 'none';
+        return;
+    }
+    fileQueue.style.display = 'block';
+    uploadBtn.style.display = 'block';
+    uploadBtn.disabled = false;
+    fileQueue.innerHTML = selectedFiles.map((f, i) =>
+        `<div class="file-item">
+            <span class="remove" onclick="removeFile(${i})">&times;</span>
+            <span>${f.name}</span>
+            <span class="text-muted ms-auto">${(f.size/1024).toFixed(0)}KB</span>
+        </div>`
+    ).join('');
+    uploadBtnText.textContent = `${selectedFiles.length}개 파일 업로드`;
+}
+
+uploadBtn.addEventListener('click', async () => {
+    if (!selectedFiles.length) return;
+    uploadBtn.disabled = true;
+    uploadSpinner.style.display = '';
+    uploadBtnText.textContent = '업로드 중...';
+    dropZone.classList.add('uploading');
+
+    const formData = new FormData();
+    selectedFiles.forEach(f => formData.append('files', f));
+
+    try {
+        const resp = await fetch('{{ url_for("document.bulk_upload_contract_pdf") }}', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token() }}'},
+            body: formData
+        });
+        const data = await resp.json();
+        showResults(data.results || []);
+    } catch (e) {
+        resultList.innerHTML = `<div class="result-item fail">업로드 실패: ${e.message}</div>`;
+        uploadResults.style.display = 'block';
+    }
+
+    uploadSpinner.style.display = 'none';
+    uploadBtnText.textContent = '완료';
+    dropZone.classList.remove('uploading');
+    selectedFiles = [];
+    fileQueue.style.display = 'none';
+});
+
+function showResults(results) {
+    uploadResults.style.display = 'block';
+    let successCount = 0;
+    resultList.innerHTML = results.map(r => {
+        if (r.status === 'success') {
+            successCount++;
+            // 테이블 행 업데이트
+            const row = document.querySelector(`tr[data-req="${r.req_no}"]`);
+            if (row) {
+                row.dataset.status = 'ok';
+                row.cells[0].innerHTML = '<span class="badge-ok">완료</span>';
+                row.cells[3].textContent = r.fee || '-';
+                row.cells[4].textContent = r.warranty || '-';
+            }
+            return `<div class="result-item success">${r.msg} <code>${r.req_no||''}</code> — 수수료: ${r.fee||'-'}원</div>`;
+        } else if (r.status === 'fail') {
+            return `<div class="result-item fail">${r.file} — ${r.msg}</div>`;
+        } else {
+            return `<div class="result-item skip">${r.file} — ${r.msg}</div>`;
+        }
+    }).join('');
+
+    // 통계 업데이트
+    const uploaded = document.querySelectorAll('tr[data-status="ok"]').length;
+    const total = document.querySelectorAll('#contractBody tr').length;
+    document.getElementById('stat-uploaded').textContent = uploaded;
+    document.getElementById('stat-remaining').textContent = total - uploaded;
+}
+
+function filterTable(type) {
+    document.querySelectorAll('#contractBody tr').forEach(row => {
+        if (type === 'all') row.style.display = '';
+        else if (type === 'ok') row.style.display = row.dataset.status === 'ok' ? '' : 'none';
+        else row.style.display = row.dataset.status === 'no' ? '' : 'none';
+    });
+    document.querySelectorAll('.card-header .btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+}
+</script>
+{% endblock %}

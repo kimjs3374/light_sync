@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Sheet Tab Test</title>
+<script src="https://docs.mgnt.kr/web-apps/apps/api/documents/api.js"></script>
+<style>html, body { margin: 0; padding: 0; height: 100%; } #editor { height: 100%; }</style>
+</head>
+<body>
+<div id="editor"></div>
+<script>
+var docEditor = new DocsAPI.DocEditor("editor", {
+  document: {
+    fileType: "xlsx",
+    key: "tabtest_" + Date.now(),
+    title: "test.xlsx",
+    url: "http://host.internal:8501/static/templates/commencement_template.xlsx",
+  },
+  documentType: "cell",
+  editorConfig: {
+    mode: "edit",
+    lang: "ko",
+    callbackUrl: "http://host.internal:8501/api/onlyoffice/callback",
+  },
+  events: {
+    onDocumentReady: function() {
+      document.title = "READY";
+      console.log("DOCUMENT READY");
+    },
+    onError: function(e) {
+      document.title = "ERROR:" + JSON.stringify(e.data);
+      console.error("ONLYOFFICE ERROR:", e);
+    }
+  }
+});
+</script>
+</body>
+</html>

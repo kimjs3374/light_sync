@@ -29,6 +29,8 @@ from .tools import (
     business_trip,
     document,
     tool_mgmt,
+    mail,
+    activity,
 )
 from .resources import magnatech
 
@@ -61,4 +63,6 @@ def register_all(mcp: FastMCP):
     business_trip.register(mcp)
     document.register(mcp)
     tool_mgmt.register(mcp)
+    mail.register(mcp)
+    activity.register(mcp)
     magnatech.register(mcp)

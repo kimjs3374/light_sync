@@ -54,6 +54,7 @@ export default function Dashboard() {
       { label: '도면관리', path: '/drawings' },
       { label: '입고사진', path: '/receiving-photos' },
       { label: '출장관리', path: '/business-trips' },
+      { label: '운행일지', path: '/vehicle-logs' },
       { label: '공구관리', path: '/tools' },
     ]},
   ];

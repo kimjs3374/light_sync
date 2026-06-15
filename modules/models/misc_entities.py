@@ -48,6 +48,7 @@ class HistoryLog(Base):
     content = Column(Text, nullable=False)
     log_scope = Column(String(20), default='common')      # design/contract/sales/drawing/technical/common
     log_kind = Column(String(20), default='system')       # system/comment/reply
+    origin = Column(String(20), default='system')         # system/web/chat_confirmed/chat_freeform (AX KPI 측정)
     parent_log_id = Column(Integer, ForeignKey('history_logs.id'), nullable=True)
     root_log_id = Column(Integer, ForeignKey('history_logs.id'), nullable=True)
     origin_snapshot = Column(Text, nullable=True)
@@ -117,6 +118,7 @@ class Notification(Base):
     noti_type = Column(String(30), nullable=False, default='system')
     link = Column(String(500), nullable=True)
     is_read = Column(Boolean, default=False)
+    dedupe_key = Column(String(200), nullable=True)  # 실제 중복 방어 키 (event_type+entity_id+date)
     created_at = Column(DateTime, default=datetime.datetime.now)
 
     user = relationship("User")
@@ -209,6 +211,7 @@ class WarrantyCase(Base):
     defect_type = Column(String(30), nullable=False)
     symptom = Column(Text, nullable=True)
     status = Column(String(20), default='접수')
+    entity_version = Column(Integer, nullable=False, default=1)  # 동시수정 충돌 방지 (optimistic locking)
     reported_by = Column(String(100), nullable=True)
     reported_date = Column(Date, nullable=True)
     site_visit_date = Column(Date, nullable=True)
@@ -682,6 +685,31 @@ class BusinessTrip(Base):
         return ', '.join(f"{m.user_name} {m.position or ''}" .strip() for m in self.members)
 
     @property
+    def effective_status(self):
+        """출발/복귀 일시 기준 자동 상태 계산.
+        '취소'는 수동 플래그로 우선. 그 외는 날짜로 결정.
+        - now < departure_date → 예정
+        - departure_date <= now < (return_date | 출발일 다음날 00:00) → 진행중
+        - now >= 위 시각 → 완료
+        복귀 미정인 경우 당일 출장으로 보고 다음날(자정 이후) 자동 완료.
+        """
+        if self.status == '취소':
+            return '취소'
+        now = datetime.datetime.now()
+        if not self.departure_date:
+            return '예정'
+        if now < self.departure_date:
+            return '예정'
+        if self.return_date:
+            implicit_return = self.return_date
+        else:
+            dep_day = self.departure_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            implicit_return = dep_day + datetime.timedelta(days=1)
+        if now >= implicit_return:
+            return '완료'
+        return '진행중'
+
+    @property
     def departure_date_str(self):
         if not self.departure_date:
             return ''
@@ -742,3 +770,42 @@ class VehicleLog(Base):
     __table_args__ = (
         Index('ix_vehicle_logs_vehicle_date_id', 'vehicle', 'use_date'),
     )
+
+
+class ChannelToolAcl(Base):
+    """Mattermost 채널 × MCP tool 권한 매트릭스.
+
+    채널별 봇 도구 게이팅을 코드(PERSONAS dict)가 아닌 DB로 관리.
+    `light_sync_mmbot/system-prompt.md` 의 채널 페르소나가 이 테이블을 참조.
+    """
+    __tablename__ = 'channel_tool_acl'
+
+    channel_name = Column(String(50), primary_key=True)   # Mattermost display_name (공지/현장관리/AS관리/장비및운송비/계약서/잡담 등)
+    tool_name = Column(String(100), primary_key=True)     # MCP tool 이름 (search_projects, preview_warranty_case_register 등)
+    allow = Column(Boolean, nullable=False, default=True) # True=허용, False=명시 deny
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.now)
+    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.now,
+                        onupdate=datetime.datetime.now)
+
+    __table_args__ = (
+        Index('ix_channel_tool_acl_channel', 'channel_name'),
+    )
+
+
+class PendingWriteSession(Base):
+    """채팅 write preview → 버튼 확인 대기 세션.
+
+    MCP preview tool이 생성하고, Flask action handler가 소비한다.
+    TTL 30분. used=True가 되면 재사용 불가.
+    """
+    __tablename__ = 'pending_write_sessions'
+
+    token       = Column(String(36), primary_key=True)          # UUID
+    intent_type = Column(String(50), nullable=False)            # write intent 이름
+    payload_json = Column(Text, nullable=False, default='{}')   # 직렬화된 write payload
+    channel_id  = Column(String(50), nullable=True)
+    user_name   = Column(String(50), nullable=True)
+    created_at  = Column(DateTime, default=datetime.datetime.now)
+    expires_at  = Column(DateTime, nullable=False)
+    used        = Column(Boolean, default=False)
