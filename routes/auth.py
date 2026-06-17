@@ -476,7 +476,8 @@ def admin_settings():
         position_choices = ['대표이사', '전무', '상무', '이사', '부장', '차장', '과장', '대리', '주임', '사원']
 
         # 최초 admin 계정 확인 (프로젝트 초기화 탭 표시 여부)
-        is_superadmin = session.get('username') == SUPERADMIN_USERNAME
+        # admin 권한이면 모두 노출 (G2B동기화/홈택스연동/프로젝트초기화 탭). 페이지는 이미 @admin_required.
+        is_superadmin = session.get('role') == 'admin'
 
         # 운영설정 + 메뉴 순서
         from modules.services.dashboard_actions import get_dashboard_setting_int
@@ -1041,11 +1042,7 @@ def api_update_user_hide_financial(user_id):
 @admin_required
 def reset_projects():
     """프로젝트 전체 초기화 — 프로젝트 + 연관 데이터 삭제, 마스터 데이터 유지"""
-    # db.py SUPERADMIN_USERNAME 계정만 허용
-    if session.get('username') != SUPERADMIN_USERNAME:
-        flash('최고관리자 계정만 프로젝트 초기화를 실행할 수 있습니다.', 'danger')
-        return redirect(url_for('auth.admin_settings'))
-
+    # admin 권한이면 허용(페이지는 @admin_required). 삭제 안전장치는 아래 확인문구로 유지.
     confirm_text = (request.form.get('confirm_text') or '').strip()
     if confirm_text != '프로젝트초기화':
         flash('확인 문구가 일치하지 않습니다. "프로젝트초기화"를 정확히 입력해주세요.', 'danger')
