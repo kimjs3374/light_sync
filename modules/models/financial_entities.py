@@ -30,7 +30,8 @@ class TaxInvoice(Base):
     approval_no = Column(String(50), unique=True, nullable=False)   # 국세청 승인번호
     issue_date = Column(Date, nullable=True)                         # 작성일자
     send_date = Column(Date, nullable=True)                          # 전송일자
-    invoice_type = Column(String(20), default='세금계산서')           # 세금계산서/수정세금계산서
+    invoice_type = Column(String(20), default='세금계산서')           # 세금계산서/수정세금계산서/계산서
+    direction = Column(String(10), default='매출')                    # 매출/매입 (홈택스 수집 시 공급자 사업자번호로 판정)
 
     # 공급자
     supplier_business_no = Column(String(20), nullable=True)         # 공급자 사업자번호
@@ -91,6 +92,31 @@ class PaymentRecord(Base):
     created_at = Column(DateTime, default=datetime.datetime.now)
 
     tax_invoice = relationship("TaxInvoice", back_populates="payment_records")
+
+
+class HometaxCredential(Base):
+    """홈택스 공동인증서 무인 수집 설정 (단일 회사 기준 1건).
+
+    인증서 파일은 로컬 비밀 디렉토리(NPKI/, .gitignore)에 저장하고,
+    비밀번호는 Fernet 암호화하여 저장한다(메일계정과 동일 패턴).
+    """
+    __tablename__ = 'hometax_credentials'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    biz_no = Column(String(20), nullable=True)                        # 사업자등록번호 (숫자만)
+    cert_der_path = Column(String(300), nullable=True)               # signCert.der 절대경로
+    cert_key_path = Column(String(300), nullable=True)               # signPri.key 절대경로
+    password_encrypted = Column(Text, nullable=True)                 # Fernet 암호화된 인증서 비번
+    cert_subject = Column(String(300), nullable=True)               # 표시용 인증서 주체(CN)
+    cert_expiry = Column(Date, nullable=True)                         # 표시용 인증서 만료일
+
+    enabled = Column(Boolean, default=False)                         # 무인 수집 활성화 여부
+    last_sync_at = Column(DateTime, nullable=True)                   # 마지막 수집 시각
+    last_sync_status = Column(String(20), nullable=True)            # 성공/실패/진행중
+    last_sync_message = Column(Text, nullable=True)                  # 마지막 결과 메시지
+
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
 class Quotation(Base):

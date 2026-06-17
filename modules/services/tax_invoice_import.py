@@ -269,6 +269,7 @@ def import_and_match(db, records):
             issue_date=rec['issue_date'],
             send_date=rec['send_date'],
             invoice_type=rec['invoice_type'],
+            direction=rec.get('direction', '매출'),
             supplier_business_no=rec['supplier_business_no'],
             supplier_name=rec['supplier_name'],
             buyer_business_no=rec['buyer_business_no'],

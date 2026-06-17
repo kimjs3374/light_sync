@@ -26,3 +26,4 @@ imapclient>=3.0.0
 nh3>=0.2.0
 cryptography>=42.0.0
 holidays==0.98
+hometaxbot>=0.2.31   # 홈택스 공동인증서 무인 세금계산서 수집 (Apache 2.0)

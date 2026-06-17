@@ -33,6 +33,12 @@ crontab -e
 #    - 변경차수 증가 감지 시 계약 금액/품목 자동 업데이트
 30 1 * * * cd /web/light_sync && venv/bin/flask sync-g2b-changes >> logs/g2b_sync.log 2>&1
 
+# 1-3) 홈택스 매입/매출 세금계산서 수집 (매일 새벽 6시 — 백업 02시/G2B 07시와 분리)
+#    - 공동인증서 무인 로그인 → 최근 10일 매입/매출 전자세금계산서 수집
+#    - 매출은 G2B 계약 매칭 + 하자보증 파이프라인 연결, 매입은 저장만
+#    - 중복(approval_no)은 자동 skip, 관리자설정▸홈택스 연동에서 상태 확인
+0 6 * * * cd /web/light_sync && FLASK_APP=app /web/light_sync/venv/bin/flask sync-hometax-invoices >> /web/light_sync/logs/hometax.log 2>&1
+
 # 2) NAS 폴더 동기화 (매 30분)
 #    - 시놀로지 NAS에서 curl로 호출하는 방식 유지
 #    (NAS 작업 스케줄러에서 설정)

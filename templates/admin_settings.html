@@ -55,6 +55,9 @@
         <button class="nav-link" id="g2bsync-tab" data-bs-toggle="tab" data-bs-target="#g2bSyncPane" type="button" role="tab">G2B 계약동기화</button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" id="hometax-tab" data-bs-toggle="tab" data-bs-target="#hometaxPane" type="button" role="tab">홈택스 연동</button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link text-danger" id="reset-tab" data-bs-toggle="tab" data-bs-target="#resetPane" type="button" role="tab">프로젝트 초기화</button>
     </li>
     {% endif %}
@@ -662,6 +665,75 @@
     </div>
     {% endif %}
 
+    {# ── 홈택스 연동 탭 ── #}
+    {% if is_superadmin %}
+    <div class="tab-pane fade p-3" id="hometaxPane" role="tabpanel">
+        <div class="alert alert-info mb-3">
+            <strong>홈택스 매입/매출 세금계산서 무인 수집</strong><br>
+            공동인증서를 등록하면 매일 새벽 홈택스에 자동 로그인하여 전자세금계산서를 수집합니다.
+            매출은 G2B 계약 매칭 + 하자보증까지 자동 연결되고, 매입은 저장됩니다.
+        </div>
+
+        <div id="htStatus" class="mb-3 small text-muted">상태 불러오는 중...</div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3">공동인증서 등록</h6>
+                <div class="row g-3" style="max-width:680px;">
+                    <div class="col-md-6">
+                        <label class="form-label small mb-1">사업자등록번호</label>
+                        <input type="text" id="htBizNo" class="form-control form-control-sm" placeholder="숫자만 (예: 4088168519)">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small mb-1">인증서 비밀번호</label>
+                        <input type="password" id="htPw" class="form-control form-control-sm" placeholder="변경 시에만 입력" autocomplete="new-password">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small mb-1">서명 인증서 (signCert.der)</label>
+                        <input type="file" id="htDer" class="form-control form-control-sm" accept=".der">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small mb-1">개인키 (signPri.key)</label>
+                        <input type="file" id="htKey" class="form-control form-control-sm" accept=".key">
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="htEnabled">
+                            <label class="form-check-label small" for="htEnabled">무인 자동 수집 사용 (매일 새벽 2시)</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <button type="button" class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick="hometax.save()">저장</button>
+                        <button type="button" class="btn btn-warning btn-sm ms-2" style="white-space:nowrap;" onclick="hometax.test()">연결 테스트</button>
+                    </div>
+                </div>
+                <div class="form-text mt-2">인증서 파일은 서버 비밀 디렉토리에 저장되고 비밀번호는 암호화됩니다. 외부에 노출되지 않습니다.</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3">수동 수집</h6>
+                <div class="row g-2 align-items-end mb-2" style="max-width:520px;">
+                    <div class="col-auto">
+                        <label class="form-label small mb-1">시작일</label>
+                        <input type="date" id="htFrom" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label small mb-1">종료일</label>
+                        <input type="date" id="htTo" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-outline-primary btn-sm" style="white-space:nowrap;" onclick="hometax.sync()">지금 수집</button>
+                    </div>
+                </div>
+                <div class="form-text">비워두면 최근 10일을 수집합니다. 대량 소급(예: 2011년~)은 서버 CLI로 연도별 분할 실행을 권장합니다.</div>
+                <div id="htSyncResult" class="mt-2" style="display:none"></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     {# ── 프로젝트 초기화 탭 ── #}
     {% if is_superadmin %}
     <div class="tab-pane fade p-3" id="resetPane" role="tabpanel">
@@ -870,6 +942,77 @@ function runG2bSync() {
         div.innerHTML = '<div class="alert alert-danger small mb-0">네트워크 오류: ' + e.message + '</div>';
     });
 }
+
+const hometax = {
+    _csrf() { return '{{ csrf_token() }}'; },
+    async loadStatus() {
+        const el = document.getElementById('htStatus');
+        try {
+            const r = await fetch('/admin/hometax/status');
+            const d = await r.json();
+            if (!d.configured) { el.innerHTML = '<span class="text-muted">아직 인증서가 등록되지 않았습니다.</span>'; }
+            else {
+                const badge = d.enabled ? '<span class="badge bg-success" style="white-space:nowrap;">자동수집 ON</span>'
+                                        : '<span class="badge bg-secondary" style="white-space:nowrap;">자동수집 OFF</span>';
+                let last = '';
+                if (d.last_sync_status) {
+                    const cls = d.last_sync_status === '성공' ? 'text-success' : (d.last_sync_status === '실패' ? 'text-danger' : 'text-muted');
+                    last = `<div class="mt-1 ${cls}">최근 수집(${d.last_sync_at || '-'}): ${d.last_sync_status} — ${d.last_sync_message || ''}</div>`;
+                }
+                el.innerHTML = `${badge} <strong>${d.cert_subject || ''}</strong>`
+                    + ` · 사업자 ${d.biz_no || '-'} · 만료 ${d.cert_expiry || '-'}` + last;
+                if (d.biz_no) document.getElementById('htBizNo').value = d.biz_no;
+                document.getElementById('htEnabled').checked = !!d.enabled;
+            }
+        } catch (e) { el.innerHTML = '<span class="text-danger">상태 조회 실패</span>'; }
+    },
+    async save() {
+        const fd = new FormData();
+        fd.append('biz_no', document.getElementById('htBizNo').value.trim());
+        fd.append('password', document.getElementById('htPw').value);
+        fd.append('enabled', document.getElementById('htEnabled').checked ? 'Y' : 'N');
+        const der = document.getElementById('htDer').files[0];
+        const key = document.getElementById('htKey').files[0];
+        if (der) fd.append('cert_der', der);
+        if (key) fd.append('cert_key', key);
+        const r = await fetch('/admin/hometax/save', { method: 'POST', headers: { 'X-CSRFToken': this._csrf() }, body: fd });
+        const d = await r.json();
+        if (d.ok) { alert('저장되었습니다.'); document.getElementById('htPw').value = ''; this.loadStatus(); }
+        else { alert('저장 실패: ' + (d.error || '')); }
+    },
+    async test() {
+        const r = await fetch('/admin/hometax/test', { method: 'POST', headers: { 'X-CSRFToken': this._csrf() } });
+        const d = await r.json();
+        if (d.ok) alert(`연결 성공 ✅\n사업자: ${d.name} (${d.biz_no})\n홈택스ID: ${d.hometax_id}`);
+        else alert('연결 실패: ' + (d.error || ''));
+    },
+    async sync() {
+        const div = document.getElementById('htSyncResult');
+        const body = {};
+        const f = document.getElementById('htFrom').value, t = document.getElementById('htTo').value;
+        if (f) body.from = f;
+        if (t) body.to = t;
+        div.style.display = 'block';
+        div.innerHTML = '<span class="text-muted">시작 중...</span>';
+        const r = await fetch('/admin/hometax/sync', {
+            method: 'POST', headers: { 'X-CSRFToken': this._csrf(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const d = await r.json();
+        div.innerHTML = d.ok ? `<div class="alert alert-success small mb-0">${d.message}</div>`
+                             : `<div class="alert alert-danger small mb-0">${d.error || '오류'}</div>`;
+        if (d.ok) {
+            // 진행상태 폴링 (10초 간격, 최대 30분)
+            let n = 0;
+            const timer = setInterval(async () => {
+                n++; await hometax.loadStatus();
+                const st = document.getElementById('htStatus').textContent;
+                if (st.includes('성공') || st.includes('실패') || n > 180) clearInterval(timer);
+            }, 10000);
+        }
+    },
+};
+document.getElementById('hometax-tab')?.addEventListener('shown.bs.tab', () => hometax.loadStatus());
 </script>
 <script src="{{ url_for('static', filename='js/admin_settings.js') }}"></script>
 <script>

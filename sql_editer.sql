@@ -1481,3 +1481,32 @@ WITH ranked AS (
 )
 UPDATE light_sync.project_photos p SET sort_order = ranked.rn
 FROM ranked WHERE p.id = ranked.id;
+
+-- ════════════════════════════════════════════════════════
+-- 홈택스 무인 세금계산서 수집 (2026-06-17)
+-- 공동인증서 로그인으로 매입/매출 전자세금계산서 자동 수집.
+-- 1) tax_invoices.direction: 매출/매입 구분 (공급자 사업자번호로 판정).
+--    기존 데이터는 전부 국세청 매출엑셀 임포트분 → '매출' 백필.
+-- 2) hometax_credentials: 인증서 경로 + Fernet 암호화된 비번 + 수집상태 (단일 행).
+-- ════════════════════════════════════════════════════════
+ALTER TABLE light_sync.tax_invoices ADD COLUMN IF NOT EXISTS direction VARCHAR(10) DEFAULT '매출';
+UPDATE light_sync.tax_invoices SET direction = '매출' WHERE direction IS NULL;
+
+CREATE TABLE IF NOT EXISTS light_sync.hometax_credentials (
+    id                 SERIAL      PRIMARY KEY,
+    biz_no             VARCHAR(20),
+    cert_der_path      VARCHAR(300),
+    cert_key_path      VARCHAR(300),
+    password_encrypted TEXT,
+    cert_subject       VARCHAR(300),
+    cert_expiry        DATE,
+    enabled            BOOLEAN     DEFAULT FALSE,
+    last_sync_at       TIMESTAMP,
+    last_sync_status   VARCHAR(20),
+    last_sync_message  TEXT,
+    created_at         TIMESTAMP   DEFAULT NOW(),
+    updated_at         TIMESTAMP   DEFAULT NOW()
+);
+
+-- 매입/매출 + 전송일자 조회 가속
+CREATE INDEX IF NOT EXISTS ix_tax_invoices_direction ON light_sync.tax_invoices(direction, send_date);

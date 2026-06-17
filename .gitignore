@@ -66,3 +66,8 @@ icube_migration/
 .playwright-mcp/
 light_sync_channel/node_modules/
 .oidc_keys/
+
+# 공동인증서 (개인키/비밀번호 — 절대 커밋 금지)
+NPKI/
+*.der
+*.key

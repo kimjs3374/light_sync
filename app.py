@@ -41,6 +41,7 @@ from routes.receiving_photo import receiving_photo_bp
 from routes.bom import bom_bp
 from routes.item import item_bp
 from routes.financial import financial_bp
+from routes.hometax import hometax_bp
 from routes.billing import billing_bp
 from routes.inventory import inventory_bp
 from routes.quotation import quotation_bp
@@ -282,6 +283,7 @@ app.register_blueprint(receiving_photo_bp)
 app.register_blueprint(bom_bp)
 app.register_blueprint(item_bp)
 app.register_blueprint(financial_bp)
+app.register_blueprint(hometax_bp)
 app.register_blueprint(billing_bp)
 app.register_blueprint(inventory_bp)
 app.register_blueprint(quotation_bp)
@@ -701,6 +703,27 @@ def cleanup_mail_files_cli():
             deleted += 1
         db.commit()
     click.echo(f"[메일정리] 만료 파일 {deleted}건 삭제")
+
+
+@app.cli.command('sync-hometax-invoices')
+@click.option('--from', 'from_date', default=None, help='수집 시작일 YYYY-MM-DD (없으면 최근 10일)')
+@click.option('--to', 'to_date', default=None, help='수집 종료일 YYYY-MM-DD (없으면 오늘)')
+def sync_hometax_invoices_cli(from_date, to_date):
+    """홈택스 공동인증서로 매입/매출 세금계산서 수집 (crontab용).
+
+    초기 대량 소급은 연도별로 분할 실행 권장:
+      flask sync-hometax-invoices --from 2011-01-01 --to 2011-12-31
+    """
+    from modules.services.hometax_collector import run_collection
+
+    begin = datetime.datetime.strptime(from_date, '%Y-%m-%d').date() if from_date else None
+    end = datetime.datetime.strptime(to_date, '%Y-%m-%d').date() if to_date else None
+
+    result = run_collection(begin, end)
+    if result.get('ok'):
+        click.echo(f"[홈택스] {result['message']}")
+    else:
+        click.echo(f"[홈택스] 실패: {result['message']}")
 
 
 @app.route('/health')
