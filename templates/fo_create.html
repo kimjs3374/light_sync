@@ -371,28 +371,61 @@
     var preview = document.getElementById('filePreview');
     var icons = {dwg:'📐',dxf:'📐',pdf:'📄',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',zip:'📦'};
 
-    function showPreview() {
-        if (!fileInput.files.length) { preview.innerHTML = ''; return; }
-        var html = '';
-        for (var i = 0; i < fileInput.files.length; i++) {
-            var f = fileInput.files[i];
-            var ext = f.name.split('.').pop().toLowerCase();
-            var sz = f.size > 1048576 ? (f.size/1048576).toFixed(1)+'MB' : Math.round(f.size/1024)+'KB';
-            html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:.85rem;">'
-                + '<span>' + (icons[ext]||'📎') + '</span><span>' + f.name + '</span>'
-                + '<small class="text-muted">' + sz + '</small></div>';
-        }
-        preview.innerHTML = html;
+    // 누적 보관용 — 여러 번 선택/드롭해도 이전 첨부가 사라지지 않도록 DataTransfer로 합친다.
+    var store = new DataTransfer();
+
+    function syncInput() {
+        fileInput.files = store.files;
     }
 
-    fileInput.addEventListener('change', showPreview);
+    function addFiles(fileList) {
+        for (var i = 0; i < fileList.length; i++) {
+            var nf = fileList[i];
+            var dup = false;
+            for (var j = 0; j < store.items.length; j++) {
+                var ef = store.files[j];
+                if (ef.name === nf.name && ef.size === nf.size) { dup = true; break; }
+            }
+            if (!dup) store.items.add(nf);
+        }
+        syncInput();
+        showPreview();
+    }
+
+    function removeFile(idx) {
+        store.items.remove(idx);
+        syncInput();
+        showPreview();
+    }
+
+    function showPreview() {
+        if (!store.files.length) { preview.innerHTML = ''; return; }
+        preview.innerHTML = '';
+        for (var i = 0; i < store.files.length; i++) {
+            var f = store.files[i];
+            var ext = f.name.split('.').pop().toLowerCase();
+            var sz = f.size > 1048576 ? (f.size/1048576).toFixed(1)+'MB' : Math.round(f.size/1024)+'KB';
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:.85rem;';
+            row.innerHTML = '<span>' + (icons[ext]||'📎') + '</span><span>' + f.name + '</span>'
+                + '<small class="text-muted">' + sz + '</small>'
+                + '<button type="button" class="btn btn-sm btn-link text-danger p-0 ms-auto" style="font-size:.85rem;">삭제</button>';
+            (function(idx) {
+                row.querySelector('button').addEventListener('click', function() { removeFile(idx); });
+            })(i);
+            preview.appendChild(row);
+        }
+    }
+
+    fileInput.addEventListener('change', function() {
+        addFiles(fileInput.files);
+    });
 
     dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('drag-over'); });
     dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('drag-over'); });
     dropZone.addEventListener('drop', function(e) {
         e.preventDefault(); dropZone.classList.remove('drag-over');
-        fileInput.files = e.dataTransfer.files;
-        showPreview();
+        addFiles(e.dataTransfer.files);
     });
 })();
 

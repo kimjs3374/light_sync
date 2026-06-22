@@ -42,6 +42,21 @@ processing_order_bp = Blueprint('processing_order', __name__)
 ALLOWED_EXTENSIONS = {'dwg', 'dxf', 'pdf', 'jpg', 'jpeg', 'png', 'zip'}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
+# 가공발주 이메일 발신 부서 메일 (관리부/영업부/설계팀)
+FO_SENDER_CHOICES = [
+    ('purchase@mgnt.kr', '관리부'),
+    ('sales@mgnt.kr', '영업부'),
+    ('eng@mgnt.kr', '설계팀'),
+]
+FO_SENDER_EMAILS = {e for e, _ in FO_SENDER_CHOICES}
+# 담당자 부서명 → 기본 발신 메일 매핑
+FO_SENDER_BY_GROUP = {
+    '관리부': 'purchase@mgnt.kr',
+    '영업부': 'sales@mgnt.kr',
+    '설계팀': 'eng@mgnt.kr',
+    '설계부': 'eng@mgnt.kr',
+}
+
 
 # ===================================================================
 # 헬퍼
@@ -832,12 +847,19 @@ def fo_email_preview(fo_id):
         sig_lines.append(f'Office: {getattr(sig_user, "office_tel", None) or "061-392-5508"}')
         body_lines.extend(sig_lines)
 
+        # 담당자 부서 기준 기본 발신 메일 (없으면 관리부)
+        from_default = 'purchase@mgnt.kr'
+        if sig_user and sig_user.user_group:
+            from_default = FO_SENDER_BY_GROUP.get(sig_user.user_group, 'purchase@mgnt.kr')
+
         return jsonify({
             'to': vendor.email if vendor else '',
             'vendor_name': vendor.name if vendor else '',
             'subject': subject,
             'body': '\n'.join(body_lines),
             'files': [f.file_name for f in fo.files if not f.is_reference],
+            'from_default': from_default,
+            'from_choices': FO_SENDER_CHOICES,
         })
 
 
@@ -862,19 +884,27 @@ def fo_send_email(fo_id):
         subject = request.form.get('email_subject', '').strip()
         body = request.form.get('email_body', '').strip()
 
-        # 발신자: 담당자 (없으면 로그인 사용자)
+        # 발신 부서 메일 (관리부/영업부/설계팀 중 선택) — 없으면 담당자 개인계정
+        email_from = request.form.get('email_from', '').strip()
+        from_account_email = email_from if email_from in FO_SENDER_EMAILS else None
+
         sig_user_id = fo.assigned_to or session.get('user_id')
         sig_user = db.query(User).get(sig_user_id) if sig_user_id else None
-        from_email = sig_user.email if sig_user and sig_user.email else None
-        from_name = None
-        if sig_user:
-            name_parts = []
-            if sig_user.user_group:
-                name_parts.append(sig_user.user_group)
-            name_parts.append(sig_user.full_name or '')
-            if sig_user.position:
-                name_parts.append(sig_user.position)
-            from_name = ' '.join(name_parts).strip() or None
+        if from_account_email:
+            # 부서 메일로 발송 — From 표시는 send 함수가 부서 display_name으로 채움
+            from_email = None
+            from_name = None
+        else:
+            from_email = sig_user.email if sig_user and sig_user.email else None
+            from_name = None
+            if sig_user:
+                name_parts = []
+                if sig_user.user_group:
+                    name_parts.append(sig_user.user_group)
+                name_parts.append(sig_user.full_name or '')
+                if sig_user.position:
+                    name_parts.append(sig_user.position)
+                from_name = ' '.join(name_parts).strip() or None
 
         if not to_email or not subject or not body:
             flash('수신자, 제목, 본문을 모두 입력해주세요.', 'warning')
@@ -892,10 +922,11 @@ def fo_send_email(fo_id):
             to_email=to_email, subject=subject, body_text=body,
             attachments=attachments, from_email=from_email,
             from_name=from_name, user_id=sig_user_id,
+            from_account_email=from_account_email,
         )
 
         db.add(EmailHistory(
-            sender=from_email, receiver=to_email, subject=subject, content=body,
+            sender=from_account_email or from_email, receiver=to_email, subject=subject, content=body,
             attachment=', '.join(f.file_name for f in fo.files),
             is_success=result['success'],
             error_message=result['message'] if not result['success'] else None,

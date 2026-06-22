@@ -124,17 +124,56 @@ def _get_user_mail_account(user_id):
     return None
 
 
+def _get_shared_mail_account(email):
+    """공용(부서) 메일 계정의 SMTP 설정을 이메일 주소로 가져온다."""
+    if not email:
+        return None
+    try:
+        from modules.db_context import get_db
+        from modules.services.mail_client import decrypt_password
+        from sqlalchemy import text
+        with get_db() as db:
+            row = db.execute(text(
+                "SELECT email, smtp_host, smtp_port, username, password_encrypted, display_name "
+                "FROM light_sync.mail_accounts "
+                "WHERE email = :email AND is_active = true "
+                "ORDER BY is_shared DESC LIMIT 1"
+            ), {"email": email}).fetchone()
+            if row:
+                return {
+                    'email': row[0],
+                    'smtp_host': row[1],
+                    'smtp_port': row[2],
+                    'username': row[3],
+                    'password': decrypt_password(row[4]),
+                    'display_name': row[5],
+                }
+    except Exception as e:
+        logger.warning("공용 메일계정 조회 실패 (email=%s): %s", email, e)
+    return None
+
+
 def send_email_with_attachments(to_email, subject, body_text, attachments=None,
-                                from_email=None, from_name=None, user_id=None):
+                                from_email=None, from_name=None, user_id=None,
+                                from_account_email=None):
     """
     다중 첨부파일 이메일 발송 (가공발주 등).
-    user_id가 주어지면 해당 사용자의 메일 계정(mail_accounts)으로 발송.
-    없으면 환경변수 SMTP 설정(purchase@mgnt.kr) fallback.
+    - from_account_email이 주어지면 해당 부서 공용 계정(purchase/sales/eng 등)으로 발송.
+    - 없으면 user_id에 해당하는 사용자의 메일 계정(mail_accounts)으로 발송.
+    - 둘 다 없으면 환경변수 SMTP 설정(purchase@mgnt.kr) fallback.
     """
     attachments = attachments or []
 
-    # 1) 사용자 메일 계정으로 발송 시도
-    acct = _get_user_mail_account(user_id) if user_id else None
+    # 1) 발신 계정 결정: 부서 공용계정 우선 → 사용자 개인계정 → 환경변수
+    acct = _get_shared_mail_account(from_account_email) if from_account_email else None
+    if acct:
+        # 부서 메일로 발송 시 From 표시도 해당 부서로 (별도 지정 없을 때)
+        if not from_email:
+            from_email = acct['email']
+        if not from_name:
+            from_name = acct.get('display_name')
+    else:
+        acct = _get_user_mail_account(user_id) if user_id else None
     if acct:
         smtp_host = acct['smtp_host']
         smtp_port = acct['smtp_port']

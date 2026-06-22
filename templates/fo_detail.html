@@ -428,11 +428,15 @@
                 </div>
                 <div class="modal-body">
                     <div class="row g-3 mb-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small">발신 부서</label>
+                            <select name="email_from" id="emailFrom" class="form-select form-select-sm"></select>
+                        </div>
+                        <div class="col-md-4">
                             <label class="form-label fw-bold small">수신자</label>
                             <input type="email" name="email_to" id="emailTo" class="form-control form-control-sm" required>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-bold small">업체명</label>
                             <input type="text" id="emailVendor" class="form-control form-control-sm bg-light" readonly disabled>
                         </div>
@@ -491,6 +495,15 @@
             fetch('/processing-order/' + foId + '/email-preview')
                 .then(function(r) { return r.json(); })
                 .then(function(d) {
+                    var fromSel = document.getElementById('emailFrom');
+                    fromSel.innerHTML = '';
+                    (d.from_choices || []).forEach(function(c) {
+                        var opt = document.createElement('option');
+                        opt.value = c[0];
+                        opt.textContent = c[1] + ' (' + c[0] + ')';
+                        if (c[0] === d.from_default) opt.selected = true;
+                        fromSel.appendChild(opt);
+                    });
                     document.getElementById('emailTo').value = d.to;
                     document.getElementById('emailVendor').value = d.vendor_name;
                     document.getElementById('emailSubject').value = d.subject;
