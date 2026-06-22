@@ -39,6 +39,11 @@ INSTRUCTIONS = """
 | 직원/인원/사원 | 직원 목록 | `get_employees()` |
 | 근무인원/출근/연차/반차 | 오늘 근무현황 | `get_today_attendance()` |
 | 가공발주/외주가공/FO | 가공발주 현황 | `get_processing_orders()` |
+| 자재발주/현장별 자재/발주대기 자재 | 계약품목 발주 진행상태 | `get_material_orders(status, project_search)` |
+| 입고현황/미입고/부분입고/입고지연 | 발주품목 입고 추적 | `get_incoming_overview(status, search)` |
+| 청구/미청구/세금계산서 발행할 거/부분입금 | 청구관리 현황 | `get_billing_status(status, search)` |
+| 운행일지/차량 운행기록/주행거리/주유 | 차량 운행기록부 | `get_vehicle_logs(vehicle, user_name)` |
+| 부서 주간보고/주간 KPI/이번주 부서 현황 | 부서별 주간 집계 | `get_dept_weekly_report(dept)` |
 | 출장/출장 일정 | 출장 목록 | `get_business_trips()` |
 | 서류/착수계/납품계 | 서류 현황 | `get_document_list()` |
 | 공구/전동공구 | 공구 목록 | `get_tools_list()` |
@@ -55,6 +60,16 @@ INSTRUCTIONS = """
 | 이 메일 내용/본문/첨부 | 메일 본문 조회 | `read_mail_message(requester_username, uid)` |
 | 메일 폴더/보관함 구조 | 폴더 목록 | `list_mail_folders(requester_username)` |
 | 메일 보내줘/메일 발송/회신해줘 | 메일 발송 (확인 후 SMTP) | `write_preview_email_send(requester_username, to, subject, body, cc?, bcc?, account_id?)` |
+| 납품완료 처리/AS 접수/청구완료/운행일지·출장·일일보고 등록/발주상태 변경/생산완료 | 쓰기작업 (preview→확인 버튼 클릭 후 DB 반영) | `write_preview_*` |
+
+## ⚠️ 쓰기 작업(write_preview_*) 패턴 (필독)
+
+`write_preview_*` 도구는 **즉시 DB를 변경하지 않습니다**. 필드 검증 후 preview(요약+확인
+토큰)만 반환하고, 사용자가 채팅의 **확인 버튼**을 눌러야 Flask `/mattermost/action`에서
+실제 반영됩니다(`history_logs.origin='chat_confirmed'`).
+- 반환 `status=needs_info` → `question` 을 사용자에게 그대로 질문.
+- 반환 `status=preview` → `summary`/`fields` 를 보여주고 확인을 받으세요.
+- 절대 임의로 여러 번 호출하지 말 것. 한 작업당 1회 preview.
 
 ## ⚠️ 메일 도구 권한 정책 (필독)
 
@@ -68,7 +83,7 @@ INSTRUCTIONS = """
 - 다른 사용자의 개인 계정은 **절대 접근 불가** — `account_id` 명시해도 차단됨.
 - `requester_username` 없거나 식별 실패 시 모든 도구가 error 반환.
 
-## Tool 분류 (83개)
+## Tool 분류 (100개)
 
 ### 현장/프로젝트 (8개)
 - `get_projects(status, year, month, search)` — 현장 목록
@@ -127,6 +142,27 @@ INSTRUCTIONS = """
 - `get_receiving_history(vendor_id, project_id, status, date_from, date_to)` — 입고 이력
 - `get_receiving_detail(rcv_id, rcv_no)` — 입고 상세 (품목+발주연결)
 - `get_vendor_list(search)` — 거래처 목록
+
+### 자재발주 (2개)
+- `get_material_orders(status, project_search, material_search, limit)` — 현장 계약품목 단위 발주 진행상태 (발주대기/발주완료/입고완료)
+- `get_material_orders_by_project(project_id)` — 특정 현장 자재발주 전체 + 발주율
+★ 발주서(PO) 단위는 get_purchase_orders, 입고 진행 통합은 get_incoming_overview.
+
+### 입고현황 통합 (1개)
+- `get_incoming_overview(status, search, date_from, date_to, limit)` — 발주품목 입고 추적
+  · status: pending(미입고)/partial(부분입고)/done(입고완료)/overdue(지연)/direct(직접입고)/all
+
+### 청구관리 (1개)
+- `get_billing_status(status, search, limit)` — 납품완료 건 청구상태 (미청구/청구완료/부분입금)
+  · ⚠️ "미수금(안 받은 돈)"은 get_unpaid_invoices() — 다른 개념(세금계산서 기준)
+
+### 운행일지 (2개)
+- `get_vehicle_logs(vehicle, user_name, date_from, date_to, limit)` — 업무용차량 운행기록부
+- `get_vehicle_log_summary(year, month)` — 차량별 운행 요약 (누적 km/주유금액/건수)
+
+### 부서 주간보고 (1개)
+- `get_dept_weekly_report(dept, week_start, week_end)` — 부서별 주간 KPI
+  · dept: sales(영업)/production(생산)/management(관리), 한글 '영업부/생산부/관리부' 가능
 
 ### 견적 (3개)
 - `get_quotations(status, search)` — 견적서 목록
@@ -217,6 +253,18 @@ INSTRUCTIONS = """
 - `read_mail_message(requester_username, uid, account_id?, folder?, body_max_chars=10000)` — 본문+첨부 메타
   · 모든 도구에서 본인 계정 또는 공유권한 있는 계정만 접근 (다른 사용자 계정 차단)
 
+### 쓰기 작업 — write_preview 패턴 (9개) ⚠️ preview→확인 버튼 후 반영
+- `write_preview_delivery_complete(project_search, completed_date?)` — 납품완료 처리
+- `write_preview_as_register(project_search, defect_type?, symptom?, received_date?)` — AS(하자) 접수 등록
+- `write_preview_billing_complete(project_search, invoice_date?)` — 청구완료(세금계산서 발행) 처리
+- `write_preview_vehicle_log(destination?, distance_km?, purpose?, vehicle?, use_date?, driver_name?)` — 운행일지 등록
+- `write_preview_business_trip(destination?, departure_date?, travelers?, purpose?, vehicle?, return_date?, ...)` — 출장 등록
+- `write_preview_daily_report(department?, items?, report_date?, reporter_name?)` — 일일업무보고 등록
+- `write_preview_po_status(po_search?, new_status?)` — 발주서 상태 변경 (작성중/발송완료/입고대기/입고완료/취소)
+- `write_preview_production_complete(keyword?, process_id?, completed_date?)` — 단일 공정 생산완료
+- `write_preview_production_complete_all(keyword?, contract_item_id?, quantity?, completed_date?)` — 계약품목 일괄 생산완료
+  · 모두 `status=needs_info`면 question 으로 추가 질문, `status=preview`면 확인 버튼 제시.
+
 ### 메일 발송 — write_preview 패턴 (1개, 권한 격리 ⚠️)
 - `write_preview_email_send(requester_username, to, subject, body, cc?, bcc?, account_id?, request_read_receipt=True, large_file_ids?)` — 메일 발송 preview
   · 사용자 확인 버튼 클릭 후 confirm_email_send 액션 → 실 SMTP 송신
@@ -261,6 +309,13 @@ INSTRUCTIONS = """
 | "오늘 누가 뭐 했어?" | `get_activity_logs(date_from="오늘")` |
 | "김정수가 협의관리 뭐 변경했어?" | `get_activity_logs(user_name="김정수", module="협의관리")` |
 | "OO현장 작업 이력?" | `get_activity_logs(project_id=N)` |
+| "발주대기 자재 뭐 있어?" | `get_material_orders(status="발주대기")` |
+| "아직 입고 안 된 거?" | `get_incoming_overview(status="pending")` |
+| "청구해야 할 거 있어?" | `get_billing_status(status="미청구")` |
+| "이번달 운행거리?" | `get_vehicle_log_summary(year=2026, month=6)` |
+| "영업부 이번주 주간보고?" | `get_dept_weekly_report(dept="sales")` |
+| "OO현장 납품완료 처리해줘" | `write_preview_delivery_complete(project_search="OO")` |
+| "OO현장 AS 접수해줘" | `write_preview_as_register(project_search="OO", ...)` |
 | "OO현장 감독관 누구야?" | `search_projects(query="OO")` → `get_project_contacts(project_id=ID)` |
 | "OO현장 시공사 연락처?" | `get_project_contacts(project_id=N, category="공사업체")` |
 | "내 메일계정 뭐 있어?" | `list_mail_accounts(requester_username)` |

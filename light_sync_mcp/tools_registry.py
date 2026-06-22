@@ -31,6 +31,12 @@ from .tools import (
     tool_mgmt,
     mail,
     activity,
+    material_order,
+    vehicle_log,
+    billing,
+    dept_report,
+    incoming_overview,
+    write_ops,
 )
 from .resources import magnatech
 
@@ -65,4 +71,12 @@ def register_all(mcp: FastMCP):
     tool_mgmt.register(mcp)
     mail.register(mcp)
     activity.register(mcp)
+    # ── 추가 조회 도구 (자재발주·운행일지·수금·부서주간보고·입고현황) ──
+    material_order.register(mcp)
+    vehicle_log.register(mcp)
+    billing.register(mcp)
+    dept_report.register(mcp)
+    incoming_overview.register(mcp)
+    # ── 쓰기 작업 preview 도구 (확인 후 DB 반영) ──
+    write_ops.register(mcp)
     magnatech.register(mcp)

@@ -320,6 +320,8 @@ def mattermost_action():
         "confirm_daily_report",
         "confirm_po_status",
         "confirm_production_complete",
+        "confirm_production_complete_all",
+        "confirm_email_send",
     }
     if action_type in WRITE_CONFIRM_ACTIONS:
         token = data.get("session_token") or ""
