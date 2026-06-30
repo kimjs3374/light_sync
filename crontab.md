@@ -39,6 +39,20 @@ crontab -e
 #    - 중복(approval_no)은 자동 skip, 관리자설정▸홈택스 연동에서 상태 확인
 0 6 * * * cd /web/light_sync && FLASK_APP=app /web/light_sync/venv/bin/flask sync-hometax-invoices >> /web/light_sync/logs/hometax.log 2>&1
 
+# 1-4) 연차사용촉진 점검 (평일 09:10 — 알림 09:00과 분리)
+#    - 입사일 기준 연차연도 시작일 기준: 1회차=시작+6개월, 2회차=시작+9개월(미지정자)
+#    - 직원에게 noreply@ → username@mgnt.kr 메일 발송(사용시기 지정 요청)
+#    - 인사관리 권한자 전체에게 촉진 대상자 명단 알림(ERP+Mattermost)
+#    - leave_promotions UNIQUE(user,leave_year,stage)로 중복 발송 차단
+#    - 미리보기(기록/발송 없음): venv/bin/flask check-leave-promotions --dry
+10 9 * * 1-5 cd /web/light_sync && FLASK_APP=app /web/light_sync/venv/bin/flask check-leave-promotions >> /web/light_sync/logs/leave_promotion.log 2>&1
+
+# 1-5) 미결재 결재문서 독촉 알림 (평일 09:00)
+#    - status='pending' + 현재 차례(step status='current')인 결재자별로 묶어 알림
+#    - ERP 인앱 + Mattermost DM + 카카오워크 DM (대기일수 오래된 순, 문서 링크 포함)
+#    - 하루 1회 dedupe(approval.reminder:{user}:{날짜})
+0 9 * * 1-5 cd /web/light_sync && FLASK_APP=app /web/light_sync/venv/bin/flask remind-pending-approvals >> /web/light_sync/logs/approval_reminder.log 2>&1
+
 # 2) NAS 폴더 동기화 (매 30분)
 #    - 시놀로지 NAS에서 curl로 호출하는 방식 유지
 #    (NAS 작업 스케줄러에서 설정)

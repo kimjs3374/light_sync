@@ -16,6 +16,7 @@ from modules.models import init_db
 from routes.auth import auth_bp
 from routes.mattermost_action import mattermost_action_bp
 from routes.mattermost_slash import mattermost_slash_bp
+from routes.kakaowork_action import kakaowork_action_bp
 from routes.dashboard import dashboard_bp
 from routes.project import project_bp
 from routes.contract import contract_bp
@@ -50,6 +51,9 @@ from routes.chatbot import chatbot_bp
 from routes.illuminance import ilv_bp
 from routes.workboard import workboard_bp
 from routes.asboard import asboard_bp
+from routes.archive_boards import archive_bp
+from routes.approval_archive import approval_archive_bp
+from routes.chat_archive import chat_archive_bp
 from routes.channel_chat import channel_chat_bp
 from routes.certification import cert_bp
 from routes.lighting_layout import lighting_layout_bp
@@ -207,6 +211,9 @@ def refresh_session_permissions():
         session['user_group'] = user.user_group
         session['position'] = user.position or ''
         session['can_approve_delete'] = bool(user.role == 'admin' or user.can_approve_delete)
+        # 관리자 전역 메뉴 비활성 설정 (모든 사용자에게 동일 적용)
+        from modules.services.dashboard_actions import get_disabled_menus
+        session['disabled_menus'] = list(get_disabled_menus(db))
         session['_perm_checked'] = time.time()
 
 
@@ -252,6 +259,8 @@ app.register_blueprint(mattermost_action_bp)
 csrf.exempt(mattermost_action_bp)  # 외부(Mattermost 서버)에서 호출되는 webhook이라 CSRF 면제
 app.register_blueprint(mattermost_slash_bp)
 csrf.exempt(mattermost_slash_bp)   # 슬래시 커맨드도 외부 호출
+app.register_blueprint(kakaowork_action_bp)
+csrf.exempt(kakaowork_action_bp)   # 카카오워크 봇 콜백(외부 호출)이라 CSRF 면제
 
 # 개별 엔드포인트 rate limit (Blueprint 등록 후 적용)
 with app.app_context():
@@ -293,6 +302,9 @@ app.register_blueprint(api_bp)
 app.register_blueprint(ilv_bp)
 app.register_blueprint(workboard_bp)
 app.register_blueprint(asboard_bp)
+app.register_blueprint(archive_bp)
+app.register_blueprint(approval_archive_bp)
+app.register_blueprint(chat_archive_bp)
 app.register_blueprint(channel_chat_bp)
 app.register_blueprint(cert_bp)
 app.register_blueprint(lighting_layout_bp)
@@ -499,12 +511,15 @@ def inject_sidebar_menus():
     is_admin = session.get('role') == 'admin'
     is_executive = session.get('user_group') == '임원진'
     allowed = set(session.get('allowed_menus', []))
+    disabled = set(session.get('disabled_menus', []))
 
     # 사용자가 접근 가능한 메뉴 풀 생성 (key → menu dict)
     all_menus = {}
     for key, info in MENU_REGISTRY.items():
         if key in COMMON_MENU_KEYS:
             continue
+        if key in disabled:
+            continue  # 관리자가 비활성화한 메뉴는 누구에게도 표시 안 함
         if info.get("admin_only") and not is_admin:
             continue
         always_show = info.get("always_show", False)
@@ -567,6 +582,7 @@ def inject_sidebar_menus():
         "is_admin": is_admin,
         "writable_menus": writable,
         "hide_financial": hide_financial,
+        "disabled_menus": disabled,
     }
 
 
@@ -754,6 +770,37 @@ def cleanup_notifications_cli():
     from modules.services.notification_scheduler import cleanup_old_notifications
     cleanup_old_notifications()
     click.echo("[알림] 만료 알림 정리 완료")
+
+
+@app.cli.command('check-leave-promotions')
+@click.option('--dry', is_flag=True, help='기록/발송 없이 대상자만 미리보기 (read-only)')
+def check_leave_promotions_cli(dry):
+    """연차사용촉진 점검 — 대상 산출 → 1차 촉구 메일 + 인사관리자 명단 알림 (crontab: 매일 09:00)"""
+    from modules.db_context import get_db
+    from modules.services import leave_promotion_service as lp
+    with get_db() as db:
+        if dry:
+            cand = lp.candidates(db)
+            names = ', '.join('%s(%s)' % (c['user'].full_name, c['stage'])
+                              for c in cand['first']) or '없음'
+            click.echo("[연차촉진/DRY] 1회차 대상 %d명: %s | 2회차 대상 %d명 (기록·발송 안 함)"
+                       % (len(cand['first']), names, len(cand['second'])))
+            return
+        out = lp.run_promotion_cycle(db, do_email=True, do_notify=True)
+        db.commit()
+    click.echo("[연차촉진] 발송 %d (2회차 %d) · 메일 %d"
+               % (out['recorded'], out['second'], out['emailed']))
+
+
+@app.cli.command('remind-pending-approvals')
+def remind_pending_approvals_cli():
+    """미결재(현재 차례) 결재문서 독촉 — 결재자별 ERP+MM+카카오 DM (crontab: 매일 09:00)"""
+    from modules.db_context import get_db
+    from modules.services import approval_service as svc
+    with get_db() as db:
+        n_appr, n_docs = svc.send_pending_reminders(db)
+        db.commit()
+    click.echo("[미결재알림] 결재자 %d명 / 문서 %d건 발송" % (n_appr, n_docs))
 
 
 # =====================================================================

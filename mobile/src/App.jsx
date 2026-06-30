@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import BottomNav from './components/BottomNav';
@@ -61,6 +62,16 @@ function P({ children }) {
 }
 
 export default function App() {
+  const bootstrap = useAuth((s) => s.bootstrap);
+  const [booting, setBooting] = useState(true);
+
+  useEffect(() => {
+    bootstrap().finally(() => setBooting(false));
+  }, [bootstrap]);
+
+  // PC 세션 쿠키 → 토큰 교환 시도 동안 대기 (깜빡임/오리다이렉트 방지)
+  if (booting) return null;
+
   return (
     <BrowserRouter basename="/m">
       <Routes>

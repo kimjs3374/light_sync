@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}{{ doc.subject }} · 결재 문서대장{% endblock %}
+{% block head %}
+<style>
+  .ap-d { max-width: 980px; margin: 0 auto; }
+  .ap-back { font-size:13px; color:#666; text-decoration:none; }
+  .ap-back:hover { text-decoration:underline; }
+  .ap-title { font-size:20px; font-weight:700; margin:10px 0 4px; }
+  .ap-meta { color:#888; font-size:13px; margin-bottom:16px; }
+  .ap-meta .ap-form { font-size:12px; color:#3457d5; background:#eef2ff; border-radius:5px; padding:2px 8px; margin-right:6px; }
+  .ap-card { border:1px solid #eaeaea; border-radius:10px; padding:14px 16px; margin-bottom:16px; background:#fff; }
+  .ap-card h6 { font-size:13px; font-weight:700; color:#555; margin:0 0 10px; }
+  .ap-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .ap-step { border:1px solid #eee; border-radius:8px; padding:8px 10px; font-size:12px; }
+  .ap-step .t { font-size:11px; color:#3457d5; font-weight:600; white-space:nowrap; }
+  .ap-step .n { font-weight:600; margin-top:2px; }
+  .ap-step .s { color:#999; font-size:11px; margin-top:2px; }
+  .ap-op { border-bottom:1px solid #f0f0f0; padding:8px 0; font-size:13px; }
+  .ap-op:last-child { border-bottom:0; }
+  .ap-op .who { font-weight:600; }
+  .ap-op .when { color:#aaa; font-size:11px; margin-left:6px; }
+  .ap-op .txt { margin-top:3px; color:#333; }
+  .ap-body-frame { width:100%; height:760px; border:1px solid #eaeaea; border-radius:10px; background:#fff; }
+  .ap-file { display:inline-flex; align-items:center; gap:6px; border:1px solid #e3e3e3; border-radius:8px;
+    padding:7px 11px; margin:0 8px 8px 0; font-size:13px; color:#333; text-decoration:none; white-space:nowrap; }
+  .ap-file:hover { background:#f6f7ff; border-color:#c8d0ff; }
+  .ap-file .ext { font-size:10px; font-weight:700; color:#fff; background:#8a93a6; border-radius:4px; padding:1px 5px; text-transform:uppercase; }
+  .ap-file .sz { color:#aaa; font-size:11px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="ap-d">
+
+  <a href="{{ url_for('approval_archive.archive_list') }}" class="ap-back">← 문서대장</a>
+
+  <div class="ap-title">{{ doc.subject }}</div>
+  <div class="ap-meta">
+    <span class="ap-form">{{ doc.form_name }}</span>
+    {{ doc.doc_no }} ·
+    기안 {{ doc.dept }} {{ doc.drafter }}
+    · {{ doc.draft_date }}{% if doc.complete_date %} · 완료 {{ doc.complete_date }}{% endif %}
+  </div>
+
+  {% if doc.appr_line %}
+  <div class="ap-card">
+    <h6>결재선</h6>
+    <div class="ap-grid">
+      {% for a in doc.appr_line %}
+      <div class="ap-step">
+        <div class="t">{{ a.type }}</div>
+        <div class="n">{{ a.name }}</div>
+        <div class="s">{{ a.dept }}</div>
+        {% if a.at %}<div class="s">{{ a.at }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if doc.opinions %}
+  <div class="ap-card">
+    <h6>결재 의견</h6>
+    {% for o in doc.opinions %}
+    <div class="ap-op">
+      <span class="who">{{ o.name }}</span>
+      {% if o.type %}<span class="ap-form" style="font-size:11px">{{ o.type }}</span>{% endif %}
+      <span class="when">{{ o.at }}</span>
+      {% if o.opinion %}<div class="txt">{{ o.opinion }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="ap-card">
+    <h6>본문</h6>
+    <iframe class="ap-body-frame" src="{{ url_for('approval_archive.archive_body', doc_id=doc.id) }}" sandbox="" loading="lazy" title="문서 본문"></iframe>
+  </div>
+
+  {% if doc.attachments %}
+  <div class="ap-card">
+    <h6>첨부파일 ({{ doc.attachments|length }})</h6>
+    {% for f in doc.attachments %}
+    <a class="ap-file" href="{{ f.url }}" target="_blank" rel="noopener" download="{{ f.name }}">
+      {% if f.ext %}<span class="ext">{{ f.ext }}</span>{% endif %}
+      {{ f.name }} <span class="sz">{{ f.size_fmt }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if doc.references %}
+  <div class="ap-card">
+    <h6>참조</h6>
+    <div style="font-size:13px;color:#555">{{ doc.references|join(', ') }}</div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

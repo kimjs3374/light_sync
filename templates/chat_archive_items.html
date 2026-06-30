@@ -1,0 +1,56 @@
+{% for it in items %}
+  {% if it.kind == 'date' %}
+  <div class="ch-date"><span>{{ it.date }}</span></div>
+  {% elif it.kind == 'system' %}
+  <div class="ch-sys"><span>{{ it.text }}</span></div>
+  {% else %}
+  <div class="ch-row {{ 'grp' if it.grouped }}" id="m{{ it.id }}">
+    {% if it.grouped %}
+    <div style="width:38px;flex-shrink:0"></div>
+    {% else %}
+    <div class="av" style="background:{{ it.color }}">{{ it.user_name[0] }}</div>
+    {% endif %}
+    <div class="ch-col">
+      {% if not it.grouped %}<div class="ch-name">{{ it.user_name }}</div>{% endif %}
+      {% if it.is_reply %}<div class="ch-reply">↩ 답장</div>{% endif %}
+
+      {% if it.body %}
+      <div class="ch-line">
+        <div class="ch-bubble">{{ it.body }}</div>
+        <span class="ch-time">{{ it.time }}</span>
+      </div>
+      {% endif %}
+
+      {% if it.images %}
+      <div class="ch-line">
+        <div class="ch-bubble media"><div class="ch-imgs">
+          {% for im in it.images %}
+          <img src="{{ im.thumb }}" data-full="{{ im.url }}" loading="lazy"
+               {% if im.w and im.h %}style="aspect-ratio:{{ im.w }}/{{ im.h }}"{% endif %}
+               onerror="this.onerror=null;this.src=this.dataset.full" onclick="chLightbox(this)">
+          {% endfor %}
+        </div></div>
+        <span class="ch-time">{{ it.time }}</span>
+      </div>
+      {% endif %}
+
+      {% for v in it.videos %}
+      <div class="ch-line">
+        <div class="ch-bubble media ch-vid"><video controls preload="none" src="{{ v.url }}"></video></div>
+        <span class="ch-time">{{ it.time }}</span>
+      </div>
+      {% endfor %}
+
+      {% for f in it.files %}
+      <div class="ch-line">
+        <a class="ch-file" href="{{ f.url }}" target="_blank" rel="noopener" download="{{ f.name }}">
+          <span class="ic">{{ f.name.rsplit('.',1)[-1] if '.' in f.name else 'FILE' }}</span>
+          <span>{{ f.name }} <span class="sz">{{ f.size }}</span></span>
+        </a>
+        <span class="ch-time">{{ it.time }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+{% endfor %}

@@ -69,59 +69,78 @@
             <div class="sidebar-sub open" id="favSub"></div>
         </div>
 
+        {% set _disabled = disabled_menus or [] %}
         {# === 공통: 종합현황 (직접 링크) === #}
+        {% if 'overview' not in _disabled %}
         <a href="{{ url_for('overview.project_overview') }}" data-menu-key="overview" data-menu-label="종합현황">
             <span class="sidebar-icon">📊</span>
             <span class="sidebar-label">종합현황</span>
             <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
         </a>
+        {% endif %}
 
         {# === 공통: 이메일 === #}
+        {% if ('mail_shared' not in _disabled) or ('mail_personal' not in _disabled) or ('mail_external' not in _disabled) %}
         <div class="sidebar-group">
             <div class="sidebar-group-header" data-group-id="mail">
                 <span class="sidebar-icon">✉️</span>
                 <span class="sidebar-label">이메일</span>
             </div>
             <div class="sidebar-sub" id="menu-grp-mail">
+                {% if 'mail_shared' not in _disabled %}
                 <a href="{{ url_for('mail.mail_shared') }}" data-menu-key="mail_shared" data-menu-label="공용메일">
                     <span class="sidebar-label">공용메일</span>
                     <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
                 </a>
+                {% endif %}
+                {% if 'mail_personal' not in _disabled %}
                 <a href="{{ url_for('mail.mail_personal') }}" data-menu-key="mail_personal" data-menu-label="개인메일">
                     <span class="sidebar-label">개인메일</span>
                     <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
                 </a>
+                {% endif %}
+                {% if 'mail_external' not in _disabled %}
                 <a href="{{ url_for('mail.mail_external') }}" data-menu-key="mail_external" data-menu-label="외부메일">
                     <span class="sidebar-label">외부메일</span>
                     <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
                 </a>
+                {% endif %}
             </div>
         </div>
+        {% endif %}
 
         {# === 공통: 전자결재 (직접 링크) === #}
+        {% if 'approval' not in _disabled %}
         <a href="{{ url_for('approval.approval_list') }}" data-menu-key="approval" data-menu-label="전자결재">
             <span class="sidebar-icon">📋</span>
             <span class="sidebar-label">전자결재</span>
             <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
         </a>
+        {% endif %}
 
         {# === 공통: 업무보고 === #}
+        {% if ('daily_report' not in _disabled) or ('weekly_report' not in _disabled) %}
         <div class="sidebar-group">
             <div class="sidebar-group-header" data-group-id="report">
                 <span class="sidebar-icon">📝</span>
                 <span class="sidebar-label">업무보고</span>
             </div>
             <div class="sidebar-sub" id="menu-grp-report">
+                {% if 'daily_report' not in _disabled %}
                 <a href="{{ url_for('daily_report.daily_report_view') }}" data-menu-key="daily_report" data-menu-label="일일보고">
                     <span class="sidebar-label">일일보고</span>
                     <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
                 </a>
+                {% endif %}
+                {% if 'weekly_report' not in _disabled %}
                 <a href="{{ url_for('report.weekly_report') }}" data-menu-key="weekly_report" data-menu-label="주간보고">
                     <span class="sidebar-label">주간보고</span>
                     <span class="fav-toggle sidebar-label" title="즐겨찾기">☆</span>
                 </a>
+                {% endif %}
             </div>
         </div>
+        {% endif %}
 
         {# === 부서별 동적 메뉴 === #}
         {% for group_name, menus in (sidebar_menu_groups or {}).items() %}

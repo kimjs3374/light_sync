@@ -253,6 +253,48 @@ def _action_complete_delivery(payload: Dict[str, Any], mm_user_name: str) -> Dic
             return {"ok": False, "msg": f"완료 처리 실패: {e}"}
 
 
+def _action_approval(action_type: str, data: Dict[str, Any], mm_user_name: str) -> Dict[str, Any]:
+    """전자결재 승인/반려 버튼 처리. 클릭자 본인검증 후 즉시 상태 전이.
+
+    action_type: approval_approve / approval_reject
+    data: {doc_id, step_id}
+    """
+    from modules.models import ApprovalDocument, ApprovalStep
+    from modules.services import approval_service as svc
+    from modules.activity import log_activity
+
+    doc_id = data.get("doc_id")
+    step_id = data.get("step_id")
+    approve = action_type == "approval_approve"
+    with get_db() as session:
+        user = _resolve_erp_user(session, mm_user_name)
+        if not user:
+            return {"ok": False, "msg": "ERP 사용자 매칭 실패 — 웹에서 처리해 주세요."}
+        doc = session.query(ApprovalDocument).get(doc_id) if doc_id else None
+        step = session.query(ApprovalStep).get(step_id) if step_id else None
+        if not doc or not step or step.document_id != doc.id:
+            return {"ok": False, "msg": "결재 문서를 찾을 수 없습니다."}
+        if step.approver_id != user.id:
+            return {"ok": False, "msg": "본인 결재 차례가 아닙니다."}
+        try:
+            if approve:
+                svc.approve_step(session, doc, step, None)
+            else:
+                svc.reject_step(session, doc, step, None)  # 반려 사유는 추후 코멘트로 입력
+        except ValueError as e:
+            session.rollback()
+            return {"ok": False, "msg": str(e)}
+        try:
+            log_activity(session, 'approval', 'approve' if approve else 'reject',
+                         f'[{doc.doc_no}] {doc.title} {"승인" if approve else "반려"}(카카오/MM 버튼)',
+                         ref_type='approval', ref_id=doc.id, ref_label=doc.title)
+        except Exception:
+            pass
+        session.commit()
+        return {"ok": True, "title": doc.title, "doc_no": doc.doc_no or "",
+                "actor": user.full_name, "approve": approve}
+
+
 @mattermost_action_bp.route("/mattermost/action", methods=["POST"])
 def mattermost_action():
     """Mattermost interactive action endpoint."""
@@ -302,6 +344,23 @@ def mattermost_action():
             if post_id:
                 _mm_update_post(post_id, new_msg, props={})
             return jsonify({"update": {"message": new_msg, "props": {}}}), 200
+
+    if action_type in ("approval_approve", "approval_reject"):
+        result = _action_approval(action_type, data, user_name)
+        ts = datetime.now().strftime("%H:%M")
+        if result["ok"]:
+            verb = "승인" if result.get("approve") else "반려"
+            icon = "✅" if result.get("approve") else "❌"
+            new_msg = (
+                f"{icon} **{verb} 완료** ({ts})\n"
+                f"- [{result.get('doc_no')}] {result.get('title')}\n"
+                f"- 처리자: {result.get('actor')} (@{user_name})"
+            )
+        else:
+            new_msg = f"⚠️ **처리 불가** ({ts})\n- {result['msg']}\n- @{user_name}"
+        # 메시지 갱신은 응답의 update로 처리(클릭한 MM 메시지). 반대 채널/타채널 갱신은
+        # approval_service._finalize_step_messages가 결재봇 토큰으로 수정 → 별도 REST 호출 불필요.
+        return jsonify({"update": {"message": new_msg, "props": {}}}), 200
 
     if action_type == "cancel":
         ts = datetime.now().strftime("%H:%M")

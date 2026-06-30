@@ -18,7 +18,10 @@
       <h2>인사관리</h2>
       <div class="hero-sub">직원 {{ total }}명 · 연차는 입사일 기준 자동 산정 + 전자결재 휴가 자동 차감</div>
     </div>
-    <a href="{{ url_for('hr.hr_org') }}" class="btn btn-sm"><i class="bi bi-diagram-3"></i> 조직도</a>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('hr.hr_promotion') }}" class="btn btn-sm"><i class="bi bi-calendar-check"></i> 연차사용촉진</a>
+      <a href="{{ url_for('hr.hr_org') }}" class="btn btn-sm"><i class="bi bi-diagram-3"></i> 조직도</a>
+    </div>
   </div>
 </div>
 

@@ -3,7 +3,7 @@ from collections import defaultdict
 from flask import Blueprint, render_template, request, session, abort
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from modules.models import (
     Project, Contract, ContractItem, Material, MaterialOrder,
@@ -78,7 +78,7 @@ def _parse_week_range():
 
 
 @report_bp.route('/report/weekly')
-@login_required
+@menu_required('weekly_report')
 def weekly_report():
     """부서별 주간보고서 - 부서 자동 판별 후 분기."""
     dept_key, err = _resolve_dept()

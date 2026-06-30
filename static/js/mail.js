@@ -387,6 +387,8 @@ const Mail = {
 
         // 보낸편지함 판별 (먼저 선언)
         const isSentFolder = this.currentFolder.toLowerCase().includes('sent');
+        // 임시보관함 판별 — 발송 대상(받는사람) 표시 + 클릭 시 작성화면 이어쓰기
+        const isDraftFolder = this.currentFolder.toLowerCase().includes('draft');
 
         const countEl = document.getElementById('mailCount');
         if (countEl) countEl.textContent = `${res.total}건`;
@@ -407,10 +409,10 @@ const Mail = {
         }
 
         body.innerHTML = res.messages.map(m => {
-            const from = isSentFolder
-                ? (m.to?.[0]?.name || m.to?.[0]?.email || '(수신자)')
+            const from = (isSentFolder || isDraftFolder)
+                ? (m.to?.[0]?.name || m.to?.[0]?.email || '(수신자 없음)')
                 : (m.from?.name || m.from?.email || '(알수없음)');
-            const isUnread = !isSentFolder && !m.is_read;
+            const isUnread = !isSentFolder && !isDraftFolder && !m.is_read;
             const unread = isUnread ? 'fw-bold' : '';
             const dot = isUnread ? '<span style="color:var(--mg-primary);font-size:.5rem;vertical-align:middle;">●</span> ' : '';
             const attach = m.has_attachment ? '📎' : '';
@@ -431,7 +433,9 @@ const Mail = {
             }
 
             const mode = document.getElementById('mailMode')?.value || new URLSearchParams(window.location.search).get('mode') || 'personal';
-            const url = `/mail/read/${m.uid}?folder=${encodeURIComponent(this.currentFolder)}&account=${this.accountId}&mode=${mode}`;
+            const url = isDraftFolder
+                ? `/mail/compose?draft=${m.uid}&folder=${encodeURIComponent(this.currentFolder)}&account=${this.accountId}&mode=${mode}`
+                : `/mail/read/${m.uid}?folder=${encodeURIComponent(this.currentFolder)}&account=${this.accountId}&mode=${mode}`;
             const starred = m.is_flagged ? '★' : '☆';
             const starClass = m.is_flagged ? 'color:#eab308;' : 'color:#cbd5e1;';
             const pinned = (this._pinnedUids || []).includes(m.uid);
@@ -1056,6 +1060,12 @@ const MailCompose = {
     _forwardSourceUid: null,
     _forwardAccountId: null,
     _forwardFolder: 'INBOX',
+    _draftUid: null,        // 이어쓰는 임시본 UID (있으면 저장/발송 시 교체·삭제)
+    _draftFolder: '',
+    _draftSaving: false,
+    _autoSaveTimer: null,
+    _lastSavedSnapshot: '',
+    _composeClosing: false, // 발송 중에는 자동저장 억제
 
     init() {
         this.bindEvents();
@@ -1064,6 +1074,7 @@ const MailCompose = {
         this._insertSignature();
         this.initTagInput('bccTagWrap', 'bccTagInput', 'bccInput', null);
         this.initDropZone();
+        this.startAutoSave();
     },
 
     // --- 태그 입력 (#7, #8) ---
@@ -1171,7 +1182,7 @@ const MailCompose = {
 
     bindEvents() {
         document.getElementById('sendBtn')?.addEventListener('click', () => this.send());
-        document.getElementById('draftBtn')?.addEventListener('click', () => alert('임시저장은 준비 중입니다.'));
+        document.getElementById('draftBtn')?.addEventListener('click', () => this.saveDraft());
         document.getElementById('fromAccount')?.addEventListener('change', (e) => {
             document.getElementById('accountId').value = e.target.value;
         });
@@ -1428,7 +1439,18 @@ const MailCompose = {
             fd.set('forward_parts', JSON.stringify(this._forwardAttachments.map(a => a.part_id)));
         }
 
+        // 임시보관함에서 이어쓴 메일이면 발송 후 원본 임시본 삭제 요청
+        if (this._draftUid && this._draftFolder) {
+            fd.set('draft_replace_uid', this._draftUid);
+            fd.set('draft_folder', this._draftFolder);
+        }
+
+        // 전송 직전 — 자동저장 중지(발송 직후 임시본 삭제와의 경합 방지)
+        this._composeClosing = true;
+        this.stopAutoSave();
+
         btn.textContent = '발송 중...';
+        let sent = false;
         try {
             const resp = await fetch('/mail/api/send', { method: 'POST', headers: { 'X-CSRFToken': csrfToken() }, body: fd });
             if (!resp.ok) {
@@ -1436,10 +1458,126 @@ const MailCompose = {
                 return;
             }
             const res = await resp.json();
-            if (res.success) { alert('메일이 발송되었습니다.'); location.href = mode === 'external' ? '/mail/external' : (mode === 'shared' ? '/mail/shared' : '/mail/personal'); }
+            if (res.success) { sent = true; alert('메일이 발송되었습니다.'); location.href = mode === 'external' ? '/mail/external' : (mode === 'shared' ? '/mail/shared' : '/mail/personal'); }
             else alert(res.error || '발송 실패');
         } catch (e) { alert('발송 오류: ' + e.message); }
-        finally { btn.disabled = false; btn.textContent = '보내기'; }
+        finally {
+            btn.disabled = false; btn.textContent = '보내기';
+            // 발송 실패 시 계속 작성할 수 있으므로 자동저장 재개
+            if (!sent) { this._composeClosing = false; this.startAutoSave(); }
+        }
+    },
+
+    // --- 임시저장 ---
+    // 현재 작성 내용을 식별하는 스냅샷 문자열 (변경 감지용)
+    _contentSnapshot() {
+        this._syncHidden('toTagWrap', 'toInput');
+        this._syncHidden('ccTagWrap', 'ccInput');
+        this._syncHidden('bccTagWrap', 'bccInput');
+        return [
+            document.getElementById('toInput')?.value || '',
+            document.getElementById('ccInput')?.value || '',
+            document.getElementById('bccInput')?.value || '',
+            document.getElementById('subjectInput')?.value || '',
+            document.getElementById('mailBody')?.innerHTML || '',
+            this._files.length,
+        ].join('');
+    },
+
+    // 30초 주기 자동저장 — 마지막 저장 이후 내용이 바뀐 경우에만 저장한다.
+    startAutoSave() {
+        // 기준선: 현재(서명/원본 prefill 포함) 내용. 사용자가 바꾸기 전엔 저장 안 함.
+        // 수신자 prefill(addTag)이 init() 직후 동기 실행되므로 setTimeout(0)으로 그 뒤에 캡처.
+        this._lastSavedSnapshot = this._contentSnapshot();
+        setTimeout(() => { this._lastSavedSnapshot = this._contentSnapshot(); }, 0);
+        if (this._autoSaveTimer) clearInterval(this._autoSaveTimer);
+        this._autoSaveTimer = setInterval(() => {
+            if (this._draftSaving || this._composeClosing) return;
+            const snap = this._contentSnapshot();
+            if (snap === this._lastSavedSnapshot) return;          // 변경 없음 → 건너뜀
+            // 받는사람·제목·새 첨부가 모두 비어도 본문만 있으면 저장(작성 중으로 간주)
+            this.saveDraft({ auto: true });
+        }, 30000);
+    },
+
+    stopAutoSave() {
+        if (this._autoSaveTimer) { clearInterval(this._autoSaveTimer); this._autoSaveTimer = null; }
+    },
+
+    // 작성 중인 메일을 임시보관함(Drafts)에 저장. 이어쓰던 임시본이 있으면 교체한다.
+    // opts.auto=true 면 자동저장 모드(알림 최소화, 버튼에 저장 시각 표시).
+    async saveDraft(opts = {}) {
+        const auto = !!opts.auto;
+        if (this._draftSaving) return;
+        const snapshot = this._contentSnapshot();
+
+        const accountId = document.getElementById('accountId')?.value || document.getElementById('fromAccount')?.value || '';
+        if (!accountId) { if (!auto) alert('보낸사람 계정을 선택하세요.'); return; }
+
+        const fd = new FormData();
+        fd.set('account_id', accountId);
+        fd.set('to', document.getElementById('toInput')?.value || '');
+        fd.set('cc', document.getElementById('ccInput')?.value || '');
+        fd.set('bcc', document.getElementById('bccInput')?.value || '');
+        fd.set('subject', document.getElementById('subjectInput')?.value || '');
+        fd.set('body', document.getElementById('mailBody')?.innerHTML || '');
+
+        // 새로 첨부한 일반 파일만 임시본에 포함 (대용량 링크 전환은 발송 시점에만 처리)
+        const MAX_ATTACH = 25 * 1024 * 1024;
+        let skippedLarge = 0;
+        this._files.forEach(f => { if (f.size <= MAX_ATTACH) fd.append('attachments', f); else skippedLarge++; });
+
+        // 답장/전달/이어쓰기 원본 첨부 재첨부 정보
+        if (this._forwardAttachments.length && this._forwardSourceUid) {
+            fd.set('forward_source_uid', this._forwardSourceUid);
+            fd.set('forward_account_id', this._forwardAccountId);
+            fd.set('forward_folder', this._forwardFolder);
+            fd.set('forward_parts', JSON.stringify(this._forwardAttachments.map(a => a.part_id)));
+        }
+
+        // 이어쓰던 임시본이 있으면 교체(기존 삭제)
+        if (this._draftUid) fd.set('replace_uid', this._draftUid);
+
+        const btn = document.getElementById('draftBtn');
+        const orig = '임시저장';
+        this._draftSaving = true;
+        if (btn) { btn.disabled = true; if (!auto) btn.textContent = '저장 중...'; }
+        try {
+            const resp = await fetch('/mail/api/draft', { method: 'POST', headers: { 'X-CSRFToken': csrfToken() }, body: fd });
+            const res = await resp.json();
+            if (resp.ok && res.success) {
+                // 저장 성공 → 기준선 갱신(자동저장 재발화 방지)
+                this._lastSavedSnapshot = snapshot;
+                // 새 임시본 UID·폴더를 기억 → 다음 저장/발송 시 중복 없이 교체
+                if (res.uid) {
+                    this._draftUid = res.uid;
+                    this._draftFolder = res.folder || this._draftFolder;
+                    // 원본 첨부 재첨부 기준도 새 임시본으로 이동 (재저장 시 첨부 유실 방지)
+                    if (this._forwardAttachments.length) {
+                        this._forwardSourceUid = res.uid;
+                        this._forwardAccountId = parseInt(accountId) || this._forwardAccountId;
+                        this._forwardFolder = res.folder || this._forwardFolder;
+                    }
+                }
+                if (skippedLarge && !auto) alert(`임시저장됨. 단, 25MB 초과 첨부 ${skippedLarge}건은 임시본에 저장되지 않았습니다(발송 시 다운로드 링크로 전환됩니다).`);
+                if (btn) {
+                    if (auto) {
+                        const t = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+                        btn.textContent = `자동저장됨 ${t}`;
+                    } else {
+                        btn.textContent = '✓ 저장됨';
+                        setTimeout(() => { if (btn.textContent === '✓ 저장됨') btn.textContent = orig; }, 1500);
+                    }
+                }
+            } else {
+                if (!auto) { alert(res.error || '임시저장 실패'); if (btn) btn.textContent = orig; }
+            }
+        } catch (e) {
+            if (!auto) { alert('임시저장 오류: ' + e.message); if (btn) btn.textContent = orig; }
+        } finally {
+            this._draftSaving = false;
+            if (btn) btn.disabled = false;
+        }
     },
 
     async _suggest(input, dropdown, wrapId, hiddenId) {

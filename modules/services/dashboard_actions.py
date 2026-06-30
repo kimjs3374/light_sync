@@ -20,6 +20,32 @@ def set_dashboard_setting_int(db, key, value):
         row.setting_value = str(value)
 
 
+# --- 메뉴 활성/비활성 (관리자 전역 제어) ---
+# 'menu_disabled' 키에 비활성 메뉴키 목록을 JSON 배열로 저장한다.
+
+def get_disabled_menus(db):
+    """비활성화된 메뉴키 집합 반환 (없으면 빈 set)."""
+    import json
+    row = db.query(DashboardSetting).filter(DashboardSetting.setting_key == 'menu_disabled').first()
+    if not row or not row.setting_value:
+        return set()
+    try:
+        return set(json.loads(row.setting_value))
+    except Exception:
+        return set()
+
+
+def set_disabled_menus(db, keys):
+    """비활성 메뉴키 목록 저장."""
+    import json
+    value = json.dumps(sorted(set(keys)), ensure_ascii=False)
+    row = db.query(DashboardSetting).filter(DashboardSetting.setting_key == 'menu_disabled').first()
+    if not row:
+        db.add(DashboardSetting(setting_key='menu_disabled', setting_value=value))
+    else:
+        row.setting_value = value
+
+
 # --- Action Handlers ---
 
 def handle_update_global_seconds(db, form, **ctx):

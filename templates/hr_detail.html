@@ -29,7 +29,18 @@
 
   {# ── 연차 현황 ── #}
   <div class="ea-section mg-fade">
-    <div class="ea-section-title">연차 현황 ({{ leave.year_start.strftime('%Y-%m-%d') }} ~ {{ leave.year_end.strftime('%Y-%m-%d') }} 직전)</div>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+      <div class="ea-section-title mb-0">연차 현황 ({{ leave.year_start.strftime('%Y-%m-%d') }} ~ {{ leave.year_end.strftime('%Y-%m-%d') }} 직전){% if sel_year != cur_year %} <span class="badge bg-secondary">과거 연차연도</span>{% endif %}</div>
+      {% if year_opts and year_opts|length > 1 %}
+      <form method="GET" action="{{ url_for('hr.hr_detail', user_id=u.id) }}">
+        <select name="ly" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+          {% for s, e, y in year_opts %}
+          <option value="{{ y }}" {% if y == sel_year %}selected{% endif %}>{{ y }}년도 연차 ({{ s.strftime('%Y-%m-%d') }}~){% if y == cur_year %} · 현재{% endif %}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% endif %}
+    </div>
     <div class="row g-2">
       <div class="col-4"><div class="lv-stat" style="background:#eff6ff"><div class="n" style="color:#2563eb">{{ leave.granted }}{% if leave.adjust %}<span style="font-size:.9rem">{{ '%+g'|format(leave.adjust) }}</span>{% endif %}</div><div class="l">부여{% if leave.adjust %}(+조정){% endif %}</div></div></div>
       <div class="col-4"><div class="lv-stat" style="background:#fff7ed"><div class="n" style="color:#d97706">{{ leave.used }}</div><div class="l">사용</div></div></div>
@@ -43,15 +54,44 @@
       <tbody>
         {% for d in leave.detail %}
         <tr>
-          <td><a href="{{ url_for('approval.approval_detail', doc_id=d.doc_id) }}">{{ d.leave_type }}</a></td>
-          <td>{{ d.start }}{% if d.end and d.end != d.start %} ~ {{ d.end }}{% endif %}</td>
-          <td class="text-end fw-semibold">-{{ d.days }}일</td>
+          <td style="white-space:nowrap">
+            {% if d.manual %}
+            {{ d.leave_type }} <span class="badge bg-light text-secondary" style="font-weight:600">직접등록</span>
+            {% else %}
+            <a href="{{ url_for('approval.approval_detail', doc_id=d.doc_id) }}">{{ d.leave_type }}</a>
+            {% endif %}
+          </td>
+          <td>{{ d.start }}{% if d.end and d.end != d.start %} ~ {{ d.end }}{% endif %}{% if d.manual and d.title %} <span class="text-muted">{{ d.title }}</span>{% endif %}</td>
+          <td class="text-end fw-semibold" style="white-space:nowrap">-{{ d.days }}일</td>
+          {% if is_admin %}
+          <td class="text-end" style="white-space:nowrap;width:48px">
+            {% if d.manual %}
+            <form method="POST" action="{{ url_for('hr.hr_leave_usage_delete', user_id=u.id, usage_id=d.usage_id) }}" onsubmit="return confirm('이 사용 기록을 삭제할까요?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="ly" value="{{ sel_year }}">
+              <button class="btn btn-sm btn-link text-danger p-0">삭제</button>
+            </form>
+            {% endif %}
+          </td>
+          {% endif %}
         </tr>
         {% endfor %}
       </tbody>
     </table>
     {% else %}
     <div class="text-muted mt-2" style="font-size:.82rem">이번 연차연도 사용 내역이 없습니다.</div>
+    {% endif %}
+
+    {# 수동 사용 등록 (관리자) — 전자결재 미경유 실사용분 직접 입력 #}
+    {% if is_admin %}
+    <form method="POST" action="{{ url_for('hr.hr_leave_usage', user_id=u.id) }}" class="d-flex gap-2 align-items-end mt-2 flex-wrap">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div><label class="form-label">사용일</label><input type="date" name="used_date" required class="form-control form-control-sm" style="width:150px"></div>
+      <div><label class="form-label">일수</label><input type="number" step="0.5" min="0.5" name="days" value="1" class="form-control form-control-sm" style="width:80px"></div>
+      <div style="flex:1;min-width:140px"><label class="form-label">사유(선택)</label><input type="text" name="reason" class="form-control form-control-sm" placeholder="예: 개인사정"></div>
+      <button class="btn btn-sm btn-outline-warning">사용 등록</button>
+    </form>
+    <div class="text-muted mt-1" style="font-size:.74rem">전자결재 없이 실제 사용한 연차를 직접 등록합니다. (반차=0.5) 도입 전 사용분 소급 입력용.</div>
     {% endif %}
 
     {# 수동 조정 #}

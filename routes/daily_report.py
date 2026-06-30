@@ -244,7 +244,7 @@ def _collect_auto_items(db, target_date):
 
 
 @daily_report_bp.route('/daily-report')
-@login_required
+@menu_required('daily_report')
 def daily_report_view():
     """일일업무보고 - 자동수집 + 수동추가"""
     target_date_str = request.args.get('date')

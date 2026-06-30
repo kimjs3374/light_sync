@@ -75,7 +75,7 @@
       <div class="kw-img-grid">
         {% for img in images %}
         {% if img.local_url %}
-        <img src="{{ img.thumb_url or img.local_url }}" data-full="{{ img.local_url }}" alt="{{ img.file_name }}" class="kw-img-thumb" loading="lazy" onclick="kwLightbox(this.dataset.full)">
+        <img src="{{ img.thumb_url or img.local_url }}" data-full="{{ img.local_url }}" alt="{{ img.file_name }}" class="kw-img-thumb" loading="lazy" onerror="this.onerror=null;this.src=this.dataset.full" onclick="kwLightbox(this.dataset.full)">
         {% else %}
         <div class="kw-img-thumb" style="background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#999">{{ img.file_name[:15] }}</div>
         {% endif %}
@@ -134,7 +134,7 @@
           <div class="kw-img-grid">
             {% for img in c_images %}
             {% if img.local_url %}
-            <img src="{{ img.thumb_url or img.local_url }}" data-full="{{ img.local_url }}" alt="{{ img.file_name }}" class="kw-img-thumb" loading="lazy" onclick="kwLightbox(this.dataset.full)">
+            <img src="{{ img.thumb_url or img.local_url }}" data-full="{{ img.local_url }}" alt="{{ img.file_name }}" class="kw-img-thumb" loading="lazy" onerror="this.onerror=null;this.src=this.dataset.full" onclick="kwLightbox(this.dataset.full)">
             {% else %}
             <div class="kw-img-thumb" style="background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#999">{{ img.file_name[:15] }}</div>
             {% endif %}

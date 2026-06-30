@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>{% if is_second %}연차유급휴가 사용시기 지정 통보서{% else %}연차유급휴가 사용촉진 통보서{% endif %}</title>
+<style>
+  * { box-sizing:border-box; }
+  body { font-family:"Malgun Gothic","맑은 고딕",sans-serif; color:#000; background:#fff;
+         margin:0; padding:24mm 20mm; font-size:13px; line-height:1.7; }
+  .doc-title { text-align:center; font-size:21px; font-weight:800; letter-spacing:.4em;
+               margin:0 0 6px; padding-bottom:14px; border-bottom:3px solid #000; }
+  .doc-law { text-align:center; font-size:11px; color:#333; margin:10px 0 22px; }
+  table.doc { width:100%; border-collapse:collapse; margin:14px 0; }
+  table.doc th, table.doc td { border:1px solid #000; padding:8px 10px; font-size:12.5px; }
+  table.doc th { background:#f2f2f2; font-weight:700; text-align:center; width:22%; white-space:nowrap; }
+  table.doc td { text-align:left; }
+  .body-text { margin:18px 4px; font-size:13.5px; line-height:1.9; }
+  .em { font-weight:800; text-decoration:underline; }
+  .used-list th { background:#f2f2f2; text-align:center; white-space:nowrap; }
+  .used-list td { text-align:center; }
+  .sign { margin-top:36px; text-align:right; font-size:13.5px; line-height:2.4; }
+  .sign .date { text-align:center; margin-bottom:18px; font-size:13px; }
+  .stamp { display:inline-block; min-width:46px; }
+  .confirm { margin-top:30px; border-top:1px dashed #888; padding-top:16px; }
+  @media print { body { padding:14mm 16mm; } .no-print { display:none; } @page { size:A4; margin:0; } }
+  .no-print { text-align:center; margin-bottom:16px; }
+  .no-print button { padding:7px 18px; font-size:13px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="no-print">
+  <button onclick="window.print()">🖨 인쇄</button>
+</div>
+
+<div class="doc-title">{% if is_second %}연차유급휴가 사용시기 지정 통보서{% else %}연차유급휴가 사용촉진 통보서{% endif %}</div>
+<div class="doc-law">근로기준법 제61조(연차 유급휴가의 사용 촉진)에 따른 {% if is_second %}사용시기 지정{% else %}사용 촉진{% endif %} 통보</div>
+
+<table class="doc">
+  <tr>
+    <th>소속</th><td>{{ u.user_group or '-' }}</td>
+    <th>직급</th><td>{{ u.position or '-' }}</td>
+  </tr>
+  <tr>
+    <th>성명</th><td>{{ u.full_name }}</td>
+    <th>입사일</th><td>{{ u.hire_date.strftime('%Y-%m-%d') if u.hire_date else '-' }}</td>
+  </tr>
+  <tr>
+    <th>연차연도</th>
+    <td colspan="3">
+      {{ p.year_start.strftime('%Y-%m-%d') if p.year_start else '-' }} ~
+      {{ p.year_end.strftime('%Y-%m-%d') if p.year_end else '-' }}
+      ({{ p.leave_year }}년도)
+    </td>
+  </tr>
+</table>
+
+{# 촉구 시점 스냅샷 + 출력일자 기준 실제 사용 #}
+<table class="doc">
+  <tr>
+    <th>발생 연차</th><td>{{ p.granted_days if p.granted_days is not none else (summ.granted if summ else '-') }}일</td>
+    <th>촉구시점 미사용</th><td>{{ p.remaining_days if p.remaining_days is not none else '-' }}일</td>
+  </tr>
+  <tr>
+    <th>출력일 기준 사용</th><td>{{ summ.used if summ else '-' }}일</td>
+    <th>출력일 기준 잔여</th><td><span class="em">{{ summ.remaining if summ else '-' }}일</span></td>
+  </tr>
+</table>
+
+{% if is_second %}
+<div class="body-text">
+  귀하가 위 연차유급휴가의 사용시기를 기한 내에 지정하지 아니하였으므로,
+  근로기준법 제61조에 따라 회사가 아래와 같이 귀하의 연차유급휴가 <span class="em">사용시기를 지정</span>하여 통보합니다.
+  지정된 날짜에 연차유급휴가를 사용하시기 바랍니다.
+</div>
+<table class="doc used-list">
+  <tr><th style="width:10%">No</th><th>회사 지정 사용일</th><th style="width:20%">구분</th></tr>
+  {% for d in (p.admin_dates or []) %}
+  <tr><td>{{ loop.index }}</td>
+    <td>{% if d is mapping %}{{ d.date }}{% else %}{{ d }}{% endif %}</td>
+    <td>{% if d is mapping %}{{ d.type }} ({{ d.days }}일){% else %}연차 (1일){% endif %}</td></tr>
+  {% else %}
+  <tr><td colspan="3">지정된 사용일이 없습니다.</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="body-text">
+  귀하의 {{ p.leave_year }}년도 연차유급휴가 미사용 일수가 위와 같음을 통보하오니,
+  근로기준법 제61조에 따라 본 통보를 받은 날부터 <span class="em">10일 이내</span>
+  ({% if p.designate_due %}~ {{ p.designate_due.strftime('%Y-%m-%d') }}{% endif %})에
+  잔여 연차유급휴가의 <span class="em">사용시기를 정하여 회사에 통보</span>하여 주시기 바랍니다.
+  기한 내 미통보 시 회사가 사용시기를 지정할 수 있습니다.
+</div>
+{% if p.employee_dates %}
+<table class="doc used-list">
+  <tr><th style="width:10%">No</th><th>근로자 지정 사용일</th><th style="width:20%">구분</th></tr>
+  {% for d in p.employee_dates %}
+  <tr><td>{{ loop.index }}</td>
+    <td>{% if d is mapping %}{{ d.date }}{% else %}{{ d }}{% endif %}</td>
+    <td>{% if d is mapping %}{{ d.type }} ({{ d.days }}일){% else %}연차 (1일){% endif %}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endif %}
+
+{# 출력일자 기준 실제 사용 내역 #}
+{% if summ and summ.detail %}
+<table class="doc used-list">
+  <tr><th style="width:10%">No</th><th>실제 사용일</th><th style="width:18%">종류</th><th style="width:14%">일수</th></tr>
+  {% for d in summ.detail %}
+  <tr>
+    <td>{{ loop.index }}</td>
+    <td>{{ d.start[:10] if d.start else '-' }}{% if d.end and d.end[:10] != d.start[:10] %} ~ {{ d.end[:10] }}{% endif %}</td>
+    <td>{{ d.leave_type or '연차' }}</td>
+    <td>{{ d.days }}일</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<div class="sign">
+  <div class="date">{{ today.strftime('%Y년 %m월 %d일') }}</div>
+  {{ company.name }} {% if company.ceo %}대표이사 {{ company.ceo }}{% else %}대표이사{% endif %}
+  <span class="stamp">(인)</span>
+</div>
+
+<div class="confirm">
+  <table class="doc">
+    <tr>
+      <th style="width:18%">근로자 확인</th>
+      <td>성명: ________________ (서명)</td>
+      <td style="width:30%">확인일: {{ today.strftime('%Y. %m. %d.') }}</td>
+    </tr>
+  </table>
+</div>
+</body>
+</html>

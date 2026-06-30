@@ -72,6 +72,7 @@ class ApprovalFormTemplate(Base):
     default_line = Column(JSONB, nullable=True)                  # 기본 결재선 토큰 리스트
     has_amount = Column(Boolean, default=False)                  # 금액 집계 대상 여부
     amount_field = Column(String(50), nullable=True)             # 금액으로 집계할 field key
+    effect_on_dept_head = Column(Boolean, default=False)         # 부서장(첫 결재) 승인 시 효력 발생
     is_active = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.datetime.now)
@@ -99,6 +100,8 @@ class ApprovalDocument(Base):
 
     status = Column(String(20), default='draft', nullable=False)
     current_step = Column(Integer, default=0)                    # 현재 진행 중인 step_order
+    effect_active = Column(Boolean, default=False)               # 부서장 결재로 선효력 발생 여부
+    effected_at = Column(DateTime, nullable=True)                # 선효력 발생 시각
 
     created_at = Column(DateTime, default=datetime.datetime.now)
     submitted_at = Column(DateTime, nullable=True)
@@ -131,6 +134,11 @@ class ApprovalDocument(Base):
     def status_label(self):
         return DOC_STATUS.get(self.status, self.status)
 
+    @property
+    def is_effective(self):
+        """문서가 효력을 갖는가 — 최종완료(approved) 또는 부서장 선효력(effect_active)."""
+        return self.status == 'approved' or bool(self.effect_active)
+
     def current_approver_step(self):
         """현재 결재 차례 step 반환 (없으면 None)"""
         for s in self.steps:
@@ -154,6 +162,9 @@ class ApprovalStep(Base):
     status = Column(String(20), default='waiting')              # waiting/current/approved/rejected
     comment = Column(Text, nullable=True)
     acted_at = Column(DateTime, nullable=True)
+    # 결재요청 DM 메시지 참조(MM post / 카카오 conversation) — 처리 시 양쪽 갱신용
+    # {'mm': {'channel_id','post_id'}, 'kakao': {'conversation_id','message_id'}}
+    notify_refs = Column(JSONB, nullable=True)
 
     document = relationship('ApprovalDocument', back_populates='steps')
 

@@ -159,6 +159,26 @@
         });
     }
 
+    // 단독 링크(전자결재·종합현황 등 — 그룹이 아닌 직접 링크)용 플라이아웃
+    function showFlyoutForLink(link) {
+        if (!flyout || !isCollapsed()) return;
+        var label = link.querySelector('.sidebar-label');
+        var titleText = (link.getAttribute('data-menu-label')
+            || (label ? label.textContent.trim() : '')).trim();
+        if (!titleText) return;
+        flyout.innerHTML = '<a href="' + link.getAttribute('href') + '">' + titleText + '</a>';
+
+        var rect = link.getBoundingClientRect();
+        flyout.style.top = rect.top + 'px';
+        flyout.classList.add('show');
+        requestAnimationFrame(function() {
+            var fh = flyout.offsetHeight;
+            if (rect.top + fh > window.innerHeight) {
+                flyout.style.top = Math.max(0, window.innerHeight - fh - 8) + 'px';
+            }
+        });
+    }
+
     function hideFlyout() {
         if (flyout) { flyout.classList.remove('show'); flyout.innerHTML = ''; }
     }
@@ -169,6 +189,17 @@
             showFlyout(group);
         });
         group.addEventListener('mouseleave', function() {
+            flyoutTimer = setTimeout(hideFlyout, 100);
+        });
+    });
+
+    // 그룹이 아닌 직접 링크에도 호버 플라이아웃 부착 (접힘 상태에서 라벨 노출)
+    document.querySelectorAll('.sidebar-menu-scroll > a[data-menu-label]').forEach(function(link) {
+        link.addEventListener('mouseenter', function() {
+            clearTimeout(flyoutTimer);
+            showFlyoutForLink(link);
+        });
+        link.addEventListener('mouseleave', function() {
             flyoutTimer = setTimeout(hideFlyout, 100);
         });
     });

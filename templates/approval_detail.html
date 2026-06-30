@@ -34,7 +34,7 @@
       </div>
       <div class="d-flex align-items-center gap-2">
         {% if doc.status == 'draft' %}<span class="badge bg-secondary">작성중</span>
-        {% elif doc.status == 'pending' %}<span class="badge bg-warning text-dark">진행중</span>
+        {% elif doc.status == 'pending' %}<span class="badge bg-warning text-dark">진행중</span>{% if doc.effect_active %} <span class="badge bg-success" style="white-space:nowrap" title="부서장 결재로 효력 발생 (임원 결재 진행 중)">효력발생</span>{% endif %}
         {% elif doc.status == 'approved' %}<span class="badge bg-success">결재완료</span>
         {% elif doc.status == 'rejected' %}<span class="badge bg-danger">반려</span>
         {% else %}<span class="badge bg-secondary">회수</span>{% endif %}
@@ -182,7 +182,7 @@
     <button class="btn btn-outline-danger" onclick="document.getElementById('rejectBox').classList.toggle('d-none')"><i class="bi bi-x-lg"></i> 반려</button>
     {% endif %}
     {% if can_edit %}
-    <a href="{{ url_for('approval.approval_edit', doc_id=doc.id) }}" class="btn btn-outline-primary"><i class="bi bi-pencil"></i> 수정</a>
+    <a href="{{ url_for('approval.approval_edit', doc_id=doc.id) }}" class="btn btn-outline-primary"><i class="bi bi-pencil"></i> 수정{% if is_admin and doc.status != 'draft' %} <span style="font-size:.7rem">(관리자)</span>{% endif %}</a>
     {% endif %}
     {% if can_cancel %}
     <form method="POST" action="{{ url_for('approval.approval_cancel', doc_id=doc.id) }}"
@@ -191,11 +191,11 @@
       <button class="btn btn-outline-warning"><i class="bi bi-arrow-counterclockwise"></i> 회수</button>
     </form>
     {% endif %}
-    {% if doc.drafter_id == session.user_id and doc.status in ['draft','canceled','rejected'] %}
+    {% if can_delete %}
     <form method="POST" action="{{ url_for('approval.approval_delete', doc_id=doc.id) }}"
-          onsubmit="return confirm('삭제하시겠습니까?')" class="ms-auto">
+          onsubmit="return confirm({% if is_admin and doc.status not in ['draft','canceled','rejected'] %}'진행/완료된 문서입니다. 관리자 권한으로 삭제하시겠습니까?'{% else %}'삭제하시겠습니까?'{% endif %})" class="ms-auto">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-outline-danger"><i class="bi bi-trash"></i> 삭제</button>
+      <button class="btn btn-outline-danger"><i class="bi bi-trash"></i> 삭제{% if is_admin and doc.status not in ['draft','canceled','rejected'] %} <span style="font-size:.7rem">(관리자)</span>{% endif %}</button>
     </form>
     {% endif %}
   </div>

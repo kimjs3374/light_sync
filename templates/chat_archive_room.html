@@ -1,0 +1,236 @@
+{% extends 'base.html' %}
+{% block title %}{{ room.name }} · 대화방 백업{% endblock %}
+{% block head %}
+<style>
+  .ch-layout{display:flex;gap:14px;height:calc(100vh - 130px);}
+  .ch-side{width:230px;flex-shrink:0;overflow-y:auto;border-right:1px solid #eee;padding-right:6px;}
+  .ch-side a{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:9px;
+    text-decoration:none;color:#333;font-size:13px;}
+  .ch-side a:hover{background:#f4f6f9;}
+  .ch-side a.on{background:#eef2ff;font-weight:600;}
+  .ch-side .av{width:34px;height:34px;border-radius:11px;color:#fff;font-weight:700;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;}
+  .ch-side .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+  .ch-main{flex-grow:1;display:flex;flex-direction:column;min-width:0;}
+  .ch-top{display:flex;align-items:center;gap:10px;padding:0 4px 10px;border-bottom:1px solid #eee;}
+  .ch-top h6{margin:0;font-weight:700;font-size:16px;white-space:nowrap;}
+  .ch-top .sub{font-size:12px;color:#999;white-space:nowrap;}
+  .ch-search{margin-left:auto;display:flex;gap:6px;}
+  .ch-search input{font-size:13px;padding:5px 10px;border:1px solid #ddd;border-radius:8px;width:200px;}
+  .ch-search button{font-size:13px;padding:5px 12px;border:1px solid #ddd;background:#f6f7fb;border-radius:8px;cursor:pointer;}
+
+  .ch-feed{flex-grow:1;overflow-y:auto;background:#b2c7d9;border-radius:12px;margin-top:10px;padding:16px;}
+  .ch-load{text-align:center;padding:8px;font-size:12px;color:#33425b;}
+
+  .ch-date{text-align:center;margin:14px 0;}
+  .ch-date span{background:rgba(0,0,0,.12);color:#fff;font-size:12px;padding:3px 12px;border-radius:12px;}
+  .ch-sys{text-align:center;margin:8px 0;}
+  .ch-sys span{background:rgba(0,0,0,.08);color:#444;font-size:12px;padding:3px 12px;border-radius:12px;}
+
+  .ch-row{display:flex;gap:8px;margin:2px 0;align-items:flex-start;}
+  .ch-row .av{width:38px;height:38px;border-radius:13px;color:#fff;font-weight:700;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;margin-top:16px;}
+  .ch-row.grp{margin-top:1px;}
+  .ch-row.jumped{background:rgba(255,235,130,.4);border-radius:12px;}
+  .ch-row.jumped .ch-bubble{background:#fff3b0;}
+  .ch-col{min-width:0;max-width:74%;}
+  .ch-name{font-size:12px;color:#33425b;margin:2px 0 3px 2px;font-weight:600;}
+  .ch-line{display:flex;align-items:flex-end;gap:6px;}
+  .ch-bubble{background:#fff;border-radius:4px 16px 16px 16px;padding:8px 11px;font-size:14px;
+    line-height:1.5;color:#1a1a1a;word-break:break-word;box-shadow:0 1px 1px rgba(0,0,0,.06);}
+  .ch-row.grp .ch-bubble{border-radius:16px;}
+  .ch-bubble a{color:#1a73e8;}
+  .ch-time{font-size:11px;color:#5a6b80;white-space:nowrap;flex-shrink:0;}
+  .ch-reply{font-size:11px;color:#8a97a8;margin:0 0 2px 2px;}
+
+  .ch-imgs{display:flex;flex-wrap:wrap;gap:4px;}
+  .ch-imgs img{max-width:220px;max-height:240px;border-radius:10px;cursor:pointer;object-fit:cover;}
+  .ch-bubble.media{padding:5px;background:transparent;box-shadow:none;}
+  .ch-vid video{max-width:300px;border-radius:10px;}
+  .ch-file{display:inline-flex;align-items:center;gap:8px;background:#fff;border-radius:12px;
+    padding:9px 12px;text-decoration:none;color:#222;font-size:13px;box-shadow:0 1px 1px rgba(0,0,0,.06);}
+  .ch-file .ic{width:26px;height:26px;border-radius:7px;background:#5c6bc0;color:#fff;font-size:11px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;text-transform:uppercase;}
+  .ch-file .sz{color:#999;font-size:11px;}
+
+  /* 검색 결과 */
+  .ch-results{flex-grow:1;overflow-y:auto;margin-top:10px;}
+  .ch-rhead{font-size:13px;color:#666;margin-bottom:8px;}
+  .ch-ritem{display:flex;gap:10px;padding:11px 10px;border-bottom:1px solid #eee;text-decoration:none;color:#222;border-radius:8px;}
+  .ch-ritem:hover{background:#f6f8fb;}
+  .ch-ritem .av{width:34px;height:34px;border-radius:11px;color:#fff;font-weight:700;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;}
+  .ch-ritem .who{font-weight:600;font-size:13px;}
+  .ch-ritem .when{font-size:11px;color:#999;margin-left:6px;}
+  .ch-ritem .snip{font-size:13px;color:#444;margin-top:2px;}
+  .ch-ritem mark{background:#fff3b0;}
+
+  #chLb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9999;
+    align-items:center;justify-content:center;}
+  #chLb img{max-width:90vw;max-height:90vh;border-radius:6px;cursor:default;}
+  #chLb .lb-nav{position:absolute;top:0;bottom:0;width:80px;display:flex;align-items:center;
+    justify-content:center;color:#fff;font-size:48px;cursor:pointer;user-select:none;opacity:.7;}
+  #chLb .lb-nav:hover{opacity:1;background:rgba(255,255,255,.06);}
+  #chLb .lb-prev{left:0;} #chLb .lb-next{right:0;}
+  #chLb .lb-close{position:absolute;top:18px;right:24px;color:#fff;font-size:30px;cursor:pointer;opacity:.8;}
+  #chLb .lb-close:hover{opacity:1;}
+  #chLb .lb-counter{position:absolute;bottom:22px;left:0;right:0;text-align:center;color:#fff;
+    font-size:14px;background:rgba(0,0,0,.4);width:fit-content;margin:0 auto;padding:4px 14px;border-radius:14px;}
+</style>
+{% endblock %}
+{% block content %}
+<div class="ch-layout">
+
+  <div class="ch-side">
+    {% for r in rooms %}
+    <a href="{{ url_for('chat_archive.room_view', conv_id=r.id) }}" class="{{ 'on' if r.id == room.id }}">
+      <span class="av" style="background:{{ r.color }}">{{ r.name[0] }}</span>
+      <span class="nm">{{ r.name }}</span>
+    </a>
+    {% endfor %}
+  </div>
+
+  <div class="ch-main">
+    <div class="ch-top">
+      <h6>{{ room.name }}</h6>
+      {% if not q %}<span class="sub">{{ '{:,}'.format(total) }}건</span>{% endif %}
+      <form class="ch-search" method="get" action="{{ url_for('chat_archive.room_view', conv_id=room.id) }}">
+        <input type="text" name="q" value="{{ q }}" placeholder="메시지 검색…" autocomplete="off">
+        <button type="submit">검색</button>
+        {% if q %}<a class="ch-search-clear" href="{{ url_for('chat_archive.room_view', conv_id=room.id) }}" style="align-self:center;font-size:12px;color:#888">✕</a>{% endif %}
+      </form>
+    </div>
+
+    {% if q %}
+    <div class="ch-results">
+      <div class="ch-rhead">"{{ q }}" 검색 결과 {{ results|length }}건{% if results|length >= 120 %} (최대 120건){% endif %}</div>
+      {% for r in results %}
+      <a class="ch-ritem" href="{{ url_for('chat_archive.room_view', conv_id=room.id, jump=r.id) }}">
+        <span class="av" style="background:{{ r.color }}">{{ r.user_name[0] }}</span>
+        <div>
+          <div><span class="who">{{ r.user_name }}</span><span class="when">{{ r.when }}</span></div>
+          <div class="snip">{{ r.snippet }}</div>
+        </div>
+      </a>
+      {% else %}
+      <div style="text-align:center;color:#999;padding:40px 0">검색 결과가 없습니다.</div>
+      {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="ch-feed" id="chFeed" data-conv="{{ room.id }}" data-oldest="{{ page }}" data-last="{{ total_pages }}">
+      <div id="chTop"><div class="ch-load" id="chLoad" style="display:none">이전 메시지 불러오는 중…</div></div>
+      {% include 'chat_archive_items.html' %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div id="chLb">
+  <span class="lb-close" onclick="chLbClose()">✕</span>
+  <span class="lb-nav lb-prev" onclick="chLbNav(-1)">‹</span>
+  <img id="chLbImg" src="" onclick="event.stopPropagation()">
+  <span class="lb-nav lb-next" onclick="chLbNav(1)">›</span>
+  <div class="lb-counter" id="chLbCount"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // 같은 메시지에 함께 보낸 사진들을 갤러리로 넘겨보기
+  var chLbImgs = [], chLbIdx = 0;
+  function chLightbox(imgEl){
+    var group = imgEl.closest ? imgEl.closest('.ch-imgs') : null;
+    var nodes = group ? group.querySelectorAll('img') : [imgEl];
+    chLbImgs = Array.prototype.map.call(nodes, function(n){ return n.dataset.full; });
+    chLbIdx = Math.max(0, Array.prototype.indexOf.call(nodes, imgEl));
+    chLbRender();
+    document.getElementById('chLb').style.display = 'flex';
+  }
+  function chLbRender(){
+    document.getElementById('chLbImg').src = chLbImgs[chLbIdx];
+    var multi = chLbImgs.length > 1;
+    document.getElementById('chLbCount').textContent = multi ? (chLbIdx+1)+' / '+chLbImgs.length : '';
+    document.querySelector('#chLb .lb-prev').style.display = multi ? 'flex' : 'none';
+    document.querySelector('#chLb .lb-next').style.display = multi ? 'flex' : 'none';
+  }
+  function chLbNav(d){ if(!chLbImgs.length) return; chLbIdx = (chLbIdx + d + chLbImgs.length) % chLbImgs.length; chLbRender(); }
+  function chLbClose(){ document.getElementById('chLb').style.display = 'none'; }
+  (function(){
+    var lb = document.getElementById('chLb');
+    lb.addEventListener('click', function(e){ if(e.target === lb) chLbClose(); });
+    document.addEventListener('keydown', function(e){
+      if(lb.style.display !== 'flex') return;
+      if(e.key === 'ArrowLeft') chLbNav(-1);
+      else if(e.key === 'ArrowRight') chLbNav(1);
+      else if(e.key === 'Escape') chLbClose();
+    });
+    // 모바일 스와이프
+    var x0 = null;
+    lb.addEventListener('touchstart', function(e){ x0 = e.touches[0].clientX; }, {passive:true});
+    lb.addEventListener('touchend', function(e){
+      if(x0 === null) return;
+      var dx = e.changedTouches[0].clientX - x0;
+      if(Math.abs(dx) > 50) chLbNav(dx < 0 ? 1 : -1);
+      x0 = null;
+    }, {passive:true});
+  })();
+
+  (function(){
+    var feed = document.getElementById('chFeed');
+    if(!feed) return;
+    var conv = feed.dataset.conv;
+    var oldest = parseInt(feed.dataset.oldest);
+    // 메시지 id는 18~19자리 bigint → JS 숫자 정밀도 초과. 반드시 문자열로 다룬다.
+    var jump = "{{ jump or '' }}";
+
+    // 점프(검색결과 클릭) → 해당 메시지로 스크롤 + 노란색 유지(영구), 아니면 최신 하단
+    var jumpEl = null;
+    if(jump){
+      jumpEl = document.getElementById('m'+jump);
+      if(jumpEl){
+        jumpEl.classList.add('jumped');
+        jumpEl.scrollIntoView({block:'center'});
+        // 이미지 로딩 등으로 위치 틀어질 수 있어 한 번 더 중앙 정렬
+        setTimeout(function(){ jumpEl.scrollIntoView({block:'center'}); }, 350);
+      } else {
+        feed.scrollTop = feed.scrollHeight;
+      }
+    } else {
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    // 무한 스크롤: 위로 올리면 이전 페이지 prepend (앵커 기반 위치 보존 → 안 밀림)
+    var loading = false;
+    feed.addEventListener('scroll', function(){
+      if(loading || oldest <= 1) return;
+      if(feed.scrollTop < 150){
+        loading = true;
+        var prev = oldest - 1;
+        var load = document.getElementById('chLoad');
+        if(load) load.style.display='block';
+        // 현재 화면 최상단에 보이는 행을 앵커로 잡아 prepend 후 위치 복원
+        var ft = feed.getBoundingClientRect().top;
+        var anchor = null, rows = feed.querySelectorAll('.ch-row,.ch-date,.ch-sys');
+        for(var i=0;i<rows.length;i++){
+          if(rows[i].getBoundingClientRect().bottom > ft + 4){ anchor = rows[i]; break; }
+        }
+        var beforeTop = anchor ? anchor.getBoundingClientRect().top : 0;
+        fetch('/chat-archive/'+conv+'/messages?page='+prev)
+          .then(function(res){ return res.text(); })
+          .then(function(html){
+            var ref = document.getElementById('chTop').nextSibling;
+            var tmp = document.createElement('div');
+            tmp.innerHTML = html;
+            while(tmp.firstChild){ feed.insertBefore(tmp.firstChild, ref); }
+            if(anchor){ feed.scrollTop += (anchor.getBoundingClientRect().top - beforeTop); }
+            oldest = prev;
+            loading = false;
+            if(load) load.style.display='none';
+          })
+          .catch(function(){ loading = false; if(load) load.style.display='none'; });
+      }
+    });
+  })();
+</script>
+{% endblock %}

@@ -530,6 +530,7 @@ class MailClient:
             'from': _parse_address(msg.get('From', '')),
             'to': _parse_address_list(msg.get('To', '')),
             'cc': _parse_address_list(msg.get('Cc', '')),
+            'bcc': _parse_address_list(msg.get('Bcc', '')),
             'date': msg.get('Date', ''),
             'html_body': safe_html,
             'text_body': text_body,
@@ -698,12 +699,31 @@ class MailClient:
 
         return {'success': True, 'message': '메일 발송 완료'}
 
-    def save_draft(self, from_addr, to, subject, html_body, attachments=None):
-        """Draft 폴더에 저장."""
-        msg = MIMEMultipart()
-        msg['From'] = from_addr
+    def save_draft(self, from_addr, to, subject, html_body, cc=None, bcc=None,
+                   attachments=None, from_name=None, replace_uid=None):
+        """임시보관함(Drafts)에 저장.
+
+        replace_uid 가 주어지면 기존 임시본을 삭제하고 새로 저장(교체)하여
+        이어쓰기 시 중복이 쌓이지 않게 한다.
+        반환: {'success': True, 'uid': <새 UID 또는 None>, 'folder': <draft folder>}
+        """
+        msg = MIMEMultipart('mixed')
+        if from_name:
+            from email.header import Header
+            msg['From'] = formataddr((str(Header(from_name, 'utf-8')), from_addr))
+        else:
+            msg['From'] = from_addr
         msg['To'] = ', '.join(to) if isinstance(to, list) else (to or '')
+        if cc:
+            msg['Cc'] = ', '.join(cc) if isinstance(cc, list) else cc
+        if bcc:
+            msg['Bcc'] = ', '.join(bcc) if isinstance(bcc, list) else bcc
         msg['Subject'] = subject
+        msg['Date'] = formatdate(localtime=True)
+        from email.utils import make_msgid
+        msg_id = make_msgid(domain=from_addr.split('@')[-1] if '@' in from_addr else 'mgnt.kr')
+        msg['Message-ID'] = msg_id
+        msg['MIME-Version'] = '1.0'
         if html_body:
             msg.attach(MIMEText(html_body, 'html', 'utf-8'))
         if attachments:
@@ -712,6 +732,7 @@ class MailClient:
                 att.add_header('Content-Disposition', 'attachment', filename=filename)
                 msg.attach(att)
 
+        # 임시보관함 폴더 탐색 (없으면 생성)
         draft_folders = ['Drafts', 'INBOX.Drafts', 'Draft']
         folders = self._imap.list_folders()
         draft_folder = None
@@ -719,9 +740,37 @@ class MailClient:
             if name in draft_folders or b'\\Drafts' in flags:
                 draft_folder = name
                 break
-        if draft_folder:
-            self._imap.append(draft_folder, msg.as_bytes())
-        return {'success': True}
+        if not draft_folder:
+            try:
+                self._imap.create_folder('Drafts')
+                draft_folder = 'Drafts'
+            except Exception as e:
+                logger.warning("임시보관함 폴더 생성 실패: %s", e)
+                return {'success': False, 'error': '임시보관함 폴더를 찾을 수 없습니다.'}
+
+        # 기존 임시본 교체 삭제
+        if replace_uid:
+            try:
+                self._imap.select_folder(draft_folder)
+                self._imap.delete_messages([int(replace_uid)])
+                self._imap.expunge()
+            except Exception as e:
+                logger.warning("기존 임시본 삭제 실패(uid=%s): %s", replace_uid, e)
+
+        # APPEND (\Draft 플래그 부여)
+        self._imap.append(draft_folder, msg.as_bytes(), flags=[b'\\Draft'])
+
+        # 새 UID 조회 (Message-ID 기준) — 이어쓰기 시 교체 대상 식별용
+        new_uid = None
+        try:
+            self._imap.select_folder(draft_folder)
+            found = self._imap.search(['HEADER', 'Message-ID', msg_id])
+            if found:
+                new_uid = max(found)
+        except Exception as e:
+            logger.warning("임시본 UID 조회 실패: %s", e)
+
+        return {'success': True, 'uid': new_uid, 'folder': draft_folder}
 
     # === Private helpers ===
 

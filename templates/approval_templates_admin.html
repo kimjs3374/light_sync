@@ -103,6 +103,13 @@
                    {{ 'checked' if (not edit_form.default_line) or ('executive' in edit_form.default_line) }}>
             <label class="form-check-label" for="lex">경영진(부장 이상 전원)</label>
           </div>
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" name="effect_on_dept_head" value="1" id="leffect"
+                   {{ 'checked' if edit_form.effect_on_dept_head }}>
+            <label class="form-check-label" for="leffect">부서장 결재 시 효력 발생
+              <span class="text-muted d-block small">임원 결재 전이라도 부서장이 결재하면 효력 인정(휴가차감·부재표시 즉시 반영). 임원 반려 시 효력 취소.</span>
+            </label>
+          </div>
         </div>
         <div class="col-md-3">
           <label class="form-label">금액 필드</label>

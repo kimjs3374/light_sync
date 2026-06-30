@@ -98,6 +98,11 @@
     </style>
 </head>
 <body>
+    <script>
+        // 로그아웃 통합: PC 로그인 화면이 뜨면(=미인증 상태) 동일 출처의
+        // 모바일 SPA 토큰도 제거 → 한쪽 로그아웃 시 양쪽 모두 로그아웃된다.
+        try { localStorage.removeItem('token'); localStorage.removeItem('user'); } catch (e) {}
+    </script>
     <div class="login-box">
         <div class="login-header text-center mb-2">
             <div class="brand-title">Light-Sync</div>

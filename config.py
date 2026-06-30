@@ -13,12 +13,14 @@ load_dotenv(override=True)
 MENU_REGISTRY = OrderedDict([
     # --- 워크보드 (권한 체크 없이 항상 표시) ---
     ("dashboard",      {"label": "메인 현황판", "group": "워크보드", "endpoint": "dashboard.dashboard_view"}),
-    ("overview",       {"label": "종합현황",   "group": "워크보드", "endpoint": "overview.project_overview"}),
-    ("daily_report",   {"label": "업무보고",   "group": "워크보드", "endpoint": "daily_report.daily_report_view"}),
-    ("approval",       {"label": "전자결재",   "group": "워크보드", "endpoint": "approval.approval_list"}),
+    ("overview",       {"label": "종합현황",   "group": "종합현황", "endpoint": "overview.project_overview"}),
+    ("daily_report",   {"label": "일일보고",   "group": "업무보고", "endpoint": "daily_report.daily_report_view"}),
+    ("weekly_report",  {"label": "주간보고",   "group": "업무보고", "endpoint": "report.weekly_report"}),
+    ("approval",       {"label": "전자결재",   "group": "전자결재", "endpoint": "approval.approval_list"}),
     # --- 이메일 ---
     ("mail_shared",    {"label": "공용메일",  "group": "이메일", "endpoint": "mail.mail_shared"}),
     ("mail_personal",  {"label": "개인메일",  "group": "이메일", "endpoint": "mail.mail_personal"}),
+    ("mail_external",  {"label": "외부메일",  "group": "이메일", "endpoint": "mail.mail_external"}),
     # --- 영업부 ---
     ("project",        {"label": "설계관리",   "group": "영업부", "endpoint": "project.project_list"}),
     ("contract",       {"label": "계약관리",   "group": "영업부", "endpoint": "project.contract_list"}),
@@ -61,15 +63,60 @@ MENU_REGISTRY = OrderedDict([
     ("admin_settings", {"label": "시스템관리", "group": "시스템", "endpoint": "auth.admin_settings", "admin_only": True}),
     ("workboard",      {"label": "현장관리",   "group": "워크보드", "endpoint": "workboard.workboard_list"}),
     ("asboard",        {"label": "A/S",        "group": "워크보드", "endpoint": "asboard.asboard_list"}),
+    # --- 워크보드 (카카오워크 백업 보드, archive.* 동적 endpoint) ---
+    ("wb_material",  {"label": "자재 발주 및 입고",      "group": "워크보드", "endpoint": "archive.list_material"}),
+    ("wb_contract",  {"label": "계약서",               "group": "워크보드", "endpoint": "archive.list_contract"}),
+    ("wb_equipment", {"label": "장비 및 운송비 사용관련", "group": "워크보드", "endpoint": "archive.list_equipment"}),
+    ("wb_fab",       {"label": "제작 진행 현황",         "group": "워크보드", "endpoint": "archive.list_fab"}),
+    ("wb_meeting",   {"label": "업무협의",             "group": "워크보드", "endpoint": "archive.list_meeting"}),
+    ("wb_notice",    {"label": "공지사항",             "group": "워크보드", "endpoint": "archive.list_notice"}),
+    ("approval_archive", {"label": "결재 문서대장",     "group": "워크보드", "endpoint": "approval_archive.archive_list"}),
+    ("chat_archive",   {"label": "대화방",             "group": "워크보드", "endpoint": "chat_archive.room_list"}),
     ("chatbot_admin",  {"label": "챗봇 권한",  "group": "시스템", "endpoint": "chatbot.admin_page", "admin_only": True}),
     ("office",         {"label": "Office",     "group": "공통메뉴", "endpoint": "office.office_list", "always_show": True}),
 ])
 
-COMMON_MENU_KEYS = {"dashboard", "overview", "daily_report", "approval", "mail_personal", "mail_shared"}
+COMMON_MENU_KEYS = {"dashboard", "overview", "daily_report", "weekly_report", "approval",
+                    "mail_personal", "mail_shared", "mail_external"}
+
+# 관리자도 비활성화할 수 없는 핵심 메뉴 (잠금 방지)
+#  - dashboard: 로그인 후 기본 이동/리다이렉트 대상
+#  - admin_only 메뉴(시스템관리·챗봇 권한): 다시 켜는 화면이므로 항상 유지
+PROTECTED_MENU_KEYS = {"dashboard"}
+
+# =====================================================================
+# 카카오워크 워크보드 ↔ ERP 아카이브 보드 레지스트리 (단일 기준)
+#   - 라우트(routes/archive_boards.py), 정규화(scripts/normalize_workboard.py),
+#     메뉴(MENU_REGISTRY)가 모두 이 정의를 따른다.
+#   slug     : board_type / URL(/board/<slug>) — 고정값, 변경 시 데이터 재정규화 필요
+#   kakao    : public.workboard_posts.board_type (백업 원본 보드명)
+#   label    : 사이드바 메뉴 라벨 (카카오워크 명칭 유지)
+#   menu_key : MENU_REGISTRY 권한 키 (site/as는 기존 workboard/asboard 재사용)
+#   builtin  : True면 별도 블루프린트(workboard/asboard)가 이미 라우트 보유
+#              → archive_boards 일반 블루프린트는 등록 생략
+# =====================================================================
+#   board_id : 카카오워크 보드 id — Supabase Storage 첨부 키 경로에 사용
+#              (archive/{board_id}/{post_id}/{att_id}{ext})
+WORKBOARDS = OrderedDict([
+    ("site",      {"kakao": "현장관리",              "label": "현장관리",              "menu_key": "workboard",    "builtin": True,  "board_id": 55771}),
+    ("as",        {"kakao": "A/S 관리",             "label": "A/S",                  "menu_key": "asboard",      "builtin": True,  "board_id": 55773}),
+    ("material",  {"kakao": "자재 발주 및 입고",       "label": "자재 발주 및 입고",       "menu_key": "wb_material",  "builtin": False, "board_id": 55772}),
+    ("contract",  {"kakao": "계약서",                "label": "계약서",                "menu_key": "wb_contract",  "builtin": False, "board_id": 52401}),
+    ("equipment", {"kakao": "장비 및 운송비 사용관련",  "label": "장비 및 운송비 사용관련",  "menu_key": "wb_equipment", "builtin": False, "board_id": 1693184}),
+    ("fab",       {"kakao": "제작 진행 현황",          "label": "제작 진행 현황",          "menu_key": "wb_fab",       "builtin": False, "board_id": 55770}),
+    ("meeting",   {"kakao": "업무협의",              "label": "업무협의",              "menu_key": "wb_meeting",   "builtin": False, "board_id": 70194}),
+    ("notice",    {"kakao": "공지사항",              "label": "공지사항",              "menu_key": "wb_notice",    "builtin": False, "board_id": 52383}),
+])
+
+# slug → board_id 빠른 조회용
+WORKBOARD_BOARD_IDS = {slug: m["board_id"] for slug, m in WORKBOARDS.items()}
 
 # 사이드바 그룹 아이콘 매핑
 GROUP_ICONS = {
     "워크보드": "📊",
+    "종합현황": "📊",
+    "전자결재": "📋",
+    "업무보고": "📝",
     "이메일": "✉️",
     "영업부": "💼",
     "관리부": "📋",

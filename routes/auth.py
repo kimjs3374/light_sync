@@ -487,6 +487,26 @@ def admin_settings():
         _mo_row = db.query(DashboardSetting).filter(DashboardSetting.setting_key == 'menu_order').first()
         menu_order_data = _json_mod.loads(_mo_row.setting_value) if _mo_row else {}
 
+        # 메뉴 활성/비활성 (전역)
+        from modules.services.dashboard_actions import get_disabled_menus
+        from config import PROTECTED_MENU_KEYS
+        disabled_menus = sorted(get_disabled_menus(db))
+
+        # 토글 가능 메뉴: 핵심(dashboard)/admin_only 제외한 전 메뉴 (공통메뉴 포함)
+        toggleable_menus = [
+            {"key": k, "label": v["label"], "group": v["group"]}
+            for k, v in MENU_REGISTRY.items()
+            if k not in PROTECTED_MENU_KEYS and not v.get("admin_only")
+        ]
+        if menu_order_data:
+            _k2g_t = {}
+            for _gn in menu_order_data.get('groups', []):
+                for _mk in menu_order_data.get(_gn, []):
+                    _k2g_t[_mk] = _gn
+            for _m in toggleable_menus:
+                if _m["key"] in _k2g_t:
+                    _m["group"] = _k2g_t[_m["key"]]
+
         # menu_order 기준 그룹 이동 반영 (configurable_menus + 권한관리에 적용)
         if menu_order_data:
             _key_to_group = {}
@@ -592,7 +612,9 @@ def admin_settings():
             all_tools=_ALL_TOOLS, default_tools=_cb_default.split(","),
             tool_groups=_tool_groups, chatbot_presets=chatbot_presets,
             presets_map=presets_map,
-            menu_order_data=menu_order_data)
+            menu_order_data=menu_order_data,
+            disabled_menus=disabled_menus,
+            toggleable_menus=toggleable_menus)
 
 
 @auth_bp.route('/admin/update_ops_setting', methods=['POST'])
@@ -1203,6 +1225,37 @@ def api_menu_order():
 
         db.commit()
         return jsonify(ok=True)
+
+
+@auth_bp.route('/admin/api/menu_toggle', methods=['POST'])
+@admin_required
+def api_menu_toggle():
+    """메뉴 전역 활성/비활성 토글.
+    body: {"key": "<menu_key>", "enabled": true|false}
+    enabled=false → 비활성 목록에 추가, true → 제거.
+    공통/admin_only 메뉴는 비활성 불가(시스템관리 잠금 방지).
+    """
+    from modules.services.dashboard_actions import get_disabled_menus, set_disabled_menus
+    data = request.get_json(silent=True) or {}
+    key = (data.get('key') or '').strip()
+    enabled = bool(data.get('enabled'))
+
+    from config import PROTECTED_MENU_KEYS
+    reg = MENU_REGISTRY.get(key)
+    if not reg:
+        return jsonify(ok=False, error='알 수 없는 메뉴입니다.'), 400
+    if key in PROTECTED_MENU_KEYS or reg.get('admin_only'):
+        return jsonify(ok=False, error='이 메뉴는 비활성화할 수 없습니다.'), 400
+
+    with get_db() as db:
+        disabled = get_disabled_menus(db)
+        if enabled:
+            disabled.discard(key)
+        else:
+            disabled.add(key)
+        set_disabled_menus(db, disabled)
+        db.commit()
+    return jsonify(ok=True, disabled=sorted(disabled))
 
 
 @auth_bp.route('/logout')

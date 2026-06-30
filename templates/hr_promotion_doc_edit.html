@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}서면 사용일 편집{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/leave_calendar.css') }}">
+<style>
+  .de-box { border:1px solid #e2e8f0; border-radius:10px; padding:16px 18px; margin-bottom:14px; max-width:760px; }
+  .de-h { font-size:.9rem; font-weight:700; color:#334155; margin:8px 0; }
+  .de-meta { font-size:.82rem; color:#64748b; margin-bottom:10px; }
+  .de-ref { font-size:.82rem; color:#475569; background:#f8fafc; border-radius:8px; padding:10px 12px; margin:8px 0; }
+  .de-ref b { color:#334155; }
+</style>
+
+{% macro fmt(items) %}
+  {%- for d in items -%}
+    {%- if d is mapping -%}{{ d.date }}({{ d.type }}){%- else -%}{{ d }}{%- endif -%}
+    {%- if not loop.last %}, {% endif -%}
+  {%- endfor -%}
+{% endmacro %}
+
+<div class="page-hero mg-fade">
+  <div class="d-flex justify-content-between align-items-center gap-2">
+    <div>
+      <div class="hero-eyebrow">연차사용촉진 · 서면</div>
+      <h2>서면 사용일 편집</h2>
+      <div class="hero-sub">{{ u.full_name if u else p.user_id }} · {{ p.leave_year }}년도 — 회사 임의지정 또는 실제 사용일을 반영해 서면을 작성합니다.</div>
+    </div>
+    <a href="{{ url_for('hr.hr_promotion') }}" class="btn btn-sm"><i class="bi bi-arrow-left"></i> 목록</a>
+  </div>
+</div>
+
+<div class="de-box mg-fade">
+  <div class="de-meta">
+    연차연도 {{ p.year_start.strftime('%Y-%m-%d') if p.year_start else '-' }} ~ {{ p.year_end.strftime('%Y-%m-%d') if p.year_end else '-' }}
+    · 촉진(통보)일 <b>{{ p.notified_at.strftime('%Y-%m-%d') if p.notified_at else '-' }}</b>
+    · 미사용 잔여 <b>{{ p.remaining_days if p.remaining_days is not none else '-' }}</b>일
+  </div>
+
+  <div class="de-ref">직원 지정 사용일: <b>{{ fmt(p.employee_dates or []) or '없음' }}</b></div>
+  <div class="de-ref">촉진일 이후 실제 사용내역: <b>{{ fmt(actual) or '없음' }}</b></div>
+
+  <form method="post" action="{{ url_for('hr.hr_promotion_doc_edit', promo_id=p.id) }}"
+        class="d-flex flex-column gap-2" onsubmit="return lpValidate(this, {{ p.id }})">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="dates" id="dates-{{ p.id }}">
+    <div class="de-h">서면에 인쇄할 사용일 <span class="text-muted fw-normal" style="font-size:.78rem">— 달력에서 선택, 날짜별 연차/반차 지정</span></div>
+    <div class="lp-cal" data-promo="{{ p.id }}"
+         data-min="{{ (p.notified_at.date() if p.notified_at else p.year_start).strftime('%Y-%m-%d') if (p.notified_at or p.year_start) else today.strftime('%Y-%m-%d') }}"
+         data-max="{{ p.year_end.strftime('%Y-%m-%d') if p.year_end else today.strftime('%Y-%m-%d') }}"
+         data-init='{{ prefill|tojson }}'></div>
+    <div class="lp-counter" id="cnt-{{ p.id }}">선택 <b>0</b>일</div>
+    <div class="lp-sel-list" id="sel-{{ p.id }}"></div>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="LeaveCalendar.fill({{ p.id }}, window.DE_ACTUAL)">
+        <i class="bi bi-arrow-down-circle"></i> 실제 사용일로 채우기</button>
+      <button class="btn btn-sm btn-primary"><i class="bi bi-printer"></i> 저장하고 서면 출력</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  window.LP_HOLIDAYS = {{ holidays|tojson }};
+  window.DE_ACTUAL = {{ actual|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/leave_calendar.js') }}"></script>
+{% endblock %}

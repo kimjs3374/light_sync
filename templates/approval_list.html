@@ -74,7 +74,7 @@
 
 {# ── 탭 ── #}
 <ul class="nav ea-tabs mb-2 mg-fade" style="animation-delay:.08s">
-  {% set tabs = [('inbox','결재대기'),('progress','진행중'),('drafted','내가 올린'),('referenced','참조/수신'),('done','완료함')] %}
+  {% set tabs = [('all','전체'),('inbox','결재대기'),('progress','진행중'),('drafted','내가 올린'),('referenced','참조/수신'),('done','완료함')] %}
   {% for key, label in tabs %}
   <li class="nav-item">
     <a class="nav-link {{ 'active' if tab == key }}" href="{{ url_for('approval.approval_list', tab=key) }}">
@@ -107,7 +107,7 @@
         <td>{{ d.drafter_name }} {{ d.drafter_position or '' }}</td>
         <td>
           {% if d.status == 'draft' %}<span class="badge bg-secondary">작성중</span>
-          {% elif d.status == 'pending' %}<span class="badge bg-warning text-dark">진행중</span>
+          {% elif d.status == 'pending' %}<span class="badge bg-warning text-dark">진행중</span>{% if d.effect_active %} <span class="badge bg-success" style="white-space:nowrap" title="부서장 결재로 효력 발생 (임원 결재 진행 중)">효력발생</span>{% endif %}
           {% elif d.status == 'approved' %}<span class="badge bg-success">완료</span>
           {% elif d.status == 'rejected' %}<span class="badge bg-danger">반려</span>
           {% else %}<span class="badge bg-secondary">회수</span>{% endif %}

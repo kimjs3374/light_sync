@@ -51,6 +51,63 @@ def _parse_datetime(date_str, time_str):
     return datetime.datetime(d.year, d.month, d.day, 8, 0)
 
 
+def _build_trip_query(db, status_filter, search):
+    """목록/엑셀 공용: 상태·검색 필터가 적용된 쿼리 + effective status 식 반환"""
+    from sqlalchemy.orm import joinedload
+    from sqlalchemy import func, case, or_
+    now = datetime.datetime.now()
+
+    # 복귀 미정이면 출발일 다음날 00:00을 묵시 복귀로 (당일 출장은 다음날 완료)
+    implicit_return = func.coalesce(
+        BusinessTrip.return_date,
+        func.date_trunc('day', BusinessTrip.departure_date) + datetime.timedelta(days=1),
+    )
+
+    # 효과적 상태(effective status) — 취소 외에는 날짜 기반
+    eff_status_expr = case(
+        (BusinessTrip.status == '취소', '취소'),
+        (BusinessTrip.departure_date == None, '예정'),  # noqa: E711
+        (BusinessTrip.departure_date > now, '예정'),
+        (implicit_return <= now, '완료'),
+        else_='진행중',
+    )
+
+    query = db.query(BusinessTrip).options(
+        joinedload(BusinessTrip.members)
+    ).order_by(BusinessTrip.departure_date.desc())
+
+    if status_filter:
+        if status_filter == '취소':
+            query = query.filter(BusinessTrip.status == '취소')
+        elif status_filter == '예정':
+            query = query.filter(
+                BusinessTrip.status != '취소',
+                or_(BusinessTrip.departure_date == None, BusinessTrip.departure_date > now),  # noqa: E711
+            )
+        elif status_filter == '진행중':
+            query = query.filter(
+                BusinessTrip.status != '취소',
+                BusinessTrip.departure_date != None,  # noqa: E711
+                BusinessTrip.departure_date <= now,
+                implicit_return > now,
+            )
+        elif status_filter == '완료':
+            query = query.filter(
+                BusinessTrip.status != '취소',
+                BusinessTrip.departure_date != None,  # noqa: E711
+                implicit_return <= now,
+            )
+    if search:
+        like = f'%{search}%'
+        query = query.filter(
+            (BusinessTrip.title.ilike(like)) |
+            (BusinessTrip.destination.ilike(like)) |
+            (BusinessTrip.purpose.ilike(like)) |
+            (BusinessTrip.members.any(BusinessTripMember.user_name.ilike(like)))
+        )
+    return query, eff_status_expr
+
+
 def _save_members(db, trip, form):
     """폼에서 출장인원 파싱 후 저장"""
     # 기존 멤버 삭제
@@ -88,57 +145,9 @@ def trip_list():
     search = request.args.get('search', '').strip()
 
     with get_db() as db:
-        from sqlalchemy.orm import joinedload
-        from sqlalchemy import func, case, or_
-        now = datetime.datetime.now()
+        from sqlalchemy import func
+        query, eff_status_expr = _build_trip_query(db, status_filter, search)
 
-        # 복귀 미정이면 출발일 다음날 00:00을 묵시 복귀로 (당일 출장은 다음날 완료)
-        implicit_return = func.coalesce(
-            BusinessTrip.return_date,
-            func.date_trunc('day', BusinessTrip.departure_date) + datetime.timedelta(days=1),
-        )
-
-        # 효과적 상태(effective status) — 취소 외에는 날짜 기반
-        eff_status_expr = case(
-            (BusinessTrip.status == '취소', '취소'),
-            (BusinessTrip.departure_date == None, '예정'),  # noqa: E711
-            (BusinessTrip.departure_date > now, '예정'),
-            (implicit_return <= now, '완료'),
-            else_='진행중',
-        )
-
-        query = db.query(BusinessTrip).options(
-            joinedload(BusinessTrip.members)
-        ).order_by(BusinessTrip.departure_date.desc())
-
-        if status_filter:
-            if status_filter == '취소':
-                query = query.filter(BusinessTrip.status == '취소')
-            elif status_filter == '예정':
-                query = query.filter(
-                    BusinessTrip.status != '취소',
-                    or_(BusinessTrip.departure_date == None, BusinessTrip.departure_date > now),  # noqa: E711
-                )
-            elif status_filter == '진행중':
-                query = query.filter(
-                    BusinessTrip.status != '취소',
-                    BusinessTrip.departure_date != None,  # noqa: E711
-                    BusinessTrip.departure_date <= now,
-                    implicit_return > now,
-                )
-            elif status_filter == '완료':
-                query = query.filter(
-                    BusinessTrip.status != '취소',
-                    BusinessTrip.departure_date != None,  # noqa: E711
-                    implicit_return <= now,
-                )
-        if search:
-            like = f'%{search}%'
-            query = query.filter(
-                (BusinessTrip.title.ilike(like)) |
-                (BusinessTrip.destination.ilike(like)) |
-                (BusinessTrip.purpose.ilike(like))
-            )
         total = db.query(BusinessTrip).filter(query.whereclause).count() if query.whereclause is not None else db.query(BusinessTrip).count()
         pagination = make_pagination(page, per_page, total)
         trips = query.offset((pagination['page'] - 1) * per_page).limit(per_page).all()
@@ -166,6 +175,45 @@ def trip_list():
                                status_counts=status_counts,
                                vehicle_choices=vehicles,
                                filters={'status': status_filter, 'search': search})
+
+
+@business_trip_bp.route('/business-trips/export.xlsx')
+@menu_required('business_trip')
+def trip_export():
+    """현재 필터(상태·검색)에 맞는 출장 전체를 엑셀로 내려받기"""
+    from flask import send_file
+    from urllib.parse import quote
+    from modules.services.business_trip_excel import export_business_trips_excel, make_filename
+
+    status_filter = request.args.get('status', '').strip()
+    search = request.args.get('search', '').strip()
+
+    with get_db() as db:
+        query, _ = _build_trip_query(db, status_filter, search)
+        trips = query.all()
+        # joinedload + 다대일 조합 시 중복 제거
+        seen = set()
+        unique = []
+        for t in trips:
+            if t.id not in seen:
+                seen.add(t.id)
+                unique.append(t)
+        trips = unique
+
+        bio = export_business_trips_excel(trips)
+        log_activity(db, 'business_trip', 'export',
+                     f'출장관리 엑셀 다운로드 ({len(trips)}건)',
+                     user_name=session.get('full_name'))
+
+    filename = make_filename(datetime.date.today())
+    resp = send_file(
+        bio,
+        as_attachment=True,
+        download_name=filename,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    resp.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+    return resp
 
 
 @business_trip_bp.route('/business-trips/create', methods=['GET', 'POST'])

@@ -218,11 +218,12 @@ def _get_token_owner_id():
     return _whoami_id(MM_ADMIN_TOKEN)
 
 
-def send_dm(username: str, message: str) -> bool:
+def send_dm(username: str, message: str, attachments: list | None = None) -> bool:
     """username 사용자에게 Mattermost 1:1 DM 발송.
 
     발신자: 전자결재 전용 봇(MM_APPROVAL_BOT_TOKEN). 미설정 시 admin 계정 폴백.
     direct 채널 생성(admin 토큰)은 멱등, 게시는 발신자 토큰으로 → 작성자=봇.
+    attachments: 인터랙티브 버튼(props.attachments) — 승인/반려 버튼 등. None이면 순수 텍스트.
     실패해도 예외 없이 False 반환.
     """
     if not MM_ADMIN_TOKEN or not username:
@@ -248,14 +249,80 @@ def send_dm(username: str, message: str) -> bool:
             return False
         channel_id = r.json().get('id')
         # 게시는 발신자(봇) 토큰으로 → 작성자가 봇으로 표시
+        post_body: dict = {'channel_id': channel_id, 'message': message}
+        if attachments:
+            post_body['props'] = {'attachments': attachments}
         r2 = requests.post(
             f"{MM_URL}/api/v4/posts",
             headers={"Authorization": f"Bearer {sender_token}", "Content-Type": "application/json"},
-            json={'channel_id': channel_id, 'message': message}, timeout=5,
+            json=post_body, timeout=5,
         )
         return r2.status_code in (200, 201)
     except Exception:
         logger.exception("Mattermost send_dm error for %s", username)
+        return False
+
+
+def send_dm_with_ref(username: str, message: str, attachments: list | None = None):
+    """send_dm와 동일하나 게시된 post 참조를 반환. 성공 시 {'channel_id','post_id'} / 실패 None.
+
+    처리 시 메시지 수정(버튼 제거)을 위해 post_id가 필요한 결재 알림용.
+    """
+    if not MM_ADMIN_TOKEN or not username:
+        return None
+    try:
+        target = _get_user_by_username(username)
+        if not target:
+            return None
+        bot_token = _approval_bot_token()
+        sender_token = bot_token or MM_ADMIN_TOKEN
+        sender_id = _whoami_id(sender_token)
+        if not sender_id:
+            return None
+        r = requests.post(
+            f"{MM_URL}/api/v4/channels/direct",
+            headers=_headers(), json=[sender_id, target['id']], timeout=5,
+        )
+        if r.status_code not in (200, 201):
+            return None
+        channel_id = r.json().get('id')
+        post_body: dict = {'channel_id': channel_id, 'message': message}
+        if attachments:
+            post_body['props'] = {'attachments': attachments}
+        r2 = requests.post(
+            f"{MM_URL}/api/v4/posts",
+            headers={"Authorization": f"Bearer {sender_token}", "Content-Type": "application/json"},
+            json=post_body, timeout=5,
+        )
+        if r2.status_code in (200, 201):
+            return {'channel_id': channel_id, 'post_id': r2.json().get('id')}
+        return None
+    except Exception:
+        logger.exception("Mattermost send_dm_with_ref error for %s", username)
+        return None
+
+
+def update_approval_post(post_id: str, message: str) -> bool:
+    """결재봇이 쓴 post를 수정(버튼 제거 + 처리완료 표시). 작성자=결재봇 토큰으로 PUT.
+
+    일반봇 토큰으로는 결재봇 글을 수정할 수 없어 403 → 반드시 작성자 토큰 사용.
+    """
+    if not post_id:
+        return False
+    token = _approval_bot_token() or MM_ADMIN_TOKEN
+    if not token:
+        return False
+    try:
+        r = requests.put(
+            f"{MM_URL}/api/v4/posts/{post_id}",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={'id': post_id, 'message': message, 'props': {}}, timeout=5,
+        )
+        if r.status_code not in (200, 201):
+            logger.warning("MM 결재 post 수정 실패: %s %s", r.status_code, r.text[:150])
+        return r.status_code in (200, 201)
+    except Exception:
+        logger.exception("update_approval_post error")
         return False
 
 

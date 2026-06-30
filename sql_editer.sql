@@ -1510,3 +1510,86 @@ CREATE TABLE IF NOT EXISTS light_sync.hometax_credentials (
 
 -- 매입/매출 + 전송일자 조회 가속
 CREATE INDEX IF NOT EXISTS ix_tax_invoices_direction ON light_sync.tax_invoices(direction, send_date);
+
+-- ============================================================
+-- 연차 수동 사용 기록 (v2026-06-26)
+-- 전자결재 미경유 실사용 연차를 관리자가 날짜 단위로 직접 등록.
+-- 도입 전(2026년 등) 사용분 소급 입력용. used_leave_days 계산에 합산됨.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS light_sync.leave_usages (
+    id          SERIAL       PRIMARY KEY,
+    user_id     INTEGER      NOT NULL REFERENCES light_sync.users(id),
+    used_date   DATE         NOT NULL,
+    days        NUMERIC(3,1) NOT NULL DEFAULT 1,   -- 반차=0.5
+    leave_type  VARCHAR(20)  DEFAULT '연차',
+    reason      TEXT,
+    leave_year  INTEGER,                            -- 적용 연차연도 시작연도(입사기념 기준)
+    created_by  VARCHAR(50),
+    created_at  TIMESTAMP    DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_leave_usage_user_date ON light_sync.leave_usages(user_id, used_date);
+
+-- ────────────────────────────────────────────────────────
+-- 전자결재 부서장 선효력 (2026-06-26)
+-- 양식별로 '부서장 결재 시 효력 발생'을 켜면, 임원 결재 전이라도
+-- 부서장 결재 시점에 effect_active=True 로 효력 인정(휴가차감·부재표시).
+-- 임원 반려 시 effect_active=False 로 효력 취소.
+-- ────────────────────────────────────────────────────────
+ALTER TABLE light_sync.approval_form_templates
+    ADD COLUMN IF NOT EXISTS effect_on_dept_head BOOLEAN DEFAULT FALSE;
+ALTER TABLE light_sync.approval_documents
+    ADD COLUMN IF NOT EXISTS effect_active BOOLEAN DEFAULT FALSE;
+ALTER TABLE light_sync.approval_documents
+    ADD COLUMN IF NOT EXISTS effected_at TIMESTAMP;
+
+-- ════════════════════════════════════════════════════════
+-- 연차사용촉진제 (근로기준법 제61조) 이력 (2026-06-29)
+--  · 입사일 기준 연차연도, 1년 이상/미만 모두 대상
+--  · 1차 촉구(사용시기 지정 요청) → 직원 셀프 지정 → 미지정 시 2차(회사 지정 통보)
+--  · 메일/ERP 알림 + 서면 통보서 출력 이력 = 법적 증빙
+--  · stage: first(1차) / extra(1년미만 추가 발생분) / second(2차 회사지정)
+--  · status: sent / designated / admin_designated / completed / expired
+-- ════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS light_sync.leave_promotions (
+    id              SERIAL       PRIMARY KEY,
+    user_id         INTEGER      NOT NULL REFERENCES light_sync.users(id),
+    leave_year      INTEGER      NOT NULL,              -- 입사기념 연도 시작연도
+    emp_type        VARCHAR(10)  NOT NULL DEFAULT 'over1y',  -- over1y(1년이상)/under1y(1년미만)
+    stage           VARCHAR(10)  NOT NULL,              -- first/extra/second
+
+    -- 촉구 시점 연차 스냅샷 (서면 서류용)
+    year_start      DATE,
+    year_end        DATE,                               -- 연차연도 마지막 사용일
+    granted_days    NUMERIC(4,1),
+    used_days       NUMERIC(4,1),
+    remaining_days  NUMERIC(4,1),                       -- 촉구 시점 미사용 잔여
+
+    -- 발송(촉구/통보)
+    notified_at     TIMESTAMP    DEFAULT NOW(),
+    notified_by     VARCHAR(50)  DEFAULT 'system',      -- system/관리자명
+    channel         VARCHAR(20)  DEFAULT 'email',       -- email/erp/both
+    email_to        VARCHAR(255),
+    email_sent      BOOLEAN      DEFAULT FALSE,
+
+    -- 직원 셀프 지정
+    designate_due   DATE,                               -- 지정 기한(10일)
+    employee_dates  JSONB,                              -- 직원 지정 사용예정일
+    designated_at   TIMESTAMP,
+
+    -- 2차: 회사 지정
+    admin_dates     JSONB,                              -- 회사 지정 사용일
+    admin_by        VARCHAR(50),
+    admin_at        TIMESTAMP,
+
+    status          VARCHAR(20)  DEFAULT 'sent',
+    printed_at      TIMESTAMP,                          -- 서면 통보서 출력 시각
+    note            TEXT,
+    created_at      TIMESTAMP    DEFAULT NOW(),
+
+    UNIQUE (user_id, leave_year, stage)                 -- 동일 단계 중복 촉구 방지
+);
+CREATE INDEX IF NOT EXISTS ix_leave_promo_user   ON light_sync.leave_promotions(user_id, leave_year);
+CREATE INDEX IF NOT EXISTS ix_leave_promo_status ON light_sync.leave_promotions(status);
+
+-- 전자결재 단계별 알림 메시지 참조(MM post/카카오 conversation) — 처리 시 양쪽 갱신용 (2026-06-30)
+ALTER TABLE light_sync.approval_steps ADD COLUMN IF NOT EXISTS notify_refs JSONB;

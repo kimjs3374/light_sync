@@ -261,6 +261,13 @@ def menu_required(menu_key, write=False):
             g.active_menu_key = menu_key
             if 'user_id' not in session and not _try_token_auth():
                 return _auth_failure()
+            # 관리자가 전역 비활성화한 메뉴는 누구도(관리자 포함) 접근 불가
+            # — admin_only/공통 메뉴는 비활성 대상에서 제외되므로 시스템관리는 항상 접근 가능
+            if menu_key in session.get('disabled_menus', []):
+                if _is_api_request():
+                    return jsonify({'error': '비활성화된 메뉴입니다.'}), 403
+                flash('비활성화된 메뉴입니다.', 'warning')
+                return redirect(url_for('dashboard.dashboard_view'))
             if session.get('role') == 'admin' or session.get('user_group') == '임원진':
                 return f(*args, **kwargs)
             if menu_key in COMMON_MENU_KEYS:

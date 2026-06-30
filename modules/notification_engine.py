@@ -26,6 +26,16 @@ EVENT_REGISTRY: Dict[str, Dict[str, Any]] = {
         'kakao': False,
         'mattermost': False,
     },
+    # 미결재 독촉 (매일 09:00 crontab) — 카카오/MM 디지털 DM은 approval_service에서 직접 발송
+    'approval.reminder': {
+        'title': '[미결재] 결재 대기 {pending_count}건',
+        'message': '결재 차례인 문서가 {pending_count}건 있습니다.',
+        'target': [],
+        'noti_type': 'approval',
+        'link': '/approval?tab=inbox',
+        'kakao': False,
+        'mattermost': False,
+    },
     'approval.approved': {
         'title': '[결재완료] {form_name}',
         'message': '{title} — 최종 승인되었습니다',
@@ -263,6 +273,28 @@ EVENT_REGISTRY: Dict[str, Dict[str, Any]] = {
         'link': '/sales_management/{project_id}',
         'kakao': True,
         'kakao_format': 'text',
+    },
+
+    # ── 연차사용촉진 (근로기준법 제61조) ──
+    # 인사관리 권한자 전체에게 촉진 대상자 명단 통지 (target_override 로 동적 지정)
+    'leave.promotion_admin': {
+        'title': '[연차사용촉진] 대상자 {count}명',
+        'message': '{detail}',
+        'target': [],
+        'noti_type': 'hr',
+        'link': '/hr/promotion',
+        'kakao': False,
+        'mattermost': True,
+    },
+    # 직원 본인에게 사용시기 지정 요청 (target_override=['user:<id>'])
+    'leave.promotion_employee': {
+        'title': '[연차사용촉진] 사용시기 지정 요청',
+        'message': '{leave_year}년도 미사용 연차 {remaining}일 — {due}까지 사용시기를 지정해 주세요',
+        'target': [],
+        'noti_type': 'hr',
+        'link': '/hr/my-promotion',
+        'kakao': False,
+        'mattermost': True,
     },
 }
 

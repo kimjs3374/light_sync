@@ -41,10 +41,16 @@ def _safe_int(v, default=None):
 def _leave_balance(db, user):
     """휴가 양식용 본인 연차 요약 (잔여 등). 실패 시 None."""
     try:
+        import datetime as _dt
         from modules.services import hr_service
         s = hr_service.leave_summary(db, user)
+        ys, ye = s.get('year_start'), s.get('year_end')
+        period_start = ys.strftime('%Y-%m-%d') if ys else None
+        # year_end는 exclusive(마지막 사용일 다음 날) → 하루 빼서 표기
+        period_end = (ye - _dt.timedelta(days=1)).strftime('%Y-%m-%d') if ye else None
         return {'granted': s['granted'], 'used': s['used'],
-                'adjust': s['adjust'], 'remaining': s['remaining']}
+                'adjust': s['adjust'], 'remaining': s['remaining'],
+                'period_start': period_start, 'period_end': period_end}
     except Exception:
         return None
 
@@ -80,14 +86,21 @@ def _can_view(doc):
 @approval_bp.route('')
 @menu_required('approval')
 def approval_list():
-    tab = request.args.get('tab', 'inbox')
+    tab = request.args.get('tab', 'all')
     uid = _me()
     with get_db() as db:
         svc.seed_form_templates(db)
         db.commit()
 
         base = db.query(ApprovalDocument)
-        if tab == 'inbox':
+        if tab == 'all':
+            # 권한 내 모든 문서: 내가 기안 OR 결재선 포함 OR 참조/수신
+            docs = (base.filter(or_(
+                        ApprovalDocument.drafter_id == uid,
+                        ApprovalDocument.steps.any(ApprovalStep.approver_id == uid),
+                        ApprovalDocument.references.any(ApprovalReference.user_id == uid)))
+                    .order_by(ApprovalDocument.created_at.desc()).all())
+        elif tab == 'inbox':
             # 내가 현재 결재할 차례인 진행중 문서
             docs = (base.join(ApprovalStep)
                     .filter(ApprovalDocument.status == 'pending',
@@ -164,17 +177,24 @@ def approval_new():
         default_line = []
         leave_balance = None
         holidays = []
+        me = db.query(User).get(_me())
+        # 본인 전결 대상: 자동 결재선이 비는 최상위 기안자
+        self_approval = not svc.resolve_default_line(db, me)
+        default_refs = []
         if form:
-            me = db.query(User).get(_me())
             steps = svc.resolve_default_line(db, me, form.default_line)
             default_line = steps
+            # 양식별 기본 참조자 (휴가/지출 → 서은미 과장). 본인 제외.
+            default_refs = [{'user_id': r.id, 'user_name': r.full_name, 'ref_type': 'reference'}
+                            for r in svc.resolve_default_refs(db, form.form_key) if r.id != me.id]
             if form.form_key == 'leave':
                 leave_balance = _leave_balance(db, me)
                 holidays = _holiday_list()
         return render_template('approval_form.html',
                                forms=forms, form=form,
                                users=user_dicts, default_line=default_line,
-                               doc=None, leave_balance=leave_balance, holidays=holidays)
+                               doc=None, leave_balance=leave_balance, holidays=holidays,
+                               self_approval=self_approval, refs=default_refs)
 
 
 @approval_bp.route('/<int:doc_id>/edit')
@@ -184,10 +204,12 @@ def approval_edit(doc_id):
         doc = db.query(ApprovalDocument).get(doc_id)
         if not doc:
             abort(404)
-        if doc.drafter_id != _me() and session.get('role') != 'admin':
+        is_admin = session.get('role') == 'admin'
+        if doc.drafter_id != _me() and not is_admin:
             flash('본인이 기안한 문서만 수정할 수 있습니다.', 'warning')
             return redirect(url_for('approval.approval_detail', doc_id=doc_id))
-        if doc.status != 'draft':
+        # 작성중 문서는 기안자/관리자 모두, 상신된 문서는 관리자만 수정 가능
+        if doc.status != 'draft' and not is_admin:
             flash('작성중(임시저장) 문서만 수정할 수 있습니다.', 'warning')
             return redirect(url_for('approval.approval_detail', doc_id=doc_id))
 
@@ -206,13 +228,16 @@ def approval_edit(doc_id):
                 for r in doc.references]
         leave_balance = None
         holidays = []
+        drafter = db.query(User).get(doc.drafter_id)
+        self_approval = not svc.resolve_default_line(db, drafter) if drafter else False
         if form and form.form_key == 'leave':
-            leave_balance = _leave_balance(db, db.query(User).get(doc.drafter_id))
+            leave_balance = _leave_balance(db, drafter)
             holidays = _holiday_list()
         return render_template('approval_form.html',
                                forms=forms, form=form, users=user_dicts,
                                default_line=default_line, doc=doc, refs=refs,
-                               leave_balance=leave_balance, holidays=holidays)
+                               leave_balance=leave_balance, holidays=holidays,
+                               self_approval=self_approval)
 
 
 @approval_bp.route('/save', methods=['POST'])
@@ -273,13 +298,18 @@ def approval_save():
         content = request.form.get('content', '').strip()
 
         # 문서 생성/수정
+        is_admin = session.get('role') == 'admin'
+        admin_override = False
         if doc_id:
             doc = db.query(ApprovalDocument).get(doc_id)
-            if not doc or (doc.drafter_id != me.id and session.get('role') != 'admin'):
+            if not doc or (doc.drafter_id != me.id and not is_admin):
                 abort(403)
             if doc.status != 'draft':
-                flash('이미 상신된 문서입니다.', 'warning')
-                return redirect(url_for('approval.approval_detail', doc_id=doc_id))
+                # 상신된 문서는 관리자만 내용 수정 가능 (결재선·상태 보존)
+                if not is_admin:
+                    flash('이미 상신된 문서입니다.', 'warning')
+                    return redirect(url_for('approval.approval_detail', doc_id=doc_id))
+                admin_override = True
         else:
             doc = ApprovalDocument(
                 form_key=form.form_key, form_name=form.name,
@@ -298,6 +328,15 @@ def approval_save():
 
         # 증빙서류 등 첨부파일 (생성·수정 시 업로드)
         _save_uploaded_attachments(db, doc)
+
+        # 관리자가 상신된 문서를 수정하는 경우: 결재선·상태 보존, 내용만 갱신
+        if admin_override:
+            log_activity(db, 'approval', 'admin_edit',
+                         f'[{doc.doc_no or "임시"}] {doc.title} 관리자 수정 (결재선·상태 유지)',
+                         ref_type='approval', ref_id=doc.id, ref_label=doc.title)
+            db.commit()
+            flash('관리자 권한으로 수정되었습니다. (결재선·진행상태는 유지)', 'success')
+            return redirect(url_for('approval.approval_detail', doc_id=doc.id))
 
         # 결재선 재구성
         _rebuild_steps(db, doc)
@@ -426,12 +465,17 @@ def approval_detail(doc_id):
         form = db.query(ApprovalFormTemplate).filter_by(form_key=doc.form_key).first()
         my_step = next((s for s in doc.steps
                         if s.approver_id == uid and s.status == 'current'), None)
+        is_admin = session.get('role') == 'admin'
         can_cancel = (doc.drafter_id == uid and doc.status == 'pending'
                       and not any(s.status == 'approved' for s in doc.steps))
-        can_edit = doc.drafter_id == uid and doc.status == 'draft'
+        # 관리자는 상태 무관 수정/삭제 가능, 기안자는 작성중(수정)·작성중/회수/반려(삭제)
+        can_edit = is_admin or (doc.drafter_id == uid and doc.status == 'draft')
+        can_delete = is_admin or (doc.drafter_id == uid
+                                  and doc.status in ('draft', 'canceled', 'rejected'))
         return render_template('approval_detail.html',
                                doc=doc, form=form, my_step=my_step,
-                               can_cancel=can_cancel, can_edit=can_edit)
+                               can_cancel=can_cancel, can_edit=can_edit,
+                               can_delete=can_delete, is_admin=is_admin)
 
 
 @approval_bp.route('/<int:doc_id>/approve', methods=['POST'])
@@ -518,9 +562,11 @@ def approval_delete(doc_id):
         doc = db.query(ApprovalDocument).get(doc_id)
         if not doc:
             abort(404)
-        if doc.drafter_id != _me() and session.get('role') != 'admin':
+        is_admin = session.get('role') == 'admin'
+        if doc.drafter_id != _me() and not is_admin:
             abort(403)
-        if doc.status not in ('draft', 'canceled', 'rejected'):
+        # 진행/완료 문서는 관리자만 삭제 가능 (기안자는 작성중/회수/반려만)
+        if not is_admin and doc.status not in ('draft', 'canceled', 'rejected'):
             flash('진행 중인 문서는 삭제할 수 없습니다.', 'warning')
             return redirect(url_for('approval.approval_detail', doc_id=doc_id))
         for att in doc.attachments:
@@ -528,6 +574,10 @@ def approval_delete(doc_id):
                 delete_object(att.storage_path)
             except Exception:
                 pass
+        # 휴가신청서 삭제 시 연차 차감은 자동 환원(used_leave_days가 현존 문서만 조회)
+        log_activity(db, 'approval', 'delete',
+                     f'[{doc.doc_no or "임시"}] {doc.title} 삭제 (상태: {doc.status})',
+                     ref_type='approval', ref_id=doc.id, ref_label=doc.title)
         db.delete(doc)
         db.commit()
         flash('삭제되었습니다.', 'success')
@@ -698,6 +748,7 @@ def admin_template_edit(tid):
             'icon': ef.icon or '', 'description': ef.description or '',
             'field_schema': ef.field_schema or [], 'default_line': ef.default_line or [],
             'has_amount': ef.has_amount, 'amount_field': ef.amount_field or '',
+            'effect_on_dept_head': ef.effect_on_dept_head,
             'sort_order': ef.sort_order or 0, 'is_active': ef.is_active,
         }
         return render_template('approval_templates_admin.html',
@@ -751,6 +802,7 @@ def admin_template_save():
         has_amount = bool(amount_field)
         sort_order = _safe_int(request.form.get('sort_order'), 0)
         is_active = request.form.get('is_active') == '1'
+        effect_on_dept_head = request.form.get('effect_on_dept_head') == '1'
         icon = (request.form.get('icon') or '').strip()
         description = (request.form.get('description') or '').strip()
 
@@ -775,6 +827,7 @@ def admin_template_save():
         ef.default_line = line
         ef.has_amount = has_amount
         ef.amount_field = amount_field or None
+        ef.effect_on_dept_head = effect_on_dept_head
         ef.sort_order = sort_order
         ef.is_active = is_active
         log_activity(db, 'approval', 'template_save', f'전자결재 양식 저장: {name}',

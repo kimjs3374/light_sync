@@ -3,7 +3,7 @@ import datetime
 from flask import Blueprint, render_template, request
 from sqlalchemy.orm import joinedload
 
-from modules.auth_decorators import login_required
+from modules.auth_decorators import login_required, menu_required
 from modules.db_context import get_db
 from modules.models import Project, Contract, ContractItem, Delivery
 from modules.pagination import make_pagination
@@ -56,7 +56,7 @@ def _calc_entry(proj):
 
 
 @overview_bp.route('/project_overview')
-@login_required
+@menu_required('overview')
 def project_overview():
     search = (request.args.get('search') or '').strip()
     progress_filter = request.args.get('progress', 'all')   # all/not_started/in_progress/completed

@@ -7,7 +7,7 @@
 """
 import datetime
 
-from modules.models import ApprovalDocument, LeaveAdjustment, User
+from modules.models import ApprovalDocument, LeaveAdjustment, LeaveUsage, User
 
 # 연차 차감 대상 (그 외 병가/경조사/공가/기타는 미차감)
 ANNUAL_TYPES = ('연차',)
@@ -67,6 +67,36 @@ def leave_year_range(hire_date, as_of=None):
     if as_of >= anniv:
         return anniv, _safe_anniversary(as_of.year + 1, hire_date)
     return _safe_anniversary(as_of.year - 1, hire_date), anniv
+
+
+def leave_year_start_for(hire_date, year, as_of=None):
+    """입사일 기준, 지정한 시작연도(year)의 연차연도 시작일."""
+    if not hire_date:
+        return datetime.date(year, 1, 1)
+    return _safe_anniversary(year, hire_date)
+
+
+def leave_year_options(hire_date, as_of=None):
+    """선택 가능한 연차연도 목록 (입사연도~현재). 최신연도 우선.
+
+    반환: [(start_date, end_date, year_label), ...]
+    """
+    as_of = as_of or datetime.date.today()
+    if not hire_date:
+        s = datetime.date(as_of.year, 1, 1)
+        return [(s, datetime.date(as_of.year + 1, 1, 1), as_of.year)]
+    cur_start, _ = leave_year_range(hire_date, as_of)
+    opts = []
+    y = hire_date.year
+    while True:
+        s = _safe_anniversary(y, hire_date)
+        e = _safe_anniversary(y + 1, hire_date)
+        opts.append((s, e, y))
+        if s >= cur_start:
+            break
+        y += 1
+    opts.reverse()
+    return opts
 
 
 def _parse_date(s):
@@ -187,10 +217,15 @@ def _doc_leave_days(doc):
 
 
 def used_leave_days(db, user_id, year_start, year_end):
-    """연차연도 내 승인된 휴가의 차감 일수 합계 + 상세 목록."""
+    """연차연도 내 사용 연차 합계 + 상세 목록.
+
+    = 전자결재 승인 휴가(연차) 자동 차감분 + 관리자 수동 사용 등록분.
+    """
+    from sqlalchemy import or_
     docs = (db.query(ApprovalDocument)
             .filter(ApprovalDocument.form_key == 'leave',
-                    ApprovalDocument.status == 'approved',
+                    or_(ApprovalDocument.status == 'approved',
+                        ApprovalDocument.effect_active.is_(True)),
                     ApprovalDocument.drafter_id == user_id)
             .all())
     total = 0.0
@@ -210,7 +245,31 @@ def used_leave_days(db, user_id, year_start, year_end):
             'start': fd.get('start_dt') or fd.get('start_date', ''),
             'end': fd.get('end_dt') or fd.get('end_date', ''),
             'days': days,
+            'manual': False,
         })
+    # 관리자 수동 사용 등록분 (사용일 기준)
+    usages = (db.query(LeaveUsage)
+              .filter(LeaveUsage.user_id == user_id,
+                      LeaveUsage.used_date >= year_start,
+                      LeaveUsage.used_date < year_end)
+              .order_by(LeaveUsage.used_date)
+              .all())
+    for u in usages:
+        days = float(u.days or 0)
+        if days <= 0:
+            continue
+        total += days
+        detail.append({
+            'doc_id': None, 'doc_no': None, 'title': u.reason or '',
+            'leave_type': u.leave_type or '연차',
+            'start': u.used_date.strftime('%Y-%m-%d'),
+            'end': '',
+            'days': days,
+            'manual': True,
+            'usage_id': u.id,
+        })
+    # 사용일(시작일) 오름차순 정렬
+    detail.sort(key=lambda x: str(x.get('start') or ''))
     return total, detail
 
 

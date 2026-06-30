@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}연차사용촉진{% endblock %}
+
+{% macro fmt_entries(items) %}
+  {%- for d in items -%}
+    {%- if d is mapping -%}{{ d.date }}({{ d.type }}){%- else -%}{{ d }}{%- endif -%}
+    {%- if not loop.last %}, {% endif -%}
+  {%- endfor -%}
+{% endmacro %}
+{% macro sum_days(items) %}
+  {%- set ns = namespace(t=0) -%}
+  {%- for d in items -%}{%- if d is mapping -%}{% set ns.t = ns.t + (d.days or 0) %}{%- else -%}{% set ns.t = ns.t + 1 %}{%- endif -%}{%- endfor -%}
+  {{- ns.t -}}
+{% endmacro %}
+
+{% block content %}
+<style>
+  .lp-table th { font-size:.72rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:.03em; border-bottom:1px solid #e2e8f0; padding:6px 8px; white-space:nowrap; }
+  .lp-table td { font-size:.84rem; padding:7px 8px; border-bottom:1px solid #e2e8f0; vertical-align:middle; white-space:nowrap; }
+  .lp-sec-title { font-size:.9rem; font-weight:700; color:#334155; margin:1.4rem 0 .5rem; }
+  .lp-badge { display:inline-block; font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:6px; white-space:nowrap; }
+  .lp-empty { color:#94a3b8; font-size:.84rem; padding:.8rem; }
+  .lp-dates { width:200px; font-size:.8rem; }
+</style>
+
+<div class="page-hero mg-fade">
+  <div class="d-flex justify-content-between align-items-center gap-2">
+    <div>
+      <div class="hero-eyebrow">HR · 근로기준법 제61조</div>
+      <h2>연차사용촉진</h2>
+      <div class="hero-sub">입사일 기준 연차연도 · 1차 촉구(6/3개월 전) → 직원 지정 → 미지정 시 2차 회사지정</div>
+    </div>
+    <a href="{{ url_for('hr.hr_list') }}" class="btn btn-sm"><i class="bi bi-arrow-left"></i> 연차관리</a>
+  </div>
+</div>
+
+{# ── 1) 1차/추가 촉구 대상 ── #}
+<div class="lp-sec-title mg-fade">촉구 대상 <span class="text-muted fw-normal">({{ cand.first|length }})</span></div>
+{% if cand.first %}
+<form method="post" action="{{ url_for('hr.hr_promotion_send') }}" class="mb-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="btn btn-sm btn-primary" onclick="return confirm('현재 촉구 대상 전원에게 발송 기록하시겠습니까?')">
+    <i class="bi bi-send"></i> 전체 촉구 발송
+  </button>
+</form>
+<div class="table-responsive mg-fade">
+  <table class="table lp-table mb-0">
+    <thead><tr>
+      <th>직원</th><th>구분</th><th>단계</th><th>기준일</th><th class="text-end">잔여(현재)</th><th>상태</th><th></th>
+    </tr></thead>
+    <tbody>
+      {% for c in cand.first %}
+      <tr>
+        <td class="fw-semibold">{{ c.user.full_name }} <span class="text-muted">{{ c.user.position or '' }}</span></td>
+        <td>{{ emp_label[c.emp_type] }}</td>
+        <td>{{ stage_label[c.stage] }}</td>
+        <td>{{ c.anchor.strftime('%Y-%m-%d') }}</td>
+        <td class="text-end text-muted">—</td>
+        <td>
+          {% if c.late %}<span class="lp-badge" style="background:#fef2f2;color:#dc2626">지연</span>
+          {% else %}<span class="lp-badge" style="background:#f0fdf4;color:#16a34a">기한내</span>{% endif %}
+        </td>
+        <td class="text-end">
+          <form method="post" action="{{ url_for('hr.hr_promotion_send') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="user_id" value="{{ c.user.id }}">
+            <input type="hidden" name="stage" value="{{ c.stage }}">
+            <input type="hidden" name="emp_type" value="{{ c.emp_type }}">
+            <button class="btn btn-sm btn-outline-primary"><i class="bi bi-send"></i> 촉구</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="lp-empty mg-fade">현재 촉구 시점이 도래한 대상이 없습니다.</div>
+{% endif %}
+
+{# ── 2) 2차(회사지정) 대상 ── #}
+<div class="lp-sec-title mg-fade">2차 회사지정 대상 <span class="text-muted fw-normal">({{ cand.second|length }})</span>
+  <span class="text-muted fw-normal" style="font-size:.78rem">— 직원이 기한 내 미지정</span></div>
+{% if cand.second %}
+<div class="table-responsive mg-fade">
+  <table class="table lp-table mb-0">
+    <thead><tr>
+      <th>직원</th><th>구분</th><th>1차 발송일</th><th>지정기한</th><th>회사 지정 사용일</th><th></th>
+    </tr></thead>
+    <tbody>
+      {% for c in cand.second %}
+      <tr>
+        <td class="fw-semibold">{{ c.user.full_name }} <span class="text-muted">{{ c.user.position or '' }}</span></td>
+        <td>{{ emp_label[c.emp_type] }}</td>
+        <td>{{ c.source.notified_at.strftime('%Y-%m-%d') if c.source.notified_at else '-' }}</td>
+        <td>{{ c.source.designate_due.strftime('%Y-%m-%d') if c.source.designate_due else '-' }}</td>
+        <td colspan="2">
+          <form method="post" action="{{ url_for('hr.hr_promotion_second') }}" class="d-flex gap-2 align-items-center">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="user_id" value="{{ c.user.id }}">
+            <input type="hidden" name="emp_type" value="{{ c.emp_type }}">
+            <input type="text" name="dates" class="form-control form-control-sm lp-dates"
+                   placeholder="2026-07-10, 2026-07-11" required>
+            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-calendar-check"></i> 회사지정 통보</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="lp-empty mg-fade">2차 회사지정이 필요한 직원이 없습니다.</div>
+{% endif %}
+
+{# ── 3) 촉구/지정 이력 ── #}
+<div class="lp-sec-title mg-fade">촉구·지정 이력 <span class="text-muted fw-normal">({{ records|length }})</span></div>
+{% if records %}
+<div class="table-responsive mg-fade">
+  <table class="table lp-table mb-0">
+    <thead><tr>
+      <th>직원</th><th>연차연도</th><th>단계</th><th>발송일</th><th class="text-end">잔여</th>
+      <th>직원 지정</th><th>회사 지정</th><th>상태</th><th>서면</th>
+    </tr></thead>
+    <tbody>
+      {% for p in records %}
+      <tr>
+        <td class="fw-semibold">{{ p.user.full_name if p.user else p.user_id }}</td>
+        <td>{{ p.leave_year }}</td>
+        <td>{{ stage_label.get(p.stage, p.stage) }}</td>
+        <td>{{ p.notified_at.strftime('%Y-%m-%d') if p.notified_at else '-' }}</td>
+        <td class="text-end">{{ p.remaining_days if p.remaining_days is not none else '-' }}</td>
+        <td>{% if p.employee_dates %}<span title="{{ fmt_entries(p.employee_dates) }}">{{ sum_days(p.employee_dates)|trim }}일</span>{% else %}<span class="text-muted">미지정</span>{% endif %}</td>
+        <td>{% if p.admin_dates %}<span title="{{ p.admin_dates|join(', ') }}">{{ p.admin_dates|length }}일</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td>
+          {% set st = p.status %}
+          {% if st == 'designated' %}<span class="lp-badge" style="background:#eff6ff;color:#2563eb">직원지정</span>
+          {% elif st == 'admin_designated' %}<span class="lp-badge" style="background:#fef2f2;color:#dc2626">회사지정</span>
+          {% elif st == 'completed' %}<span class="lp-badge" style="background:#f0fdf4;color:#16a34a">완료</span>
+          {% else %}<span class="lp-badge" style="background:#f1f5f9;color:#64748b">발송</span>{% endif %}
+        </td>
+        <td class="text-nowrap">
+          <a href="{{ url_for('hr.hr_promotion_doc_edit', promo_id=p.id) }}" class="btn btn-sm btn-outline-primary" title="서면 사용일 편집">
+            <i class="bi bi-pencil-square"></i></a>
+          <a href="{{ url_for('hr.hr_promotion_print', promo_id=p.id) }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="서면 출력">
+            <i class="bi bi-printer"></i></a>
+          <form method="post" action="{{ url_for('hr.hr_promotion_delete', promo_id=p.id) }}" class="d-inline"
+                onsubmit="return confirm('이 촉구 기록을 회수(삭제)하시겠습니까?\n※ 이미 발송된 메일 자체는 회수되지 않습니다.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-danger" title="촉구 회수"><i class="bi bi-arrow-counterclockwise"></i></button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="lp-empty mg-fade">촉구 이력이 없습니다.</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}내 연차사용촉진{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/leave_calendar.css') }}">
+<style>
+  .mp-card { border:1px solid #e2e8f0; border-radius:10px; padding:16px 18px; margin-bottom:14px; }
+  .mp-head { font-size:.92rem; font-weight:700; color:#334155; margin-bottom:6px; }
+  .mp-meta { font-size:.82rem; color:#64748b; margin-bottom:10px; }
+  .mp-badge { display:inline-block; font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:6px; }
+  .mp-empty { color:#94a3b8; font-size:.88rem; padding:1rem; }
+</style>
+
+<div class="page-hero mg-fade">
+  <div>
+    <div class="hero-eyebrow">연차</div>
+    <h2>내 연차사용촉진</h2>
+    <div class="hero-sub">회사로부터 연차 사용촉진 통보를 받은 경우, 기한 내 사용 예정일을 지정해 주세요. (연차=1일, 반차=0.5일)</div>
+  </div>
+</div>
+
+{% macro fmt_dates(items) %}
+  {%- for d in items -%}
+    {%- if d is mapping -%}{{ d.date }}({{ d.type }}){%- else -%}{{ d }}{%- endif -%}
+    {%- if not loop.last %}, {% endif -%}
+  {%- endfor -%}
+{% endmacro %}
+
+{% if not promos %}
+<div class="mp-empty mg-fade">현재 연차사용촉진 통보 내역이 없습니다.</div>
+{% else %}
+{% for p in promos %}
+<div class="mp-card mg-fade">
+  <div class="mp-head">
+    {{ p.leave_year }}년도 연차 — {{ stage_label.get(p.stage, p.stage) }}
+    {% if p.status == 'sent' %}<span class="mp-badge" style="background:#fffbeb;color:#b45309">지정 필요</span>
+    {% elif p.status == 'designated' %}<span class="mp-badge" style="background:#eff6ff;color:#2563eb">지정 완료</span>
+    {% elif p.status == 'admin_designated' %}<span class="mp-badge" style="background:#fef2f2;color:#dc2626">회사 지정</span>
+    {% endif %}
+  </div>
+  <div class="mp-meta">
+    연차연도 {{ p.year_start.strftime('%Y-%m-%d') if p.year_start else '-' }} ~ {{ p.year_end.strftime('%Y-%m-%d') if p.year_end else '-' }}
+    · 통보일 {{ p.notified_at.strftime('%Y-%m-%d') if p.notified_at else '-' }}
+    · 미사용 잔여 <b>{{ p.remaining_days if p.remaining_days is not none else '-' }}</b>일
+    {% if p.designate_due %} · 지정기한 <b>{{ p.designate_due.strftime('%Y-%m-%d') }}</b>{% endif %}
+  </div>
+
+  {% if p.status == 'admin_designated' %}
+    <div class="mp-meta">회사 지정 사용일: <b>{{ fmt_dates(p.admin_dates or []) }}</b>
+      <span class="text-muted">(회사 지정분은 수정할 수 없습니다)</span></div>
+  {% else %}
+    {% if p.status == 'designated' %}
+    <div class="mp-meta">현재 지정: <b>{{ fmt_dates(p.employee_dates or []) }}</b> — 아래 달력에서 수정할 수 있습니다.</div>
+    {% endif %}
+    <form method="post" action="{{ url_for('hr.hr_my_promotion_designate', promo_id=p.id) }}"
+          class="d-flex flex-column gap-2 lp-form" onsubmit="return lpValidate(this, {{ p.id }})">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="dates" id="dates-{{ p.id }}">
+      <div class="lp-cal" data-promo="{{ p.id }}"
+           data-remaining="{{ p.remaining_days if p.remaining_days is not none else 0 }}"
+           data-min="{{ today.strftime('%Y-%m-%d') }}"
+           data-max="{{ p.year_end.strftime('%Y-%m-%d') if p.year_end else today.strftime('%Y-%m-%d') }}"
+           data-init='{{ (p.employee_dates or [])|tojson }}'></div>
+      <div class="lp-counter" id="cnt-{{ p.id }}">선택 <b>0</b>일 / 잔여 {{ p.remaining_days if p.remaining_days is not none else 0 }}일</div>
+      <div class="lp-sel-list" id="sel-{{ p.id }}"></div>
+      <div><button class="btn btn-sm btn-primary"><i class="bi bi-calendar-check"></i>
+        {% if p.status == 'designated' %}지정 수정{% else %}사용시기 지정{% endif %}</button></div>
+    </form>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+<script>window.LP_HOLIDAYS = {{ holidays|tojson }};</script>
+<script src="{{ url_for('static', filename='js/leave_calendar.js') }}"></script>
+{% endblock %}

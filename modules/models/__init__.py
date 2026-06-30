@@ -123,7 +123,7 @@ from .entities import (
     PendingWriteSession,
 )
 from .mail_entities import MailAccount, MailSharedAccess, MailContact, MailReadReceipt, MailLargeFile
-from .hr_entities import LeaveAdjustment
+from .hr_entities import LeaveAdjustment, LeaveUsage, LeavePromotion
 from .approval_entities import (
     ApprovalFormTemplate,
     ApprovalDocument,
@@ -274,6 +274,8 @@ __all__ = [
     "ApprovalAttachment",
     "ApprovalComment",
     "LeaveAdjustment",
+    "LeaveUsage",
+    "LeavePromotion",
     "DOC_STATUS",
     "STEP_STATUS",
     "STEP_ROLE",

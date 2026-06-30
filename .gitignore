@@ -19,6 +19,8 @@ storage/.env
 backups/
 *.vcf
 /*.png
+/*.jpeg
+/*.jpg
 
 # node_modules (모든 하위 프로젝트)
 node_modules/

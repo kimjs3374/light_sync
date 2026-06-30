@@ -95,6 +95,48 @@ def webview_auth():
     return redirect(next_url)
 
 
+@app_api_bp.route('/session-token')
+def app_session_token():
+    """PC↔모바일 로그인 공유: PC 세션 쿠키로 로그인된 사용자에게 모바일 앱 토큰을 발급.
+
+    SPA 부트스트랩에서 localStorage 토큰이 없을 때 호출 → PC에서 이미 로그인했다면
+    재로그인 없이 모바일 토큰을 받아 그대로 진입한다. 동일 출처 요청이라 세션 쿠키가
+    자동 전송된다. 세션이 없으면 401 → SPA 가 /m/login 으로 보낸다.
+    """
+    if 'user_id' not in session:
+        return jsonify(ok=False, error='세션이 없습니다'), 401
+    with get_db() as db:
+        user = db.query(User).get(session['user_id'])
+        if not user or not user.is_approved or user.is_active is False:
+            return jsonify(ok=False, error='유효하지 않은 사용자입니다'), 401
+        perms = compute_user_permissions(db, user)
+        token = make_app_token(user.id)
+        return jsonify(ok=True, token=token, user={
+            'id': user.id,
+            'username': user.username,
+            'full_name': user.full_name,
+            'group': user.user_group,
+            'role': user.role,
+            'position': user.position or '',
+            'allowed_menus': perms['allowed_menus'],
+            'writable_menus': perms['writable_menus'],
+            'hide_financial': perms['hide_financial'],
+        })
+
+
+@app_api_bp.route('/logout', methods=['POST'])
+def app_logout():
+    """로그아웃 통합: 모바일에서 로그아웃 시 PC 세션 쿠키도 함께 제거한다.
+
+    SPA 는 이 호출 후 localStorage 토큰을 비운다 → 동일 브라우저에서 모바일·PC
+    양쪽 세션이 모두 종료된다.
+    """
+    session.clear()
+    resp = jsonify(ok=True)
+    resp.delete_cookie('session')
+    return resp
+
+
 @app_api_bp.route('/login', methods=['POST'])
 def app_login():
     """앱 로그인 — 토큰 발급"""
@@ -117,6 +159,12 @@ def app_login():
 
         perms = compute_user_permissions(db, user)
         token = make_app_token(user.id)
+
+        # PC↔모바일 로그인 공유: 모바일 로그인 시 PC 세션 쿠키도 함께 발급한다.
+        # app_login 은 Bearer 요청이 아니므로(g.token_auth 미설정) TokenAwareSessionInterface
+        # 가 응답에 세션 쿠키를 정상 발급 → 이후 동일 출처의 PC 페이지 이동이 자동 로그인된다.
+        session.update(perms)
+        session.permanent = True
 
         return jsonify(ok=True, token=token, user={
             'id': user.id,
@@ -7510,16 +7558,29 @@ def app_approvals():
     """결재 목록 — tab: inbox/drafted/done"""
     from modules.models import ApprovalDocument, ApprovalStep, ApprovalReference
     from modules.services import approval_service as svc
+    from sqlalchemy import or_
     uid = request._app_user_id
-    tab = request.args.get('tab', 'inbox')
+    tab = request.args.get('tab', 'all')
     with get_db() as db:
         svc.seed_form_templates(db); db.commit()
         base = db.query(ApprovalDocument)
-        if tab == 'inbox':
+        if tab == 'all':
+            # 권한 내 모든 문서: 내가 기안 OR 결재선 포함 OR 참조/수신
+            docs = (base.filter(or_(
+                        ApprovalDocument.drafter_id == uid,
+                        ApprovalDocument.steps.any(ApprovalStep.approver_id == uid),
+                        ApprovalDocument.references.any(ApprovalReference.user_id == uid)))
+                    .order_by(ApprovalDocument.created_at.desc()).all())
+        elif tab == 'inbox':
             docs = (base.join(ApprovalStep)
                     .filter(ApprovalDocument.status == 'pending',
                             ApprovalStep.approver_id == uid,
                             ApprovalStep.status == 'current')
+                    .order_by(ApprovalDocument.submitted_at.desc()).all())
+        elif tab == 'progress':
+            # 내가 결재선에 있는 진행중 문서 (내 차례 전/후 포함)
+            docs = (base.filter(ApprovalDocument.status == 'pending',
+                                ApprovalDocument.steps.any(ApprovalStep.approver_id == uid))
                     .order_by(ApprovalDocument.submitted_at.desc()).all())
         elif tab == 'drafted':
             docs = (base.filter(ApprovalDocument.drafter_id == uid)
@@ -7555,10 +7616,12 @@ def app_approval_forms():
         out = []
         for f in forms:
             line = svc.resolve_default_line(db, me, f.default_line)
+            refs = [{'id': r.id, 'name': r.full_name, 'position': r.position or ''}
+                    for r in svc.resolve_default_refs(db, f.form_key) if r.id != me.id]
             out.append({
                 'form_key': f.form_key, 'name': f.name, 'icon': f.icon or '📄',
                 'description': f.description or '', 'fields': f.field_schema or [],
-                'default_line': line,
+                'default_line': line, 'default_refs': refs,
             })
         # 결재자 선택용 사용자 목록
         users = (db.query(User).filter(User.is_active.is_(True), User.user_group != '최고관리자')
@@ -7703,6 +7766,16 @@ def app_approval_create():
         else:
             for i, s in enumerate(svc.resolve_default_line(db, me, form.default_line), 1):
                 doc.steps.append(ApprovalStep(step_order=i, status='waiting', **s))
+
+        # 양식별 기본 참조자 (휴가/지출 → 서은미 과장)
+        from modules.models import ApprovalReference
+        ref_seen = set()
+        for ru in svc.resolve_default_refs(db, form.form_key):
+            if ru.id == me.id or ru.id in ref_seen:
+                continue
+            ref_seen.add(ru.id)
+            doc.references.append(ApprovalReference(
+                user_id=ru.id, user_name=ru.full_name, ref_type='reference'))
         db.flush()
 
         try:

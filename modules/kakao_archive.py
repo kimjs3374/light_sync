@@ -9,6 +9,7 @@ from markupsafe import Markup, escape
 
 from sqlalchemy import text
 from modules.db_context import get_db
+from config import WORKBOARD_BOARD_IDS
 
 PAGE_SIZE = 20
 STORAGE_BASE = 'storage/archive'
@@ -18,9 +19,14 @@ _SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 _SUPABASE_BUCKET = 'company-files'
 
 
-def _storage_url(board_type, post_id, att_id, fname):
-    """로컬 파일 우선, 없으면 Supabase Storage URL."""
-    # 로컬 파일 우선
+def _storage_url(board_type, post_id, att_id, ext_name):
+    """로컬 파일 우선, 없으면 Supabase Storage URL.
+
+    Supabase 키 스킴: archive/{board_id}/{post_id}/{att_id}{ext}
+      예) archive/55772/18402/14381.png
+    (파일명을 att_id+확장자로만 구성 → 한글 파일명 키 문제 회피)
+    """
+    # 로컬 파일 우선 (레거시; 현재는 미사용)
     local_dir = os.path.join(STORAGE_BASE, board_type, str(post_id))
     if os.path.isdir(local_dir):
         prefix = f'{att_id}_'
@@ -28,11 +34,13 @@ def _storage_url(board_type, post_id, att_id, fname):
             if f.startswith(prefix):
                 return f'/static-archive/{board_type}/{post_id}/{f}'
 
-    # Supabase Storage fallback
+    # Supabase Storage (board_id 기반)
     if _SUPABASE_URL:
-        import re
-        safe_fname = re.sub(r'[<>:"/\\|?*]', '_', fname)[:200]
-        storage_key = f'archive/{board_type}/{post_id}/{att_id}_{safe_fname}'
+        board_id = WORKBOARD_BOARD_IDS.get(board_type)
+        if board_id is None:
+            return None
+        ext = ext_name or ''
+        storage_key = f'archive/{board_id}/{post_id}/{att_id}{ext}'
         return f'{_SUPABASE_URL}/storage/v1/object/public/{_SUPABASE_BUCKET}/{storage_key}'
 
     return None
@@ -152,14 +160,21 @@ def parse_attachments(atts_json, board_type, post_id):
         fname = att.get('file_name', '')
         ftype = att.get('file_type', 'etc')
         fsize = att.get('file_size', 0)
+        ext_name = att.get('ext_name') or os.path.splitext(fname)[1]
 
-        file_url = _storage_url(board_type, post_id, att_id, fname)
+        file_url = _storage_url(board_type, post_id, att_id, ext_name)
         is_image = ftype == 'img'
 
-        # 이미지일 경우 썸네일 URL 생성 (로컬 파일만)
+        # 썸네일 URL: 로컬은 on-the-fly, Supabase는 이미지 변환(render/image)으로 경량화
+        # (원본 717KB → 변환 ~15KB. data-full 원본은 그대로 두고 클릭 시 원본 표시)
         thumb_url = None
-        if is_image and file_url and file_url.startswith('/static-archive/'):
-            thumb_url = file_url.replace('/static-archive/', '/static-archive/thumb/', 1)
+        if is_image and file_url:
+            if file_url.startswith('/static-archive/'):
+                thumb_url = file_url.replace('/static-archive/', '/static-archive/thumb/', 1)
+            elif '/storage/v1/object/public/' in file_url:
+                thumb_url = file_url.replace(
+                    '/storage/v1/object/public/', '/storage/v1/render/image/public/', 1
+                ) + '?width=300&quality=70'
 
         result.append({
             'id': att_id,

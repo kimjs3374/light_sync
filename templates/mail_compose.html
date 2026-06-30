@@ -42,6 +42,8 @@
             <form id="composeForm" enctype="multipart/form-data" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
                 <input type="hidden" name="account_id" id="accountId" value="{{ current_account_id or '' }}">
                 <input type="hidden" id="mailMode" value="{{ mail_mode or 'personal' }}">
+                <input type="hidden" id="draftReplaceUid" value="{{ draft_uid or '' }}">
+                <input type="hidden" id="draftFolder" value="{{ request.args.get('folder', '') if draft_uid else '' }}">
 
                 <div style="padding:0 24px;flex-shrink:0;">
                     <div class="mail-compose-row">
@@ -89,7 +91,7 @@
                         <div class="mail-compose-label">제목</div>
                         <div class="mail-compose-field">
                             <input type="text" name="subject" id="subjectInput" class="form-control form-control-sm" style="font-weight:600;"
-                                   value="{% if reply_data and resend_uid %}{{ reply_data.subject }}{% elif reply_data and reply_uid %}Re: {{ reply_data.subject }}{% elif reply_data and reply_all %}Re: {{ reply_data.subject }}{% elif reply_data and forward_uid %}Fwd: {{ reply_data.subject }}{% endif %}" placeholder="제목">
+                                   value="{% if reply_data and (resend_uid or draft_uid) %}{{ reply_data.subject }}{% elif reply_data and reply_uid %}Re: {{ reply_data.subject }}{% elif reply_data and reply_all %}Re: {{ reply_data.subject }}{% elif reply_data and forward_uid %}Fwd: {{ reply_data.subject }}{% endif %}" placeholder="제목">
                         </div>
                         <a href="#" class="text-muted" style="font-size:.72rem;white-space:nowrap;" onclick="document.getElementById('bccRow').style.display='flex';this.style.display='none';return false;">+BCC</a>
                     </div>
@@ -100,7 +102,7 @@
                             <input type="file" id="fileInput" multiple style="display:none;">
                         </div>
                         <div id="fileList"></div>
-                        {% if reply_data and reply_data.attachments and (forward_uid or resend_uid) %}
+                        {% if reply_data and reply_data.attachments and (forward_uid or resend_uid or draft_uid) %}
                         <div id="forwardAttachments">
                             {% for att in reply_data.attachments %}
                             <div class="mail-file-item" data-idx="{{ loop.index0 }}">
@@ -142,7 +144,7 @@
                     <button type="button" onclick="document.execCommand('removeFormat')" title="서식 제거">✕</button>
                 </div>
                 <div id="mailBody" class="mail-editor" contenteditable="true" style="flex:1;overflow-y:auto;max-height:none;" tabindex="0">
-{% if reply_data and resend_uid %}
+{% if reply_data and (resend_uid or draft_uid) %}
 {{ reply_data.html_body|sanitize_html|safe if reply_data.html_body else reply_data.text_body }}
 {% elif reply_data and (reply_uid or reply_all) %}
 <br><br>
@@ -250,16 +252,18 @@ document.addEventListener('DOMContentLoaded', function() {
     Mail.accountId = {{ current_account_id or (compose_accounts[0].id if compose_accounts else 'null') }};
     Mail.loadFolders(false);
     MailCompose._userSignatureHtml = {{ user_signature_html|default('')|tojson }};
-    MailCompose._isResend = {{ 'true' if resend_uid else 'false' }};
-    {% if reply_data and reply_data.attachments and (forward_uid or resend_uid) %}
+    MailCompose._isResend = {{ 'true' if (resend_uid or draft_uid) else 'false' }};
+    MailCompose._draftUid = {{ (draft_uid or None)|tojson }};
+    MailCompose._draftFolder = {{ (request.args.get('folder', '') if draft_uid else '')|tojson }};
+    {% if reply_data and reply_data.attachments and (forward_uid or resend_uid or draft_uid) %}
     MailCompose._forwardAttachments = {{ reply_data.attachments|tojson }};
-    MailCompose._forwardSourceUid = {{ (forward_uid or resend_uid)|tojson }};
+    MailCompose._forwardSourceUid = {{ (forward_uid or resend_uid or draft_uid)|tojson }};
     MailCompose._forwardAccountId = {{ (current_account_id or 'null')|tojson }};
     MailCompose._forwardFolder = {{ request.args.get('folder', 'INBOX')|tojson }};
     {% endif %}
     MailCompose.init();
 
-    {% if resend_uid and reply_data %}
+    {% if (resend_uid or draft_uid) and reply_data %}
     {% for addr in reply_data.to or [] %}
     MailCompose.addTag('toTagWrap', '{{ addr.email }}');
     {% endfor %}

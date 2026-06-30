@@ -174,10 +174,13 @@ def _parse_date(s):
 
 
 def _approved_leave_docs(db):
-    """승인 완료된 휴가신청서 문서 (form_key='leave')."""
+    """효력 있는 휴가신청서 문서 (form_key='leave').
+    최종 완료(approved) 또는 부서장 선효력(effect_active) 모두 포함."""
+    from sqlalchemy import or_
     return (db.query(ApprovalDocument)
             .filter(ApprovalDocument.form_key == 'leave',
-                    ApprovalDocument.status == 'approved')
+                    or_(ApprovalDocument.status == 'approved',
+                        ApprovalDocument.effect_active.is_(True)))
             .all())
 
 
@@ -299,6 +302,28 @@ def resolve_default_line(db, drafter, line_tokens=None):
     return steps
 
 
+# 양식별 기본 참조자 (이름 기준 — 동명이인 없음 확인됨)
+# 휴가신청서·지출결의서 → 관리부 서은미 과장
+DEFAULT_REF_NAMES = {
+    'leave': ['서은미'],
+    'expense': ['서은미'],
+}
+
+
+def resolve_default_refs(db, form_key):
+    """양식별 기본 참조자 User 리스트를 반환한다. (없으면 빈 리스트)"""
+    names = DEFAULT_REF_NAMES.get(form_key, [])
+    out, seen = [], set()
+    for nm in names:
+        u = (db.query(User)
+             .filter(User.full_name == nm, User.is_active.is_(True))
+             .order_by(User.id).first())
+        if u and u.id not in seen:
+            seen.add(u.id)
+            out.append(u)
+    return out
+
+
 # ────────────────────────────────────────────────────────
 # 결재번호 채번
 # ────────────────────────────────────────────────────────
@@ -326,10 +351,18 @@ def generate_doc_no(db):
 # ────────────────────────────────────────────────────────
 
 def submit_document(db, doc):
-    """상신: draft → pending. 결재번호 부여, 1차 결재자 current 설정."""
+    """상신: draft → pending. 결재번호 부여, 1차 결재자 current 설정.
+
+    결재선이 비어 있으면 — 기안자가 조직 최상위라 자동산정 결재선이 비는
+    경우(= 본인 위로 결재권자가 없음)에 한해 '본인 전결'로 즉시 완료한다.
+    권한이 있는 사람이 결재선을 임의로 비운 경우(상위 결재자가 존재)는 차단.
+    """
     if doc.status != 'draft':
         raise ValueError('이미 상신된 문서입니다.')
     if not doc.steps:
+        drafter = db.query(User).get(doc.drafter_id)
+        if drafter and not resolve_default_line(db, drafter):
+            return _self_approve(db, doc)
         raise ValueError('결재선이 비어 있습니다. 결재자를 1명 이상 지정하세요.')
 
     if not doc.doc_no:
@@ -345,8 +378,38 @@ def submit_document(db, doc):
     return doc
 
 
+def _self_approve(db, doc):
+    """본인 전결: 결재권자가 없는 최상위 기안자 → 상신 즉시 전결 완료.
+
+    기안자 본인을 role='전결' 단계로 1건 기록하고 문서를 approved 로 종료한다.
+    """
+    now = datetime.datetime.now()
+    if not doc.doc_no:
+        doc.doc_no = generate_doc_no(db)
+    doc.status = 'approved'
+    doc.submitted_at = now
+    doc.completed_at = now
+    doc.steps.append(ApprovalStep(
+        step_order=1, approver_id=doc.drafter_id,
+        approver_name=doc.drafter_name, approver_position=doc.drafter_position,
+        approver_dept=doc.drafter_dept, role='전결', status='approved',
+        acted_at=now, comment='본인 전결'))
+    doc.current_step = 1
+    _notify_completed(db, doc, approved=True)
+    return doc
+
+
+def _form_effect_on_dept_head(db, form_key):
+    """양식이 '부서장 결재 시 효력 발생'으로 설정되었는지."""
+    t = (db.query(ApprovalFormTemplate)
+         .filter_by(form_key=form_key).first())
+    return bool(t and getattr(t, 'effect_on_dept_head', False))
+
+
 def approve_step(db, doc, step, comment=None):
-    """현재 결재자가 승인. 다음 단계로 진행하거나 최종 완료."""
+    """현재 결재자가 승인. 다음 단계로 진행하거나 최종 완료.
+    양식이 '부서장 전결 효력' 설정이면 첫 결재단계(부서장) 승인 시점에
+    선효력(effect_active)을 발생시킨다 — 이후 임원 결재와 무관하게 효력 인정."""
     if doc.status != 'pending':
         raise ValueError('진행 중인 문서가 아닙니다.')
     if step.status != 'current':
@@ -355,13 +418,19 @@ def approve_step(db, doc, step, comment=None):
     step.status = 'approved'
     step.comment = comment
     step.acted_at = datetime.datetime.now()
+    _finalize_step_messages(db, doc, step, approved=True)  # 양쪽 채널 메시지 갱신(버튼 제거)
 
     ordered = sorted(doc.steps, key=lambda s: s.step_order)
-    next_step = None
-    for s in ordered:
-        if s.status == 'waiting':
-            next_step = s
-            break
+    next_step = next((s for s in ordered if s.status == 'waiting'), None)
+
+    # 부서장(첫 결재단계) 승인 → 선효력 발생 (양식 설정 시, 1회만)
+    first_order = ordered[0].step_order if ordered else None
+    if (not doc.effect_active and step.step_order == first_order
+            and _form_effect_on_dept_head(db, doc.form_key)):
+        doc.effect_active = True
+        doc.effected_at = datetime.datetime.now()
+        if next_step:  # 임원 결재가 남은 경우에만 별도 '효력발생' 알림
+            _notify_effect_active(db, doc, step)
 
     if next_step:
         next_step.status = 'current'
@@ -384,8 +453,13 @@ def reject_step(db, doc, step, comment=None):
     step.status = 'rejected'
     step.comment = comment
     step.acted_at = datetime.datetime.now()
+    _finalize_step_messages(db, doc, step, approved=False)  # 양쪽 채널 메시지 갱신(버튼 제거)
     doc.status = 'rejected'
     doc.completed_at = datetime.datetime.now()
+    # 부서장 선효력이 발생했더라도 임원 반려 시 효력 취소
+    if doc.effect_active:
+        doc.effect_active = False
+        doc.effected_at = None
     _notify_completed(db, doc, approved=False, rejecter=step)
     return doc
 
@@ -410,24 +484,228 @@ def cancel_document(db, doc):
 # ────────────────────────────────────────────────────────
 
 def _doc_link(doc):
-    base = os.environ.get('SERVER_BASE_URL', '').rstrip('/')
+    base = (os.environ.get('SERVER_BASE_URL') or os.environ.get('ERP_BASE_URL') or '').rstrip('/')
     return f'{base}/approval/{doc.id}' if base else f'/approval/{doc.id}'
 
 
-def _send_mm_dm(db, user_id, message):
+def _fmt_number(val, suffix=''):
+    """숫자 천단위 콤마 + 접미사. 변환 실패 시 원문."""
+    try:
+        n = float(str(val).replace(',', ''))
+        s = f'{int(n):,}' if n == int(n) else f'{n:,.2f}'.rstrip('0').rstrip('.')
+        return f'{s}{suffix}'
+    except (ValueError, TypeError):
+        return f'{val}{suffix}'
+
+
+def _fmt_lineitems(rows, columns):
+    """lineitems(지출명세 등) 한 줄 요약: 건수 + 금액합계."""
+    rows = rows or []
+    if not rows:
+        return ''
+    amt_key = next((c.get('key') for c in (columns or []) if c.get('key') == 'amount'), None)
+    total = 0
+    if amt_key:
+        for r in rows:
+            try:
+                total += float(str((r or {}).get(amt_key, 0)).replace(',', '') or 0)
+            except (ValueError, TypeError):
+                pass
+    label_key = next((c.get('key') for c in (columns or []) if c.get('key') != amt_key), None)
+    first = (rows[0] or {}).get(label_key, '') if label_key else ''
+    head = f'{first} 외 {len(rows)-1}건' if len(rows) > 1 and first else (first or f'{len(rows)}건')
+    return f'{head}' + (f' (합계 {_fmt_number(total, "원")})' if total else '')
+
+
+def build_doc_summary(db, doc, max_fields=8):
+    """양식 field_schema 기반으로 결재 내용을 'label : value' 리스트로 요약.
+
+    빈 값/시스템 필드는 생략. textarea는 한 줄로 줄여 길이 제한.
+    어떤 양식(커스텀 포함)에도 동작하도록 스키마 주도 방식.
+    """
+    fd = doc.form_data or {}
+    lines = []
+    tmpl = (db.query(ApprovalFormTemplate)
+            .filter_by(form_key=doc.form_key).first()) if doc.form_key else None
+    schema = (tmpl.field_schema if tmpl else None) or []
+    for fld in schema:
+        if len(lines) >= max_fields:
+            break
+        key, label, ftype = fld.get('key'), fld.get('label', ''), fld.get('type')
+        if not key:
+            continue
+        raw = fd.get(key)
+        if ftype == 'lineitems':
+            val = _fmt_lineitems(raw, fld.get('columns'))
+        elif raw in (None, '', [], {}):
+            continue
+        elif ftype == 'number':
+            val = _fmt_number(raw, fld.get('suffix', ''))
+        elif ftype == 'textarea':
+            val = ' '.join(str(raw).split())
+            if len(val) > 100:
+                val = val[:100] + '…'
+        else:
+            val = str(raw)
+            if fld.get('suffix'):
+                val = f'{val} {fld["suffix"]}'
+        if val in (None, ''):
+            continue
+        lines.append(f'{label} : {val}')
+    # 스키마가 없거나 비면 공통 필드로 폴백
+    if not lines:
+        if doc.amount:
+            lines.append(f'금액 : {_fmt_number(doc.amount, "원")}')
+        if doc.content:
+            c = ' '.join(str(doc.content).split())
+            lines.append(f'내용 : {c[:100] + ("…" if len(c) > 100 else "")}')
+    return lines
+
+
+def _send_mm_dm(db, user_id, message, attachments=None):
     """대상 사용자에게 Mattermost DM (username 기준). 실패 무시."""
     try:
         u = db.query(User).get(user_id)
         if not u or not u.username:
             return
         from modules.services.mattermost_api import send_dm
-        send_dm(u.username, message)
+        send_dm(u.username, message, attachments=attachments)
     except Exception:
         pass
 
 
+def _mm_approval_buttons(doc, step, summary_lines=None, reminder_days=None):
+    """Mattermost 결재요청 DM용 승인/반려 버튼 attachment.
+
+    integration.url = ERP 콜백(/mattermost/action). context.data에 doc/step id.
+    summary_lines: 결재 내용 요약(label : value 리스트) — 본문에 표로 표시.
+    reminder_days: 지정 시 '미결재 독촉' 헤더로 표시(경과일수).
+    """
+    base = (os.environ.get('ERP_BASE_URL') or os.environ.get('SERVER_BASE_URL') or '').rstrip('/')
+    action_url = f'{base}/mattermost/action'
+    data = {'doc_id': doc.id, 'step_id': step.id}
+    if reminder_days is not None:
+        wtxt = f"{reminder_days}일 경과" if reminder_days > 0 else "오늘 접수"
+        head = f"⏰ **미결재 독촉** — {doc.form_name} ({wtxt})"
+    else:
+        head = f"📋 **결재요청** — {doc.form_name}"
+    body = (f"{head}\n"
+            f"기안자 : {doc.drafter_name}\n"
+            f"제목 : **{doc.title}**")
+    if summary_lines:
+        body += "\n\n" + "\n".join(f"• {ln}" for ln in summary_lines)
+    return [{
+        'color': '#2d8cff',
+        'text': body,
+        'actions': [
+            {'id': 'approve', 'name': '✅ 승인', 'style': 'good',
+             'integration': {'url': action_url,
+                             'context': {'action_type': 'approval_approve', 'data': data}}},
+            {'id': 'reject', 'name': '❌ 반려', 'style': 'danger',
+             'integration': {'url': action_url,
+                             'context': {'action_type': 'approval_reject', 'data': data}}},
+        ],
+    }]
+
+
+def _send_kakao_approval_dm(db, doc, step, summary_lines=None, reminder_days=None):
+    """결재자에게 카카오워크 승인/반려 버튼 DM. 성공 시 {'conversation_id','message_id'} 반환."""
+    try:
+        u = db.query(User).get(step.approver_id)
+        if not u:
+            return None
+        from modules.kakaowork_notifier import send_approval_request_dm
+        return send_approval_request_dm(
+            approver_name=step.approver_name or u.full_name,
+            approver_dept=step.approver_dept or (u.user_group or ''),
+            approver_email=u.email or '',
+            doc_id=doc.id, step_id=step.id,
+            form_name=doc.form_name, drafter_name=doc.drafter_name,
+            title=doc.title, doc_link=_doc_link(doc),
+            summary_lines=summary_lines or [], reminder_days=reminder_days)
+    except Exception:
+        return None
+
+
+def _send_approval_request_dms(db, doc, step, reminder_days=None):
+    """결재요청/독촉 버튼 DM을 MM+카카오 양쪽 발송하고 메시지 참조를 step.notify_refs에 저장.
+
+    저장된 참조는 한쪽에서 처리 시 양쪽 메시지 갱신(_finalize_step_messages)에 사용.
+    """
+    try:
+        summary = build_doc_summary(db, doc)
+    except Exception:
+        summary = []
+    head = "⏰ **미결재 독촉**" if reminder_days is not None else "📋 **결재요청**"
+    summary_block = ("\n" + "\n".join(f"  · {ln}" for ln in summary)) if summary else ""
+    refs = dict(step.notify_refs or {})
+    # Mattermost (post 참조 반환)
+    try:
+        u = db.query(User).get(step.approver_id)
+        if u and u.username:
+            from modules.services.mattermost_api import send_dm_with_ref
+            ref = send_dm_with_ref(
+                u.username,
+                f"{head} — {doc.form_name}\n"
+                f"기안자 : {doc.drafter_name}\n"
+                f"제목 : **{doc.title}**{summary_block}\n"
+                f"→ [결재하기]({_doc_link(doc)})",
+                attachments=_mm_approval_buttons(doc, step, summary, reminder_days=reminder_days))
+            if ref:
+                refs['mm'] = ref
+    except Exception:
+        pass
+    # KakaoWork (conversation/message 참조 반환)
+    kref = _send_kakao_approval_dm(db, doc, step, summary, reminder_days=reminder_days)
+    if kref:
+        refs['kakao'] = kref
+    step.notify_refs = refs or None
+
+
+def _send_kakao_text_to_user(db, user_id, text):
+    """ERP User → 카카오워크(이름+부서 매칭) 단순 텍스트 DM. 실패 무시."""
+    try:
+        u = db.query(User).get(user_id)
+        if not u:
+            return
+        from modules.kakaowork_notifier import find_user_id, send_dm_text
+        uid = find_user_id(u.full_name, dept=u.user_group or '', email=u.email or '')
+        if uid:
+            send_dm_text(uid, text)
+    except Exception:
+        pass
+
+
+def _finalize_step_messages(db, doc, step, approved):
+    """결재 처리(승인/반려) 후 양쪽 채널 알림 메시지 갱신.
+
+    - Mattermost: 메시지를 '처리완료'로 수정 + 버튼 제거 (작성자=결재봇 토큰).
+    - KakaoWork: 메시지 수정/삭제 API가 없어 '처리완료' 후속 메시지 발송(남은 버튼은 가드됨).
+    """
+    refs = step.notify_refs or {}
+    verb = "승인" if approved else "반려"
+    icon = "✅" if approved else "❌"
+    txt = (f"{icon} {verb} 완료 — [{doc.doc_no or ''}] {doc.title}\n"
+           f"처리자 : {step.approver_name}")
+    mm = refs.get('mm') or {}
+    if mm.get('post_id'):
+        try:
+            from modules.services.mattermost_api import update_approval_post
+            update_approval_post(mm['post_id'], txt)
+        except Exception:
+            pass
+    kakao = refs.get('kakao') or {}
+    if kakao.get('conversation_id'):
+        try:
+            from modules.kakaowork_notifier import send_text_to_conversation
+            send_text_to_conversation(kakao['conversation_id'],
+                                      txt + "\n(처리되어 위 버튼은 더 이상 유효하지 않습니다.)")
+        except Exception:
+            pass
+
+
 def _notify_next_approver(db, doc, step):
-    """결재 차례가 된 사람에게 ERP 알림 + Mattermost DM."""
+    """결재 차례가 된 사람에게 ERP 알림 + Mattermost/카카오워크 버튼 DM."""
     try:
         from modules.notification_engine import notify
         notify(db, 'approval.requested', {
@@ -440,10 +718,73 @@ def _notify_next_approver(db, doc, step):
             dedupe_key=f'approval.requested:{doc.id}:step{step.step_order}')
     except Exception:
         pass
-    _send_mm_dm(db, step.approver_id,
-                f"📋 **결재요청** — {doc.form_name}\n"
-                f"{doc.drafter_name}님이 상신: **{doc.title}**\n"
-                f"→ [결재하기]({_doc_link(doc)})")
+    _send_approval_request_dms(db, doc, step)
+
+
+def send_pending_reminders(db):
+    """미결재(현재 차례) 문서를 결재자별로 모아 독촉 알림 — ERP 인앱 + MM/카카오 DM.
+
+    매일 09:00 crontab(remind-pending-approvals)에서 호출. 반환 (결재자수, 문서수).
+    """
+    steps = (db.query(ApprovalStep)
+             .join(ApprovalDocument, ApprovalStep.document_id == ApprovalDocument.id)
+             .filter(ApprovalDocument.status == 'pending', ApprovalStep.status == 'current')
+             .all())
+    by_approver = {}
+    for s in steps:
+        by_approver.setdefault(s.approver_id, []).append(s)
+
+    now = datetime.datetime.now()
+    total_docs = 0
+    for approver_id, slist in by_approver.items():
+        docs_info = []
+        for s in slist:
+            doc = s.document
+            base_dt = doc.submitted_at or doc.created_at
+            waited = (now - base_dt).days if base_dt else 0
+            docs_info.append((doc, s, waited))
+        docs_info.sort(key=lambda x: x[2], reverse=True)  # 오래 대기한 순
+        total_docs += len(docs_info)
+
+        # ERP 인앱 알림 (하루 1회 dedupe — 건수 요약)
+        try:
+            from modules.notification_engine import notify
+            notify(db, 'approval.reminder', {'pending_count': len(docs_info)},
+                   target_override=f'user:{approver_id}',
+                   dedupe_key=f'approval.reminder:{approver_id}:{now.strftime("%Y%m%d")}')
+        except Exception:
+            pass
+        # 문서별 버튼 DM (승인/반려 + 카카오 상세보기) — 독촉 헤더, 메시지 참조 갱신
+        for doc, step, waited in docs_info:
+            _send_approval_request_dms(db, doc, step, reminder_days=waited)
+    return len(by_approver), total_docs
+
+
+def _notify_effect_active(db, doc, step):
+    """부서장 결재로 선효력 발생 → 기안자·참조자에게 알림 (임원 결재는 진행 중)."""
+    try:
+        from modules.notification_engine import notify
+        targets = [f'user:{doc.drafter_id}']
+        for ref in doc.references:
+            targets.append(f'user:{ref.user_id}')
+        notify(db, 'approval.effected', {
+            'doc_id': doc.id,
+            'doc_no': doc.doc_no or '',
+            'form_name': doc.form_name,
+            'title': doc.title,
+            'approver_name': step.approver_name,
+        }, target_override=targets,
+            dedupe_key=f'approval.effected:{doc.id}')
+    except Exception:
+        pass
+    link = _doc_link(doc)
+    _send_mm_dm(db, doc.drafter_id,
+                f"📌 **효력발생** — {doc.form_name}\n"
+                f"**{doc.title}** — {step.approver_name}님 결재로 효력이 발생했습니다 "
+                f"(임원 결재 진행 중)\n→ [문서보기]({link})")
+    _send_kakao_text_to_user(db, doc.drafter_id,
+                f"📌 효력발생 — {doc.form_name}\n{doc.title} — {step.approver_name}님 결재로 효력이 "
+                f"발생했습니다 (임원 결재 진행 중).\n{link}")
 
 
 def _notify_completed(db, doc, approved, rejecter=None):
@@ -464,11 +805,15 @@ def _notify_completed(db, doc, approved, rejecter=None):
             dedupe_key=f'{event}:{doc.id}')
     except Exception:
         pass
+    link = _doc_link(doc)
     if approved:
         msg = (f"✅ **결재완료** — {doc.form_name}\n"
-               f"**{doc.title}** 최종 승인되었습니다\n→ [문서보기]({_doc_link(doc)})")
+               f"**{doc.title}** 최종 승인되었습니다\n→ [문서보기]({link})")
+        kakao_txt = f"✅ 결재완료 — {doc.form_name}\n{doc.title} 최종 승인되었습니다.\n{link}"
     else:
         who = rejecter.approver_name if rejecter else ''
         msg = (f"⛔ **결재반려** — {doc.form_name}\n"
-               f"**{doc.title}** — {who}님이 반려\n→ [문서보기]({_doc_link(doc)})")
+               f"**{doc.title}** — {who}님이 반려\n→ [문서보기]({link})")
+        kakao_txt = f"⛔ 결재반려 — {doc.form_name}\n{doc.title} — {who}님이 반려했습니다.\n{link}"
     _send_mm_dm(db, doc.drafter_id, msg)
+    _send_kakao_text_to_user(db, doc.drafter_id, kakao_txt)

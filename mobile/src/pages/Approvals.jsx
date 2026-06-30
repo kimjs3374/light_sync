@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 
 const TABS = [
+  { key: 'all', label: '전체' },
   { key: 'inbox', label: '결재대기' },
-  { key: 'drafted', label: '내가 올린' },
-  { key: 'referenced', label: '참조' },
+  { key: 'progress', label: '진행중' },
   { key: 'done', label: '완료' },
 ];
 
@@ -17,7 +17,7 @@ const statusColor = (st) => ({
 
 export default function Approvals() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState('inbox');
+  const [tab, setTab] = useState('all');
   const [items, setItems] = useState([]);
   const [inbox, setInbox] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -126,6 +126,8 @@ function CreateModal({ onClose, onDone }) {
     setLine(f.default_line || []);
   };
 
+  // 본인 전결: 양식의 자동 결재선이 비어 있으면(= 기안자가 조직 최상위) 전결 대상
+  const selfApproval = !!(picked && !(picked.default_line || []).length);
   const isLeave = picked && picked.form_key === 'leave';
   const ff = (k) => (picked && picked.fields || []).find(f => f.key === k) || { label: k, options: [] };
   const period = fields.period || '종일';
@@ -180,7 +182,10 @@ function CreateModal({ onClose, onDone }) {
       const valid = exItems.filter(r => (r.item || '').trim() || (r.amount || '').toString().trim());
       if (!valid.length) return alert('지출명세를 1건 이상 입력하세요');
     }
-    if (!line.length) return alert('결재자를 1명 이상 지정하세요');
+    if (!line.length) {
+      if (!selfApproval) return alert('결재자를 1명 이상 지정하세요');
+      if (!confirm('상위 결재자가 없어 본인 전결로 즉시 완료됩니다. 상신할까요?')) return;
+    }
     setSaving(true);
     try {
       const res = await api.post('/approvals', {
@@ -357,6 +362,12 @@ function CreateModal({ onClose, onDone }) {
               <textarea style={{ ...s.inp, minHeight: 50 }} value={content} onChange={e => setContent(e.target.value)} />
 
               <div style={{ ...s.fl, marginTop: 12 }}>결재선 (순차)</div>
+              {selfApproval && !line.length && (
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 8,
+                  padding: '8px 12px', marginBottom: 6, fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
+                  🟢 본인 전결 — 상위 결재자가 없어 상신 시 즉시 완료됩니다
+                </div>
+              )}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
                 {line.map((l, i) => (
                   <span key={l.approver_id} style={s.chip}>
@@ -371,11 +382,17 @@ function CreateModal({ onClose, onDone }) {
                 {users.map(u => <option key={u.id} value={u.id}>{u.name} {u.position} ({u.dept})</option>)}
               </select>
 
+              {(picked.default_refs || []).length > 0 && (
+                <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
+                  참조 (자동): {(picked.default_refs || []).map(r => `${r.name} ${r.position}`).join(', ')}
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
                 <button onClick={() => setPicked(null)} style={s.btn}>← 양식</button>
                 <button onClick={submit} disabled={saving}
                   style={{ ...s.btn, background: 'var(--accent)', color: '#fff', flex: 2 }}>
-                  {saving ? '상신 중...' : '📤 상신'}</button>
+                  {saving ? '상신 중...' : (selfApproval && !line.length ? '🟢 전결 상신' : '📤 상신')}</button>
               </div>
             </>
           )}

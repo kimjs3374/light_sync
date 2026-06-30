@@ -41,11 +41,27 @@ def _mail_timing_end(response):
     t0 = getattr(g, '_mail_t0', None)
     if t0 is not None:
         elapsed = _t.perf_counter() - t0
-        # 200ms 이상만 로그 (이하면 정상)
-        if elapsed >= 0.2:
+        qs = request.query_string.decode('latin-1', errors='replace')[:120]
+        # 실패 응답(4xx/5xx)은 소요시간과 무관하게 무조건 기록 — 빠르게 떨어지는 400도 놓치지 않음
+        if response.status_code >= 400:
+            detail = ''
+            # JSON 에러 응답이면 사유(error 메시지)까지 남김 — 어떤 400인지 사후 식별용
+            try:
+                if response.is_json:
+                    body = response.get_json(silent=True) or {}
+                    if isinstance(body, dict) and body.get('error'):
+                        detail = ' error=' + str(body['error'])[:200]
+            except Exception:
+                pass
+            logger.warning(
+                'MAIL_FAIL %d %.2fs %s %s qs=%s%s',
+                response.status_code, elapsed, request.method, request.path, qs, detail,
+            )
+        # 정상 응답은 200ms 이상만 로그 (이하면 정상)
+        elif elapsed >= 0.2:
             logger.info(
                 'MAIL_TIMING %.2fs %s %s qs=%s',
-                elapsed, request.method, request.path, request.query_string.decode('latin-1', errors='replace')[:120],
+                elapsed, request.method, request.path, qs,
             )
     return response
 
@@ -254,6 +270,7 @@ def mail_compose():
     reply_all = request.args.get('reply_all', type=int)
     forward_uid = request.args.get('forward', type=int)
     resend_uid = request.args.get('resend', type=int)
+    draft_uid = request.args.get('draft', type=int)
     account_id = request.args.get('account', type=int)
 
     reply_data = None
@@ -261,8 +278,8 @@ def mail_compose():
         personal, shared = _get_user_accounts(db, session['user_id'])
         external = _get_external_accounts(db, session['user_id'])
 
-        # 답장/전달/다시보내기 시 원본 메일 데이터
-        source_uid = reply_uid or reply_all or forward_uid or resend_uid
+        # 답장/전달/다시보내기/임시보관함 이어쓰기 시 원본 메일 데이터
+        source_uid = reply_uid or reply_all or forward_uid or resend_uid or draft_uid
         if source_uid and account_id:
             client, account, err = _get_mail_client(db, account_id)
             if client and not err:
@@ -293,6 +310,7 @@ def mail_compose():
                                reply_all=reply_all,
                                forward_uid=forward_uid,
                                resend_uid=resend_uid,
+                               draft_uid=draft_uid,
                                current_account_id=account_id,
                                user_signature_html=user_signature_html,
                                mail_mode=mode)
@@ -411,6 +429,10 @@ def api_send():
     subject = request.form.get('subject', '')
     html_body = request.form.get('body', '')
 
+    # 임시보관함에서 이어쓴 메일이면 발송 후 원본 임시본 삭제
+    draft_replace_uid = request.form.get('draft_replace_uid', type=int)
+    draft_folder = request.form.get('draft_folder', '')
+
     if not to:
         return jsonify({'error': '받는 사람을 입력하세요.'}), 400
 
@@ -516,10 +538,87 @@ def api_send():
 
             db.commit()
 
+            # 임시보관함에서 이어쓴 메일이면 원본 임시본 삭제 (발송 완료 후)
+            if draft_replace_uid and draft_folder:
+                try:
+                    with client:
+                        client.delete_messages([draft_replace_uid], folder=draft_folder)
+                except Exception as e:
+                    logger.warning("발송 후 임시본 삭제 실패(uid=%s): %s", draft_replace_uid, e)
+
             return jsonify(result)
         except Exception as e:
             logger.error("메일 발송 실패: %s", e)
             return jsonify({'error': f'메일 발송 실패: {e}'}), 500
+
+
+@mail_bp.route('/mail/api/draft', methods=['POST'])
+@login_required
+def api_save_draft():
+    """임시저장 — 작성 중인 메일을 임시보관함(Drafts)에 저장.
+
+    replace_uid 가 있으면 기존 임시본을 교체(삭제 후 재저장)한다.
+    답장/전달/이어쓰기의 원본 첨부는 forward_* 파라미터로 IMAP에서 재첨부한다.
+    """
+    account_id = request.form.get('account_id', type=int)
+    to = [a.strip() for a in request.form.get('to', '').split(',') if a.strip()]
+    cc = [a.strip() for a in request.form.get('cc', '').split(',') if a.strip()]
+    bcc = [a.strip() for a in request.form.get('bcc', '').split(',') if a.strip()]
+    subject = request.form.get('subject', '')
+    html_body = request.form.get('body', '')
+    replace_uid = request.form.get('replace_uid', type=int)
+
+    # 새로 첨부한 파일
+    attachments = []
+    for f in request.files.getlist('attachments'):
+        if f.filename:
+            attachments.append((f.filename, f.read()))
+
+    # 원본 첨부(전달/이어쓰기) IMAP 재첨부
+    forward_source_uid = request.form.get('forward_source_uid', type=int)
+    forward_account_id = request.form.get('forward_account_id', type=int)
+    forward_folder = request.form.get('forward_folder', 'INBOX')
+    forward_parts_json = request.form.get('forward_parts', '')
+
+    with get_db() as db:
+        if forward_source_uid and forward_account_id and forward_parts_json:
+            try:
+                forward_parts = json.loads(forward_parts_json)
+                fwd_client, fwd_account, fwd_err = _get_mail_client(db, forward_account_id)
+                if fwd_client and not fwd_err:
+                    with fwd_client:
+                        for part_id in forward_parts:
+                            fname, ctype, data = fwd_client.fetch_attachment(
+                                forward_source_uid, str(part_id), forward_folder
+                            )
+                            if fname and data:
+                                attachments.append((fname, data))
+            except Exception as e:
+                logger.error("임시저장 원본 첨부 로드 실패: %s", e)
+
+        client, account, err = _get_mail_client(db, account_id)
+        if err:
+            return jsonify({'error': err}), 400
+        if not client:
+            return jsonify({'error': '메일 계정 미설정'}), 404
+
+        try:
+            with client:
+                result = client.save_draft(
+                    from_addr=account.email,
+                    to=to, cc=cc or None, bcc=bcc or None,
+                    subject=subject,
+                    html_body=html_body,
+                    attachments=attachments or None,
+                    from_name=account.display_name,
+                    replace_uid=replace_uid,
+                )
+            if not result.get('success'):
+                return jsonify({'error': result.get('error', '임시저장 실패')}), 500
+            return jsonify(result)
+        except Exception as e:
+            logger.error("임시저장 실패: %s", e)
+            return jsonify({'error': f'임시저장 실패: {e}'}), 500
 
 
 @mail_bp.route('/mail/api/flags', methods=['POST'])

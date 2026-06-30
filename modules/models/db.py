@@ -339,6 +339,28 @@ def init_db():
                 except Exception:
                     pass
 
+            # leave_usages: 연차 수동 사용 기록 (v2026-06-26, 전자결재 미경유 소급 입력)
+            try:
+                conn.execute(text(
+                    f"CREATE TABLE IF NOT EXISTS {quote_ident(DB_SCHEMA)}.leave_usages ("
+                    f"  id SERIAL PRIMARY KEY,"
+                    f"  user_id INTEGER NOT NULL REFERENCES {quote_ident(DB_SCHEMA)}.users(id),"
+                    f"  used_date DATE NOT NULL,"
+                    f"  days NUMERIC(3,1) NOT NULL DEFAULT 1,"
+                    f"  leave_type VARCHAR(20) DEFAULT '연차',"
+                    f"  reason TEXT,"
+                    f"  leave_year INTEGER,"
+                    f"  created_by VARCHAR(50),"
+                    f"  created_at TIMESTAMP DEFAULT NOW()"
+                    f")"
+                ))
+                conn.execute(text(
+                    f"CREATE INDEX IF NOT EXISTS idx_leave_usage_user_date "
+                    f"ON {quote_ident(DB_SCHEMA)}.leave_usages(user_id, used_date)"
+                ))
+            except Exception:
+                pass
+
     # SQLite: illuminance_projects.erp_project_id 컬럼 추가 (create_all 이후 실행)
     if not _is_postgres_engine():
         with engine.begin() as conn:

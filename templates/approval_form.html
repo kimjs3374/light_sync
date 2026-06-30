@@ -72,6 +72,10 @@
           <span style="font-size:1.1rem;font-weight:700">{{ leave_balance.used }}</span>일</div>
         <div><span class="text-muted" style="font-size:.78rem">잔여</span>
           <span style="font-size:1.3rem;font-weight:700;color:#0284c7" id="eaRemain">{{ leave_balance.remaining }}</span>일</div>
+        {% if leave_balance.period_start and leave_balance.period_end %}
+        <div><span class="text-muted" style="font-size:.78rem">사용기간</span>
+          <span style="font-size:.92rem;font-weight:600">{{ leave_balance.period_start }} ~ {{ leave_balance.period_end }}</span></div>
+        {% endif %}
         <div class="ms-auto" id="eaAfterBox" style="display:none;font-size:.85rem">
           신청 후 잔여 <span style="font-weight:700" id="eaAfter"></span>일
         </div>
@@ -248,6 +252,7 @@
           <div class="text-muted mb-2" style="font-size:.74rem">순차 결재 · 기본: 부서장 → 경영진(부장 이상 전원)</div>
           <div id="eaLine"></div>
           <div class="text-danger small" id="eaLineEmpty" style="display:none">결재자를 1명 이상 지정하세요.</div>
+          <div class="small" id="eaSelfApproval" style="display:none;color:#16a34a;font-weight:600">🟢 본인 전결 — 상위 결재자가 없어 상신 시 즉시 완료됩니다.</div>
         </div>
       </div>
 
@@ -286,6 +291,7 @@
     let EA_LINE = {{ default_line|tojson }};
     let EA_REFS = {{ (refs if refs is defined else [])|tojson }};
     const EA_HOLIDAYS = new Set({{ (holidays if holidays is defined else [])|tojson }});
+    const EA_SELF_APPROVAL = {{ (self_approval if self_approval is defined else false)|tojson }};
 
     function userOptions(selectedId) {
       let h = '<option value="">선택</option>';
@@ -313,7 +319,10 @@
           <button type="button" class="btn btn-sm btn-light text-danger" onclick="removeApprover(${i})">✕</button>`;
         box.appendChild(div);
       });
-      document.getElementById('eaLineEmpty').style.display = EA_LINE.length ? 'none' : 'block';
+      const empty = !EA_LINE.length;
+      // 빈 결재선: 전결 대상이면 안내(초록), 아니면 경고(빨강)
+      document.getElementById('eaLineEmpty').style.display = (empty && !EA_SELF_APPROVAL) ? 'block' : 'none';
+      document.getElementById('eaSelfApproval').style.display = (empty && EA_SELF_APPROVAL) ? 'block' : 'none';
     }
     function onLineChange(i, v) { EA_LINE[i].approver_id = v; }
     function addApprover() { syncLine(); EA_LINE.push({approver_id:'', role:'approval'}); renderLine(); }
@@ -354,7 +363,11 @@
     function doSubmit() {
       syncLine();
       const valid = EA_LINE.filter(s => s.approver_id);
-      if (!valid.length) { alert('결재자를 1명 이상 지정하세요.'); return false; }
+      if (!valid.length) {
+        if (!EA_SELF_APPROVAL) { alert('결재자를 1명 이상 지정하세요.'); return false; }
+        document.getElementById('eaAction').value = 'submit';
+        return confirm('상위 결재자가 없어 본인 전결로 즉시 완료됩니다. 상신하시겠습니까?');
+      }
       document.getElementById('eaAction').value = 'submit';
       return confirm('상신하시겠습니까? 상신 후에는 수정할 수 없습니다.');
     }

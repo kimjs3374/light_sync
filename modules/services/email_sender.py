@@ -155,7 +155,7 @@ def _get_shared_mail_account(email):
 
 def send_email_with_attachments(to_email, subject, body_text, attachments=None,
                                 from_email=None, from_name=None, user_id=None,
-                                from_account_email=None):
+                                from_account_email=None, body_html=None):
     """
     다중 첨부파일 이메일 발송 (가공발주 등).
     - from_account_email이 주어지면 해당 부서 공용 계정(purchase/sales/eng 등)으로 발송.
@@ -215,7 +215,13 @@ def send_email_with_attachments(to_email, subject, body_text, attachments=None,
         msg['Subject'] = subject
         if display_email != envelope_from:
             msg['Reply-To'] = display_email
-        msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
+        if body_html:
+            alt = MIMEMultipart('alternative')
+            alt.attach(MIMEText(body_text, 'plain', 'utf-8'))
+            alt.attach(MIMEText(body_html, 'html', 'utf-8'))
+            msg.attach(alt)
+        else:
+            msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
 
         for fname, fbytes in attachments:
             att = MIMEApplication(fbytes)
