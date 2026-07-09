@@ -1,4 +1,4 @@
-"""채팅→ERP 쓰기 작업 Preview 도구 (7종)
+"""채팅→ERP 쓰기 작업 Preview 도구 (11종)
 
 패턴:
   1. 필드 부족 → {"status":"needs_info", "question":"...", "hint":"..."}
@@ -43,6 +43,10 @@ DEFECT_TYPES_HINT = "LED모듈/SMPS/방열/렌즈/결로/제어/배선/외관/�
 
 # ── 발주 상태 ─────────────────────────────────────────────
 PO_STATUS_FLOW = ['작성중', '발송완료', '입고대기', '입고완료', '취소']
+
+# ── 휴가 양식 선택지 (approval_form_templates.field_schema 와 동일) ──
+LEAVE_TYPES = ['연차', '병가', '경조사', '공가', '기타']
+LEAVE_PERIODS = ['종일', '오전반차', '오후반차']
 
 
 def _store_session(intent_type: str, payload: Dict[str, Any],
@@ -1445,6 +1449,169 @@ def register(mcp: FastMCP):
             }, ensure_ascii=False)
         finally:
             session.close()
+
+    # ══════════════════════════════════════════════════════
+    # 11. 휴가 상신 (전자결재)
+    # ══════════════════════════════════════════════════════
+    @mcp.tool()
+    def write_preview_leave_request(
+        requester_username: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        leave_type: Optional[str] = None,
+        period: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> str:
+        """휴가 상신 preview — 확인 시 전자결재 휴가신청서가 상신됩니다.
+
+        결재선은 ERP와 동일하게 자동 구성됩니다 (부서장 → 임원진).
+        승인되면 연차가 자동 차감됩니다.
+
+        ★ 필수 필드:
+          - requester_username: 채널 태그의 user="..." 값 (기안자 = 본인만 가능)
+          - start_date: 시작일 (YYYY-MM-DD / M/D / 오늘 / 내일)
+          - leave_type: 연차(기본) / 병가 / 경조사 / 공가 / 기타
+          - period: 종일(기본) / 오전반차 / 오후반차
+          - end_date: 종료일 (생략 시 시작일과 동일)
+          - reason: 사유
+        """
+        from modules.services import approval_service as svc
+
+        if not requester_username:
+            return json.dumps({"status": "error",
+                "message": "requester_username 이 필요합니다. 본인 명의로만 상신할 수 있습니다."},
+                ensure_ascii=False)
+
+        if not start_date:
+            return json.dumps({"status": "needs_info", "intent": "write_preview_leave_request",
+                "question": "휴가 시작일이 언제입니까?",
+                "hint": "예: 내일, 2026-07-20, 7/20",
+                "collected": {}}, ensure_ascii=False)
+
+        parsed_start = _parse_date(start_date)
+        if not parsed_start:
+            return json.dumps({"status": "needs_info", "intent": "write_preview_leave_request",
+                "question": f"'{start_date}' 날짜를 인식하지 못했습니다. 다시 입력해주세요.",
+                "hint": "YYYY-MM-DD 또는 M/D",
+                "collected": {}}, ensure_ascii=False)
+
+        parsed_end = _parse_date(end_date) if end_date else parsed_start
+        if not parsed_end:
+            parsed_end = parsed_start
+        if parsed_end < parsed_start:
+            return json.dumps({"status": "error",
+                "message": "종료일이 시작일보다 빠릅니다."}, ensure_ascii=False)
+
+        ltype = (leave_type or '연차').strip()
+        if ltype not in LEAVE_TYPES:
+            return json.dumps({"status": "needs_info", "intent": "write_preview_leave_request",
+                "question": f"'{ltype}' 휴가 종류를 인식하지 못했습니다.",
+                "hint": " / ".join(LEAVE_TYPES),
+                "collected": {"start_date": parsed_start.isoformat()}}, ensure_ascii=False)
+
+        prd = (period or '종일').strip()
+        if prd not in LEAVE_PERIODS:
+            return json.dumps({"status": "needs_info", "intent": "write_preview_leave_request",
+                "question": f"'{prd}' 기간 구분을 인식하지 못했습니다.",
+                "hint": " / ".join(LEAVE_PERIODS),
+                "collected": {"start_date": parsed_start.isoformat(), "leave_type": ltype}},
+                ensure_ascii=False)
+
+        if '반차' in prd:
+            parsed_end = parsed_start  # 반차는 하루
+
+        if not reason:
+            return json.dumps({"status": "needs_info", "intent": "write_preview_leave_request",
+                "question": "휴가 사유를 입력해주세요.",
+                "hint": "예: 개인사유, 병원진료, 경조사",
+                "collected": {"start_date": parsed_start.isoformat(),
+                              "end_date": parsed_end.isoformat(),
+                              "leave_type": ltype, "period": prd}}, ensure_ascii=False)
+
+        session = get_session()
+        try:
+            from modules.models.entities import User
+            drafter = (session.query(User).filter(User.username == requester_username).first()
+                       or session.query(User)
+                       .filter(User.email.ilike(f"{requester_username}@%")).first())
+            if not drafter:
+                return json.dumps({"status": "error",
+                    "message": f"'{requester_username}' 사용자를 ERP에서 찾을 수 없습니다."},
+                    ensure_ascii=False)
+
+            # 사용일수 — ERP 상신과 동일한 산정식
+            if '반차' in prd:
+                days = 0.5
+            else:
+                from modules.services import holiday_service
+                days = float(holiday_service.working_days(parsed_start, parsed_end))
+            if days <= 0:
+                return json.dumps({"status": "error",
+                    "message": f"{parsed_start} ~ {parsed_end} 구간에 근무일이 없습니다 "
+                               "(주말/공휴일). 날짜를 확인해주세요."}, ensure_ascii=False)
+
+            # 결재선 미리 확인 (상신 시점에 다시 구성)
+            line = svc.resolve_default_line(session, drafter)
+            line_label = " → ".join(f"{s['approver_name']} {s['approver_position'] or ''}".strip()
+                                    for s in line) or "본인 전결 (상위 결재자 없음)"
+
+            # 잔여 연차 확인 (연차만 차감)
+            balance_note = ""
+            if ltype == '연차':
+                from modules.services import hr_service
+                summary = hr_service.leave_summary(session, drafter)
+                after = round(summary['remaining'] - days, 1)
+                balance_note = f"잔여 {summary['remaining']}일 → 사용 후 {after}일"
+                if after < 0:
+                    balance_note += "  ⚠️ 잔여 연차 부족"
+
+            position = (drafter.position or '').strip()
+            drafter_name = _s(drafter.full_name)
+            drafter_dept = _s(drafter.user_group)
+            title = f"{drafter_dept} {drafter_name} {position} 휴가신청서".strip()
+            title = " ".join(title.split())
+
+            token = _store_session("confirm_leave_request", {
+                "drafter_id": drafter.id,
+                "title": title,
+                "form_data": {
+                    "leave_type": ltype,
+                    "period": prd,
+                    "start_date": parsed_start.isoformat(),
+                    "end_date": parsed_end.isoformat(),
+                    "start_time": "",
+                    "end_time": "",
+                    "days": str(days),
+                    "reason": reason,
+                    "emergency_contact": _s(drafter.phone_number),
+                },
+                "content": reason,
+            }, user_name=drafter_name)
+        finally:
+            session.close()
+
+        fields = {
+            "기안자": " ".join(f"{drafter_dept} {drafter_name} {position}".split()),
+            "휴가종류": ltype,
+            "기간구분": prd,
+            "기간": (parsed_start.isoformat() if parsed_start == parsed_end
+                     else f"{parsed_start.isoformat()} ~ {parsed_end.isoformat()}"),
+            "사용일수": f"{days}일",
+            "사유": reason,
+            "결재선": line_label,
+        }
+        if balance_note:
+            fields["연차잔여"] = balance_note
+
+        return json.dumps({
+            "status": "preview",
+            "action_type": "confirm_leave_request",
+            "session_token": token,
+            "summary": f"휴가 상신 — {ltype} {days}일",
+            "fields": fields,
+            "notice": "확인 버튼을 누르면 전자결재로 상신됩니다. "
+                      "승인 완료(또는 부서장 선효력) 시 연차가 자동 차감됩니다.",
+        }, ensure_ascii=False)
 
 
 # ──────────────────────────────────────────────────────────────

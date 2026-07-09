@@ -60,12 +60,12 @@ def register(mcp: FastMCP):
         target_date: Optional[str] = None,
     ) -> str:
         """오늘(또는 지정 날짜)의 근무인원 조회.
-        카카오워크 캘린더에서 연차/반차를 확인하여 실제 근무인원을 계산합니다.
+        전자결재 휴가신청서(승인 또는 부서장 선효력) 기준으로 연차/반차를 반영합니다.
         ★ '오늘 근무 몇 명', '누가 연차야', '출근 인원' 등의 질문에 사용.
         target_date: YYYY-MM-DD (생략 시 오늘)
         """
         from modules.models.entities import User
-        from modules.services.ical_sync import get_leave_events_for_date
+        from modules.services.approval_service import get_approved_leaves_for_date
         session = get_session()
         try:
             # 날짜 파싱
@@ -78,23 +78,26 @@ def register(mcp: FastMCP):
             all_users = session.query(User).filter(User.role != 'pending').all()
             total = len(all_users)
 
-            # 연차/반차 정보
-            leaves = get_leave_events_for_date(dt)
+            # 전자결재 휴가 문서 (승인 완료 또는 부서장 결재로 선효력 발생)
+            # ERP 달력과 동일한 정본 로직 재사용
+            events = get_approved_leaves_for_date(session, dt)
 
-            full_leave = []   # 연차 (종일)
+            full_leave = []   # 종일 휴가
             half_leave = []   # 반차
 
-            for lv in leaves:
+            for ev in events:
                 entry = {
-                    "name": _s(lv.get('name')),
-                    "type": _s(lv.get('leave_type')),
+                    "name": _s(ev.get('name')),
+                    "department": _s(ev.get('dept')),
+                    "position": _s(ev.get('position')),
+                    "type": _s(ev.get('disp_type')),
+                    "leave_type": _s(ev.get('leave_type')),
                 }
-                if '반차' in _s(lv.get('leave_type')):
+                if '반차' in _s(ev.get('disp_type')):
                     half_leave.append(entry)
                 else:
                     full_leave.append(entry)
 
-            absent_count = len(full_leave) + (len(half_leave) * 0.5)
             working_count = total - len(full_leave)  # 반차는 출근으로 계산
 
             # 요일

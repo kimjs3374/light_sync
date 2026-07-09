@@ -199,15 +199,20 @@ def register(mcp: FastMCP):
             session.close()
 
     @mcp.tool()
-    def get_vendor_list(search: Optional[str] = None) -> str:
-        """거래처 목록 조회. 거래처명, 대표자, 연락처를 반환합니다."""
+    def get_vendor_list(search: Optional[str] = None, limit: int = 100) -> str:
+        """거래처 목록 조회. 거래처명, 대표자, 연락처를 반환합니다.
+
+        ⚠️ 전체 3,700곳이 넘습니다. search 없이 전량을 받지 마세요.
+        limit 로 잘린 경우 total/returned 로 알려줍니다.
+        """
         from modules.models.entities import Vendor
         session = get_session()
         try:
             q = session.query(Vendor)
             if search:
                 q = q.filter(Vendor.name.ilike(f"%{search}%"))
-            vendors = q.order_by(Vendor.name).all()
+            total = q.count()
+            vendors = q.order_by(Vendor.name).limit(limit).all()
 
             result = []
             for v in vendors:
@@ -218,6 +223,11 @@ def register(mcp: FastMCP):
                     if hasattr(v, col):
                         row[col] = _s(getattr(v, col))
                 result.append(row)
-            return json.dumps(result, ensure_ascii=False)
+            return json.dumps({
+                "total": total,
+                "returned": len(result),
+                "truncated": total > len(result),
+                "items": result,
+            }, ensure_ascii=False)
         finally:
             session.close()

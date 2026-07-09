@@ -381,6 +381,7 @@ def mattermost_action():
         "confirm_production_complete",
         "confirm_production_complete_all",
         "confirm_email_send",
+        "confirm_leave_request",
     }
     if action_type in WRITE_CONFIRM_ACTIONS:
         token = data.get("session_token") or ""
@@ -453,6 +454,8 @@ def _action_write_confirm(action_type: str, token: str, mm_user_name: str) -> di
                 result = _write_production_complete_all(session, payload, actor, mm_user_name)
             elif action_type == "confirm_email_send":
                 result = _write_email_send(session, payload, actor, mm_user_name)
+            elif action_type == "confirm_leave_request":
+                result = _write_leave_request(session, payload, actor, mm_user_name)
             else:
                 return {"ok": False, "msg": f"미구현 액션: {action_type}"}
 
@@ -716,6 +719,66 @@ def _write_business_trip(session, payload):
 
     return {"ok": True, "label": "출장 등록됨",
             "detail": f"- 출장지: {payload['destination']}\n- 출장자: {traveler_names}\n- 출발일: {payload['departure_date']}"}
+
+
+def _write_leave_request(session, payload, actor, mm_user_name):
+    """휴가 상신 — ERP 결재 폼(routes/approval.py)과 동일 경로.
+
+    draft 문서 생성 → 결재선(부서장→임원진) 자동 구성 → 참조자 → submit_document.
+    본인 명의로만 상신 가능 (preview 시점의 drafter_id 와 확인 클릭자를 대조).
+    """
+    from modules.models import ApprovalDocument, User
+    from modules.models.approval_entities import (
+        ApprovalStep, ApprovalReference, ApprovalFormTemplate,
+    )
+    from modules.services import approval_service as svc
+
+    drafter = session.query(User).get(payload["drafter_id"])
+    if not drafter:
+        return {"ok": False, "msg": "기안자를 찾을 수 없습니다."}
+
+    # 본인 확인 — 남의 명의로 상신 차단
+    clicker = _resolve_erp_user(session, mm_user_name)
+    if not clicker or clicker.id != drafter.id:
+        return {"ok": False, "msg": "본인 명의의 휴가만 상신할 수 있습니다."}
+
+    form = (session.query(ApprovalFormTemplate)
+            .filter(ApprovalFormTemplate.form_key == 'leave').first())
+    if not form:
+        return {"ok": False, "msg": "휴가신청서 양식을 찾을 수 없습니다."}
+
+    doc = ApprovalDocument(
+        form_key='leave', form_name=form.name,
+        drafter_id=drafter.id, drafter_name=drafter.full_name,
+        drafter_dept=drafter.user_group, drafter_position=drafter.position,
+        status='draft',
+        title=payload["title"],
+        form_data=payload["form_data"],
+        content=payload.get("content") or '',
+    )
+    session.add(doc)
+    session.flush()
+
+    for order, s in enumerate(svc.resolve_default_line(drafter=drafter, db=session), start=1):
+        doc.steps.append(ApprovalStep(step_order=order, **s))
+    for u in svc.resolve_default_refs(session, 'leave'):
+        doc.references.append(ApprovalReference(
+            user_id=u.id, user_name=u.full_name, ref_type='receiver'))
+    session.flush()
+
+    try:
+        svc.submit_document(session, doc)
+    except ValueError as e:
+        return {"ok": False, "msg": str(e)}
+
+    fd = payload["form_data"]
+    period = fd.get('period') or '종일'
+    span = (fd['start_date'] if fd['start_date'] == fd['end_date']
+            else f"{fd['start_date']} ~ {fd['end_date']}")
+    return {"ok": True, "label": f"휴가 상신됨 ({doc.doc_no})",
+            "detail": f"- 종류: {fd.get('leave_type')} ({period})\n"
+                      f"- 기간: {span}\n"
+                      f"- 사용일수: {fd.get('days')}일"}
 
 
 def _write_daily_report(session, payload, actor):

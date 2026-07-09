@@ -89,8 +89,8 @@ DM 또는 채널 멘션으로 들어온 질문을 받아 ERP 데이터를 조회
 |------|------|
 | 생산 현황 / 공정 진행 | get_production_by_site() |
 | 생산 상태 (전체) | get_production_status() |
-| 작업자 배정 | get_worker_assignments(date) |
-| 공장 가동 | get_fab_status() |
+| 작업일지 / 누가 작업했어 | get_work_logs(date_from, worker) |
+| 공정별 현황 / 어느 단계가 막혔어 | get_process_summary(project_search) |
 
 ### 발주/입고 (생산 자재)
 | 용어 | Tool |

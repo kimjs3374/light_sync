@@ -21,8 +21,8 @@ ALL_TOOLS = [
     # 생산 (4)
     ("get_production_status",   "생산 현황",           "전체"),
     ("get_production_by_site",  "현장별 생산 카드",    "전체"),
-    ("get_worker_assignments",  "작업자 배치",         "전체"),
-    ("get_fab_status",          "FAB 공정 현황",       "전체"),
+    ("get_work_logs",           "일일 작업일지",       "전체"),
+    ("get_process_summary",     "공정단계별 집계",     "전체"),
     # BOM/품목 (6)
     ("get_bom_list",            "BOM 목록",            "전체"),
     ("get_bom_detail",          "BOM 상세",            "전체"),

@@ -36,6 +36,8 @@ from .tools import (
     billing,
     dept_report,
     incoming_overview,
+    approval,
+    hr,
     write_ops,
 )
 from .resources import magnatech
@@ -77,6 +79,11 @@ def register_all(mcp: FastMCP):
     billing.register(mcp)
     dept_report.register(mcp)
     incoming_overview.register(mcp)
-    # ── 쓰기 작업 preview 도구 (확인 후 DB 반영) ──
-    write_ops.register(mcp)
+    # ── 전자결재 · 인사/연차 ──
+    approval.register(mcp)
+    hr.register(mcp)
+    # ── 쓰기 작업 preview 도구 (확인 후 DB 반영) — READONLY 모드면 제외 ──
+    import os as _os
+    if _os.environ.get("LIGHT_SYNC_MCP_READONLY", "").strip() not in ("1", "true", "True"):
+        write_ops.register(mcp)
     magnatech.register(mcp)

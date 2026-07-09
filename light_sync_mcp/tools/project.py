@@ -82,15 +82,35 @@ def register(mcp: FastMCP):
             if not p:
                 return "현장을 찾을 수 없습니다."
 
-            contracts = [{
-                "id": c.id,
-                "contract_amount": int(c.contract_amount) if hasattr(c, "contract_amount") and c.contract_amount else 0,
-                "delivery_date": _sd(c.delivery_date) if hasattr(c, "delivery_date") else "",
-            } for c in p.contracts]
+            # 계약금액은 contracts 에 없고 G2B 조달내역(prdct_amt) 합계가 정본
+            from modules.models.entities import G2bProcurement
+            from sqlalchemy import func
+
+            contracts = []
+            for c in p.contracts:
+                amount = 0
+                if c.g2b_contract_no:
+                    amount = int(session.query(
+                        func.coalesce(func.sum(G2bProcurement.prdct_amt), 0)
+                    ).filter(
+                        G2bProcurement.cntrct_dlvr_req_no == c.g2b_contract_no
+                    ).scalar() or 0)
+                contracts.append({
+                    "id": c.id,
+                    "contract_name": _s(c.contract_name),
+                    "g2b_contract_no": _s(c.g2b_contract_no),
+                    "contract_date": _sd(c.contract_date),
+                    "delivery_due_date": _sd(c.delivery_due_date),
+                    "payment_status": _s(c.payment_status),
+                    "contract_amount": amount,
+                })
 
             deliveries = [{
                 "id": d.id,
-                "status": _s(d.status) if hasattr(d, "status") else "",
+                "delivery_status": _s(d.delivery_status),
+                "inspection_status": _s(d.inspection_status),
+                "planned_qty": int(d.planned_total_qty or 0),
+                "delivered_qty": int(d.delivered_total_qty or 0),
             } for d in p.deliveries]
 
             return json.dumps({
@@ -150,7 +170,10 @@ def register(mcp: FastMCP):
 
             deliveries = [{
                 "type": "납품",
-                "status": _s(d.status) if hasattr(d, "status") else "",
+                "status": _s(d.delivery_status),
+                "inspection_status": _s(d.inspection_status),
+                "planned_qty": int(d.planned_total_qty or 0),
+                "delivered_qty": int(d.delivered_total_qty or 0),
             } for d in p.deliveries]
 
             return json.dumps({

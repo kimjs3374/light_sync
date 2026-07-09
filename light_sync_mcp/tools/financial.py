@@ -1,4 +1,4 @@
-"""FR-06: 재무/매출 도메인 Tools (4개)"""
+"""FR-06: 재무/매출 도메인 Tools (5개)"""
 import json
 from typing import Optional
 
@@ -11,14 +11,26 @@ from ._helpers import _s, _sd
 def register(mcp: FastMCP):
 
     @mcp.tool()
-    def get_revenue_summary(year: int, month: Optional[int] = None) -> str:
-        """매출 집계. 세금계산서 기준 연월별 매출 합산을 반환합니다."""
+    def get_revenue_summary(
+        year: int,
+        month: Optional[int] = None,
+        direction: str = '매출',
+    ) -> str:
+        """매출(또는 매입) 집계. 세금계산서 기준 연월별 합산을 반환합니다.
+
+        ⚠️ tax_invoices 에는 매출·매입이 함께 저장됩니다 (매입이 약 5배 많음).
+        direction 필터 없이 합산하면 매출이 2배 가까이 과대계상됩니다.
+
+        Args:
+            direction: '매출'(기본) / '매입'
+        """
         from modules.models.entities import TaxInvoice
         from sqlalchemy import func, extract
         session = get_session()
         try:
+            base = session.query(TaxInvoice).filter(TaxInvoice.direction == direction)
             if month:
-                rows = session.query(
+                rows = base.with_entities(
                     func.date(TaxInvoice.issue_date).label("date"),
                     func.sum(TaxInvoice.supply_amount).label("supply"),
                     func.sum(TaxInvoice.total_amount).label("total"),
@@ -30,7 +42,7 @@ def register(mcp: FastMCP):
                 items = [{"date": str(r.date), "supply_amount": int(r.supply or 0),
                           "total_amount": int(r.total or 0), "count": r.count} for r in rows]
             else:
-                rows = session.query(
+                rows = base.with_entities(
                     extract("month", TaxInvoice.issue_date).label("month"),
                     func.sum(TaxInvoice.supply_amount).label("supply"),
                     func.sum(TaxInvoice.total_amount).label("total"),
@@ -43,7 +55,9 @@ def register(mcp: FastMCP):
             return json.dumps({
                 "year": year,
                 "month": month,
+                "direction": direction,
                 "grand_total": sum(i["total_amount"] for i in items),
+                "grand_total_supply": sum(i["supply_amount"] for i in items),
                 "items": items,
             }, ensure_ascii=False)
         finally:
@@ -57,6 +71,8 @@ def register(mcp: FastMCP):
         limit: int = 50,
         months_back: int = 24,
         include_old: bool = False,
+        direction: str = '매출',
+        search: Optional[str] = None,
     ) -> str:
         """세금계산서 목록 조회. G2B 매칭 상태, 수금 상태로 필터링합니다.
         payment_status: 미수금 / 부분입금 / 입금완료
@@ -64,16 +80,28 @@ def register(mcp: FastMCP):
         기본은 **최근 24개월** 데이터만 (year 명시 시 해당 연도만, 이때 기간 필터 자동 해제).
         오래된 데이터(2013년부터)가 검색에 섞이는 데이터 오염 방지.
 
+        ⚠️ direction 기본값 '매출'. 매입 세금계산서(구매처 발행분)는 direction='매입'.
+        매입/매출을 섞으면 금액 집계가 왜곡됩니다.
+
         Args:
             months_back: 최근 N개월 기간 필터 (기본 24). year 명시 시 무시.
             include_old: True 시 전체 기간 (기본 False).
+            direction: '매출'(기본) / '매입' / 'all'(둘 다)
+            search: 거래처명 검색 (매출=공급받는자, 매입=공급자)
         """
         from modules.models.entities import TaxInvoice
-        from sqlalchemy import extract
+        from sqlalchemy import extract, or_
         import datetime
         session = get_session()
         try:
             q = session.query(TaxInvoice)
+            if direction and direction != 'all':
+                q = q.filter(TaxInvoice.direction == direction)
+            if search:
+                q = q.filter(or_(
+                    TaxInvoice.buyer_name.ilike(f"%{search}%"),
+                    TaxInvoice.supplier_name.ilike(f"%{search}%"),
+                ))
             if year:
                 q = q.filter(extract("year", TaxInvoice.issue_date) == year)
             if month:
@@ -90,48 +118,132 @@ def register(mcp: FastMCP):
                 "id": inv.id,
                 "approval_no": _s(inv.approval_no),
                 "issue_date": _sd(inv.issue_date),
+                "direction": _s(inv.direction),
+                "supplier_name": _s(inv.supplier_name),
                 "buyer_name": _s(inv.buyer_name),
+                "item_name": _s(inv.item_name),
                 "supply_amount": int(inv.supply_amount or 0),
                 "tax_amount": int(inv.tax_amount or 0),
                 "total_amount": int(inv.total_amount or 0),
                 "payment_status": _s(inv.payment_status) if hasattr(inv, "payment_status") else "",
                 "match_status": _s(inv.match_status) if hasattr(inv, "match_status") else "",
-                "g2b_matched": bool(getattr(inv, "g2b_procurement_id", None)),
+                "g2b_contract_no": _s(inv.g2b_contract_no),
+                "contract_id": inv.contract_id,
+                "matched": bool(inv.contract_id),
             } for inv in invoices], ensure_ascii=False)
         finally:
             session.close()
 
     @mcp.tool()
     def get_financial_overview(year: Optional[int] = None) -> str:
-        """재무 대시보드 요약. 총 매출, 미수금, 수금액을 반환합니다."""
+        """재무 대시보드 요약. 매출/매입 총액, 미수금, 수금액을 반환합니다.
+
+        ⚠️ 매출은 direction='매출'만 집계합니다 (tax_invoices 에 매입이 함께 저장됨).
+        """
         from modules.models.entities import TaxInvoice
         from sqlalchemy import func, extract
         session = get_session()
         try:
-            q = session.query(
-                func.sum(TaxInvoice.supply_amount).label("supply"),
-                func.sum(TaxInvoice.total_amount).label("total"),
-                func.count(TaxInvoice.id).label("count"),
-            )
-            if year:
-                q = q.filter(extract("year", TaxInvoice.issue_date) == year)
-            row = q.first()
+            def _agg(dirn):
+                q = session.query(
+                    func.sum(TaxInvoice.supply_amount).label("supply"),
+                    func.sum(TaxInvoice.total_amount).label("total"),
+                    func.count(TaxInvoice.id).label("count"),
+                ).filter(TaxInvoice.direction == dirn)
+                if year:
+                    q = q.filter(extract("year", TaxInvoice.issue_date) == year)
+                return q.first()
 
-            unpaid_q = session.query(func.sum(TaxInvoice.total_amount))
+            sales = _agg('매출')
+            purchase = _agg('매입')
+
+            unpaid_q = session.query(func.sum(TaxInvoice.total_amount)) \
+                .filter(TaxInvoice.direction == '매출')
             if year:
                 unpaid_q = unpaid_q.filter(extract("year", TaxInvoice.issue_date) == year)
             if hasattr(TaxInvoice, "payment_status"):
                 unpaid_q = unpaid_q.filter(TaxInvoice.payment_status.in_(["미수금", "부분입금"]))
             unpaid = int(unpaid_q.scalar() or 0)
-            total = int(row.total or 0)
+            total = int(sales.total or 0)
 
             return json.dumps({
                 "year": year,
-                "total_supply_amount": int(row.supply or 0),
+                "total_supply_amount": int(sales.supply or 0),
                 "total_amount": total,
-                "invoice_count": row.count or 0,
+                "invoice_count": sales.count or 0,
                 "unpaid_amount": unpaid,
                 "paid_amount": total - unpaid,
+                "purchase_supply_amount": int(purchase.supply or 0),
+                "purchase_total_amount": int(purchase.total or 0),
+                "purchase_count": purchase.count or 0,
+                "basis": "매출=direction '매출', 매입=direction '매입' (세금계산서 기준)",
+            }, ensure_ascii=False)
+        finally:
+            session.close()
+
+    @mcp.tool()
+    def get_purchase_summary(
+        year: int,
+        month: Optional[int] = None,
+        vendor: Optional[str] = None,
+        limit: int = 30,
+    ) -> str:
+        """매입 집계 — 매입 세금계산서 기준 거래처별 지출.
+        ★ '매입 얼마', '어디에 얼마 썼어', '거래처별 지출', '매입처 순위' 질문에 사용.
+
+        Args:
+            year: 연도 (필수)
+            month: 월 (생략 시 연간)
+            vendor: 공급자(매입처) 상호 검색
+            limit: 거래처 상위 N개 (기본 30)
+        """
+        from modules.models.entities import TaxInvoice
+        from sqlalchemy import func, extract
+        session = get_session()
+        try:
+            q = session.query(
+                TaxInvoice.supplier_name.label("vendor"),
+                func.sum(TaxInvoice.supply_amount).label("supply"),
+                func.sum(TaxInvoice.total_amount).label("total"),
+                func.count(TaxInvoice.id).label("count"),
+            ).filter(
+                TaxInvoice.direction == '매입',
+                extract("year", TaxInvoice.issue_date) == year,
+            )
+            if month:
+                q = q.filter(extract("month", TaxInvoice.issue_date) == month)
+            if vendor:
+                q = q.filter(TaxInvoice.supplier_name.ilike(f"%{vendor}%"))
+
+            grouped = q.group_by(TaxInvoice.supplier_name).subquery()
+            # 전체 합계 — limit 과 무관하게 조건에 걸린 매입 전량 기준
+            totals = session.query(
+                func.coalesce(func.sum(grouped.c.supply), 0),
+                func.coalesce(func.sum(grouped.c.total), 0),
+                func.count(),
+            ).first()
+
+            rows = (q.group_by(TaxInvoice.supplier_name)
+                     .order_by(func.sum(TaxInvoice.total_amount).desc())
+                     .limit(limit).all())
+
+            items = [{
+                "vendor": _s(r.vendor),
+                "supply_amount": int(r.supply or 0),
+                "total_amount": int(r.total or 0),
+                "count": r.count,
+            } for r in rows]
+
+            return json.dumps({
+                "year": year,
+                "month": month,
+                "vendor_count": int(totals[2] or 0),
+                "returned_vendor_count": len(items),
+                "grand_total": int(totals[1] or 0),
+                "grand_total_supply": int(totals[0] or 0),
+                "basis": "direction='매입' 세금계산서 공급자(supplier_name) 기준 합계, 금액 내림차순. "
+                         "grand_total 은 limit 과 무관한 전체 합계, items 는 상위 N개.",
+                "items": items,
             }, ensure_ascii=False)
         finally:
             session.close()

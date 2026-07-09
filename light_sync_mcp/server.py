@@ -9,11 +9,17 @@ INSTRUCTIONS = """
 
 ## 핵심 규칙
 
-1. **계약 정보 = G2B 조달내역**: `get_contracts()`는 항상 빈 배열 반환 (contracts 테이블 0건).
-   반드시 `get_g2b_contract_detail()`을 사용하세요.
+1. **계약 정보 = G2B 조달내역**: 계약의 뿌리는 `g2b_procurements` 입니다.
+   조달 원문(품목·금액·납기)은 `get_g2b_contract_detail()`, 수금상태·현장연결이 필요하면
+   `get_contracts()` / `get_contract_detail()` 을 사용하세요.
 2. **계약금액 ≠ 매출액**: 계약금액은 `get_g2b_contract_detail()`, 매출(청구기준)은 `get_revenue_summary()`.
-3. **현장 검색**: `search_projects()`로 현장 ID 확보 → 다른 Tool에 project_id 전달.
-4. **Tool 1개로 해결하세요**: 여러 Tool을 순차 호출하지 말고, 가장 적합한 Tool 1개를 바로 호출하세요.
+3. **매출/매입은 반드시 구분**: `tax_invoices` 에 매입이 매출보다 5배 많이 들어있습니다.
+   매출은 `get_revenue_summary()`(기본 direction='매출'), 매입/지출은 `get_purchase_summary()`.
+   direction 없이 합산하면 매출이 2배로 부풀려집니다.
+4. **현장 검색**: `search_projects()`로 현장 ID 확보 → 다른 Tool에 project_id 전달.
+5. **휴가/근태는 전자결재 기준**: 카카오워크 캘린더는 더 이상 쓰지 않습니다.
+   `get_today_attendance()` / `get_leave_calendar()` 모두 승인된 휴가신청서를 봅니다.
+6. **Tool 1개로 해결하세요**: 여러 Tool을 순차 호출하지 말고, 가장 적합한 Tool 1개를 바로 호출하세요.
 
 ## 한국어 업무 용어 → Tool 매핑 (필독)
 
@@ -26,18 +32,29 @@ INSTRUCTIONS = """
 | 완료된 현장 | 납품 끝남 | `get_projects(status="납품완료")` |
 | 설계 중인/영업 현장 | 아직 계약 전 | `get_projects(status="설계/영업")` |
 | 현장 몇 건/개 | 현장 목록 건수 | `get_projects(status=해당상태)` |
-| 매출/매출액 | 세금계산서 기준 | `get_revenue_summary(year, month)` |
+| 매출/매출액 | 세금계산서 매출분 | `get_revenue_summary(year, month)` |
+| 매입/지출/어디에 얼마 썼어 | 세금계산서 매입분, 거래처별 | `get_purchase_summary(year, month, vendor)` |
 | 계약금액/수주액 | G2B 조달 기준 | `get_g2b_contract_detail(search=키워드)` |
 | 미수금/안 받은 돈 | 미청구 세금계산서 | `get_unpaid_invoices()` |
 | 재고 부족/없는 거 | 안전재고 미달 | `get_low_stock()` |
 | OO현장 어떻게 | 현장 상세 | `search_projects(query="OO")` → `get_project_detail(id)` |
 | 납품 예정/일정 | 납품 스케줄 | `get_deliveries(project_id)` |
-| 생산 현황 | 공정 진행상태 | `get_production_by_site()` |
+| 생산 현황 | 현장별 공정 진행상태 | `get_production_by_site(search)` |
+| 작업일지/누가 작업했어/생산실적 | 일일 작업일지 | `get_work_logs(date_from, worker)` |
+| 공정별 현황/어느 단계가 막혔어 | 공정단계별 집계 | `get_process_summary(project_search)` |
 | AS/하자/고장 | AS 케이스 | `get_warranty_cases(status=해당상태)` |
 | 만료/인증서 | 인증서 만료 | `get_cert_expiry_alerts(days=60)` |
 | 배치도/타워 | 조명배치도 | `get_lighting_layouts(search=키워드)` |
 | 직원/인원/사원 | 직원 목록 | `get_employees()` |
 | 근무인원/출근/연차/반차 | 오늘 근무현황 | `get_today_attendance()` |
+| 연차 며칠 남았어/잔여 연차 | 연차 잔여일수 | `get_leave_balance(employee)` |
+| 이번달 누가 휴가/휴가 일정 | 월간 휴가 달력 | `get_leave_calendar(year, month)` |
+| 연차촉진/촉구 대상자 | 연차사용촉진 현황 | `get_leave_promotion_status()` |
+| OO 입사일/근속/인사정보 | 인사카드 | `get_employee_card(employee)` |
+| 결재 문서/올라온 결재/반려된 거 | 전자결재 목록 | `get_approval_documents(status, form)` |
+| EA-YYYY-NNNN/그 결재 어떻게 됐어 | 결재 상세(결재선·의견) | `get_approval_detail(doc_no)` |
+| 내가 결재할 거/결재 대기 | 내 결재 차례 | `get_my_pending_approvals(requester_username)` |
+| 내가 올린 결재/내 상신 | 내 기안 문서 | `get_my_approval_drafts(requester_username)` |
 | 가공발주/외주가공/FO | 가공발주 현황 | `get_processing_orders()` |
 | 자재발주/현장별 자재/발주대기 자재 | 계약품목 발주 진행상태 | `get_material_orders(status, project_search)` |
 | 입고현황/미입고/부분입고/입고지연 | 발주품목 입고 추적 | `get_incoming_overview(status, search)` |
@@ -60,6 +77,7 @@ INSTRUCTIONS = """
 | 이 메일 내용/본문/첨부 | 메일 본문 조회 | `read_mail_message(requester_username, uid)` |
 | 메일 폴더/보관함 구조 | 폴더 목록 | `list_mail_folders(requester_username)` |
 | 메일 보내줘/메일 발송/회신해줘 | 메일 발송 (확인 후 SMTP) | `write_preview_email_send(requester_username, to, subject, body, cc?, bcc?, account_id?)` |
+| 연차 낼게/휴가 신청/내일 쉴게 | 휴가 상신 (확인 후 전자결재) | `write_preview_leave_request(requester_username, start_date, leave_type?, period?, reason)` |
 | 납품완료 처리/AS 접수/청구완료/운행일지·출장·일일보고 등록/발주상태 변경/생산완료 | 쓰기작업 (preview→확인 버튼 클릭 후 DB 반영) | `write_preview_*` |
 
 ## ⚠️ 쓰기 작업(write_preview_*) 패턴 (필독)
@@ -83,7 +101,7 @@ INSTRUCTIONS = """
 - 다른 사용자의 개인 계정은 **절대 접근 불가** — `account_id` 명시해도 차단됨.
 - `requester_username` 없거나 식별 실패 시 모든 도구가 error 반환.
 
-## Tool 분류 (100개)
+## Tool 분류 (111개)
 
 ### 현장/프로젝트 (8개)
 - `get_projects(status, year, month, search)` — 현장 목록
@@ -99,10 +117,14 @@ INSTRUCTIONS = """
 - `get_g2b_contract_detail(contract_no, search)` — G2B 계약 상세 (품목 그룹핑)
 - `get_warranty_by_g2b(contract_no, search)` — G2B 기준 하자보증 조회
 
-### 재무/매출 (4개)
-- `get_revenue_summary(year, month)` — 세금계산서 기준 매출 집계
-- `get_tax_invoices(year, payment_status)` — 세금계산서 목록
-- `get_financial_overview()` — 총매출/미수금/수금 요약
+### 재무/매출 (5개)
+- `get_revenue_summary(year, month, direction='매출')` — 세금계산서 기준 매출 집계
+  · ⚠️ direction 기본 '매출'. 매입까지 합치면 금액이 2배가 됩니다.
+- `get_purchase_summary(year, month, vendor, limit)` — 매입(지출) 거래처별 집계
+  · grand_total 은 limit 무관 전체 합계, items 는 금액순 상위 N개
+- `get_tax_invoices(year, payment_status, direction='매출', search)` — 세금계산서 목록
+  · direction: '매출'(기본) / '매입' / 'all'
+- `get_financial_overview()` — 매출/매입 총액 + 미수금/수금 요약
 - `get_unpaid_invoices(months_back=24, include_old=False, status, include_exception=False)` — 미수금 현황
   · 기준: Contract.payment_status (조달내역). 통장입금 무관.
   · 기본 대상: 미청구 + 부분입금 (예외 자동 제외)
@@ -115,10 +137,12 @@ INSTRUCTIONS = """
 - `get_delivery_status_summary()` — 상태별 요약 통계
 
 ### 생산 (4개)
-- `get_production_status(project_id, status)` — 생산 현황
-- `get_production_by_site()` — 현장별 생산 카드
-- `get_worker_assignments()` — 작업자 배치 현황
-- `get_fab_status()` — FAB 공정 현황
+- `get_production_status(project_id, status, limit)` — 공정 목록 (status: 대기/진행중/완료)
+- `get_production_by_site(search, limit)` — 현장별 생산 카드 + 진행률 (전체 1,268현장, 기본 30)
+- `get_work_logs(date_from, date_to, worker, project_search)` — 일일 작업일지 (기본 최근 30일)
+- `get_process_summary(project_search)` — 공정단계(P001~P011)별 대기/진행/완료 집계
+★ production_processes 에는 stage/worker_name/item_name 컬럼이 없습니다.
+  작업자는 production_daily_logs.created_by(기록자)가 유일한 근거입니다.
 
 ### 재고 (6개)
 - `get_inventory(category, search)` — 재고 현황
@@ -214,11 +238,25 @@ INSTRUCTIONS = """
 
 ### 직원/근무 (2개)
 - `get_employees(department, search)` — 직원 목록 + 부서별 인원수
-- `get_today_attendance(target_date)` — 오늘 근무인원 (연차/반차 반영)
+- `get_today_attendance(target_date)` — 오늘 근무인원 (전자결재 휴가 기준, 연차/반차 반영)
 
-### 계약 (2개) ⚠️ 빈 테이블, get_g2b_contract_detail 사용 권장
-- `get_contracts()` — 항상 빈 배열 (사용 금지)
-- `get_contract_detail()` — 사용 금지
+### 인사/연차 (4개)
+- `get_leave_balance(employee)` — 연차 부여/사용/조정/잔여 (생략 시 전 직원)
+- `get_leave_calendar(year, month, employee)` — 월간 휴가 달력 (승인 휴가신청서 기준)
+- `get_leave_promotion_status(year)` — 연차사용촉진제 진행 현황
+- `get_employee_card(employee)` — 인사카드 (소속/입사일/근속 + 연차 요약)
+
+### 전자결재 (4개)
+- `get_approval_documents(status, form, drafter, search, limit)` — 결재 문서 목록
+  · status: 작성중/진행중/완료/반려/회수, form: 휴가/지출/품의/출장/연장근무
+- `get_approval_detail(doc_id, doc_no)` — 결재 상세 (양식값 + 결재선 + 의견)
+- `get_my_pending_approvals(requester_username)` — 내 결재 차례 문서
+- `get_my_approval_drafts(requester_username, limit)` — 내가 상신한 문서 + 진행상태
+
+### 계약 (2개)
+- `get_contracts(project_id, payment_status, limit)` — 계약 목록 (수금상태·현장연결)
+- `get_contract_detail(contract_id)` — 계약 상세
+★ 조달 원문(품목/금액/납기)은 `get_g2b_contract_detail()` 이 더 정확합니다.
 
 ### 가공발주 (2개)
 - `get_processing_orders(status, vendor_id, project_id, search)` — 가공발주 목록 (외주가공)
@@ -253,7 +291,7 @@ INSTRUCTIONS = """
 - `read_mail_message(requester_username, uid, account_id?, folder?, body_max_chars=10000)` — 본문+첨부 메타
   · 모든 도구에서 본인 계정 또는 공유권한 있는 계정만 접근 (다른 사용자 계정 차단)
 
-### 쓰기 작업 — write_preview 패턴 (9개) ⚠️ preview→확인 버튼 후 반영
+### 쓰기 작업 — write_preview 패턴 (11개) ⚠️ preview→확인 버튼 후 반영
 - `write_preview_delivery_complete(project_search, completed_date?)` — 납품완료 처리
 - `write_preview_as_register(project_search, defect_type?, symptom?, received_date?)` — AS(하자) 접수 등록
 - `write_preview_billing_complete(project_search, invoice_date?)` — 청구완료(세금계산서 발행) 처리
@@ -263,6 +301,8 @@ INSTRUCTIONS = """
 - `write_preview_po_status(po_search?, new_status?)` — 발주서 상태 변경 (작성중/발송완료/입고대기/입고완료/취소)
 - `write_preview_production_complete(keyword?, process_id?, completed_date?)` — 단일 공정 생산완료
 - `write_preview_production_complete_all(keyword?, contract_item_id?, quantity?, completed_date?)` — 계약품목 일괄 생산완료
+- `write_preview_leave_request(requester_username, start_date, end_date?, leave_type?, period?, reason)` — 휴가 상신 (전자결재)
+  · 결재선 자동 구성(부서장→임원진). 본인 명의만 가능. 승인 시 연차 자동 차감.
   · 모두 `status=needs_info`면 question 으로 추가 질문, `status=preview`면 확인 버튼 제시.
 
 ### 메일 발송 — write_preview 패턴 (1개, 권한 격리 ⚠️)

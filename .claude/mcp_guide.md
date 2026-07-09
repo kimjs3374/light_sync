@@ -28,7 +28,7 @@ python -m light_sync_mcp.server_http
 - `MCP_PORT` — HTTP 포트 (기본 5010)
 - `MCP_SSE_PORT` — SSE 포트 (기본 5011)
 
-## Tool 목록 (100개)
+## Tool 목록 (111개)
 
 ### 핵심 조회 패턴
 
@@ -61,9 +61,10 @@ get_bom_stock_status(bom_id) → 생산 가능 여부
    - 대신 `get_g2b_contract_detail()` 사용
 2. **계약금액 ≠ 매출액**
    - 계약금액: `get_g2b_contract_detail()` (조달 시점)
-   - 매출액: `get_revenue_summary()` (세금계산서 청구 시점)
+   - 매출액: `get_revenue_summary()` (세금계산서 매출분. direction 기본 '매출')
+   - 매입/지출: `get_purchase_summary()` — tax_invoices 는 매입이 매출의 5배
 3. **조회 + 쓰기(preview)** — `get_*`/`search_*`/`list_*` 는 조회 전용.
-   `write_preview_*` 10종은 **즉시 변경하지 않고** preview만 반환 →
+   `write_preview_*` 11종은 **즉시 변경하지 않고** preview만 반환 →
    사용자가 확인 버튼을 눌러야 Flask `/mattermost/action`에서 DB 반영.
 
 ### 도메인별 Tool 정리
@@ -72,9 +73,9 @@ get_bom_stock_status(bom_id) → 생산 가능 여부
 |--------|---------|----------|
 | 현장/프로젝트 | 8 | search_projects, get_project_detail, get_project_contacts |
 | G2B 조달 | 2 | get_g2b_contract_detail, get_warranty_by_g2b |
-| 재무/매출 | 4 | get_revenue_summary, get_unpaid_invoices |
+| 재무/매출 | 5 | get_revenue_summary(direction='매출'), get_purchase_summary, get_unpaid_invoices |
 | 납품 | 3 | get_deliveries, get_delivery_detail |
-| 생산 | 4 | get_production_status, get_production_by_site |
+| 생산 | 4 | get_production_status, get_production_by_site, get_process_summary, get_work_logs |
 | 재고 | 6 | get_inventory, get_low_stock, get_inventory_consumption |
 | BOM/품목 | 6 | get_bom_detail, calculate_bom_cost |
 | 발주/입고 | 5 | get_purchase_orders, get_receiving_history, get_receiving_detail |
@@ -93,7 +94,9 @@ get_bom_stock_status(bom_id) → 생산 가능 여부
 | 일일보고 | 2 | get_daily_reports, get_daily_report_detail |
 | 알림 | 2 | get_notifications, get_unread_notification_count |
 | 아카이브 | 2 | search_archive, get_archive_post_detail |
-| 직원/근무 | 2 | get_employees, get_today_attendance |
+| 직원/근무 | 2 | get_employees, get_today_attendance (전자결재 기준) |
+| 인사/연차 | 4 | get_leave_balance, get_leave_calendar, get_leave_promotion_status, get_employee_card |
+| 전자결재 | 4 | get_approval_documents, get_approval_detail, get_my_pending_approvals, get_my_approval_drafts |
 | 가공발주 | 2 | get_processing_orders, get_processing_order_detail |
 | 출장관리 | 2 | get_business_trips, get_business_trip_detail |
 | 서류관리 | 2 | get_document_list, get_document_detail |
@@ -104,7 +107,7 @@ get_bom_stock_status(bom_id) → 생산 가능 여부
 | 메일 — DB기록 | 2 | get_mail_contacts, get_email_history |
 | 메일함 — IMAP | 5 | list_inbox_messages, search_mailbox, read_mail_message |
 | 시스템 활동로그 | 1 | get_activity_logs |
-| 쓰기작업(preview) | 10 | write_preview_delivery_complete, write_preview_email_send 등 |
+| 쓰기작업(preview) | 11 | write_preview_delivery_complete, write_preview_email_send, write_preview_leave_request 등 |
 | 계약 (비활성) | 2 | ~~get_contracts~~ (사용 금지) |
 
 ## Resource 목록 (5개)
@@ -162,7 +165,7 @@ light_sync_mcp/
 │   ├── billing.py           # 청구관리 (1개)
 │   ├── dept_report.py       # 부서 주간보고 (1개)
 │   ├── incoming_overview.py # 입고현황 통합 (1개)
-│   └── write_ops.py         # 쓰기작업 preview (10개)
+│   └── write_ops.py         # 쓰기작업 preview (11개)
 └── resources/
     └── magnatech.py     # 5개 Resource (+ query-patterns, schema)
 ```
