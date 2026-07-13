@@ -370,6 +370,47 @@ def _cmd_delivery(text: str, response_url: str) -> None:
         _post_delayed(response_url, f"❌ 오류: {e}")
 
 
+def _cmd_history(text: str, response_url: str) -> None:
+    """/이력 [키워드] — 현장 워크보드(현장관리) 아카이브 검색"""
+    from sqlalchemy import text as sql_text
+
+    if not text:
+        _post_delayed(response_url, "사용법: `/이력 진천` 처럼 현장/키워드를 입력하세요.")
+        return
+
+    try:
+        with get_db() as db:
+            rows = db.execute(sql_text("""
+                SELECT ap.id, ap.author, ap.content_text, ap.created_at, ap.children_count
+                FROM light_sync.archive_posts ap
+                LEFT JOIN light_sync.contracts c ON c.id = ap.contract_id
+                LEFT JOIN light_sync.projects pr ON pr.id = c.project_id
+                WHERE ap.board_type = 'site'
+                  AND (ap.content_text ILIKE :q
+                       OR c.contract_name ILIKE :q
+                       OR pr.temp_name ILIKE :q)
+                ORDER BY ap.created_at DESC
+                LIMIT 10
+            """), {'q': f'%{text}%'}).fetchall()
+
+            if not rows:
+                _post_delayed(response_url, f"**'{text}'** 현장 이력 없음")
+                return
+
+            lines = [f"📋 **'{text}'** 현장 이력 {len(rows)}건\n"]
+            for r in rows:
+                snippet = ' '.join((r.content_text or '').split())[:50]
+                when = r.created_at.strftime('%Y.%m.%d') if r.created_at else '-'
+                cm = f" · 댓글 {r.children_count}" if r.children_count else ""
+                url = _erp_url(f"/workboard/{r.id}")
+                lines.append(f"• [{when}]({url}) {r.author or ''} — {snippet}{cm}")
+
+        _post_delayed(response_url, "\n".join(lines))
+    except Exception as e:
+        logger.exception("[slash /이력] 오류")
+        _post_delayed(response_url, f"❌ 오류: {e}")
+
+
 # ──────────────────────────────────────────────────────────────
 # Flask route
 # ──────────────────────────────────────────────────────────────
@@ -396,12 +437,13 @@ def slash_handler():
         "미청구": lambda: _cmd_unbilled(response_url),
         "지연":  lambda: _cmd_overdue(response_url),
         "납품":  lambda: _cmd_delivery(text, response_url),
+        "이력":  lambda: _cmd_history(text, response_url),
     }
 
     handler = dispatch.get(command)
     if handler is None:
         return jsonify({
-            "text": f"알 수 없는 명령어: `/{command}`\n사용 가능: /오늘, /현장, /미청구, /지연, /납품"
+            "text": f"알 수 없는 명령어: `/{command}`\n사용 가능: /오늘, /현장, /미청구, /지연, /납품, /이력"
         }), 200
 
     threading.Thread(target=handler, daemon=True).start()

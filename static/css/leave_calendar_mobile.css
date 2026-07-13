@@ -1,0 +1,44 @@
+/* 연차사용촉진 달력 위젯 — 모바일 전용 (월 단위 페이징, 큰 탭 영역) */
+.lpm-cal { border:1px solid #e2e8f0; border-radius:12px; padding:10px 10px 12px; margin:6px 0 4px; }
+.lpm-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.lpm-head .lpm-title { font-size:1rem; font-weight:800; color:#1e293b; }
+.lpm-nav { width:40px; height:40px; border:1px solid #cbd5e1; border-radius:10px; background:#fff;
+           font-size:1.3rem; line-height:1; color:#334155; cursor:pointer; }
+.lpm-nav:active { background:#f1f5f9; }
+.lpm-nav:disabled { opacity:.3; cursor:default; }
+
+.lpm-week, .lpm-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+.lpm-week { margin-bottom:4px; }
+.lpm-week span { text-align:center; font-size:.74rem; font-weight:700; color:#94a3b8; padding:2px 0; }
+.lpm-week span.sun { color:#dc2626; } .lpm-week span.sat { color:#2563eb; }
+
+.lpm-day { position:relative; min-height:44px; aspect-ratio:1/1; display:flex; flex-direction:column;
+           align-items:center; justify-content:center; border-radius:10px;
+           font-size:1rem; font-weight:600; color:#334155; background:#f8fafc;
+           cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; }
+/* aspect-ratio 미지원(구형 브라우저) 폴백 — 셀 높이 보장 */
+@supports not (aspect-ratio: 1/1) { .lpm-day { height:44px; } .lpm-day.empty { height:44px; } }
+.lpm-day.empty { background:transparent; cursor:default; }
+.lpm-day.sun, .lpm-day.hol { color:#dc2626; }
+.lpm-day.sat { color:#2563eb; }
+.lpm-day.off { color:#cbd5e1; background:#f8fafc; cursor:not-allowed; }
+.lpm-day.sel { background:#2563eb; color:#fff; font-weight:800; }
+.lpm-day.sel.half { background:#93c5fd; color:#1e3a8a; }
+.lpm-day .tag { font-size:.6rem; font-weight:700; line-height:1; margin-top:2px; }
+.lpm-day.hol .hn { position:absolute; bottom:2px; font-size:.5rem; color:#dc2626; font-weight:600;
+                   max-width:90%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+
+.lpm-legend { display:flex; gap:14px; margin:8px 2px 0; font-size:.74rem; color:#64748b; }
+.lpm-legend i { display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:-1px; margin-right:4px; }
+
+.lpm-counter { font-size:.92rem; color:#475569; margin:10px 2px 4px; font-weight:600; }
+.lpm-counter b { color:#1d4ed8; font-size:1.05rem; }
+.lpm-counter.over b { color:#dc2626; }
+.lpm-sel { display:flex; flex-direction:column; gap:6px; margin:4px 0 2px; }
+.lpm-chip { display:flex; align-items:center; justify-content:space-between; gap:8px;
+            background:#f1f5f9; border-radius:8px; padding:8px 10px; font-size:.9rem; }
+.lpm-chip .d { font-weight:700; color:#334155; }
+.lpm-chip .t { font-size:.78rem; font-weight:700; padding:2px 8px; border-radius:6px;
+               background:#dbeafe; color:#1d4ed8; }
+.lpm-chip .t.half { background:#e0f2fe; color:#0369a1; }
+.lpm-chip .rm { border:0; background:transparent; color:#94a3b8; font-size:1.3rem; line-height:1; cursor:pointer; padding:0 4px; }

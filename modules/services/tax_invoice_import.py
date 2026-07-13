@@ -165,7 +165,9 @@ def parse_tax_invoice_excel(file_path=None, file_stream=None, g2b_numbers_set=No
     for row_idx in range(6, len(all_rows)):
         row = all_rows[row_idx]
 
-        approval_no = _safe_str(_cell(row, 1))
+        # 승인번호는 숫자만 보관 (홈택스 무인수집 hometax_collector._digits 와 동일 정규화).
+        # 하이픈 유/무로 같은 인보이스가 이중 등록되던 버그 방지.
+        approval_no = re.sub(r'[^0-9]', '', _safe_str(_cell(row, 1)) or '')
         if not approval_no or len(approval_no) < 5:
             continue
 

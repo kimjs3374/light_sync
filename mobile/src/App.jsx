@@ -53,7 +53,13 @@ import MailInbox from './pages/MailInbox';
 import MailRead from './pages/MailRead';
 import MailCompose from './pages/MailCompose';
 import Approvals from './pages/Approvals';
+import ApprovalCreate from './pages/ApprovalCreate';
 import ApprovalDetail from './pages/ApprovalDetail';
+import ArchiveBoards from './pages/ArchiveBoards';
+import ArchiveFeed from './pages/ArchiveFeed';
+import ArchivePost from './pages/ArchivePost';
+import ChatRooms from './pages/ChatRooms';
+import ChatRoom from './pages/ChatRoom';
 
 function P({ children }) {
   const isLoggedIn = useAuth((s) => s.isLoggedIn);
@@ -146,8 +152,16 @@ export default function App() {
         <Route path="/business-trips" element={<P><BusinessTrips /></P>} />
         <Route path="/vehicle-logs" element={<P><VehicleLogs /></P>} />
         <Route path="/approvals" element={<P><Approvals /></P>} />
+        <Route path="/approvals/new" element={<P><ApprovalCreate /></P>} />
         <Route path="/approvals/:id" element={<P><ApprovalDetail /></P>} />
         <Route path="/tools" element={<P><Tools /></P>} />
+
+        {/* 워크보드/대화방 아카이브 */}
+        <Route path="/archive" element={<P><ArchiveBoards /></P>} />
+        <Route path="/archive/:slug" element={<P><ArchiveFeed /></P>} />
+        <Route path="/archive/:slug/:id" element={<P><ArchivePost /></P>} />
+        <Route path="/chat-archive" element={<P><ChatRooms /></P>} />
+        <Route path="/chat-archive/:convId" element={<P><ChatRoom /></P>} />
 
         <Route path="/create" element={<P><CreateForm /></P>} />
         <Route path="*" element={<Navigate to="/" replace />} />

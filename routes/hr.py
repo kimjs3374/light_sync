@@ -219,6 +219,10 @@ def hr_promotion():
     with get_db() as db:
         cand = lp.candidates(db)
         records = lp.all_promotions(db)
+        # 전자결재 승인분 포함 실시간 잔여 부착(스냅샷 remaining_days 대신 표시용)
+        today = datetime.date.today()
+        for p in records:
+            p.remaining_live = lp.live_leave(db, p, p.user, today)['remaining']
         # user_id → 미지정(2차 필요) 표시용 맵
         return render_template('hr_promotion.html',
                                cand=cand, records=records,
@@ -314,6 +318,29 @@ def hr_promotion_second():
         return redirect(url_for('hr.hr_promotion'))
 
 
+@hr_bp.route('/promotion/<int:promo_id>/desig-delete', methods=['POST'])
+@admin_required
+def hr_promotion_desig_delete(promo_id):
+    """관리자 — 직원이 지정한 사용시기 삭제(미지정으로 복원). 재지정 가능."""
+    from modules.models import LeavePromotion
+    with get_db() as db:
+        p = db.get(LeavePromotion, promo_id)
+        if not p:
+            abort(404)
+        u = db.get(User, p.user_id)
+        if not p.employee_dates:
+            flash('삭제할 직원 지정 내역이 없습니다.', 'warning')
+            return redirect(url_for('hr.hr_promotion'))
+        cnt = len(p.employee_dates)
+        lp.clear_employee_designation(db, promo_id)
+        log_activity(db, 'hr', 'leave_promotion_desig_delete',
+                     f'{u.full_name if u else p.user_id} 연차촉진 직원지정 사용일 삭제({cnt}건)',
+                     ref_type='user', ref_id=p.user_id)
+        db.commit()
+        flash('직원 지정 사용일을 삭제했습니다. (직원이 다시 지정할 수 있습니다)', 'success')
+        return redirect(url_for('hr.hr_promotion'))
+
+
 @hr_bp.route('/promotion/<int:promo_id>/print')
 @menu_required('hr')
 def hr_promotion_print(promo_id):
@@ -394,24 +421,290 @@ def hr_promotion_doc_edit(promo_id):
                                holidays=holidays, today=datetime.date.today())
 
 
+def _load_my_promotions(db, uid, today):
+    """셀프 지정 화면 공용 데이터 로더 (PC/모바일 공용)."""
+    from modules.services import holiday_service
+    promos = lp.promotions_for_user(db, uid)
+    u = db.get(User, uid)
+    # 전자결재 승인분 포함 실시간 잔여/사용 + 결재 연차 일자 부착(비영속)
+    for p in promos:
+        live = lp.live_leave(db, p, u, today)
+        p.remaining_live = live['remaining']
+        p.used_live = live['used']
+        p.approved_entries = live['approved']
+    # 달력 표시용 국경일 맵 (오늘 ~ 각 촉진의 연차연도 종료일 범위 연도)
+    years = {today.year}
+    for p in promos:
+        if p.year_end:
+            years.add(p.year_end.year)
+    holidays = holiday_service.holiday_map(sorted(years))
+    return promos, holidays
+
+
+def _build_promo_calendars(promos, today, holidays):
+    """모바일 전용 — 달력 그리드를 **서버에서 HTML 데이터로 미리 구성**.
+
+    클라이언트 JS 가 달력을 그리지 못하는(구형/제한 인앱) 브라우저에서도
+    달력이 항상 보이도록, 월/주/일 구조를 파이썬에서 만들어 템플릿에 넘긴다.
+    JS 는 '탭 선택'만 담당한다.
+
+    반환: {promo_id: [ {label, months:[{title, weeks:[[cell|None,...]] }] } ]}
+      cell = {'day','date','off','hol','dow','sel'}  (sel: None|'연차'|'반차')
+    """
+    import calendar as _cal
+    cals = {}
+    for p in promos:
+        if p.status == 'admin_designated':
+            continue
+        start = today
+        end = p.year_end or today
+        if end < start:
+            end = start
+        # 직원 기존 지정 → date(str) → type 맵
+        sel_map = {}
+        for it in (p.employee_dates or []):
+            if isinstance(it, dict) and it.get('date'):
+                sel_map[it['date']] = '반차' if it.get('type') == '반차' else '연차'
+        # 전자결재 승인 연차 → date(str) → type 맵 (달력 자동표시·잠금)
+        appr_map = {}
+        for it in (getattr(p, 'approved_entries', None) or []):
+            if isinstance(it, dict) and it.get('date'):
+                appr_map[it['date']] = '반차' if it.get('type') == '반차' else '연차'
+        months = []
+        y, m = start.year, start.month
+        while (y < end.year) or (y == end.year and m <= end.month):
+            title = f'{y}년 {m}월'
+            weeks = []
+            # 일요일 시작 주 구성
+            first_dow = (datetime.date(y, m, 1).weekday() + 1) % 7  # Mon=0 → 일=0 보정
+            dim = _cal.monthrange(y, m)[1]
+            week = [None] * first_dow
+            for day in range(1, dim + 1):
+                d = datetime.date(y, m, day)
+                key = d.strftime('%Y-%m-%d')
+                dow = (d.weekday() + 1) % 7  # 0=일 .. 6=토
+                hol = holidays.get(key)
+                off = (d < start) or (d > end) or dow == 0 or dow == 6 or bool(hol)
+                appr = None if off else appr_map.get(key)
+                week.append({'day': day, 'date': key, 'off': off,
+                             'hol': hol, 'dow': dow,
+                             'sel': None if appr else sel_map.get(key),
+                             'appr': appr})
+                if len(week) == 7:
+                    weeks.append(week)
+                    week = []
+            if week:
+                week += [None] * (7 - len(week))
+                weeks.append(week)
+            months.append({'title': title, 'ym': f'{y:04d}-{m:02d}', 'weeks': weeks})
+            m += 1
+            if m > 12:
+                m = 1
+                y += 1
+        cals[p.id] = months
+    return cals
+
+
 @hr_bp.route('/my-promotion')
 @login_required
 def hr_my_promotion():
-    """직원 본인 — 연차사용촉진 사용시기 셀프 지정 화면."""
-    from modules.services import holiday_service
+    """직원 본인 — 연차사용촉진 사용시기 셀프 지정 화면.
+
+    모바일 UA는 달력 표기가 뭉개지므로 모바일 전용 페이지로 자동 리다이렉션.
+    PC/모바일 토글은 **요청별 `?pc=1`로만** 제어하고 세션에 저장하지 않는다.
+    (세션 force_pc 를 건드리면 ERP 전체 네비게이션이 PC 로 전역 고정돼
+     모바일로 복귀할 수 없게 됨)."""
+    from routes.auth import _is_mobile_ua
+    ua = request.headers.get('User-Agent', '')
+    if request.args.get('pc') != '1' and _is_mobile_ua(ua):
+        return redirect(url_for('hr.hr_my_promotion_mobile'))
     uid = session.get('user_id')
     today = datetime.date.today()
     with get_db() as db:
-        promos = lp.promotions_for_user(db, uid)
-        # 달력 표시용 국경일 맵 (오늘 ~ 각 촉진의 연차연도 종료일 범위 연도)
-        years = {today.year}
-        for p in promos:
-            if p.year_end:
-                years.add(p.year_end.year)
-        holidays = holiday_service.holiday_map(sorted(years))
+        promos, holidays = _load_my_promotions(db, uid, today)
+        calendars = _build_promo_calendars(promos, today, holidays)
         return render_template('hr_my_promotion.html',
                                promos=promos, stage_label=lp.STAGE_LABEL,
-                               today=today, holidays=holidays)
+                               today=today, holidays=holidays, calendars=calendars)
+
+
+@hr_bp.route('/my-promotion/<int:promo_id>/toggle')
+@login_required
+def hr_my_promotion_toggle(promo_id):
+    """직원 본인 — 사용시기 지정 (링크/GET 방식, 폼 제출 불가 웹뷰 대응).
+
+    날짜 링크 탭 1회 = 그 날짜 상태 순환(해제→연차→반차→해제). 매 탭마다 서버에
+    즉시 저장하고 모바일 화면으로 되돌아온다(폼 제출·JS 불필요).
+    """
+    from modules.models import LeavePromotion
+    uid = session.get('user_id')
+    date_str = (request.args.get('date') or '').strip()
+    d = _safe_date(date_str)
+    with get_db() as db:
+        p = db.get(LeavePromotion, promo_id)
+        if not p or p.user_id != uid:
+            flash('지정 권한이 없거나 대상을 찾을 수 없습니다.', 'danger')
+            return _redirect_promo_mobile()
+        if p.status == 'admin_designated':
+            flash('회사 지정분은 수정할 수 없습니다.', 'warning')
+            return _redirect_promo_mobile()
+        if not d:
+            return _redirect_promo_mobile()
+        # 현재 지정 맵
+        cur_map = {}
+        for it in (p.employee_dates or []):
+            if isinstance(it, dict) and it.get('date'):
+                cur_map[it['date']] = '반차' if it.get('type') == '반차' else '연차'
+        cur = cur_map.get(date_str)
+        nxt = '연차' if cur is None else ('반차' if cur == '연차' else None)
+        if nxt is None:
+            cur_map.pop(date_str, None)
+        else:
+            cur_map[date_str] = nxt
+        entries = lp.normalize_entries(
+            [{'date': k, 'type': v} for k, v in cur_map.items()])
+        total = lp.entries_total(entries)
+        u = db.get(User, uid)
+        rem = float(lp.live_leave(db, p, u)['remaining'] or 0)
+        if total > rem + 0.001:
+            flash(f'미사용 잔여 연차 {rem:g}일을 초과할 수 없습니다.', 'warning')
+            return _redirect_promo_mobile(anchor=date_str)
+        lp.employee_designate(db, promo_id, entries, user_id=uid) if entries \
+            else lp.clear_employee_designation(db, promo_id, user_id=uid)
+        log_activity(db, 'hr', 'leave_promotion_designate',
+                     f'연차촉진 사용시기 지정 {total:g}일 ({len(entries)}건)',
+                     ref_type='user', ref_id=uid)
+        db.commit()
+        return _redirect_promo_mobile(anchor=date_str)
+
+
+def _redirect_promo_mobile(anchor=None):
+    """모바일 지정화면으로 no-store 리다이렉트 (탭한 날짜의 달/위치로 복귀)."""
+    from flask import make_response
+    ym = anchor[:7] if anchor else None   # 'YYYY-MM-DD' → 'YYYY-MM'
+    url = url_for('hr.hr_my_promotion_mobile', ym=ym) if ym \
+        else url_for('hr.hr_my_promotion_mobile')
+    if anchor:
+        url += '#d-' + anchor
+    resp = make_response(redirect(url))
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return resp
+
+
+# 1x1 투명 GIF (CSS background-image 콜백 응답용)
+_PIXEL_GIF = (b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00!'
+              b'\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01'
+              b'\x00\x00\x02\x02D\x01\x00;')
+
+
+@hr_bp.route('/my-promotion/<int:promo_id>/set')
+@login_required
+def hr_my_promotion_set(promo_id):
+    """CSS background-image 콜백 — 폼 제출·JS 안 되는 웹뷰용 **무새로고침 저장**.
+
+    화면의 `:checked` 상태가 바뀌면 CSS가 이 URL을 background-image로 불러
+    (=GET) 그 날짜 상태(t=y연차/b반차/n해제)를 서버에 저장한다. 1x1 gif 반환.
+    변경 없으면 no-op(로드 시 대량 콜백에도 DB write 없음).
+    """
+    from flask import make_response
+    from modules.models import LeavePromotion
+    uid = session.get('user_id')
+    date_str = (request.args.get('date') or '').strip()
+    t = (request.args.get('t') or '').strip()
+
+    def _pixel():
+        resp = make_response(_PIXEL_GIF)
+        resp.headers['Content-Type'] = 'image/gif'
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        return resp
+
+    d = _safe_date(date_str)
+    want = {'y': '연차', 'b': '반차'}.get(t)   # 그 외/n → 해제(제거)
+    if not d:
+        return _pixel()
+    with get_db() as db:
+        p = db.get(LeavePromotion, promo_id)
+        if not p or p.user_id != uid or p.status == 'admin_designated':
+            return _pixel()
+        cur_map = {}
+        for it in (p.employee_dates or []):
+            if isinstance(it, dict) and it.get('date'):
+                cur_map[it['date']] = '반차' if it.get('type') == '반차' else '연차'
+        if cur_map.get(date_str) == want:
+            return _pixel()   # 변경 없음 → no-op (안전)
+        if want is None:
+            cur_map.pop(date_str, None)
+        else:
+            cur_map[date_str] = want
+        entries = lp.normalize_entries(
+            [{'date': k, 'type': v} for k, v in cur_map.items()])
+        u = db.get(User, uid)
+        rem = float(lp.live_leave(db, p, u)['remaining'] or 0)
+        if lp.entries_total(entries) > rem + 0.001:
+            return _pixel()   # 잔여 초과 → 저장 안 함
+        if entries:
+            lp.employee_designate(db, promo_id, entries, user_id=uid)
+        else:
+            lp.clear_employee_designation(db, promo_id, user_id=uid)
+        db.commit()
+        return _pixel()
+
+
+@hr_bp.route('/lp-ping', methods=['GET', 'POST'])
+@login_required
+def hr_lp_ping():
+    """진단용 — 모바일 탭/제출이 서버에 도달하는지 격리 확인."""
+    from flask import current_app
+    current_app.logger.warning('LP_PING method=%s from=%s ua=%r',
+                               request.method, request.args.get('from') or request.form.get('from'),
+                               request.headers.get('User-Agent', '')[:100])
+    kind = request.args.get('from') or request.form.get('from') or '?'
+    return ('<html><body style="font-family:sans-serif;padding:40px;text-align:center">'
+            '<h2 style="color:#16a34a">✅ 도달 성공</h2>'
+            f'<p>탭({kind})이 서버까지 정상 도달했습니다.</p>'
+            '<a href="javascript:history.back()">돌아가기</a></body></html>')
+
+
+@hr_bp.route('/my-promotion/m')
+@login_required
+def hr_my_promotion_mobile():
+    """직원 본인 — 연차사용촉진 사용시기 지정 (모바일 전용, 월 단위 페이징 달력)."""
+    # 모바일 화면을 직접 본다는 것은 'PC 강제'를 해제한다는 의미 → 굳은 전역 플래그 정리
+    session.pop('force_pc', None)
+    uid = session.get('user_id')
+    try:
+        from flask import current_app
+        current_app.logger.info('LP_MOBILE_GET uid=%s cf=%s xff=%s host=%s ua=%r', uid,
+                                request.headers.get('CF-Ray', '-'),
+                                request.headers.get('X-Forwarded-For', '-'),
+                                request.headers.get('Host', '-'),
+                                request.headers.get('User-Agent', '')[:100])
+    except Exception:
+        pass
+    today = datetime.date.today()
+    with get_db() as db:
+        promos, holidays = _load_my_promotions(db, uid, today)
+        calendars = _build_promo_calendars(promos, today, holidays)
+        # 월 단위 페이징 — 한 화면에 한 달만(탭당 리프레시 경량화)
+        all_yms = sorted({mon['ym'] for months in calendars.values() for mon in months})
+        cur_ym = today.strftime('%Y-%m')
+        active_ym = request.args.get('ym')
+        if active_ym not in all_yms:
+            active_ym = cur_ym if cur_ym in all_yms else (all_yms[0] if all_yms else cur_ym)
+        idx = all_yms.index(active_ym) if active_ym in all_yms else -1
+        prev_ym = all_yms[idx - 1] if idx > 0 else None
+        next_ym = all_yms[idx + 1] if 0 <= idx < len(all_yms) - 1 else None
+        html = render_template('hr_my_promotion_mobile.html',
+                               promos=promos, stage_label=lp.STAGE_LABEL,
+                               today=today, holidays=holidays, calendars=calendars,
+                               active_ym=active_ym, prev_ym=prev_ym, next_ym=next_ym)
+    # 브라우저가 옛 버전을 절대 캐시하지 못하게 (모바일 단말 캐시/뒤로가기 캐시 방지)
+    from flask import make_response
+    resp = make_response(html)
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
 
 
 @hr_bp.route('/my-promotion/<int:promo_id>/designate', methods=['POST'])
@@ -421,34 +714,65 @@ def hr_my_promotion_designate(promo_id):
     import json
     from modules.models import LeavePromotion
     uid = session.get('user_id')
-    raw = (request.form.get('dates') or '').strip()
-    try:
-        entries = json.loads(raw) if raw.startswith('[') else []
-    except ValueError:
-        entries = []
-    if not entries and raw:  # 콤마 문자열 fallback → 전부 연차
-        entries = [{'date': d, 'type': '연차'} for d in _parse_dates(request.form)]
+    # 제출한 화면(모바일/PC)으로 그대로 복귀 — UA 판별에 의존하지 않는다.
+    # (모바일 웹뷰 UA가 _is_mobile_ua에 안 잡히면 PC로 튕겨 "적용 안 됨"처럼 보임)
+    from routes.auth import _is_mobile_ua
+    _from_mobile = (request.form.get('src') == 'm'
+                    or _is_mobile_ua(request.headers.get('User-Agent', '')))
+    _back_ep = 'hr.hr_my_promotion_mobile' if _from_mobile else 'hr.hr_my_promotion'
+    entries = []
+    # 순환 라디오 방식(JS 불요): st_<YYYY-MM-DD> = 연차|반차|''
+    for key, val in request.form.items():
+        if key.startswith('st_') and val in ('연차', '반차'):
+            d = _safe_date(key[3:])
+            if d:
+                entries.append({'date': d.strftime('%Y-%m-%d'), 'type': val})
+    if not entries:
+        # (구) JSON / 체크박스 호환
+        raw = (request.form.get('dates') or '').strip()
+        if raw.startswith('['):
+            try:
+                entries = json.loads(raw)
+            except ValueError:
+                entries = []
+        if not entries:
+            half = set(request.form.getlist('half'))
+            entries = [{'date': d, 'type': '반차' if d in half else '연차'}
+                       for d in _parse_dates(request.form)]
     entries = lp.normalize_entries(entries)
+    # 진단 로그 — 특정 모바일 웹뷰에서 제출 반응 없음 신고 대응(폼 수신 여부 확인)
+    try:
+        from flask import current_app
+        _fk = [k for k in request.form.keys() if k.startswith('st_')]
+        current_app.logger.info(
+            'LP_DESIGNATE promo=%s uid=%s src=%s ct=%s st_keys=%d entries=%d ua=%r',
+            promo_id, uid, request.form.get('src'),
+            request.content_type, len(_fk), len(entries),
+            request.headers.get('User-Agent', '')[:120])
+    except Exception:
+        pass
     with get_db() as db:
         p = db.get(LeavePromotion, promo_id)
         if not p or p.user_id != uid:
             flash('지정 권한이 없거나 대상을 찾을 수 없습니다.', 'danger')
-            return redirect(url_for('hr.hr_my_promotion'))
+            return redirect(url_for(_back_ep))
         if not entries:
             flash('사용 예정일을 1개 이상 선택하세요.', 'warning')
-            return redirect(url_for('hr.hr_my_promotion'))
+            return redirect(url_for(_back_ep))
         total = lp.entries_total(entries)
-        rem = float(p.remaining_days or 0)
+        # 전자결재 승인분 포함 실시간 잔여로 한도 판정(스냅샷 대신)
+        u = db.get(User, uid)
+        rem = float(lp.live_leave(db, p, u)['remaining'] or 0)
         if total > rem + 0.001:
             flash(f'선택 {total:g}일이 미사용 잔여 연차 {rem:g}일을 초과합니다.', 'warning')
-            return redirect(url_for('hr.hr_my_promotion'))
+            return redirect(url_for(_back_ep))
         lp.employee_designate(db, promo_id, entries, user_id=uid)
         log_activity(db, 'hr', 'leave_promotion_designate',
                      f'연차촉진 사용시기 지정 {total:g}일 ({len(entries)}건)',
                      ref_type='user', ref_id=uid)
         db.commit()
         flash(f'사용 예정일 {total:g}일({len(entries)}건)이 지정되었습니다.', 'success')
-        return redirect(url_for('hr.hr_my_promotion'))
+        return redirect(url_for(_back_ep))
 
 
 @hr_bp.route('/<int:user_id>/leave-usage/<int:usage_id>/delete', methods=['POST'])

@@ -161,6 +161,33 @@ def record_second(db, user, emp_type, admin_dates, by, as_of=None):
     return p
 
 
+def live_leave(db, promo, user, as_of=None):
+    """촉진 레코드의 '실시간' 잔여/사용/부여 + 전자결재 승인 연차 일자.
+
+    remaining_days 등은 촉구 발송 시점의 스냅샷이라 이후 전자결재로 승인된
+    연차가 반영되지 않는다. 이 함수는 leave_summary로 현재 시점(또는 해당
+    연차연도 기준)의 값을 다시 계산해 준다.
+    반환: {'remaining','used','granted','approved':[{date,type}]}
+    """
+    res = {'remaining': promo.remaining_days, 'used': promo.used_days,
+           'granted': promo.granted_days, 'approved': []}
+    if not user or not promo.year_start or not promo.year_end:
+        return res
+    as_of = as_of or datetime.date.today()
+    if not (promo.year_start <= as_of <= promo.year_end):
+        as_of = promo.year_end   # 지난/올해 연차연도 스냅샷
+    try:
+        s = hr_service.leave_summary(db, user, as_of)
+    except Exception:
+        return res
+    res['remaining'] = s['remaining']
+    res['used'] = s['used']
+    res['granted'] = s['granted']
+    res['approved'] = hr_service.approved_leave_entries(
+        db, user.id, s['year_start'], s['year_end'])
+    return res
+
+
 def entry_days(t):
     """연차=1.0 / 반차=0.5."""
     return 0.5 if t == '반차' else 1.0
@@ -196,6 +223,25 @@ def employee_designate(db, promo_id, entries, user_id=None):
     p.employee_dates = normalize_entries(entries)
     p.designated_at = datetime.datetime.now()
     p.status = 'designated'
+    db.flush()
+    return p
+
+
+def clear_employee_designation(db, promo_id, user_id=None):
+    """관리자 — 직원이 지정한 사용시기(employee_dates)를 삭제하고 미지정으로 되돌린다.
+
+    잘못 지정했거나 재지정이 필요할 때 사용. status가 'designated'였다면 'sent'로
+    복원해 직원이 다시 지정할 수 있게 한다. 회사지정분(admin_dates)은 건드리지 않는다.
+    """
+    p = db.get(LeavePromotion, promo_id)
+    if not p:
+        return None
+    if user_id is not None and p.user_id != user_id:
+        return None
+    p.employee_dates = None
+    p.designated_at = None
+    if p.status == 'designated':
+        p.status = 'sent'
     db.flush()
     return p
 

@@ -10,6 +10,27 @@
 .cmp-tbl .col-g2b { background: #f0fdf4; }
 .cmp-match { color: #16a34a; }
 .cmp-diff { color: #dc2626; font-weight: 700; }
+
+/* ===== 국세청 전자세금계산서 양식 ===== */
+.nts-doc { max-width: 940px; margin: 0 auto 1rem; background:#fff; }
+.nts-title { text-align:center; font-size:1.2rem; font-weight:800; letter-spacing:.35em;
+    padding:7px 0 4px; border:2px solid #111; border-bottom:none; }
+.nts-title .sub { display:block; letter-spacing:0; font-size:.72rem; font-weight:600; color:#475569; margin-top:2px; }
+.nts-approval { text-align:right; font-size:.75rem; padding:3px 10px; border:2px solid #111; border-top:none; border-bottom:none; }
+.nts { width:100%; border-collapse:collapse; table-layout:fixed; font-size:.78rem; }
+.nts th, .nts td { border:1px solid #111; padding:7px 6px; vertical-align:middle; word-break:break-all; }
+.nts .side { writing-mode:vertical-rl; text-align:center; letter-spacing:.2em; font-weight:800; padding:0; }
+.nts .k { font-weight:700; text-align:center; white-space:nowrap; }
+.nts-sup.side, .nts-sup.k { background:#fdecec; color:#c00000; }   /* 공급자(적색 계열) */
+.nts-buy.side, .nts-buy.k { background:#eaf1fb; color:#0040a0; }   /* 공급받는자(청색 계열) */
+/* 공급자 박스=적색 테두리, 공급받는자 박스=청색 테두리 (실제 양식) */
+.nts td.nts-sup, .nts th.nts-sup { border-color:#e07a7a; }
+.nts td.nts-buy, .nts th.nts-buy { border-color:#7a9ad6; }
+.nts .amt { text-align:right; font-variant-numeric:tabular-nums; }
+.nts .ctr { text-align:center; }
+.nts .ttl { text-align:center; font-size:1.4rem; font-weight:800; letter-spacing:.04em; color:#111; }
+.nts-foot { font-size:.68rem; color:#555; padding:5px 2px 0; line-height:1.4; }
+@media print { .no-print, .page-hero { display:none !important; } .nts-doc { max-width:none; } }
 </style>
 
 <div class="page-hero mg-fade">
@@ -29,67 +50,149 @@
     </div>
 </div>
 
-{# ====== 세금계산서 기본정보 ====== #}
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-dark text-white py-2">
-        <span class="fw-bold small">세금계산서 정보</span>
-        {% if inv.invoice_type == '수정세금계산서' %}
-        <span class="badge bg-warning text-dark ms-2" style="white-space:nowrap;">수정</span>
-        {% endif %}
-        {% if inv.match_status == '자동매칭' %}
-        <span class="badge bg-primary ms-2" style="white-space:nowrap;">G2B 자동매칭</span>
-        {% elif inv.match_status == '수동매칭' %}
-        <span class="badge bg-info ms-2" style="white-space:nowrap;">G2B 수동매칭</span>
-        {% endif %}
-    </div>
-    <div class="card-body">
-        <div class="row g-2 mb-2">
-            <div class="col-md-3">
-                <div class="detail-label">작성일자</div>
-                <div class="detail-value">{{ inv.issue_date.strftime('%Y-%m-%d') if inv.issue_date else '-' }}</div>
-            </div>
-            <div class="col-md-3">
-                <div class="detail-label">전송일자</div>
-                <div class="detail-value">{{ inv.send_date.strftime('%Y-%m-%d') if inv.send_date else '-' }}</div>
-            </div>
-            <div class="col-md-3">
-                <div class="detail-label">공급자</div>
-                <div class="detail-value">{{ inv.supplier_name or '-' }}</div>
-            </div>
-            <div class="col-md-3">
-                <div class="detail-label">공급받는자</div>
-                <div class="detail-value">{{ inv.buyer_name or '-' }}</div>
-            </div>
-        </div>
-        <div class="row g-2 mb-2">
-            <div class="col-md-4">
-                <div class="detail-label">공급가액</div>
-                <div class="detail-value">{{ fmt_money(inv.supply_amount) }}원</div>
-            </div>
-            <div class="col-md-4">
-                <div class="detail-label">세액</div>
-                <div class="detail-value">{{ fmt_money(inv.tax_amount) }}원</div>
-            </div>
-            <div class="col-md-4">
-                <div class="detail-label">합계금액</div>
-                <div class="detail-value fw-bold text-primary">{{ fmt_money(inv.total_amount) }}원</div>
-            </div>
-        </div>
-        {% if inv.item_name %}
-        <hr class="my-2">
-        <div class="row g-2">
-            <div class="col-md-4"><div class="detail-label">품목명</div><div class="detail-value">{{ inv.item_name }}</div></div>
-            <div class="col-md-3"><div class="detail-label">규격</div><div class="detail-value">{{ inv.item_spec or '-' }}</div></div>
-            <div class="col-md-2"><div class="detail-label">수량</div><div class="detail-value">{{ inv.item_qty }}</div></div>
-            <div class="col-md-3"><div class="detail-label">단가</div><div class="detail-value">{{ fmt_money(inv.item_unit_price) }}원</div></div>
-        </div>
-        {% endif %}
-        {% if inv.remark %}
-        <hr class="my-2">
-        <div class="detail-label">비고</div>
-        <div style="font-size:0.78rem; white-space:pre-wrap; max-height:80px; overflow-y:auto; background:#f8fafc; padding:6px 8px; border-radius:4px;">{{ inv.remark }}</div>
-        {% endif %}
-    </div>
+{# ====== 국세청 전자세금계산서 양식 ====== #}
+{% set itype = inv.invoice_type or '세금계산서' %}
+{% set _sup_bz = (inv.supplier_business_no or '')|replace('-','')|replace(' ','') %}
+{% set _buy_bz = (inv.buyer_business_no or '')|replace('-','')|replace(' ','') %}
+{% set sup_is_co = _sup_bz and _sup_bz == company.biz_no_digits %}
+{% set buy_is_co = _buy_bz and _buy_bz == company.biz_no_digits %}
+
+{% set _idt = inv.item_date or inv.issue_date %}
+<div class="nts-doc mg-fade">
+    {# 전체를 20칸 단일 그리드로 통합 — 모든 세로선이 같은 그리드에 정렬됨 #}
+    <table class="nts">
+        {# 컬럼 폭 = tax.html 실측 비율 (side 2.47 / 라벨 10.04 / 값 17.43 / 라벨2 7.46 / 값2 12.58, 중앙 50%) #}
+        <colgroup>
+            <col style="width:2.47%"><col style="width:5.02%"><col style="width:5.02%"><col style="width:5.81%"><col style="width:5.81%"><col style="width:5.81%"><col style="width:3.73%"><col style="width:3.73%"><col style="width:6.29%"><col style="width:6.29%">
+            <col style="width:2.47%"><col style="width:5.02%"><col style="width:5.02%"><col style="width:5.81%"><col style="width:5.81%"><col style="width:5.81%"><col style="width:3.73%"><col style="width:3.73%"><col style="width:6.29%"><col style="width:6.29%">
+        </colgroup>
+        <tbody>
+            {# 제목 + 승인번호 #}
+            <tr>
+                <td class="ttl" colspan="10">전자{{ '계산서' if itype in ['계산서','수정계산서'] else '세금계산서' }}</td>
+                <th class="k" colspan="3">승인번호</th>
+                <td class="ctr" colspan="7"><strong>{{ inv.approval_no }}</strong></td>
+            </tr>
+            {# 공급자 / 공급받는자 #}
+            <tr>
+                <td rowspan="6" class="side nts-sup">공급자</td>
+                <th class="k nts-sup" colspan="2">등록번호</th>
+                <td class="nts-sup" colspan="3">{{ fmt_bizno(inv.supplier_business_no) or (company.biz_no if sup_is_co else '-') }}</td>
+                <th class="k nts-sup" colspan="2" style="white-space:normal;">종사업장번호</th>
+                <td class="nts-sup" colspan="2"></td>
+                <td rowspan="6" class="side nts-buy">공급받는자</td>
+                <th class="k nts-buy" colspan="2">등록번호</th>
+                <td class="nts-buy" colspan="3">{{ fmt_bizno(inv.buyer_business_no) or (company.biz_no if buy_is_co else '-') }}</td>
+                <th class="k nts-buy" colspan="2" style="white-space:normal;">종사업장번호</th>
+                <td class="nts-buy" colspan="2"></td>
+            </tr>
+            <tr>
+                <th class="k nts-sup" colspan="2" style="white-space:normal;">상호(법인명)</th>
+                <td class="nts-sup" colspan="3">{{ (company.name if sup_is_co else inv.supplier_name) or '-' }}</td>
+                <th class="k nts-sup" colspan="2">성명</th>
+                <td class="nts-sup" colspan="2">{{ company.ceo if sup_is_co else '-' }}</td>
+                <th class="k nts-buy" colspan="2" style="white-space:normal;">상호(법인명)</th>
+                <td class="nts-buy" colspan="3">{{ (company.name if buy_is_co else inv.buyer_name) or '-' }}</td>
+                <th class="k nts-buy" colspan="2">성명</th>
+                <td class="nts-buy" colspan="2">{{ company.ceo if buy_is_co else (inv.buyer_ceo or '-') }}</td>
+            </tr>
+            <tr>
+                <th class="k nts-sup" colspan="2" style="white-space:normal;">사업장주소</th>
+                <td class="nts-sup" colspan="7">{{ company.addr if sup_is_co else '' }}</td>
+                <th class="k nts-buy" colspan="2" style="white-space:normal;">사업장주소</th>
+                <td class="nts-buy" colspan="7">{{ company.addr if buy_is_co else '' }}</td>
+            </tr>
+            <tr>
+                <th class="k nts-sup" colspan="2">업태</th>
+                <td class="nts-sup" colspan="3"></td>
+                <th class="k nts-sup" colspan="2">종목</th>
+                <td class="nts-sup" colspan="2"></td>
+                <th class="k nts-buy" colspan="2">업태</th>
+                <td class="nts-buy" colspan="3"></td>
+                <th class="k nts-buy" colspan="2">종목</th>
+                <td class="nts-buy" colspan="2"></td>
+            </tr>
+            <tr>
+                <th class="k nts-sup" colspan="2" rowspan="2">이메일</th>
+                <td class="nts-sup" colspan="7" rowspan="2"></td>
+                <th class="k nts-buy" colspan="2">이메일</th>
+                <td class="nts-buy" colspan="7"></td>
+            </tr>
+            <tr>
+                <th class="k nts-buy" colspan="2">이메일</th>
+                <td class="nts-buy" colspan="7"></td>
+            </tr>
+            {# 작성일자 / 공급가액 / 세액 / 수정사유 / 비고 #}
+            <tr>
+                <th class="k" colspan="4">작성일자</th>
+                <th class="k" colspan="6">공급가액</th>
+                <th class="k" colspan="4">세액</th>
+                <th class="k" colspan="3">수정사유</th>
+                <th class="k" colspan="3">비고</th>
+            </tr>
+            <tr>
+                <td class="ctr" colspan="4">{{ inv.issue_date.strftime('%Y-%m-%d') if inv.issue_date else '-' }}</td>
+                <td class="amt" colspan="6">{{ fmt_money(inv.supply_amount) }}</td>
+                <td class="amt" colspan="4">{{ fmt_money(inv.tax_amount) }}</td>
+                <td class="ctr" colspan="3">{{ '수정발행' if itype.startswith('수정') else '해당없음' }}</td>
+                <td colspan="3"></td>
+            </tr>
+            {# 품목 #}
+            <tr>
+                <th class="k" colspan="2">월</th><th class="k" colspan="2">일</th><th class="k" colspan="6">품목</th>
+                <th class="k" colspan="2">규격</th><th class="k" colspan="2">수량</th>
+                <th class="k" colspan="2">단가</th><th class="k" colspan="2">공급가액</th>
+                <th class="k">세액</th><th class="k">비고</th>
+            </tr>
+            <tr>
+                <td class="ctr" colspan="2">{{ '%02d'|format(_idt.month) if _idt else '' }}</td>
+                <td class="ctr" colspan="2">{{ '%02d'|format(_idt.day) if _idt else '' }}</td>
+                <td colspan="6">{{ inv.item_name or '-' }}</td>
+                <td colspan="2">{{ inv.item_spec or '' }}</td>
+                <td class="amt" colspan="2">{{ inv.item_qty if inv.item_qty else '' }}</td>
+                <td class="amt" colspan="2">{{ fmt_money(inv.item_unit_price) if inv.item_unit_price else '' }}</td>
+                <td class="amt" colspan="2">{{ fmt_money(inv.supply_amount) }}</td>
+                <td class="amt">{{ fmt_money(inv.tax_amount) }}</td>
+                <td></td>
+            </tr>
+            {% for _ in range(4) %}
+            <tr style="height:34px;">
+                <td colspan="2"></td><td colspan="2"></td><td colspan="6"></td><td colspan="2"></td><td colspan="2"></td>
+                <td colspan="2"></td><td colspan="2"></td><td></td><td></td>
+            </tr>
+            {% endfor %}
+            {# 합계금액 / 현금 / 수표 / 어음 / 외상미수금 / 영수·청구 #}
+            <tr>
+                <th class="k" colspan="4">합계금액</th>
+                <th class="k" colspan="3">현금</th>
+                <th class="k" colspan="3">수표</th>
+                <th class="k" colspan="3">어음</th>
+                <th class="k" colspan="4">외상미수금</th>
+                <td class="ctr" colspan="3" rowspan="2" style="font-weight:600;">이 금액을 ({{ '청구' if inv.direction == '매출' else '영수' }}) 함</td>
+            </tr>
+            <tr>
+                <td class="amt fw-bold" colspan="4">{{ fmt_money(inv.total_amount) }}</td>
+                <td colspan="3"></td><td colspan="3"></td><td colspan="3"></td><td colspan="4"></td>
+            </tr>
+            {% if inv.remark %}
+            <tr>
+                <th class="k" colspan="2">비고</th>
+                <td colspan="18" style="white-space:pre-wrap; font-size:.74rem; text-align:left;">{{ inv.remark }}</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <div class="nts-foot">본 인쇄물은 국세청 홈택스(www.hometax.go.kr)에서 발급, 또는 홈택스로 전송된 전자(세금)계산서입니다.</div>
+</div>
+
+{# 상태 뱃지 (양식 외 보조표시) #}
+<div class="mb-3 no-print">
+    {% if itype.startswith('수정') %}<span class="badge bg-warning text-dark me-1">수정</span>{% endif %}
+    {% if inv.match_status == '자동매칭' %}<span class="badge bg-primary me-1">G2B 자동매칭</span>
+    {% elif inv.match_status == '수동매칭' %}<span class="badge bg-info me-1">G2B 수동매칭</span>
+    {% else %}<span class="badge bg-secondary me-1">미매칭</span>{% endif %}
+    <span class="badge bg-light text-dark border">{{ inv.direction }}</span>
 </div>
 
 {# ====== 세금계산서 vs G2B 조달내역 비교 ====== #}

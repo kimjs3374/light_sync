@@ -35,8 +35,9 @@ ALL_TOOLS = [
     ("get_po_detail",           "발주서 상세",         "전체"),
     ("get_receiving_history",   "입고 이력",           "전체"),
     ("get_vendor_list",         "거래처 목록",         "전체"),
-    # 재무 (4)
+    # 재무 (5)
     ("get_revenue_summary",     "매출 집계",           "관리부/임원진"),
+    ("get_purchase_summary",    "매입/지출 집계",      "관리부/임원진"),
     ("get_financial_overview",  "재무 대시보드",       "관리부/임원진"),
     ("get_unpaid_invoices",     "미수금 현황",         "관리부/임원진"),
     ("get_tax_invoices",        "세금계산서 목록",     "관리부/임원진"),
@@ -91,6 +92,16 @@ ALL_TOOLS = [
     # 직원/근무 (2)
     ("get_employees",           "직원 목록",           "전체"),
     ("get_today_attendance",    "오늘 근무인원",       "전체"),
+    # 전자결재 (4) — 본인 문서 기준 조회이므로 전체 허용
+    ("get_approval_documents",  "결재 문서 목록",      "전체"),
+    ("get_approval_detail",     "결재 상세/결재선",    "전체"),
+    ("get_my_pending_approvals", "내 결재 차례",       "전체"),
+    ("get_my_approval_drafts",  "내가 상신한 결재",    "전체"),
+    # 인사/연차 (4) — 타인 급여·인사정보 노출 방지 위해 제한 등급
+    ("get_leave_balance",       "연차 잔여일수",       "관리부/임원진"),
+    ("get_leave_calendar",      "월간 휴가 달력",      "전체"),
+    ("get_leave_promotion_status", "연차촉진 현황",    "관리부/임원진"),
+    ("get_employee_card",       "인사카드",            "관리부/임원진"),
     # 가공발주 (2)
     ("get_processing_orders",   "가공발주 목록",       "전체"),
     ("get_processing_order_detail", "가공발주 상세",   "전체"),

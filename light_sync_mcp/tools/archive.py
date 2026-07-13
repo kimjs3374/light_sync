@@ -154,3 +154,57 @@ def register(mcp: FastMCP):
             return json.dumps(result, ensure_ascii=False)
         finally:
             session.close()
+
+    @mcp.tool()
+    def get_site_history(
+        contract_id: Optional[int] = None,
+        project_id: Optional[int] = None,
+        limit: int = 50,
+    ) -> str:
+        """현장 이력 조회 — 특정 계약/현장에 연결된 워크보드(현장관리) 게시글 전체.
+        'OO현장 이력', 'OO현장 워크보드', 'OO현장 과거 진행상황' 요청 시 사용.
+        contract_id 또는 project_id 중 하나 필수. (project_id 주면 소속 계약 전체의 이력을 모음)
+
+        Args:
+            contract_id: 계약 ID (get_contract_detail 결과)
+            project_id: 현장(프로젝트) ID (get_project_detail / search_projects 결과)
+            limit: 최대 게시글 수
+        """
+        if not contract_id and not project_id:
+            return json.dumps({'error': 'contract_id 또는 project_id 중 하나가 필요합니다'}, ensure_ascii=False)
+        session = get_session()
+        try:
+            if contract_id:
+                crows = session.execute(text(
+                    "SELECT id, contract_name FROM light_sync.contracts WHERE id = :cid"
+                ), {'cid': contract_id}).fetchall()
+            else:
+                crows = session.execute(text(
+                    "SELECT id, contract_name FROM light_sync.contracts WHERE project_id = :pid"
+                ), {'pid': project_id}).fetchall()
+            if not crows:
+                return json.dumps({'error': '계약을 찾을 수 없습니다'}, ensure_ascii=False)
+            cids = [c.id for c in crows]
+
+            posts = session.execute(text("""
+                SELECT ap.id, ap.author, ap.content_text, ap.created_at, ap.children_count
+                FROM light_sync.archive_posts ap
+                WHERE ap.board_type = 'site' AND ap.contract_id = ANY(:cids)
+                ORDER BY ap.created_at DESC
+                LIMIT :lim
+            """), {'cids': cids, 'lim': limit}).fetchall()
+
+            result = {
+                'contracts': [_s(c.contract_name) for c in crows],
+                'post_count': len(posts),
+                'posts': [{
+                    'id': p.id,
+                    'author': _s(p.author),
+                    'content': _s(p.content_text)[:600] if p.content_text else '',
+                    'created_at': _sd(p.created_at),
+                    'comment_count': p.children_count or 0,
+                } for p in posts],
+            }
+            return json.dumps(result, ensure_ascii=False)
+        finally:
+            session.close()

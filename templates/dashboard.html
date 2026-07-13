@@ -248,7 +248,7 @@
                                 {% if cell.get('leaves') %}
                                 <div class="cal-dots" style="margin-top:1px;">
                                     {% for lv in cell['leaves'][:3] %}
-                                    <span class="cal-dot" style="background:#f59e0b;width:4px;height:4px;" title="{{ lv.summary }}"></span>
+                                    <span class="cal-dot" style="background:#f59e0b;width:4px;height:4px;" title="{{ lv.name }} {{ lv.disp_type or lv.leave_type }}"></span>
                                     {% endfor %}
                                 </div>
                                 {% endif %}
@@ -280,7 +280,7 @@
                     <div class="section-title mt-3 mb-2" style="font-size:.88rem;">오늘 부재</div>
                     {% for lv in today_leaves %}
                     <div style="display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem;border-radius:.4rem;background:#fffbeb;border:1px solid #fde68a;margin-bottom:.3rem;">
-                        <span style="font-size:.75rem;font-weight:700;color:#d97706;white-space:nowrap;">{{ lv.leave_type }}</span>
+                        <span style="font-size:.75rem;font-weight:700;color:#d97706;white-space:nowrap;">{{ lv.disp_type or lv.leave_type }}</span>
                         <span style="font-size:.82rem;font-weight:600;color:#0f172a;">{{ lv.name }}</span>
                     </div>
                     {% endfor %}

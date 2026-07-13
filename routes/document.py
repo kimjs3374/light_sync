@@ -324,6 +324,10 @@ def document_detail(req_no):
 
         agents = db.query(User).filter(User.is_approved == True).order_by(User.full_name).all()
 
+        # 변경계약으로 빠진 품목(수량 0 + 금액 0)은 화면에서 제외 — 원본은 보존
+        procurements = [p for p in procurements
+                        if (p.prdct_qty or 0) or (p.prdct_amt or 0)]
+
         total_supply = sum(p.prdct_amt or 0 for p in procurements)
 
         return render_template('document_detail.html',
@@ -1085,6 +1089,8 @@ def bulk_upload_contract_pdf():
             package.warranty_period = parsed.get('warranty_period')
             package.inspection_org = parsed.get('inspection_org')
             package.acceptance_org = parsed.get('acceptance_org')
+            if parsed.get('demand_org_no'):
+                package.demand_org_no = parsed['demand_org_no']
             package.org_type = determine_org_type(package.demand_org)
 
             update_procurement_from_pdf(db, parsed)
@@ -1166,6 +1172,8 @@ def _handle_upload_contract_pdf(db, package, procurements):
         package.warranty_period = parsed.get('warranty_period')
         package.inspection_org = parsed.get('inspection_org')
         package.acceptance_org = parsed.get('acceptance_org')
+        if parsed.get('demand_org_no'):
+            package.demand_org_no = parsed['demand_org_no']
         package.org_type = determine_org_type(package.demand_org)
 
         update_procurement_from_pdf(db, parsed)

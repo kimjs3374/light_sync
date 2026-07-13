@@ -22,7 +22,7 @@ from modules.services.dashboard_actions import (
     handle_update_notice,
     handle_delete_notice,
 )
-from modules.services.ical_sync import get_leave_events_for_month, get_leave_events_for_date
+from modules.services import approval_service as _appsvc
 from modules.dashboard_utils import (
     project_detail_link,
     resolve_kanban_stage,
@@ -333,17 +333,12 @@ def dashboard_view():
             'unknown': _base_expected.filter(PurchaseOrderItem.expected_in_date.is_(None)).count(),
         }
 
-        # 연차 캘린더 동기화 (외부 iCal) + 전자결재 승인 휴가 병합
-        from modules.services import approval_service as _appsvc
-        leave_by_date = get_leave_events_for_month(today.year, today.month)
-        today_leaves = get_leave_events_for_date(today)
-        try:
-            ea_month = _appsvc.get_approved_leaves_for_month(db, today.year, today.month)
-            for _d, _evs in ea_month.items():
-                leave_by_date.setdefault(_d, []).extend(_evs)
-            today_leaves = list(today_leaves) + _appsvc.get_approved_leaves_for_date(db, today)
-        except Exception:
-            pass
+        # 연차 캘린더 (전자결재 승인 휴가 기준)
+        leave_by_date = _appsvc.get_approved_leaves_for_month(db, today.year, today.month)
+        today_leaves = sorted(
+            _appsvc.get_approved_leaves_for_date(db, today),
+            key=lambda e: e.get('name') or '',
+        )
 
         # ── 최근 코멘트 (전체 현장) ──
         recent_comments_raw = (

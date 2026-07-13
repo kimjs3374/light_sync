@@ -71,6 +71,11 @@ def generate_delivery_xlsx(package, procurements, db=None):
     Returns:
         str: 생성된 파일의 웹 경로
     """
+    # 변경계약으로 빠진 품목(수량 0 + 금액 0)은 서류에서 제외 (기초 자료 입력·물납영수증 포함)
+    _active = [p for p in procurements if (p.prdct_qty or 0) or (p.prdct_amt or 0)]
+    if _active:
+        procurements = _active
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     req_no = package.procurement_req_no or 'unknown'

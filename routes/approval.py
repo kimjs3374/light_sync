@@ -184,8 +184,8 @@ def approval_new():
         if form:
             steps = svc.resolve_default_line(db, me, form.default_line)
             default_line = steps
-            # 양식별 기본 참조자 (휴가/지출 → 서은미 과장). 본인 제외.
-            default_refs = [{'user_id': r.id, 'user_name': r.full_name, 'ref_type': 'reference'}
+            # 양식별 기본 수신자 (휴가/지출 → 관리부 서은미 과장). 본인 제외.
+            default_refs = [{'user_id': r.id, 'user_name': r.full_name, 'ref_type': 'receiver'}
                             for r in svc.resolve_default_refs(db, form.form_key) if r.id != me.id]
             if form.form_key == 'leave':
                 leave_balance = _leave_balance(db, me)

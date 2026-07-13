@@ -33,6 +33,10 @@ const CHANNELS = [
     { label: '생산2팀', path: '/production?team=team2' },
     { label: '발주/입고현황', path: '/incoming' },
   ]},
+  { group: '🗂 아카이브', items: [
+    { label: '워크보드 아카이브', path: '/archive' },
+    { label: '대화방 아카이브', path: '/chat-archive' },
+  ]},
   { group: '🔗 공통메뉴', items: [
     { label: '전자결재', path: '/approvals' },
     { label: '조달내역', path: '/procurements' },

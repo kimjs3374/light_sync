@@ -129,8 +129,13 @@
         <td>{{ p.leave_year }}</td>
         <td>{{ stage_label.get(p.stage, p.stage) }}</td>
         <td>{{ p.notified_at.strftime('%Y-%m-%d') if p.notified_at else '-' }}</td>
-        <td class="text-end">{{ p.remaining_days if p.remaining_days is not none else '-' }}</td>
-        <td>{% if p.employee_dates %}<span title="{{ fmt_entries(p.employee_dates) }}">{{ sum_days(p.employee_dates)|trim }}일</span>{% else %}<span class="text-muted">미지정</span>{% endif %}</td>
+        <td class="text-end">{{ (p.remaining_live if p.remaining_live is defined and p.remaining_live is not none else p.remaining_days) if p.remaining_days is not none else '-' }}</td>
+        <td>{% if p.employee_dates %}<span title="{{ fmt_entries(p.employee_dates) }}">{{ sum_days(p.employee_dates)|trim }}일</span>
+          <form method="post" action="{{ url_for('hr.hr_promotion_desig_delete', promo_id=p.id) }}" class="d-inline"
+                onsubmit="return confirm('직원이 지정한 사용일을 삭제하시겠습니까?\n삭제 후 직원이 다시 지정할 수 있습니다.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-danger py-0 px-1 ms-1" title="직원 지정 삭제"><i class="bi bi-x-lg"></i></button>
+          </form>{% else %}<span class="text-muted">미지정</span>{% endif %}</td>
         <td>{% if p.admin_dates %}<span title="{{ p.admin_dates|join(', ') }}">{{ p.admin_dates|length }}일</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>
           {% set st = p.status %}

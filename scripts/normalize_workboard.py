@@ -223,6 +223,15 @@ def main():
                 tot_p += p
                 tot_c += c
                 print(f'  [{slug:9}] {kakao:18} 게시글 {p:5}건  댓글 {c:6}건')
+
+            # 현장관리(site) 신규 글 자동 매칭 → contract_id 연결 (커밋 직전, 같은 트랜잭션)
+            if args.commit and any(slug == 'site' for slug, _ in targets):
+                from modules.services.archive_matcher import match_site_posts
+                mr = match_site_posts(db, commit=True)
+                for r in mr['applied']:
+                    print(f'  [자동매칭] post {r["post_id"]} → {r["contract_name"][:28]} ({r["score"]:.0%})')
+                print(f'  [자동매칭] {len(mr["applied"])}건 연결 · 검토대기 {len(mr["candidates"])}건(<90%)')
+
             if args.commit:
                 db.commit()
                 print(f'\n커밋 완료: 게시글 {tot_p}건 / 댓글 {tot_c}건')

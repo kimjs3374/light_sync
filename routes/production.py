@@ -6,7 +6,7 @@ from modules.auth_decorators import login_required, menu_required
 from modules.contract_filters import active_contract_filter
 
 from modules.history_board import get_project_history_context, get_user_display_name
-from modules.services.ical_sync import get_leave_events_for_date
+from modules.services import approval_service as _appsvc
 from modules.db_context import get_db
 from modules.utils import safe_int
 from modules.models import (
@@ -108,7 +108,10 @@ def production_display():
                 'ticker': ticker,
             })
 
-        today_leaves = get_leave_events_for_date(today)
+        today_leaves = sorted(
+            _appsvc.get_approved_leaves_for_date(db, today),
+            key=lambda e: e.get('name') or '',
+        )
 
         today_dt = datetime.datetime.combine(today, datetime.time.min)
         today_trips = (

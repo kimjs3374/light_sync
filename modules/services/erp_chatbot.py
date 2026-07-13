@@ -767,7 +767,7 @@ def _save_query_pattern(question: str, tool_name: str, tool_args: dict, success:
             else:
                 conn.execute(text("""
                     INSERT INTO mcp_query_patterns (question, tool_name, tool_args, success)
-                    VALUES (:q, :t, :a::jsonb, :s)
+                    VALUES (:q, :t, CAST(:a AS jsonb), :s)
                 """), {"q": question, "t": tool_name, "a": args_json, "s": success})
     except Exception as e:
         logger.warning(f"[chatbot] 패턴 저장 실패 (무시): {e}")

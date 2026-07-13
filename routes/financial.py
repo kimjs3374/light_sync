@@ -7,6 +7,7 @@
 
 import datetime
 import logging
+import re
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
@@ -38,6 +39,41 @@ def _fmt_money(val):
         return f"{int(val):,}"
     except (ValueError, TypeError):
         return str(val)
+
+
+def _fmt_bizno(raw):
+    """사업자등록번호 → XXX-XX-XXXXX (10자리 아니면 원본 반환)."""
+    d = re.sub(r'\D', '', str(raw or ''))
+    return f"{d[:3]}-{d[3:5]}-{d[5:]}" if len(d) == 10 else (raw or '')
+
+
+# 자사(공급자/공급받는자 중 매그나텍 측) 정보 — 전자세금계산서 양식 보강용
+from modules.services.delivery_doc_pdf import (
+    COMPANY_NAME, COMPANY_BIZ_NO, COMPANY_ADDR, COMPANY_CEO,
+    COMPANY_TEL, COMPANY_FAX, number_to_korean,
+)
+
+_COMPANY_INFO = {
+    'name': COMPANY_NAME,
+    'biz_no': COMPANY_BIZ_NO,
+    'biz_no_digits': re.sub(r'\D', '', COMPANY_BIZ_NO),
+    'addr': COMPANY_ADDR,
+    'ceo': COMPANY_CEO,
+    'tel': COMPANY_TEL,
+    'fax': COMPANY_FAX,
+}
+
+
+def _korean_money(val):
+    """정수 금액 → '일금 …원정' (음수/0 안전)."""
+    try:
+        n = int(val or 0)
+    except (ValueError, TypeError):
+        return ''
+    if n == 0:
+        return '일금 영원정'
+    sign = '(-) ' if n < 0 else ''
+    return f"일금 {sign}{number_to_korean(abs(n))}원정"
 
 
 # ===================================================================
@@ -471,6 +507,9 @@ def tax_invoice_detail(invoice_id):
             g2b_total_qty=g2b_total_qty,
             contracts=contracts,
             fmt_money=_fmt_money,
+            fmt_bizno=_fmt_bizno,
+            company=_COMPANY_INFO,
+            total_korean=_korean_money(inv.total_amount),
         )
 
 

@@ -230,29 +230,34 @@ def _parse_summary_table(text, result):
 
 
 def _parse_items(text):
-    """품목 테이블에서 품명, 규격, 단가, 수량, 납품기한 등을 추출한다."""
+    """품목 테이블에서 단가, 수량, 납품기한, 물품분류/식별번호를 추출한다.
+
+    KONEPS 분할납품요구서는 텍스트 추출 시 `단가 수량 납품기한`이 먼저 나오고,
+    바로 다음 줄에 `순번 + 물품분류번호(8) + 물품식별번호(8+)`가 이어진다.
+    기존 정규식은 식별번호를 먼저 잡고 뒤쪽 단가/수량을 찾아 한 칸씩 밀려 매칭되고
+    마지막 품목을 누락하는 버그가 있어, 실제 레이아웃 순서대로 다시 작성한다.
+    """
     items = []
 
-    # 물품식별번호 패턴으로 품목 행 찾기 (8자리분류번호+식별번호)
-    # 예: 3911152622773990 또는 39111526 22773990
     item_pattern = re.findall(
-        r'(\d{8})\s*(\d{8,})'  # 물품분류번호 + 물품식별번호
-        r'.*?'
-        r'([\d,]+\.?\d*)\s+'   # 단가
-        r'(\d+)\s+'            # 수량
-        r'(\d{4}/\d{2}/\d{2})', # 납품기한
-        text, re.DOTALL
+        r'([\d,]+)(?:\.\d+)?\s+'      # 단가
+        r'(\d+)\s+'                  # 수량
+        r'(\d{4}/\d{2}/\d{2})\s*\n'  # 납품기한 + 줄바꿈
+        r'\s*\d+\s+'                 # 순번
+        r'(\d{8})(\d{8,})',          # 물품분류번호 + 물품식별번호
+        text
     )
 
-    for match in item_pattern:
+    for unit_price, qty_s, date_s, class_no, ident_no in item_pattern:
         item = {
-            'product_class_no': match[0],
-            'product_ident_no': match[1],
-            'unit_price': int(float(match[2].replace(',', ''))),
-            'quantity': int(match[3]),
+            'product_class_no': class_no,
+            'product_ident_no': ident_no,
+            'unit_price': int(unit_price.replace(',', '')),
+            'quantity': int(qty_s),
         }
+        item['amount'] = item['unit_price'] * item['quantity']
         # 납품기한
-        date_parts = match[4].split('/')
+        date_parts = date_s.split('/')
         if len(date_parts) == 3:
             try:
                 item['delivery_date'] = date(int(date_parts[0]), int(date_parts[1]), int(date_parts[2]))
@@ -307,6 +312,31 @@ def update_procurement_from_pdf(db_session, parsed_data):
                 setattr(rec, attr, new_val)
                 changed = True
         if changed:
+            updated += 1
+
+    # --- 품목별 수량/단가/금액 갱신 (계약서 PDF 기준, 물품식별번호 매칭) ---
+    # 변경계약 PDF를 올리면 줄어든 수량/금액이 g2b_procurements 라인에 반영되도록 한다.
+    by_ident = {
+        str(it['product_ident_no']): it
+        for it in (parsed_data.get('items') or [])
+        if it.get('product_ident_no')
+    }
+    for rec in records:
+        it = by_ident.get(str(rec.prdct_idnt_no))
+        if not it:
+            continue
+        item_changed = False
+        qty, uprc, amt = it.get('quantity'), it.get('unit_price'), it.get('amount')
+        if qty is not None and rec.prdct_qty != qty:
+            rec.prdct_qty = qty
+            item_changed = True
+        if uprc is not None and rec.prdct_uprc != uprc:
+            rec.prdct_uprc = uprc
+            item_changed = True
+        if amt is not None and rec.prdct_amt != amt:
+            rec.prdct_amt = amt
+            item_changed = True
+        if item_changed:
             updated += 1
 
     if updated:

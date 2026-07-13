@@ -9,6 +9,39 @@
   .mp-meta { font-size:.82rem; color:#64748b; margin-bottom:10px; }
   .mp-badge { display:inline-block; font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:6px; }
   .mp-empty { color:#94a3b8; font-size:.88rem; padding:1rem; }
+  /* 서버 렌더 달력 + 네이티브 체크박스 선택 (JS 불요) */
+  .lpm-cal { max-width:330px; }
+  .lpm-month { margin-bottom:14px; }
+  .lpm-title { text-align:center; font-size:.92rem; font-weight:700; color:#334155; margin-bottom:6px; }
+  .lpm-week, .lpm-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:3px; width:100%; }
+  .lpm-week span { text-align:center; font-size:.7rem; font-weight:600; color:#94a3b8; padding:2px 0; }
+  .lpm-week span.sun { color:#dc2626; } .lpm-week span.sat { color:#2563eb; }
+  /* 순환 선택: 라디오 3개 + CSS만 (JS 불요). 1클릭 연차 → 2클릭 반차 → 3클릭 해제 */
+  .st { display:none; }
+  .lpm-day { position:relative; height:44px; min-width:0; border-radius:8px; overflow:hidden; }
+  .lpm-day.off, .lpm-day.empty { display:flex; flex-direction:column; align-items:center; justify-content:center;
+             font-size:.86rem; font-weight:600; }
+  .lpm-day.empty { background:transparent; }
+  .lpm-day.off { color:#cbd5e1; background:#f8fafc; cursor:not-allowed; }
+  .lpm-day.off.sun { color:#f87171; }
+  .lpm-day.off.sat { color:#60a5fa; }
+  .lpm-day.off .hn { font-size:.5rem; font-weight:600; line-height:1.05; max-width:100%; margin-top:1px;
+                 white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 1px; }
+  .face { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+          background:#f8fafc; color:#334155; font-size:.86rem; font-weight:600; z-index:1; }
+  .face .tg { font-size:.5rem; font-weight:800; line-height:1; margin-top:1px; }
+  .lbl { position:absolute; inset:0; z-index:0; pointer-events:none; cursor:pointer; }
+  .r-n:checked ~ .ly { z-index:4; pointer-events:auto; }
+  .r-y:checked ~ .lb { z-index:4; pointer-events:auto; }
+  .r-b:checked ~ .ln { z-index:4; pointer-events:auto; }
+  .r-y:checked ~ .face { background:#2563eb; color:#fff; font-weight:800; }
+  .r-b:checked ~ .face { background:#10b981; color:#fff; font-weight:800; }
+  .r-y:checked ~ .face .tg::after { content:'연차'; }
+  .r-b:checked ~ .face .tg::after { content:'반차'; }
+  /* 전자결재로 이미 승인된 연차(자동표시·수정불가) */
+  .lpm-day.appr { display:flex; flex-direction:column; align-items:center; justify-content:center;
+                  background:#fffbeb; color:#b45309; border:1px dashed #f59e0b; font-size:.86rem; font-weight:700; cursor:not-allowed; }
+  .lpm-day.appr .tg { font-size:.5rem; font-weight:800; margin-top:1px; }
 </style>
 
 <div class="page-hero mg-fade">
@@ -17,6 +50,8 @@
     <h2>내 연차사용촉진</h2>
     <div class="hero-sub">회사로부터 연차 사용촉진 통보를 받은 경우, 기한 내 사용 예정일을 지정해 주세요. (연차=1일, 반차=0.5일)</div>
   </div>
+  <div><a href="{{ url_for('hr.hr_my_promotion_mobile') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-phone"></i> 모바일 화면으로 보기</a></div>
 </div>
 
 {% macro fmt_dates(items) %}
@@ -41,7 +76,7 @@
   <div class="mp-meta">
     연차연도 {{ p.year_start.strftime('%Y-%m-%d') if p.year_start else '-' }} ~ {{ p.year_end.strftime('%Y-%m-%d') if p.year_end else '-' }}
     · 통보일 {{ p.notified_at.strftime('%Y-%m-%d') if p.notified_at else '-' }}
-    · 미사용 잔여 <b>{{ p.remaining_days if p.remaining_days is not none else '-' }}</b>일
+    · 미사용 잔여 <b>{{ p.remaining_live if p.remaining_live is defined and p.remaining_live is not none else (p.remaining_days if p.remaining_days is not none else '-') }}</b>일
     {% if p.designate_due %} · 지정기한 <b>{{ p.designate_due.strftime('%Y-%m-%d') }}</b>{% endif %}
   </div>
 
@@ -52,17 +87,27 @@
     {% if p.status == 'designated' %}
     <div class="mp-meta">현재 지정: <b>{{ fmt_dates(p.employee_dates or []) }}</b> — 아래 달력에서 수정할 수 있습니다.</div>
     {% endif %}
+    <div class="mp-meta">날짜를 누를 때마다 <b style="color:#2563eb">연차</b>(1일) → <b style="color:#10b981">반차</b>(0.5일) → 해제 순으로 바뀝니다.
+      {% if p.approved_entries %}<br><span style="color:#b45309">■ 표시된 날짜는 전자결재로 <b>이미 승인된 연차</b>로, 잔여에 반영되어 별도 지정이 필요 없습니다.</span>{% endif %}</div>
     <form method="post" action="{{ url_for('hr.hr_my_promotion_designate', promo_id=p.id) }}"
-          class="d-flex flex-column gap-2 lp-form" onsubmit="return lpValidate(this, {{ p.id }})">
+          class="d-flex flex-column gap-2 lp-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="dates" id="dates-{{ p.id }}">
-      <div class="lp-cal" data-promo="{{ p.id }}"
-           data-remaining="{{ p.remaining_days if p.remaining_days is not none else 0 }}"
-           data-min="{{ today.strftime('%Y-%m-%d') }}"
-           data-max="{{ p.year_end.strftime('%Y-%m-%d') if p.year_end else today.strftime('%Y-%m-%d') }}"
-           data-init='{{ (p.employee_dates or [])|tojson }}'></div>
-      <div class="lp-counter" id="cnt-{{ p.id }}">선택 <b>0</b>일 / 잔여 {{ p.remaining_days if p.remaining_days is not none else 0 }}일</div>
-      <div class="lp-sel-list" id="sel-{{ p.id }}"></div>
+      <div class="lpm-cal">
+        {% for mon in calendars.get(p.id, []) %}
+        <div class="lpm-month">
+          <div class="lpm-title">{{ mon.title }}</div>
+          <div class="lpm-week"><span class="sun">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span class="sat">토</span></div>
+          <div class="lpm-grid">
+            {%- for week in mon.weeks %}{% for c in week %}
+            {%- if c is none %}<div class="lpm-day empty"></div>
+            {%- elif c.off %}<div class="lpm-day off{% if c.dow == 0 or c.hol %} sun{% elif c.dow == 6 %} sat{% endif %}"{% if c.hol %} title="{{ c.hol }}"{% endif %}><span>{{ c.day }}</span>{% if c.hol %}<span class="hn">{{ c.hol }}</span>{% endif %}</div>
+            {%- elif c.appr %}<div class="lpm-day appr" title="전자결재 승인 연차"><span class="n">{{ c.day }}</span><span class="tg">{{ c.appr }}</span></div>
+            {%- else %}<div class="lpm-day"><input class="st r-n" type="radio" name="st_{{ c.date }}" id="n{{ p.id }}_{{ c.date }}" value=""{% if not c.sel %} checked{% endif %}><input class="st r-y" type="radio" name="st_{{ c.date }}" id="y{{ p.id }}_{{ c.date }}" value="연차"{% if c.sel == '연차' %} checked{% endif %}><input class="st r-b" type="radio" name="st_{{ c.date }}" id="b{{ p.id }}_{{ c.date }}" value="반차"{% if c.sel == '반차' %} checked{% endif %}><span class="face"><span class="n">{{ c.day }}</span><span class="tg"></span></span><label class="lbl ly" for="y{{ p.id }}_{{ c.date }}"></label><label class="lbl lb" for="b{{ p.id }}_{{ c.date }}"></label><label class="lbl ln" for="n{{ p.id }}_{{ c.date }}"></label></div>
+            {%- endif %}{% endfor %}{% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
       <div><button class="btn btn-sm btn-primary"><i class="bi bi-calendar-check"></i>
         {% if p.status == 'designated' %}지정 수정{% else %}사용시기 지정{% endif %}</button></div>
     </form>
@@ -71,6 +116,4 @@
 {% endfor %}
 {% endif %}
 
-<script>window.LP_HOLIDAYS = {{ holidays|tojson }};</script>
-<script src="{{ url_for('static', filename='js/leave_calendar.js') }}"></script>
 {% endblock %}

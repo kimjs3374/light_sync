@@ -1,0 +1,154 @@
+/* ── 워크보드/대화방 아카이브 (카카오워크 스타일, 다크) ── */
+
+/* 보드 선택 그리드 */
+.arc-board-list { padding: 8px 12px 100px; }
+.arc-board-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 14px; margin-bottom: 8px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; cursor: pointer;
+}
+.arc-board-card:active { background: var(--bg-hover); }
+.arc-board-ico {
+  width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 20px;
+  background: var(--bg);
+}
+.arc-board-name { font-size: 15px; font-weight: 700; color: var(--text-bright); }
+.arc-board-count { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+/* 작성자 필터 바 */
+.arc-filter-bar { display: flex; gap: 8px; padding: 0 12px 8px; }
+.arc-filter-bar select {
+  padding: 7px 10px; border-radius: 6px; background: var(--bg);
+  border: 1px solid var(--border); color: var(--text); font-size: 12px; max-width: 45%;
+}
+
+/* 피드 */
+.arc-feed { padding: 4px 0 100px; }
+.arc-post {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; margin: 8px 12px; padding: 12px 14px;
+}
+.arc-post-clickable { cursor: pointer; }
+.arc-post-clickable:active { background: var(--bg-hover); }
+.arc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.arc-avatar {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700;
+}
+.arc-avatar.sm { width: 26px; height: 26px; font-size: 12px; border-radius: 8px; }
+.arc-author { font-size: 13px; font-weight: 700; color: var(--text-bright); }
+.arc-date { font-size: 11px; color: var(--text-muted); }
+.arc-notice {
+  font-size: 10px; font-weight: 700; color: #fff; background: var(--red);
+  padding: 1px 6px; border-radius: 4px; margin-right: 4px;
+}
+.arc-edited { font-size: 10px; color: var(--text-muted); margin-left: 4px; }
+
+.arc-body {
+  font-size: 14px; line-height: 1.6; color: var(--text); word-break: break-word;
+  white-space: normal;
+}
+.arc-body p { margin: 0 0 6px; }
+.arc-body p:last-child { margin-bottom: 0; }
+.arc-body a { color: var(--accent); text-decoration: underline; }
+.arc-body strong { color: var(--text-bright); }
+.arc-body .kw-mention { color: var(--accent); font-weight: 600; }
+
+/* 첨부 이미지 그리드 — 박스가 aspect-ratio 로 자리 예약(로드 전 흔들림 방지) */
+.arc-imgs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 8px; }
+.arc-imgs.single { grid-template-columns: 1fr; max-width: 340px; }
+.arc-img-box {
+  width: 100%; aspect-ratio: 1 / 1; overflow: hidden; border-radius: 8px;
+  background: var(--bg); border: 1px solid var(--border); cursor: pointer;
+}
+.arc-imgs.single .arc-img-box { aspect-ratio: 4 / 3; max-height: 340px; }
+.arc-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.arc-imgs.single .arc-img { object-fit: contain; }
+.arc-img-missing {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; cursor: default; min-height: 90px;
+}
+.arc-img-missing .arc-img-missing-t { font-size: 11px; color: var(--text-muted); }
+
+/* 파일 카드 */
+.arc-file {
+  display: flex; align-items: center; gap: 8px; margin-top: 6px;
+  padding: 8px 10px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; text-decoration: none;
+}
+.arc-file-ico { font-size: 18px; flex-shrink: 0; }
+.arc-file-name {
+  flex: 1; font-size: 12px; color: var(--text-bright); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.arc-file-size { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+
+/* 현장 연결 */
+.arc-link {
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
+  font-size: 12px; color: var(--accent); background: rgba(74,158,255,0.12);
+  padding: 4px 10px; border-radius: 6px; cursor: pointer;
+}
+
+/* 푸터/댓글 */
+.arc-foot { margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+.arc-comments { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+.arc-comment { display: flex; gap: 8px; padding: 5px 0; }
+.arc-comment-body { flex: 1; min-width: 0; }
+.arc-comment-meta { display: flex; align-items: center; gap: 6px; }
+.arc-comment-text { font-size: 13px; line-height: 1.5; color: var(--text); margin-top: 1px; word-break: break-word; }
+.arc-more-comments { font-size: 12px; color: var(--accent); padding: 4px 0; cursor: pointer; }
+
+.arc-loadmore {
+  display: block; margin: 12px auto 0; padding: 8px 18px; border-radius: 20px;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); font-size: 13px; cursor: pointer;
+}
+
+/* ── 대화방 ── */
+.chat-feed { padding: 8px 12px 90px; }
+.chat-date { text-align: center; margin: 12px 0; }
+.chat-date span {
+  font-size: 11px; color: var(--text-muted); background: var(--surface);
+  padding: 3px 12px; border-radius: 12px;
+}
+.chat-system { text-align: center; font-size: 11px; color: var(--text-muted); margin: 6px 0; }
+.chat-row { display: flex; gap: 8px; margin-top: 8px; align-items: flex-start; }
+.chat-row.grouped { margin-top: 2px; }
+.chat-row .arc-avatar { margin-top: 2px; }
+.chat-col { flex: 1; min-width: 0; }
+.chat-name { font-size: 12px; font-weight: 700; color: var(--text-bright); margin-bottom: 2px; }
+.chat-bubble-wrap { display: flex; align-items: flex-end; gap: 6px; }
+.chat-bubble {
+  display: inline-block; max-width: 100%; padding: 8px 11px; border-radius: 12px;
+  background: var(--surface); font-size: 14px; line-height: 1.5; color: var(--text);
+  word-break: break-word; white-space: normal;
+}
+.chat-bubble a { color: var(--accent); text-decoration: underline; }
+.chat-time { font-size: 10px; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; }
+.chat-msg.reply .chat-bubble { border-left: 3px solid var(--accent); }
+.chat-jumped .chat-bubble { background: rgba(232,212,77,0.22); box-shadow: 0 0 0 2px var(--yellow); }
+.chat-media { margin-top: 4px; }
+.chat-search-result {
+  padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.chat-search-result:active { background: var(--bg-hover); }
+
+/* 라이트박스 */
+.arc-lightbox {
+  position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.92);
+  display: flex; align-items: center; justify-content: center;
+}
+.arc-lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.arc-lb-btn {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.12);
+  color: #fff; font-size: 26px; cursor: pointer;
+}
+.arc-lb-prev { left: 10px; } .arc-lb-next { right: 10px; }
+.arc-lb-close { position: absolute; top: 14px; right: 14px; width: 40px; height: 40px;
+  border-radius: 50%; background: rgba(255,255,255,0.12); color: #fff; font-size: 20px; cursor: pointer; }
+.arc-lb-count { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+  color: #fff; font-size: 13px; background: rgba(0,0,0,0.5); padding: 3px 12px; border-radius: 12px; }

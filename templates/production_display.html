@@ -87,7 +87,7 @@
                     <div style="font-size:.65rem;color:#94a3b8;font-weight:700;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">오늘 부재</div>
                     {% for lv in today_leaves %}
                     <div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
-                        <span style="font-size:.6rem;font-weight:700;color:#fbbf24;background:rgba(251,191,36,.15);padding:1px 5px;border-radius:3px;white-space:nowrap;">{{ lv.leave_type }}</span>
+                        <span style="font-size:.6rem;font-weight:700;color:#fbbf24;background:rgba(251,191,36,.15);padding:1px 5px;border-radius:3px;white-space:nowrap;">{{ lv.disp_type or lv.leave_type }}</span>
                         <span style="font-size:.72rem;color:#e2e8f0;font-weight:600;">{{ lv.name }}</span>
                     </div>
                     {% endfor %}

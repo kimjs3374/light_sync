@@ -195,6 +195,44 @@
           <ul class="small mt-1 mb-0">{% for a in doc.attachments %}<li>📎 {{ a.filename }}</li>{% endfor %}</ul>
           {% endif %}
         </div>
+        {% elif form.form_key == 'overtime' %}
+        {# ── 특근대장 전용: 대상월 + 날짜별 특근내역 다건 ── #}
+        {% set _fd = doc.form_data if doc and doc.form_data else {} %}
+        <div class="col-md-6">
+          <label class="form-label req">대상월</label>
+          <input type="month" name="field_work_month" class="form-control" value="{{ _fd.get('work_month') or '' }}" required>
+        </div>
+        <div class="col-12">
+          <div class="d-flex align-items-center mb-1">
+            <label class="form-label mb-0 req">특근내역</label>
+            <button type="button" class="btn btn-sm btn-outline-primary ms-auto" onclick="otAddRow()">+ 행추가</button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm mb-1 align-middle" style="min-width:760px">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:130px">근무일자</th>
+                  <th style="width:96px">구분</th>
+                  <th style="width:90px">시작</th>
+                  <th style="width:90px">종료</th>
+                  <th style="width:78px">휴게(h)</th>
+                  <th style="width:88px">특근시간</th>
+                  <th>업무내용</th>
+                  <th style="width:38px"></th>
+                </tr>
+              </thead>
+              <tbody id="otBody"></tbody>
+              <tfoot>
+                <tr><th colspan="5" class="text-end">월 합계</th><th class="text-end"><span id="otTotal">0</span> h</th><th colspan="2"></th></tr>
+              </tfoot>
+            </table>
+          </div>
+          <small class="text-muted">시작·종료·휴게를 입력하면 특근시간이 자동 계산됩니다. 직접 수정도 가능합니다.</small>
+        </div>
+        <div class="col-12">
+          <label class="form-label">비고</label>
+          <textarea name="field_reason" class="form-control" rows="2">{{ _fd.get('reason') or '' }}</textarea>
+        </div>
         {% else %}
         {% for fld in form.field_schema %}
         {% set val = (doc.form_data.get(fld.key) if doc and doc.form_data else '') %}
@@ -502,6 +540,90 @@
       if (el) el.textContent = t.toLocaleString();
     }
     exRender();
+    {% endif %}
+
+    {% if form.form_key == 'overtime' %}
+    // ── 특근대장 내역 행 ──
+    let OT_ROWS = {{ (doc.form_data.get('entries') if doc and doc.form_data and doc.form_data.get('entries') else [])|tojson }};
+    const OT_TYPES = ['연장', '야간', '휴일'];
+    function otEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+    function otHours(start, end, brk) {
+      if (!start || !end) return '';
+      const [sh, sm] = start.split(':').map(Number);
+      const [eh, em] = end.split(':').map(Number);
+      if ([sh, sm, eh, em].some(isNaN)) return '';
+      let mins = (eh * 60 + em) - (sh * 60 + sm);
+      if (mins < 0) mins += 24 * 60;  // 자정 넘김
+      let h = mins / 60 - (parseFloat(brk) || 0);
+      if (h < 0) h = 0;
+      return (Math.round(h * 100) / 100).toString();
+    }
+    function otRowHtml(r) {
+      r = r || {};
+      let opts = '<option value="">-</option>';
+      OT_TYPES.forEach(t => { opts += '<option value="' + t + '"' + (r.ot_type === t ? ' selected' : '') + '>' + t + '</option>'; });
+      return '<td><input type="date" class="form-control form-control-sm" name="li_work_date" value="' + otEsc(r.work_date) + '"></td>' +
+        '<td><select class="form-select form-select-sm" name="li_ot_type">' + opts + '</select></td>' +
+        '<td><input type="time" class="form-control form-control-sm" name="li_start_time" value="' + otEsc(r.start_time) + '" onchange="otCalc(this)"></td>' +
+        '<td><input type="time" class="form-control form-control-sm" name="li_end_time" value="' + otEsc(r.end_time) + '" onchange="otCalc(this)"></td>' +
+        '<td><input type="number" step="0.5" min="0" class="form-control form-control-sm text-end" name="li_break_hours" value="' + otEsc(r.break_hours) + '" oninput="otCalc(this)"></td>' +
+        '<td><input type="number" step="0.5" min="0" class="form-control form-control-sm text-end" name="li_hours" value="' + otEsc(r.hours) + '" oninput="otTotalCalc()"></td>' +
+        '<td><input class="form-control form-control-sm" name="li_work_content" value="' + otEsc(r.work_content) + '"></td>' +
+        '<td class="text-center"><button type="button" class="btn btn-sm btn-light text-danger" onclick="otDel(this)">✕</button></td>';
+    }
+    function otRender() {
+      const body = document.getElementById('otBody');
+      if (!body) return;
+      body.innerHTML = '';
+      (OT_ROWS.length ? OT_ROWS : [{}]).forEach(function (r) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = otRowHtml(r);
+        body.appendChild(tr);
+      });
+      otTotalCalc();
+    }
+    function otCalc(el) {
+      const tr = el.closest('tr');
+      const st = tr.querySelector('[name="li_start_time"]').value;
+      const et = tr.querySelector('[name="li_end_time"]').value;
+      const bk = tr.querySelector('[name="li_break_hours"]').value;
+      const h = otHours(st, et, bk);
+      if (h !== '') tr.querySelector('[name="li_hours"]').value = h;
+      otTotalCalc();
+    }
+    function otSync() {
+      const rows = document.querySelectorAll('#otBody tr');
+      OT_ROWS = [];
+      rows.forEach(function (tr) {
+        OT_ROWS.push({
+          work_date: tr.querySelector('[name="li_work_date"]').value,
+          ot_type: tr.querySelector('[name="li_ot_type"]').value,
+          start_time: tr.querySelector('[name="li_start_time"]').value,
+          end_time: tr.querySelector('[name="li_end_time"]').value,
+          break_hours: tr.querySelector('[name="li_break_hours"]').value,
+          hours: tr.querySelector('[name="li_hours"]').value,
+          work_content: tr.querySelector('[name="li_work_content"]').value,
+        });
+      });
+    }
+    function otAddRow() { otSync(); OT_ROWS.push({}); otRender(); }
+    function otDel(btn) {
+      otSync();
+      const tr = btn.closest('tr');
+      const idx = [...tr.parentNode.children].indexOf(tr);
+      OT_ROWS.splice(idx, 1);
+      if (!OT_ROWS.length) OT_ROWS.push({});
+      otRender();
+    }
+    function otTotalCalc() {
+      let t = 0;
+      document.querySelectorAll('#otBody input[name="li_hours"]').forEach(a => {
+        t += parseFloat(a.value) || 0;
+      });
+      const el = document.getElementById('otTotal');
+      if (el) el.textContent = (Math.round(t * 100) / 100).toLocaleString();
+    }
+    otRender();
     {% endif %}
 
     renderLine(); renderRefs();

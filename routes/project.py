@@ -6,7 +6,9 @@ import shutil
 from pathlib import Path
 from collections import defaultdict
 from sqlalchemy.orm import joinedload
+from sqlalchemy import text
 from modules.db_context import get_db
+from modules.kakao_archive import fmt_dt_short
 from modules.contract_filters import active_contract_filter
 from modules.utils import safe_int, parse_date
 from modules.pagination import make_pagination
@@ -592,6 +594,27 @@ def handle_detail_common(project_id, template_name):
             IlluminanceProject.erp_project_id == p.id
         ).order_by(IlluminanceProject.created_at.desc()).all()
 
+        # 현장 이력 — 이 계약(들)에 연결된 워크보드(현장관리) 아카이브 글
+        site_archive = []
+        contract_ids = [c.id for c in p.contracts] if p.contracts else []
+        if contract_ids:
+            rows = db.execute(text("""
+                SELECT ap.id, ap.author, ap.content_text, ap.created_at, ap.children_count
+                FROM light_sync.archive_posts ap
+                WHERE ap.board_type = 'site' AND ap.contract_id = ANY(:cids)
+                ORDER BY ap.created_at DESC
+                LIMIT 30
+            """), {'cids': contract_ids}).fetchall()
+            for r in rows:
+                snippet = ' '.join((r.content_text or '').split())
+                site_archive.append({
+                    'id': r.id,
+                    'author': r.author or '',
+                    'snippet': snippet[:60],
+                    'date': fmt_dt_short(r.created_at),
+                    'comments': r.children_count or 0,
+                })
+
         return render_template(
             template_name,
             project=p,
@@ -606,6 +629,7 @@ def handle_detail_common(project_id, template_name):
             can_write_drawings=(session.get('role') == 'admin' or session.get('user_group') == '영업부'),
             illuminance_fixtures=illuminance_fixtures,
             linked_illuminance_projects=linked_illuminance_projects,
+            site_archive=site_archive,
         )
 
 # -------------------------------------------------------------------

@@ -54,12 +54,15 @@ def holiday_list(years):
 
 
 def holiday_map(years):
-    """{'YYYY-MM-DD': 이름}"""
+    """{'YYYY-MM-DD': 한글 공휴일명}"""
     try:
         import holidays as _hol
         out = {}
         for y in years:
-            h = _hol.SouthKorea(years=y)
+            try:
+                h = _hol.SouthKorea(years=y, language='ko')  # 한글명
+            except TypeError:
+                h = _hol.SouthKorea(years=y)                 # 구버전 폴백(영문)
             for d in h:
                 out[d.isoformat()] = h.get(d) or ''
         return out

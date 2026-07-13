@@ -1593,3 +1593,39 @@ CREATE INDEX IF NOT EXISTS ix_leave_promo_status ON light_sync.leave_promotions(
 
 -- 전자결재 단계별 알림 메시지 참조(MM post/카카오 conversation) — 처리 시 양쪽 갱신용 (2026-06-30)
 ALTER TABLE light_sync.approval_steps ADD COLUMN IF NOT EXISTS notify_refs JSONB;
+
+-- ============================================================
+-- 매출 세금계산서 엑셀 중복 정리 (2026-06-30)
+-- 원인: tax_invoice_import(엑셀)는 승인번호 원본(하이픈 포함), hometax_collector(국세청)는
+--       숫자만 저장 → 동일 인보이스 이중 등록(매출 2,396건 허수, 2025 매출 13.4억→실제 7.19억).
+-- 정책: 국세청(숫자) 행 정본 보존, 엑셀(하이픈) 중복행 삭제. 매입은 무중복(수집기 단일경로).
+-- 코드 동반수정: tax_invoice_import.py 승인번호 re.sub(r'[^0-9]','') 정규화(재발 방지).
+-- 백업: light_sync.tax_invoices_excel_dup_bak_20260630 (삭제분 2,396행 보관).
+-- 실제 실행은 트랜잭션 스크립트(merge→delete→검증)로 수행함. 아래는 동등 SQL 기록.
+
+CREATE TABLE light_sync.tax_invoices_excel_dup_bak_20260630 AS
+SELECT * FROM light_sync.tax_invoices t
+WHERE t.direction='매출' AND t.approval_no LIKE '%-%'
+  AND EXISTS (SELECT 1 FROM light_sync.tax_invoices d
+              WHERE d.direction='매출' AND d.approval_no NOT LIKE '%-%'
+                AND d.approval_no = regexp_replace(t.approval_no,'[^0-9]','','g'));
+
+UPDATE light_sync.tax_invoices d SET
+  contract_id=COALESCE(d.contract_id,h.contract_id),
+  project_id=COALESCE(d.project_id,h.project_id),
+  g2b_contract_no=COALESCE(d.g2b_contract_no,h.g2b_contract_no),
+  g2b_contract_name=COALESCE(d.g2b_contract_name,h.g2b_contract_name),
+  g2b_delivery_req_no=COALESCE(d.g2b_delivery_req_no,h.g2b_delivery_req_no),
+  g2b_delivery_no=COALESCE(d.g2b_delivery_no,h.g2b_delivery_no),
+  match_status=CASE WHEN d.match_status='미매칭' AND h.match_status<>'미매칭' THEN h.match_status ELSE d.match_status END
+FROM light_sync.tax_invoices h
+WHERE d.direction='매출' AND d.approval_no NOT LIKE '%-%'
+  AND h.direction='매출' AND h.approval_no LIKE '%-%' AND h.approval_no<>d.approval_no
+  AND regexp_replace(h.approval_no,'[^0-9]','','g')=d.approval_no;
+
+DELETE FROM light_sync.tax_invoices t
+WHERE t.direction='매출' AND t.approval_no LIKE '%-%'
+  AND EXISTS (SELECT 1 FROM light_sync.tax_invoices d
+              WHERE d.direction='매출' AND d.approval_no NOT LIKE '%-%'
+                AND d.approval_no = regexp_replace(t.approval_no,'[^0-9]','','g'));
+-- 결과: 매출 5,062 → 2,666행 (정규화 distinct 일치, 잔여 하이픈 0).

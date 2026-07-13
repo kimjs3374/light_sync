@@ -25,9 +25,13 @@ def load_kakaowork_config() -> Dict[str, str]:
     api_base_url = os.environ.get("KAKAOWORK_API_BASE_URL", "https://api.kakaowork.com")
     post_path_template = os.environ.get("KAKAOWORK_WORKBOARD_POST_PATH", "/v1/workboards/{workboard_id}/posts")
     notify_conv_id = os.environ.get("KAKAOWORK_NOTIFY_CONV_ID", "")
+    # 그룹 단체방 알림은 'ERP 알림 봇'(단체방 멤버)으로 발송.
+    # DM 버튼은 KAKAOWORK_BOT_TOKEN('전자결재 알림' 봇)을 그대로 사용.
+    notify_token = os.environ.get("KAKAOWORK_NOTIFY_BOT_TOKEN", "") or token
 
     return {
         "token": token,
+        "notify_token": notify_token,
         "workboard_id": workboard_id,
         "api_base_url": api_base_url.rstrip("/"),
         "post_path_template": post_path_template,
@@ -42,11 +46,11 @@ def send_group_notification(text: str) -> bool:
         return False
 
     cfg = load_kakaowork_config()
-    token = cfg["token"]
+    token = cfg["notify_token"]   # 단체방 알림 = ERP 알림 봇 토큰
     conv_id = cfg["notify_conv_id"]
 
     if not token or not conv_id:
-        logger.debug("카카오워크 알림 스킵: KAKAOWORK_BOT_TOKEN 또는 KAKAOWORK_NOTIFY_CONV_ID 미설정")
+        logger.debug("카카오워크 알림 스킵: KAKAOWORK_NOTIFY_BOT_TOKEN 또는 KAKAOWORK_NOTIFY_CONV_ID 미설정")
         return False
 
     try:

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d4ed8">
+<title>내 연차사용촉진</title>
+<style>
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+         background:#f1f5f9; color:#1e293b; -webkit-text-size-adjust:100%; }
+  .lpm-top { position:sticky; top:0; z-index:10; background:#1d4ed8; color:#fff; padding:14px 16px; box-shadow:0 1px 6px rgba(0,0,0,.12); }
+  .lpm-top h1 { margin:0; font-size:1.05rem; font-weight:800; }
+  .lpm-top .sub { margin-top:3px; font-size:.78rem; opacity:.9; line-height:1.4; }
+  .lpm-wrap { padding:12px 12px 40px; max-width:520px; margin:0 auto; }
+  .lpm-card { background:#fff; border-radius:14px; padding:14px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  .lpm-cardhead { font-size:.98rem; font-weight:800; color:#1e293b; display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px; }
+  .lpm-badge { font-size:.7rem; font-weight:800; padding:3px 9px; border-radius:7px; }
+  .lpm-meta { font-size:.8rem; color:#64748b; line-height:1.6; margin-bottom:8px; }
+  .lpm-meta b { color:#334155; }
+  .lpm-flash { border-radius:10px; padding:11px 13px; margin-bottom:12px; font-size:.86rem; font-weight:600; }
+  .lpm-flash.success { background:#ecfdf5; color:#047857; }
+  .lpm-flash.warning { background:#fffbeb; color:#b45309; }
+  .lpm-flash.danger  { background:#fef2f2; color:#dc2626; }
+  .lpm-empty { background:#fff; border-radius:14px; padding:30px 16px; text-align:center; color:#94a3b8; font-size:.9rem; }
+  .lpm-hint { font-size:.82rem; color:#475569; margin:4px 2px 10px; }
+  .lpm-hint b { color:#1d4ed8; }
+
+  /* 달력 — 서버 렌더 그리드 + 네이티브 체크박스 선택 (JS 불요) */
+  .lpm-cal { width:100%; }
+  .lpm-month { margin-bottom:16px; }
+  .lpm-month:last-child { margin-bottom:4px; }
+  .lpm-title { text-align:center; font-size:1rem; font-weight:800; color:#1e293b; margin-bottom:8px; }
+  .lpm-week, .lpm-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:3px; width:100%; }
+  .lpm-week { margin-bottom:4px; }
+  .lpm-week span { text-align:center; font-size:.72rem; font-weight:700; color:#94a3b8; padding:2px 0; }
+  .lpm-week span.sun { color:#dc2626; } .lpm-week span.sat { color:#2563eb; }
+  /* 순환 선택: 라디오 3개 + CSS만 (JS 불요). 1탭 연차 → 2탭 반차 → 3탭 해제 */
+  .st { display:none; }
+  .lpm-day { position:relative; height:48px; min-width:0; border-radius:9px; overflow:hidden;
+             -webkit-tap-highlight-color:rgba(37,99,235,.2); }
+  /* off/empty 칸은 직접 표시 */
+  .lpm-day.off, .lpm-day.empty { display:flex; flex-direction:column; align-items:center; justify-content:center;
+             font-size:.95rem; font-weight:600; }
+  .lpm-day.empty { background:transparent; }
+  .lpm-day.off { color:#cbd5e1; background:#f8fafc; cursor:not-allowed; }
+  .lpm-day.off.sun { color:#f87171; }   /* 일요일·공휴일 빨강 */
+  .lpm-day.off.sat { color:#60a5fa; }   /* 토요일 파랑 */
+  .lpm-day.off .hn { font-size:.5rem; font-weight:600; line-height:1.05; max-width:100%; margin-top:1px;
+                 white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 1px; }
+  /* 선택 칸: face가 배경·숫자, lbl이 탭 영역 */
+  .face { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+          background:#f8fafc; color:#334155; font-size:.95rem; font-weight:600; z-index:1; }
+  .face .tg { font-size:.55rem; font-weight:800; line-height:1; margin-top:1px; }
+  .lbl { position:absolute; inset:0; z-index:0; pointer-events:none; cursor:pointer; }
+  /* 현재 상태별 '다음 상태' 라벨만 탭 가능하게 */
+  .r-n:checked ~ .ly { z-index:4; pointer-events:auto; }   /* 해제 → 연차 */
+  .r-y:checked ~ .lb { z-index:4; pointer-events:auto; }   /* 연차 → 반차 */
+  .r-b:checked ~ .ln { z-index:4; pointer-events:auto; }   /* 반차 → 해제 */
+  /* 상태 색/라벨 */
+  .r-y:checked ~ .face { background:#2563eb; color:#fff; font-weight:800; }
+  .r-b:checked ~ .face { background:#10b981; color:#fff; font-weight:800; }
+  .r-y:checked ~ .face .tg::after { content:'연차'; }
+  .r-b:checked ~ .face .tg::after { content:'반차'; }
+  /* 전자결재로 이미 승인된 연차 — 자동표시·수정불가(잠금) */
+  .lpm-day.appr { display:flex; flex-direction:column; align-items:center; justify-content:center;
+                  background:#fffbeb; color:#b45309; border:1px dashed #f59e0b; font-size:.95rem; font-weight:700; cursor:not-allowed; }
+  .lpm-day.appr .tg { font-size:.55rem; font-weight:800; line-height:1; margin-top:1px; }
+  /* CSS 콜백 저장 — :checked 상태가 바뀌면 서버로 신호(background-image=GET). 폼·JS 불요, 무새로고침 */
+  .lpm-day .sv { position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; pointer-events:none; background-repeat:no-repeat; }
+  .r-y:checked ~ .sv { background-image: var(--uy); }
+  .r-b:checked ~ .sv { background-image: var(--ub); }
+  .r-n:checked ~ .sv { background-image: var(--un); }
+
+  /* 선택 셀 — 링크(<a>) 방식. 폼 제출 못하는 웹뷰 대응(탭=GET 저장). 순수 HTML */
+  .lpm-day.sel { display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:#f1f5f9; color:#334155; font-size:.95rem; font-weight:600; text-decoration:none;
+    -webkit-tap-highlight-color:rgba(37,99,235,.25); }
+  .lpm-day.sel .tg { font-size:.55rem; font-weight:800; line-height:1; margin-top:1px; }
+  .lpm-day.sel.sy { background:#2563eb; color:#fff; font-weight:800; }
+  .lpm-day.sel.sb { background:#10b981; color:#fff; font-weight:800; }
+  .lpm-day.sel:active { filter:brightness(.92); }
+  .lpm-saveinfo { margin-top:16px; margin-bottom:calc(6px + env(safe-area-inset-bottom));
+    padding:13px 14px; background:#ecfdf5; color:#047857; border-radius:11px; font-size:.85rem; font-weight:600; text-align:center; }
+  .lpm-status { margin:2px 0 10px; padding:10px 12px; background:#eff6ff; color:#1e40af; border-radius:10px; font-size:.9rem; font-weight:700; text-align:center; }
+  .lpm-status b { color:#1d4ed8; }
+  /* 월 이동 네비 — 링크(GET) */
+  .lpm-monthnav { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:8px; }
+  .lpm-monthnav .lpm-title { margin-bottom:0; flex:1; }
+  .mnav { flex:0 0 auto; min-width:72px; text-align:center; padding:9px 10px; background:#1d4ed8; color:#fff;
+    border-radius:9px; font-size:.82rem; font-weight:800; text-decoration:none; -webkit-tap-highlight-color:rgba(0,0,0,.2); }
+  .mnav.off { background:transparent; }
+  .mnav:active { background:#1e40af; }
+  .lpm-foot { text-align:center; margin-top:8px; }
+  .lpm-foot a { color:#64748b; font-size:.82rem; text-decoration:none; }
+</style>
+</head>
+<body>
+  <div class="lpm-top">
+    <h1>내 연차사용촉진</h1>
+    <div class="sub">사용할 날짜를 누르면 그 자리에서 바로 저장됩니다. <b style="background:#fff;color:#1d4ed8;padding:1px 6px;border-radius:5px">빌드 R8</b></div>
+  </div>
+
+  <div class="lpm-wrap">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+      <div class="lpm-flash {{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% macro fmt_dates(items) %}
+      {%- for d in items -%}
+        {%- if d is mapping -%}{{ d.date }}({{ d.type }}){%- else -%}{{ d }}{%- endif -%}
+        {%- if not loop.last %}, {% endif -%}
+      {%- endfor -%}
+    {% endmacro %}
+
+    {% if not promos %}
+    <div class="lpm-empty">현재 연차사용촉진 통보 내역이 없습니다.</div>
+    {% else %}
+    {% for p in promos %}
+    <div class="lpm-card">
+      <div class="lpm-cardhead">
+        {{ p.leave_year }}년도 — {{ stage_label.get(p.stage, p.stage) }}
+        {% if p.status == 'sent' %}<span class="lpm-badge" style="background:#fffbeb;color:#b45309">지정 필요</span>
+        {% elif p.status == 'designated' %}<span class="lpm-badge" style="background:#eff6ff;color:#2563eb">지정 완료</span>
+        {% elif p.status == 'admin_designated' %}<span class="lpm-badge" style="background:#fef2f2;color:#dc2626">회사 지정</span>
+        {% endif %}
+      </div>
+      <div class="lpm-meta">
+        연차연도 {{ p.year_start.strftime('%Y-%m-%d') if p.year_start else '-' }} ~ {{ p.year_end.strftime('%Y-%m-%d') if p.year_end else '-' }}<br>
+        미사용 잔여 <b>{{ p.remaining_live if p.remaining_live is defined and p.remaining_live is not none else (p.remaining_days if p.remaining_days is not none else '-') }}</b>일
+        {% if p.designate_due %} · 지정기한 <b>{{ p.designate_due.strftime('%Y-%m-%d') }}</b>{% endif %}
+      </div>
+
+      {% if p.status == 'admin_designated' %}
+        <div class="lpm-meta">회사 지정 사용일: <b>{{ fmt_dates(p.admin_dates or []) }}</b><br>
+          <span style="color:#94a3b8">회사 지정분은 수정할 수 없습니다.</span></div>
+      {% else %}
+        {% if p.status == 'designated' %}
+        <div class="lpm-meta">현재 지정: <b>{{ fmt_dates(p.employee_dates or []) }}</b> — 아래에서 다시 선택해 수정할 수 있습니다.</div>
+        {% endif %}
+        <div class="lpm-hint">날짜를 누르면 <b style="color:#2563eb">연차</b> → <b style="color:#10b981">반차</b> → 해제 순으로 바뀌며 <b>누르는 즉시 저장</b>됩니다.
+          {% if p.approved_entries %}<br><span style="color:#b45309">■ 주황 날짜는 <b>전자결재로 승인된 연차</b>(잔여 반영됨)로 지정 불필요.</span>{% endif %}</div>
+        {% set cur_days = (p.employee_dates or []) | map(attribute='days') | sum if p.employee_dates else 0 %}
+        <div class="lpm-status">지금까지 <b>{{ '%g'|format(cur_days) }}</b>일 지정됨 · 잔여 <b>{{ p.remaining_live if p.remaining_live is defined and p.remaining_live is not none else (p.remaining_days if p.remaining_days is not none else 0) }}</b>일</div>
+        <div class="lpm-cal">
+          {% for mon in calendars.get(p.id, []) %}
+          <div class="lpm-month">
+            <div class="lpm-title">{{ mon.title }}</div>
+            <div class="lpm-week"><span class="sun">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span class="sat">토</span></div>
+            <div class="lpm-grid">
+              {%- for week in mon.weeks %}{% for c in week %}
+              {%- if c is none %}<div class="lpm-day empty"></div>
+              {%- elif c.off %}<div class="lpm-day off{% if c.dow == 0 or c.hol %} sun{% elif c.dow == 6 %} sat{% endif %}"{% if c.hol %} title="{{ c.hol }}"{% endif %}><span>{{ c.day }}</span>{% if c.hol %}<span class="hn">{{ c.hol }}</span>{% endif %}</div>
+              {%- elif c.appr %}<div class="lpm-day appr" title="전자결재 승인 연차"><span class="n">{{ c.day }}</span><span class="tg">{{ c.appr }}</span></div>
+              {%- else %}<div class="lpm-day" id="d-{{ c.date }}" style="--uy:url('{{ url_for('hr.hr_my_promotion_set', promo_id=p.id, date=c.date, t='y') }}');--ub:url('{{ url_for('hr.hr_my_promotion_set', promo_id=p.id, date=c.date, t='b') }}');--un:{% if c.sel %}url('{{ url_for('hr.hr_my_promotion_set', promo_id=p.id, date=c.date, t='n') }}'){% else %}none{% endif %}"><input class="st r-n" type="radio" name="st_{{ c.date }}" id="n{{ p.id }}_{{ c.date }}"{% if not c.sel %} checked{% endif %}><input class="st r-y" type="radio" name="st_{{ c.date }}" id="y{{ p.id }}_{{ c.date }}"{% if c.sel == '연차' %} checked{% endif %}><input class="st r-b" type="radio" name="st_{{ c.date }}" id="b{{ p.id }}_{{ c.date }}"{% if c.sel == '반차' %} checked{% endif %}><span class="face"><span class="n">{{ c.day }}</span><span class="tg"></span></span><label class="lbl ly" for="y{{ p.id }}_{{ c.date }}"></label><label class="lbl lb" for="b{{ p.id }}_{{ c.date }}"></label><label class="lbl ln" for="n{{ p.id }}_{{ c.date }}"></label><i class="sv"></i></div>
+              {%- endif %}{% endfor %}{% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="lpm-saveinfo">✓ 날짜를 누르면 <b>그 즉시 저장</b>됩니다. 제출 버튼 없이, 다 고르면 그냥 나가시면 됩니다.</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <div class="lpm-foot">
+      <a href="{{ url_for('hr.hr_my_promotion', pc=1) }}">PC 화면으로 보기</a>
+    </div>
+  </div>
+
+</body>
+</html>

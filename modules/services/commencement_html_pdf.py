@@ -90,6 +90,11 @@ def generate_commencement_html_pdf(package, procurements, agent_user=None,
     """
     import pypdf
 
+    # 변경계약으로 빠진 품목(수량 0 + 금액 0)은 서류에서 제외
+    _active = [p for p in procurements if (p.prdct_qty or 0) or (p.prdct_amt or 0)]
+    if _active:
+        procurements = _active
+
     # ── 공통 데이터 추출 ──
     business_name = package.business_name or ''
     demand_org = package.demand_org or ''

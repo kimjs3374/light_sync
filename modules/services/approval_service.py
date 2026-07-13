@@ -125,6 +125,83 @@ DEFAULT_FORMS = [
             {'key': 'purpose', 'label': '출장목적', 'type': 'textarea', 'required': True},
         ],
     },
+    {
+        'form_key': 'trip_report',
+        'name': '출장보고서',
+        'icon': '📋',
+        'description': '출장 완료 후 결과 보고',
+        'has_amount': False,
+        'sort_order': 41,
+        'default_line': ['drafter', 'dept_head', 'executive'],
+        'field_schema': [
+            {'key': 'destination', 'label': '출장지', 'type': 'text', 'required': True},
+            {'key': 'start_date', 'label': '출발일', 'type': 'date', 'required': True},
+            {'key': 'end_date', 'label': '복귀일', 'type': 'date', 'required': True},
+            {'key': 'companions', 'label': '동행자', 'type': 'text', 'required': False},
+            {'key': 'purpose', 'label': '출장목적', 'type': 'textarea', 'required': True},
+            {'key': 'result', 'label': '출장결과/보고내용', 'type': 'textarea', 'required': True},
+        ],
+    },
+    {
+        'form_key': 'overtime_req',
+        'name': '특근신청서',
+        'icon': '⏰',
+        'description': '야근/휴일 등 특근(연장근로) 사전 신청 (1일 단위)',
+        'has_amount': False,
+        'sort_order': 46,
+        'default_line': ['drafter', 'dept_head', 'executive'],
+        'field_schema': [
+            {'key': 'work_date', 'label': '특근일자', 'type': 'date', 'required': True},
+            {'key': 'ot_type', 'label': '구분', 'type': 'select', 'required': True,
+             'options': ['연장', '야간', '휴일']},
+            {'key': 'start_time', 'label': '시작시각', 'type': 'time', 'required': True},
+            {'key': 'end_time', 'label': '종료시각', 'type': 'time', 'required': True},
+            {'key': 'est_hours', 'label': '예상 특근시간', 'type': 'number', 'required': False, 'suffix': 'h'},
+            {'key': 'work_content', 'label': '업무내용', 'type': 'textarea', 'required': True},
+        ],
+    },
+    {
+        'form_key': 'overtime_report',
+        'name': '특근보고서',
+        'icon': '📝',
+        'description': '특근(연장근로) 수행 후 결과 보고 (1일 단위)',
+        'has_amount': False,
+        'sort_order': 47,
+        'default_line': ['drafter', 'dept_head', 'executive'],
+        'field_schema': [
+            {'key': 'work_date', 'label': '특근일자', 'type': 'date', 'required': True},
+            {'key': 'ot_type', 'label': '구분', 'type': 'select', 'required': True,
+             'options': ['연장', '야간', '휴일']},
+            {'key': 'start_time', 'label': '시작시각', 'type': 'time', 'required': True},
+            {'key': 'end_time', 'label': '종료시각', 'type': 'time', 'required': True},
+            {'key': 'break_hours', 'label': '휴게시간', 'type': 'number', 'required': False, 'suffix': 'h'},
+            {'key': 'work_hours', 'label': '특근시간', 'type': 'number', 'required': True, 'suffix': 'h'},
+            {'key': 'result', 'label': '수행업무/결과', 'type': 'textarea', 'required': True},
+        ],
+    },
+    {
+        'form_key': 'overtime',
+        'name': '특근대장',
+        'icon': '🌙',
+        'description': '야근/휴일 등 특근(연장근로) 근무대장 — 월별 일괄 상신',
+        'has_amount': False,
+        'sort_order': 50,
+        'default_line': ['drafter', 'dept_head', 'executive'],
+        'field_schema': [
+            {'key': 'work_month', 'label': '대상월', 'type': 'month', 'required': True},
+            {'key': 'entries', 'label': '특근내역', 'type': 'lineitems', 'required': True,
+             'columns': [
+                 {'key': 'work_date', 'label': '근무일자'},
+                 {'key': 'ot_type', 'label': '구분'},
+                 {'key': 'start_time', 'label': '시작'},
+                 {'key': 'end_time', 'label': '종료'},
+                 {'key': 'break_hours', 'label': '휴게(h)'},
+                 {'key': 'hours', 'label': '특근시간(h)'},
+                 {'key': 'work_content', 'label': '업무내용'},
+             ]},
+            {'key': 'reason', 'label': '비고', 'type': 'textarea', 'required': False},
+        ],
+    },
 ]
 
 
@@ -184,6 +261,23 @@ def _approved_leave_docs(db):
             .all())
 
 
+def _leave_disp_type(fd):
+    """표시용 휴가유형. 반차는 오전/오후 구분(period 우선), 그 외는 leave_type.
+
+    우선순위: period(오전반차/오후반차/반차) → leave_type(연차/공가/병가/경조사...).
+    """
+    period = fd.get('period') or ''
+    ltype = (fd.get('leave_type') or '').strip()
+    for hay in (period, ltype):
+        if '오전반차' in hay:
+            return '오전반차'
+        if '오후반차' in hay:
+            return '오후반차'
+        if '반차' in hay:
+            return '반차'
+    return ltype or '휴가'
+
+
 def _leave_event(doc):
     """휴가 문서 → 부재 이벤트 dict (iCal 이벤트와 동일 형태, end는 exclusive)."""
     fd = doc.form_data or {}
@@ -194,8 +288,11 @@ def _leave_event(doc):
         return None
     return {
         'leave_type': fd.get('leave_type') or '휴가',
+        'disp_type': _leave_disp_type(fd),   # 연차/오전반차/오후반차/공가/병가 등
+        'period': fd.get('period') or '',
         'name': doc.drafter_name,
         'dept': doc.drafter_dept or '',
+        'position': doc.drafter_position or '',
         'start': start,
         'end': end + datetime.timedelta(days=1),  # exclusive
         'source': 'approval',
@@ -302,11 +399,15 @@ def resolve_default_line(db, drafter, line_tokens=None):
     return steps
 
 
-# 양식별 기본 참조자 (이름 기준 — 동명이인 없음 확인됨)
-# 휴가신청서·지출결의서 → 관리부 서은미 과장
+# 양식별 기본 수신자 (이름 기준 — 동명이인 없음 확인됨)
+# 휴가신청서·지출결의서 → 관리부 서은미 과장 (수신자로 지정, 부서장 결재 시 카카오 알림)
 DEFAULT_REF_NAMES = {
     'leave': ['서은미'],
     'expense': ['서은미'],
+    'overtime': ['서은미'],
+    'overtime_req': ['서은미'],
+    'overtime_report': ['서은미'],
+    'trip_report': ['서은미'],
 }
 
 
@@ -399,6 +500,63 @@ def _self_approve(db, doc):
     return doc
 
 
+def submit_leave_from_payload(db, payload, clicker_user):
+    """휴가 preview payload(PendingWriteSession) → 실제 휴가신청서 상신.
+
+    routes/mattermost_action._write_leave_request 와 동일 경로를 함수로 추출한 것.
+    카카오워크 봇(MCP confirm_leave_request)과 Mattermost 버튼이 공용으로 호출한다.
+
+    - clicker_user: 확정을 실행한 본인(신원). payload.drafter_id 와 대조해 남의 명의 상신 차단.
+    - 반환: {"ok": bool, "msg"/"doc_no"/"detail"}.
+    """
+    from modules.models.approval_entities import ApprovalReference
+
+    drafter = db.query(User).get(payload["drafter_id"])
+    if not drafter:
+        return {"ok": False, "msg": "기안자를 찾을 수 없습니다."}
+    if not clicker_user or clicker_user.id != drafter.id:
+        return {"ok": False, "msg": "본인 명의의 휴가만 상신할 수 있습니다."}
+
+    form = (db.query(ApprovalFormTemplate)
+            .filter(ApprovalFormTemplate.form_key == 'leave').first())
+    if not form:
+        return {"ok": False, "msg": "휴가신청서 양식을 찾을 수 없습니다."}
+
+    doc = ApprovalDocument(
+        form_key='leave', form_name=form.name,
+        drafter_id=drafter.id, drafter_name=drafter.full_name,
+        drafter_dept=drafter.user_group, drafter_position=drafter.position,
+        status='draft',
+        title=payload["title"],
+        form_data=payload["form_data"],
+        content=payload.get("content") or '',
+    )
+    db.add(doc)
+    db.flush()
+
+    for order, s in enumerate(resolve_default_line(db=db, drafter=drafter), start=1):
+        doc.steps.append(ApprovalStep(step_order=order, **s))
+    for u in resolve_default_refs(db, 'leave'):
+        doc.references.append(ApprovalReference(
+            user_id=u.id, user_name=u.full_name, ref_type='receiver'))
+    db.flush()
+
+    try:
+        submit_document(db, doc)
+    except ValueError as e:
+        return {"ok": False, "msg": str(e)}
+
+    fd = payload["form_data"]
+    period = fd.get('period') or '종일'
+    span = (fd['start_date'] if fd['start_date'] == fd['end_date']
+            else f"{fd['start_date']} ~ {fd['end_date']}")
+    return {"ok": True, "doc_no": doc.doc_no,
+            "label": f"휴가 상신됨 ({doc.doc_no})",
+            "detail": f"- 종류: {fd.get('leave_type')} ({period})\n"
+                      f"- 기간: {span}\n"
+                      f"- 사용일수: {fd.get('days')}일"}
+
+
 def _form_effect_on_dept_head(db, form_key):
     """양식이 '부서장 결재 시 효력 발생'으로 설정되었는지."""
     t = (db.query(ApprovalFormTemplate)
@@ -431,6 +589,11 @@ def approve_step(db, doc, step, comment=None):
         doc.effected_at = datetime.datetime.now()
         if next_step:  # 임원 결재가 남은 경우에만 별도 '효력발생' 알림
             _notify_effect_active(db, doc, step)
+
+    # 부서장(첫 결재단계) 승인 → 수신자에게 카카오워크 알림
+    if step.step_order == first_order and any(
+            r.ref_type == 'receiver' for r in doc.references):
+        _notify_receivers_dept_approved(db, doc, step, final=(next_step is None))
 
     if next_step:
         next_step.status = 'current'
@@ -817,3 +980,29 @@ def _notify_completed(db, doc, approved, rejecter=None):
         kakao_txt = f"⛔ 결재반려 — {doc.form_name}\n{doc.title} — {who}님이 반려했습니다.\n{link}"
     _send_mm_dm(db, doc.drafter_id, msg)
     _send_kakao_text_to_user(db, doc.drafter_id, kakao_txt)
+
+
+def _notify_receivers_dept_approved(db, doc, step, final=False):
+    """부서장(첫 결재단계) 승인 → 수신자(receiver)에게 카카오워크 알림.
+
+    수신 담당자가 문서를 확인하도록 부서장 결재가 끝난 시점에 카카오워크 DM 발송.
+    참조(reference)자와 기안자는 대상에서 제외.
+    """
+    seen = set()
+    refs = []
+    for r in doc.references:
+        if r.ref_type != 'receiver':
+            continue
+        if not r.user_id or r.user_id == doc.drafter_id or r.user_id in seen:
+            continue
+        seen.add(r.user_id)
+        refs.append(r)
+    if not refs:
+        return
+    link = _doc_link(doc)
+    tail = "최종 승인되었습니다" if final else "부서장 결재가 완료되었습니다 (임원 결재 진행 중)"
+    for r in refs:
+        _send_kakao_text_to_user(
+            db, r.user_id,
+            f"📥 수신 도착 — {doc.form_name}\n"
+            f"{doc.title} — {step.approver_name}님 {tail}.\n{link}")

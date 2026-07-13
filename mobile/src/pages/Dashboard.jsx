@@ -19,6 +19,19 @@ export default function Dashboard() {
   const kpi = data.kpi || {};
   const timeline = data.timeline || [];
   const receiving = data.receiving || {};
+  const leaves = data.today_leaves || [];
+
+  // 오늘 휴가자 유형별 그룹핑 (연차 / 오전반차 / 오후반차 / 기타)
+  const leaveOrder = ['연차', '오전반차', '오후반차', '반차', '공가', '병가', '경조', '경조사휴무', '특별휴가', '출장', '외근', '휴무', '휴가'];
+  const leaveGroups = leaves.reduce((acc, l) => {
+    const t = l.type || '휴가';
+    (acc[t] = acc[t] || []).push(l.name);
+    return acc;
+  }, {});
+  const leaveTypes = Object.keys(leaveGroups).sort((a, b) => {
+    const ia = leaveOrder.indexOf(a), ib = leaveOrder.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
 
   const channels = [
     { group: '영업부', items: [
@@ -65,12 +78,41 @@ export default function Dashboard() {
       <div style={{
         padding: '14px 16px 10px', borderBottom: '1px solid var(--border)',
         background: 'var(--bg-secondary)',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
       }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-bright)' }}>
-          MAGNATECH
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-bright)' }}>
+            MAGNATECH
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+            {data.today} · {user?.full_name}
+          </div>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-          {data.today} · {user?.full_name}
+
+        {/* 오늘 휴가자 */}
+        <div style={{ textAlign: 'right', maxWidth: '58%', flexShrink: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 0.3, marginBottom: 3 }}>
+            오늘 휴가
+          </div>
+          {leaves.length === 0 ? (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>전원 근무</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {leaveTypes.map((t) => (
+                <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 8,
+                    background: 'var(--accent)', color: '#fff', whiteSpace: 'nowrap', flexShrink: 0,
+                  }}>
+                    {t}
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-bright)' }}>
+                    {leaveGroups[t].join(' · ')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

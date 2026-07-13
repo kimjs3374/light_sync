@@ -273,6 +273,46 @@ def used_leave_days(db, user_id, year_start, year_end):
     return total, detail
 
 
+def approved_leave_entries(db, user_id, year_start, year_end):
+    """전자결재 승인 연차를 '일자별' entries로 전개 (연차촉진 달력 자동표시용).
+
+    반차는 그 하루 0.5, 종일 기간은 각 날짜마다 1일로 펼친다.
+    (주말·공휴일 여부는 달력 렌더가 별도 판정하므로 여기선 날짜만 표기)
+    반환: [{'date':'YYYY-MM-DD','type':'연차'|'반차'}]  (중복 date는 반차 우선 유지)
+    """
+    from sqlalchemy import or_
+    docs = (db.query(ApprovalDocument)
+            .filter(ApprovalDocument.form_key == 'leave',
+                    or_(ApprovalDocument.status == 'approved',
+                        ApprovalDocument.effect_active.is_(True)),
+                    ApprovalDocument.drafter_id == user_id)
+            .all())
+    out = {}
+    for d in docs:
+        fd = d.form_data or {}
+        ltype = fd.get('leave_type') or ''
+        if ltype not in ANNUAL_TYPES and '반차' not in ltype:
+            continue  # 연차 계열만 (병가/경조사 등 제외)
+        period = fd.get('period') or ''
+        half = ('반차' in period) or ('반차' in ltype)
+        s = _parse_date(fd.get('start_date')) or _parse_date(fd.get('start_dt'))
+        e = _parse_date(fd.get('end_date')) or _parse_date(fd.get('end_dt')) or s
+        if not s:
+            continue
+        if not e or e < s:
+            e = s
+        cur = s
+        while cur <= e:
+            if year_start <= cur < year_end:
+                key = cur.strftime('%Y-%m-%d')
+                if half:
+                    out[key] = '반차'
+                else:
+                    out.setdefault(key, '연차')
+            cur += datetime.timedelta(days=1)
+    return [{'date': k, 'type': v} for k, v in sorted(out.items())]
+
+
 def leave_summary(db, user, as_of=None):
     """직원 연차 요약: 부여/사용/조정/잔여."""
     as_of = as_of or datetime.date.today()

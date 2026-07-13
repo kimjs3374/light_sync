@@ -65,6 +65,11 @@ def generate_commencement_xlsx(package, procurements, agent_user=None):
     Returns:
         str: 생성된 파일의 웹 경로 (예: /static/documents/commencement/R25TB00778581.xlsx)
     """
+    # 변경계약으로 빠진 품목(수량 0 + 금액 0)은 서류에서 제외
+    _active = [p for p in procurements if (p.prdct_qty or 0) or (p.prdct_amt or 0)]
+    if _active:
+        procurements = _active
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     req_no = package.procurement_req_no or 'unknown'
