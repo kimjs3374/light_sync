@@ -668,6 +668,103 @@ def register(mcp: FastMCP):
             session.close()
 
     # ══════════════════════════════════════════════════════
+    # 4b. 범용 확정 — write_preview_* 전 유형 (카카오워크 대화형 confirm)
+    # ══════════════════════════════════════════════════════
+    @mcp.tool()
+    def confirm_write(session_token: str) -> str:
+        """업무 등록/처리 확정 — write_preview_* 가 만든 미리보기를 실제 DB에 반영한다.
+
+        ★ 사용자가 미리보기(preview)를 보고 '네/응/그래/확인/등록해/처리해' 등으로 명확히
+          동의했을 때만 호출한다. 동의 전엔 절대 호출하지 마라.
+          신원은 서버가 KAKAO_ERP_USER 로 강제하며, 각 실행기가 본인 명의를 대조한다.
+        지원: 출장·납품완료·AS접수·청구발행·업무일지·발주상태·생산완료·메일발송 등
+          write_preview_* 전 유형. (운행일지는 confirm_vehicle_log, 휴가는 confirm_leave_request 도 가능)
+
+        Args:
+            session_token: write_preview_* 가 반환한 session_token
+        """
+        from modules.models.misc_entities import PendingWriteSession
+        from modules.models.entities import User
+
+        forced = os.environ.get("KAKAO_ERP_USER", "").strip()
+        if not forced:
+            return json.dumps({"status": "error",
+                "message": "확정 권한이 없습니다(신원 미주입)."}, ensure_ascii=False)
+        if not session_token:
+            return json.dumps({"status": "error",
+                "message": "session_token 이 필요합니다. 먼저 미리보기를 만들어 주세요."},
+                ensure_ascii=False)
+
+        session = get_session()
+        try:
+            row = session.get(PendingWriteSession, session_token)
+            if not row:
+                return json.dumps({"status": "error",
+                    "message": "세션을 찾을 수 없습니다(30분 만료됐을 수 있음). 다시 시도해주세요."},
+                    ensure_ascii=False)
+            if row.used:
+                return json.dumps({"status": "error",
+                    "message": "이미 처리된 요청입니다."}, ensure_ascii=False)
+            if row.expires_at < datetime.datetime.now():
+                return json.dumps({"status": "error",
+                    "message": "미리보기가 만료되었습니다(30분 초과). 다시 시도해주세요."},
+                    ensure_ascii=False)
+
+            try:
+                payload = json.loads(row.payload_json)
+            except Exception:
+                return json.dumps({"status": "error",
+                    "message": "세션 payload 파싱 오류."}, ensure_ascii=False)
+
+            erp_user = session.query(User).filter(User.username == forced).first()
+            if not erp_user:
+                return json.dumps({"status": "error",
+                    "message": "확정자 ERP 계정을 찾을 수 없습니다."}, ensure_ascii=False)
+            actor = erp_user.full_name or forced
+            if erp_user.position:
+                actor += f" {erp_user.position}"
+
+            # 실행기는 routes.mattermost_action 재사용(웹 버튼 흐름과 동일 로직).
+            # mm_user_name 자리에 ERP username 을 넘긴다 — _resolve_erp_user 가 username 우선
+            # 매칭하므로 카카오워크 경로에서도 본인 명의 검증이 정확히 동작한다.
+            import routes.mattermost_action as _mm
+            intent = row.intent_type
+            _dispatch = {
+                "confirm_delivery_complete":        lambda: _mm._write_delivery_complete(session, payload, actor, forced),
+                "confirm_as_register":              lambda: _mm._write_as_register(session, payload, actor),
+                "confirm_billing_complete":         lambda: _mm._write_billing_complete(session, payload, actor, forced),
+                "confirm_vehicle_log":              lambda: _mm._write_vehicle_log(session, payload, erp_user),
+                "confirm_business_trip":            lambda: _mm._write_business_trip(session, payload),
+                "confirm_daily_report":             lambda: _mm._write_daily_report(session, payload, actor),
+                "confirm_po_status":                lambda: _mm._write_po_status(session, payload, actor, forced),
+                "confirm_production_complete":      lambda: _mm._write_production_complete(session, payload, actor, forced),
+                "confirm_production_complete_all":  lambda: _mm._write_production_complete_all(session, payload, actor, forced),
+                "confirm_email_send":               lambda: _mm._write_email_send(session, payload, actor, forced),
+                "confirm_leave_request":            lambda: _mm._write_leave_request(session, payload, actor, forced),
+            }
+            fn = _dispatch.get(intent)
+            if not fn:
+                return json.dumps({"status": "error",
+                    "message": f"미지원 요청 유형: {intent}"}, ensure_ascii=False)
+
+            result = fn()
+            if not result.get("ok"):
+                session.rollback()
+                return json.dumps({"status": "error",
+                    "message": result.get("msg", "처리 실패")}, ensure_ascii=False)
+
+            row.used = True
+            session.commit()
+            return json.dumps({"status": "done", "message": result.get("label", "처리됨"),
+                               "detail": result.get("detail", "")}, ensure_ascii=False)
+        except Exception as e:
+            session.rollback()
+            return json.dumps({"status": "error",
+                "message": f"처리 중 오류: {e}"}, ensure_ascii=False)
+        finally:
+            session.close()
+
+    # ══════════════════════════════════════════════════════
     # 5. 출장 등록
     # ══════════════════════════════════════════════════════
     @mcp.tool()
@@ -681,6 +778,7 @@ def register(mcp: FastMCP):
         return_date: Optional[str] = None,
         return_time: Optional[str] = None,
         requester_username: Optional[str] = None,
+        include_requester: Optional[bool] = None,
     ) -> str:
         """출장 등록 preview.
 
@@ -694,29 +792,43 @@ def register(mcp: FastMCP):
           - return_date: 귀환일 (생략 시 당일)
           - return_time: 귀환예정시각 (HH:MM, 예: 18:00)
 
-        ★ requester_username: 채널 태그의 user="..." 값을 그대로 전달.
-          - travelers가 비어 있고 사용자가 1인칭(나/저/혼자/본인)을 썼거나 출장자를 명시하지 않은 경우,
-            이 값으로 발신자 ERP 프로필을 자동 조회해 travelers를 채웁니다 (재질문 회피).
-          - 명시적으로 다른 사람 이름을 받았다면 travelers를 그대로 두세요.
+        ★ requester_username: 채널 태그의 user="..." 값을 그대로 전달(없으면 서버가 KAKAO_ERP_USER 로 보완).
+        ★ include_requester: **요청자 본인도 출장자에 포함되는지** 여부.
+          - 사용자가 '나/저/제가/나도/우리/본인/같이/함께' 등 1인칭으로 자기 참여를 밝히면 **반드시 True**.
+            예) "나 문정훈하고 출장가" → travelers="문정훈", include_requester=True → 발신자+문정훈 2명.
+          - travelers 를 아예 안 줬는데 1인칭이면 발신자 본인으로 자동 채움(True 여부 무관).
+          - 남의 출장만 대신 등록(본인 불참, 예 "김대리랑 이과장 출장 등록")이면 False/미지정.
         """
         today = datetime.date.today()
 
-        # ── 결정론적 자동 채움: travelers 미지정 + requester_username 있음 → 발신자로 채움 ──
-        # mmbot은 channel 태그의 user="..." 를 항상 전달하므로 LLM이 1인칭 추출을 놓쳐도 여기서 복구.
-        if (not travelers or not travelers.strip()) and requester_username:
+        # ── 요청자(발신자) 신원 확보: LLM 전달 requester_username 우선, 없으면 서버 강제 KAKAO_ERP_USER ──
+        _req_username = (requester_username or "").strip() or os.environ.get("KAKAO_ERP_USER", "").strip()
+        _req_fullname = None
+        if _req_username:
             try:
                 _s = get_session()
                 try:
                     from modules.models.entities import User as _User
-                    _u = _s.query(_User).filter(_User.username == requester_username).first()
+                    _u = _s.query(_User).filter(_User.username == _req_username).first()
                     if not _u:
-                        _u = _s.query(_User).filter(_User.email.ilike(f"{requester_username}@%")).first()
+                        _u = _s.query(_User).filter(_User.email.ilike(f"{_req_username}@%")).first()
                     if _u and _u.full_name:
-                        travelers = _u.full_name
+                        _req_fullname = _u.full_name
                 finally:
                     _s.close()
             except Exception:
-                pass  # 매핑 실패 시 기존 needs_info 흐름으로 자연 fallback
+                _req_fullname = None  # 매핑 실패 시 기존 needs_info 흐름으로 자연 fallback
+
+        # 결정론적 보정:
+        #   (a) travelers 미지정 → 발신자 본인으로 채움(1인칭/명시 없음, 재질문 회피)
+        #   (b) travelers 있고 include_requester=True(사용자가 본인 포함을 밝힘) → 발신자를 맨 앞에 합침(중복 제거)
+        if _req_fullname:
+            if not travelers or not travelers.strip():
+                travelers = _req_fullname
+            elif include_requester:
+                _existing = [t.strip() for t in travelers.split(",") if t.strip()]
+                if _req_fullname not in _existing:
+                    travelers = ", ".join([_req_fullname] + _existing)
 
         if not destination:
             return json.dumps({"status": "needs_info", "intent": "write_preview_business_trip",

@@ -85,6 +85,23 @@ direction 필터 없이 합산하면 매출이 2배 가까이 부풀려집니다
 
 ## 3. MCP Tool 추가 이력
 
+### 2026-07-13 — 카카오봇 업무쓰기 전면 개방 + 범용 확정 도구 `confirm_write` (113 → 114 Tool)
+
+봇이 "MCP 통한 출장 신규등록 미지원"이라 거절 → **도구 부재 아님, WRITE_ALLOW 프로필 문제**(line 124 원인과 동일 계열).
+
+| 구분 | 내용 |
+|------|------|
+| 근본원인 | 카카오봇(`scripts/kakao_brain.py` 단발 + `mcp-erp-only.json`)의 `WRITE_ALLOW`가 `write_preview_vehicle_log,confirm_vehicle_log`만 → 출장 등 나머지 write 도구 **미등록**. confirm 게이트 편차: vehicle_log/leave만 전용 MCP confirm 도구, 나머지 9종은 `routes/mattermost_action._action_write_confirm` **버튼 전용**(카카오 콜백 `/kakaowork/action`은 결재 승인/반려만 처리) → 카카오 대화형 확정 불가 |
+| 신규 도구 | `confirm_write(session_token)` — write_preview_* 전 유형 범용 확정. `PendingWriteSession` 조회 후 `routes.mattermost_action._write_*` 실행기 재사용(MCP 프로세스에서 import OK). 신원은 `KAKAO_ERP_USER` 강제, `mm_user_name` 자리에 ERP username 전달(`_resolve_erp_user`가 username 우선매칭 → 본인명의 검증 정상) |
+| config | `mcp-erp-only.json` WRITE_ALLOW = 업무쓰기 11 preview + `confirm_write,confirm_vehicle_log,confirm_leave_request` (출장·납품·AS·청구·발주·생산·업무일지·휴가·메일) |
+| 프롬프트 | `kakao_brain.py` SYSTEM_PROMPT에 쓰기 매핑 + "동의 시 confirm_write(session_token)" 흐름 추가 |
+| 검증 | ① READONLY+새 WRITE_ALLOW 환경서 등록 114 Tool·confirm_write 포함 확인 ② 출장 preview→confirm_write 실등록(id=140)→정리 ③ **라이브 단발 경로**(`ask_claude`, KAKAO_ERP_USER=mgn0615) 실행: "출장 등록해줘"→정상 preview 반환(거절 소멸) |
+| 버그 | "나 문정훈하고 출장" 인데 출장자에 **요청자 본인 누락**. `write_preview_business_trip`이 travelers 비었을 때만 발신자 채우고, 값 있으면 본인 미포함 |
+| 수정 | `include_requester` 파라미터 신설 — 1인칭(나/저/나도/우리/같이) 시 요청자(서버 강제 `KAKAO_ERP_USER`로 신원확정)를 출장자 앞에 합침(중복제거). 프롬프트에 "1인칭이면 include_requester=true" 지시. 라이브 검증: 요청자=김대중 "나 문정훈하고…" → 출장자 "김대중, 문정훈" |
+| 배포 | 단발경로는 메시지마다 파일 fresh read → 즉시 반영, 재시작 불필요. ⚠️ `kakao_brain_daemon.py`(pid, Jul9 기동, `.bak.20260709d` 버전)는 **레거시 orphan** — 현재 단발 코드에 소켓 없음. 현 on-disk `kakao_brain.py`엔 `_build_mcp_config`/`FAST_ENV` 없어 데몬 재시작 시 ImportError. 데몬은 방치(단발이 우회) |
+
+★ ERP 웹 채널챗(`channel_chat.py`→`mcp-channel.json`, 비-READONLY)도 write 전부 등록되어 confirm_write 사용 가능. 단 게이트는 `chatbot_permissions.allowed_tools`(soft) — 2026-07-13 전 사용자에 write 13종 추가.
+
 ### 2026-07-13 — 출장 ↔ 운행일지 연동 (프리필) + 계기판 거리도출 버그 수정
 
 출장 데이터가 운행일지와 거의 겹침(차량·목적지·목적·날짜·인원). 계기판/거리만 빼고 프리필.
