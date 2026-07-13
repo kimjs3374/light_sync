@@ -84,3 +84,8 @@ scripts/kakao_sessions.json
 scripts/kakao_daemon.log
 scripts/kakao_daemon.pid
 *.pid
+
+# 운행일지 계기판 참조사진 (로컬 데이터)
+vehicle_refs/*.jpg
+vehicle_refs/*.jpeg
+vehicle_refs/*.png
