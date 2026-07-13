@@ -26,8 +26,23 @@ export default function VehicleLogs() {
   const [form, setForm] = useState(initialForm());
   const [receipt, setReceipt] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState(null);
+  const [trips, setTrips] = useState([]);          // 불러올 수 있는 본인 출장
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // 선택 출장 → 폼 프리필 (출발지 본사 기본, 수정 가능)
+  const applyTrip = (tripId) => {
+    if (!tripId) return;
+    const t = trips.find(x => String(x.trip_id) === String(tripId));
+    if (!t) return;
+    setForm(f => ({
+      ...f,
+      origin: t.origin || '본사',
+      destination: t.destination || '',
+      purpose: t.purpose || '',
+      use_date: t.use_date || f.use_date,
+    }));
+  };
 
   // ────── 차량 목록 로드 ──────
   const loadVehicles = () => {
@@ -59,6 +74,11 @@ export default function VehicleLogs() {
     setForm(f);
     setReceipt(null);
     setReceiptPreview(null);
+    setTrips([]);
+    // 이 차량으로 본인이 다녀온 출장 불러오기 후보 로드
+    api.get(`/vehicle-logs/trips?vehicle=${encodeURIComponent(v.name)}`)
+      .then(d => setTrips(d.trips || []))
+      .catch(() => setTrips([]));
     setView('create');
   };
 
@@ -303,6 +323,19 @@ export default function VehicleLogs() {
         )}
 
         <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {trips.length > 0 && (
+            <div style={{ padding: 10, borderRadius: 6, background: 'var(--surface)',
+                          border: '1px solid var(--border)' }}>
+              <div style={s.fl}>출장에서 불러오기 (선택)</div>
+              <select defaultValue="" onChange={e => applyTrip(e.target.value)} style={s.inp}>
+                <option value="">직접 입력</option>
+                {trips.map(t => <option key={t.trip_id} value={t.trip_id}>{t.label}</option>)}
+              </select>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                목적지·목적·날짜가 채워집니다. 출발지는 본사 기본(수정 가능), 계기판만 입력하세요.
+              </div>
+            </div>
+          )}
           <div>
             <div style={s.fl}>사용일자</div>
             <input type="date" value={form.use_date}

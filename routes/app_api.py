@@ -325,12 +325,18 @@ def app_dashboard():
         timeline.sort(key=lambda x: x['time'], reverse=True)
         timeline = timeline[:30]
 
-        # ── 오늘 부재 ──
+        # ── 오늘 부재 (전자결재 승인 휴가 기준) ──
         today_leaves = []
         try:
-            from modules.services.ical_sync import get_leave_events_for_date
-            leaves = get_leave_events_for_date(today)
-            today_leaves = [{'name': l.get('name', ''), 'type': l.get('leave_type', '')} for l in leaves]
+            from modules.services import approval_service
+            evs = approval_service.get_approved_leaves_for_date(db, today)
+            evs.sort(key=lambda e: e.get('name') or '')
+            today_leaves = [{
+                'name': e.get('name') or '',
+                'type': e.get('disp_type') or e.get('leave_type') or '휴가',
+                'dept': e.get('dept') or '',
+                'position': e.get('position') or '',
+            } for e in evs]
         except Exception:
             pass
 
@@ -4319,6 +4325,33 @@ def app_business_trip_vehicles():
         return jsonify(ok=True, vehicles=_get_vehicle_choices(db))
 
 
+@app_api_bp.route('/business-trips/vehicle-availability')
+@app_auth_required
+def app_business_trip_vehicle_availability():
+    """선택 기간의 회사차량별 예약 가능 여부 (모바일 출장 폼). departure/return = ISO datetime-local."""
+    import datetime as _dt
+    from modules.services.vehicle_availability import vehicle_availability
+    dep_s = (request.args.get('departure') or '').strip()
+    if not dep_s:
+        return jsonify(ok=True, availability={})
+    try:
+        departure = _dt.datetime.fromisoformat(dep_s)
+    except ValueError:
+        return jsonify(ok=True, availability={})
+    return_dt = None
+    ret_s = (request.args.get('return') or '').strip()
+    if ret_s:
+        try:
+            return_dt = _dt.datetime.fromisoformat(ret_s)
+        except ValueError:
+            return_dt = None
+    exclude = request.args.get('exclude')
+    exclude = int(exclude) if (exclude and exclude.isdigit()) else None
+    with get_db() as db:
+        av = vehicle_availability(db, departure, return_dt, exclude_trip_id=exclude)
+    return jsonify(ok=True, availability=av)
+
+
 @app_api_bp.route('/business-trips/create', methods=['POST'])
 @app_auth_required
 def app_business_trip_create():
@@ -7313,6 +7346,45 @@ def app_vehicle_log_vehicles():
         return jsonify(ok=True, vehicles=result)
 
 
+@app_api_bp.route('/vehicle-logs/trips')
+@app_auth_required
+def app_vehicle_log_trips():
+    """운행일지 작성 시 불러올 출장 — 본인이 출장자로 등록된 해당 차량 최근 출장 + 프리필값."""
+    from sqlalchemy import or_
+    from modules.services.vehicle_log_trip_link import trip_to_log_defaults, is_company_vehicle
+    vehicle = (request.args.get('vehicle') or '').strip()
+    user_id = request._app_user_id
+    with get_db() as db:
+        if not vehicle or not is_company_vehicle(db, vehicle):
+            return jsonify(ok=True, trips=[])
+        user = db.query(User).get(user_id)
+        conds = [BusinessTripMember.user_id == user_id]
+        if user and user.full_name:
+            conds.append(BusinessTripMember.user_name == user.full_name)
+        trips = (db.query(BusinessTrip)
+                 .options(joinedload(BusinessTrip.members))
+                 .filter(BusinessTrip.vehicle == vehicle,
+                         BusinessTrip.status != '취소',
+                         BusinessTrip.members.any(or_(*conds)))
+                 .order_by(desc(BusinessTrip.departure_date))
+                 .limit(15).all())
+        out = []
+        for t in trips:
+            d = trip_to_log_defaults(db, t)
+            if not d:
+                continue
+            out.append({
+                'trip_id': t.id,
+                'label': f"{d['use_date'] or '?'} · {d['destination']}"
+                         + (f" ({d['member_names']})" if d.get('member_names') else ""),
+                'origin': d['origin'],
+                'destination': d['destination'],
+                'purpose': d['purpose'],
+                'use_date': d['use_date'],
+            })
+        return jsonify(ok=True, trips=out)
+
+
 @app_api_bp.route('/vehicle-logs')
 @app_auth_required
 def app_vehicle_logs():
@@ -7767,7 +7839,7 @@ def app_approval_create():
             for i, s in enumerate(svc.resolve_default_line(db, me, form.default_line), 1):
                 doc.steps.append(ApprovalStep(step_order=i, status='waiting', **s))
 
-        # 양식별 기본 참조자 (휴가/지출 → 서은미 과장)
+        # 양식별 기본 수신자 (휴가/지출 → 관리부 서은미 과장)
         from modules.models import ApprovalReference
         ref_seen = set()
         for ru in svc.resolve_default_refs(db, form.form_key):
@@ -7775,7 +7847,7 @@ def app_approval_create():
                 continue
             ref_seen.add(ru.id)
             doc.references.append(ApprovalReference(
-                user_id=ru.id, user_name=ru.full_name, ref_type='reference'))
+                user_id=ru.id, user_name=ru.full_name, ref_type='receiver'))
         db.flush()
 
         try:
@@ -7898,3 +7970,265 @@ def app_approval_attachment(doc_id):
                                   storage_path=path, content_type=f.mimetype, size=len(data)))
         db.commit()
         return jsonify(ok=True)
+
+
+# ============================================================
+#  워크보드 아카이브 + 대화방 아카이브 (모바일)
+#  - PC 열람화면(routes/workboard.py, routes/chat_archive.py)과 동일 데이터
+#  - 데이터 레이어(modules/kakao_archive.py, modules/chat_archive.py) 재사용
+# ============================================================
+from modules import kakao_archive as _kwa, chat_archive as _cha
+from config import WORKBOARDS as _WORKBOARDS
+from sqlalchemy import text as _text
+
+
+def _archive_proxy(url, thumb=False):
+    """Supabase 절대 URL(api.mgnt.kr, 외부망 차단) → 동일출처 프록시 경로로 변환.
+    <img>/<a>는 헤더를 못 실으므로 토큰(_t)은 프론트에서 부착한다."""
+    if not url:
+        return url
+    marker = '/company-files/'
+    i = url.find(marker)
+    if i < 0:
+        return url
+    from urllib.parse import quote
+    key = url[i + len(marker):].split('?')[0]
+    path = '/api/app/archive-file?key=' + quote(key, safe='')
+    return path + '&thumb=1' if thumb else path
+
+
+def _proxy_atts(atts):
+    """첨부(이미지/파일) URL을 프록시 경로로 치환."""
+    out = []
+    for a in (atts or []):
+        a = dict(a)
+        if a.get('is_image'):
+            a['local_url'] = _archive_proxy(a.get('local_url'))
+            a['thumb_url'] = _archive_proxy(a.get('thumb_url'), thumb=True)
+        else:
+            a['local_url'] = _archive_proxy(a.get('local_url'))
+        out.append(a)
+    return out
+
+
+def _ser_post(p, contract_names=None):
+    """kakao_archive 게시글 dict → JSON 직렬화 (Markup→str, 현장명 부가, 이미지 프록시)."""
+    p = dict(p)
+    p['body_html'] = str(p.get('body_html') or '')
+    cid = p.get('contract_id')
+    p['contract_name'] = (contract_names or {}).get(cid) if cid else None
+    p['attachments'] = _proxy_atts(p.get('attachments'))
+    comments = []
+    for c in p.get('comments', []):
+        c = dict(c)
+        c['body_html'] = str(c.get('body_html') or '')
+        c['attachments'] = _proxy_atts(c.get('attachments'))
+        comments.append(c)
+    p['comments'] = comments
+    return p
+
+
+def _contract_name_map(db, ids):
+    ids = [i for i in {x for x in ids} if i]
+    if not ids:
+        return {}
+    rows = db.query(Contract.id, Contract.contract_name).filter(Contract.id.in_(ids)).all()
+    return {r[0]: r[1] for r in rows}
+
+
+@app_api_bp.route('/archive/boards')
+@app_auth_required
+def app_archive_boards():
+    """워크보드 아카이브 보드 목록 + 게시글 수."""
+    with get_db() as db:
+        rows = db.execute(_text(
+            "SELECT board_type, COUNT(*) FROM light_sync.archive_posts GROUP BY board_type"
+        )).fetchall()
+    counts = {r[0]: r[1] for r in rows}
+    boards = [
+        {'slug': slug, 'label': meta['label'], 'count': counts.get(slug, 0)}
+        for slug, meta in _WORKBOARDS.items()
+    ]
+    return jsonify(ok=True, boards=boards)
+
+
+@app_api_bp.route('/archive/board/<slug>')
+@app_auth_required
+def app_archive_board(slug):
+    """보드 피드 (검색·작성자 필터·페이지네이션). PC list_posts 재사용."""
+    if slug not in _WORKBOARDS:
+        return jsonify(ok=False, error='존재하지 않는 보드입니다'), 404
+    page = max(1, request.args.get('page', 1, type=int))
+    q = (request.args.get('q') or '').strip()
+    author = (request.args.get('author') or '').strip()
+    posts, total, authors = _kwa.list_posts(slug, page, q, author)
+    with get_db() as db:
+        cmap = _contract_name_map(db, [p.get('contract_id') for p in posts])
+    total_pages = (total + _kwa.PAGE_SIZE - 1) // _kwa.PAGE_SIZE
+    return jsonify(
+        ok=True,
+        board={'slug': slug, 'label': _WORKBOARDS[slug]['label']},
+        posts=[_ser_post(p, cmap) for p in posts],
+        authors=authors,
+        total=total,
+        page=page,
+        total_pages=total_pages,
+        has_more=page < total_pages,
+    )
+
+
+@app_api_bp.route('/archive/board/<slug>/<int:post_id>')
+@app_auth_required
+def app_archive_post(slug, post_id):
+    """게시글 상세 + 전체 댓글. PC load_post 재사용."""
+    if slug not in _WORKBOARDS:
+        return jsonify(ok=False, error='존재하지 않는 보드입니다'), 404
+    post = _kwa.load_post(slug, post_id)
+    if not post:
+        return jsonify(ok=False, error='게시글을 찾을 수 없습니다'), 404
+    with get_db() as db:
+        cmap = _contract_name_map(db, [post.get('contract_id')])
+    return jsonify(ok=True, board={'slug': slug, 'label': _WORKBOARDS[slug]['label']},
+                   post=_ser_post(post, cmap))
+
+
+# ── 대화방 아카이브 ──
+
+def _ser_chat_items(items):
+    """대화방 메시지 items → JSON (bigint id→str, Markup→str, 미디어 프록시)."""
+    out = []
+    for it in items:
+        if it.get('kind') == 'msg':
+            it = dict(it)
+            it['id'] = str(it.get('id'))
+            it['user_id'] = str(it.get('user_id') or '')
+            it['body'] = str(it.get('body') or '')
+            it['images'] = [
+                {**im, 'url': _archive_proxy(im.get('url')), 'thumb': _archive_proxy(im.get('thumb'), thumb=True)}
+                for im in (it.get('images') or [])
+            ]
+            it['files'] = [{**f, 'url': _archive_proxy(f.get('url'))} for f in (it.get('files') or [])]
+            it['videos'] = [{**v, 'url': _archive_proxy(v.get('url'))} for v in (it.get('videos') or [])]
+        out.append(it)
+    return out
+
+
+@app_api_bp.route('/archive-file')
+def app_archive_file():
+    """아카이브 이미지/파일 동일출처 프록시 (api.mgnt.kr 외부차단 우회).
+    <img>/<a> 용이라 토큰은 ?_t= 쿼리 또는 Bearer 헤더로 인증."""
+    import os as _os
+    import hashlib as _hl
+    import io as _io
+    from flask import Response, abort
+    from modules.storage_adapter import download_bytes
+
+    token = request.args.get('_t', '')
+    if not token:
+        ah = request.headers.get('Authorization', '')
+        if ah.startswith('Bearer '):
+            token = ah[7:]
+    if not token or not _verify_token(token):
+        abort(401)
+
+    key = request.args.get('key', '')
+    # 아카이브 경로만 허용 (오픈 프록시/경로탈출 방지)
+    if ('..' in key) or not (key.startswith('archive/') or key.startswith('chat/archive/')):
+        abort(400)
+
+    thumb = request.args.get('thumb', '') == '1'
+    cache_path = None
+    if thumb:
+        cache_dir = '/tmp/archive_thumb_cache'
+        _os.makedirs(cache_dir, exist_ok=True)
+        cache_path = _os.path.join(cache_dir, _hl.md5(key.encode()).hexdigest() + '.jpg')
+        if _os.path.exists(cache_path):
+            with open(cache_path, 'rb') as f:
+                resp = Response(f.read(), mimetype='image/jpeg')
+                resp.headers['Cache-Control'] = 'public, max-age=86400'
+                return resp
+
+    data = download_bytes(key)
+    if not data:
+        abort(404)
+
+    if thumb:
+        try:
+            from PIL import Image
+            img = Image.open(_io.BytesIO(data))
+            if img.mode in ('RGBA', 'P', 'LA'):
+                img = img.convert('RGB')
+            img.thumbnail((400, 400))
+            buf = _io.BytesIO()
+            img.save(buf, format='JPEG', quality=72)
+            data = buf.getvalue()
+            with open(cache_path, 'wb') as f:
+                f.write(data)
+            resp = Response(data, mimetype='image/jpeg')
+            resp.headers['Cache-Control'] = 'public, max-age=86400'
+            return resp
+        except Exception:
+            pass  # 썸네일 실패 시 원본 반환
+
+    ext = _os.path.splitext(key)[1].lower().lstrip('.')
+    mime = {
+        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif',
+        'webp': 'image/webp', 'bmp': 'image/bmp', 'pdf': 'application/pdf',
+        'mp4': 'video/mp4', 'mov': 'video/quicktime', 'webm': 'video/webm',
+    }.get(ext, 'application/octet-stream')
+    resp = Response(data, mimetype=mime)
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
+    return resp
+
+
+@app_api_bp.route('/chat-archive/rooms')
+@app_auth_required
+def app_chat_rooms():
+    rooms = _cha.list_rooms()
+    for r in rooms:
+        r['id'] = str(r['id'])
+    return jsonify(ok=True, rooms=rooms)
+
+
+@app_api_bp.route('/chat-archive/<conv_id>')
+@app_auth_required
+def app_chat_room(conv_id):
+    """대화방 메시지. jump(메시지id) 지정 시 해당 페이지, 없으면 최신 페이지."""
+    room = _cha.get_room(conv_id)
+    if not room:
+        return jsonify(ok=False, error='대화방을 찾을 수 없습니다'), 404
+    room['id'] = str(room['id'])
+    jump = (request.args.get('jump') or '').strip()
+    page_arg = request.args.get('page', type=int)
+    if jump:
+        page = _cha.page_of_message(conv_id, jump) or 1
+    elif page_arg:
+        page = page_arg
+    else:
+        page = 10 ** 9  # load_messages 가 마지막 페이지로 clamp
+    items, page, total_pages, total = _cha.load_messages(conv_id, page)
+    return jsonify(ok=True, room=room, items=_ser_chat_items(items),
+                   page=page, total_pages=total_pages, total=total,
+                   jump=jump or None)
+
+
+@app_api_bp.route('/chat-archive/<conv_id>/messages')
+@app_auth_required
+def app_chat_messages(conv_id):
+    """무한스크롤용 페이지 조회."""
+    page = max(1, request.args.get('page', 1, type=int))
+    items, page, total_pages, total = _cha.load_messages(conv_id, page)
+    return jsonify(ok=True, items=_ser_chat_items(items),
+                   page=page, total_pages=total_pages, total=total)
+
+
+@app_api_bp.route('/chat-archive/<conv_id>/search')
+@app_auth_required
+def app_chat_search(conv_id):
+    q = (request.args.get('q') or '').strip()
+    if not q:
+        return jsonify(ok=True, results=[])
+    results = _cha.search_messages(conv_id, q)
+    for r in results:
+        r['id'] = str(r['id'])
+    return jsonify(ok=True, results=results)

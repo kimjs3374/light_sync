@@ -6,6 +6,9 @@
   <div class="d-flex align-items-center gap-2 mb-3">
     <h5 class="mb-0 me-auto">출장 상세</h5>
     {% set writable = 'business_trip' in session.get('writable_menus', []) or session.get('role') == 'admin' %}
+    {% if trip.vehicle and trip.vehicle not in ['개인차량', '대중교통', '기타', '도보', ''] and 'vehicle_log' in session.get('allowed_menus', []) %}
+    <a href="{{ url_for('vehicle_log.log_list', trip_id=trip.id) }}" class="btn btn-sm btn-outline-success" style="white-space:nowrap">운행일지 작성</a>
+    {% endif %}
     {% if writable %}
     <a href="{{ url_for('business_trip.trip_edit', trip_id=trip.id) }}" class="btn btn-sm btn-outline-primary" style="white-space:nowrap">수정</a>
     <form method="POST" action="{{ url_for('business_trip.trip_delete', trip_id=trip.id) }}" class="d-inline"

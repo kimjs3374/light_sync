@@ -28,7 +28,7 @@ python -m light_sync_mcp.server_http
 - `MCP_PORT` — HTTP 포트 (기본 5010)
 - `MCP_SSE_PORT` — SSE 포트 (기본 5011)
 
-## Tool 목록 (111개)
+## Tool 목록 (113개)
 
 ### 핵심 조회 패턴
 

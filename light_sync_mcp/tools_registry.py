@@ -39,6 +39,7 @@ from .tools import (
     approval,
     hr,
     write_ops,
+    leave_write,
 )
 from .resources import magnatech
 
@@ -82,8 +83,32 @@ def register_all(mcp: FastMCP):
     # ── 전자결재 · 인사/연차 ──
     approval.register(mcp)
     hr.register(mcp)
-    # ── 쓰기 작업 preview 도구 (확인 후 DB 반영) — READONLY 모드면 제외 ──
+    # ── 쓰기 작업 도구 ──
+    #   전체쓰기(비-READONLY): write_ops(11종) + leave_write(휴가 preview/confirm)
+    #   READONLY + WRITE_ALLOW: 목록에 적힌 쓰기 도구만 허용(카카오워크 봇 전용)
+    #   READONLY + LEAVE_ONLY: 위의 구버전 표기. 휴가 상신만 허용
+    #   순수 READONLY: 쓰기 도구 없음
     import os as _os
-    if _os.environ.get("LIGHT_SYNC_MCP_READONLY", "").strip() not in ("1", "true", "True"):
+
+    def _flag(name: str) -> bool:
+        return _os.environ.get(name, "").strip() in ("1", "true", "True")
+
+    _WRITE_PREFIXES = ("write_", "confirm_")
+    _readonly = _flag("LIGHT_SYNC_MCP_READONLY")
+    _allow_raw = _os.environ.get("LIGHT_SYNC_MCP_WRITE_ALLOW", "").strip()
+    _allow = {t.strip() for t in _allow_raw.split(",") if t.strip()}
+    if _flag("LIGHT_SYNC_MCP_WRITE_LEAVE_ONLY"):  # 하위호환
+        _allow |= {"write_preview_leave_request", "confirm_leave_request"}
+
+    if not _readonly:
         write_ops.register(mcp)
+        leave_write.register(mcp)
+    elif _allow:
+        # 전부 등록한 뒤 허용목록 밖의 쓰기 도구를 제거한다.
+        # (개별 등록 함수가 없어 등록 후 pruning 이 유일한 방법)
+        write_ops.register(mcp)
+        leave_write.register(mcp)
+        for _name in [t for t in list(mcp._tool_manager._tools)
+                      if t.startswith(_WRITE_PREFIXES) and t not in _allow]:
+            mcp.remove_tool(_name)
     magnatech.register(mcp)

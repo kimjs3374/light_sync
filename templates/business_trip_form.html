@@ -46,12 +46,13 @@
           </div>
           <div class="col-md-6">
             <label class="form-label small fw-bold">이동수단</label>
-            <select name="vehicle" class="form-select form-select-sm">
+            <select name="vehicle" id="vehicleSelect" class="form-select form-select-sm" onchange="renderVehicleWarning()">
               <option value="">선택</option>
               {% for v in vehicle_choices %}
               <option value="{{ v }}" {{ 'selected' if trip and trip.vehicle == v }}>{{ v }}</option>
               {% endfor %}
             </select>
+            <div id="vehicleWarning" class="form-text small mt-1"></div>
           </div>
           <div class="col-md-6">
             <label class="form-label small fw-bold">상태</label>
@@ -161,5 +162,70 @@ function fillMember(sel) {
     tr.querySelector('[name=member_department]').value = opt.dataset.dept || '';
   }
 }
+
+// ─── 차량 예약 충돌 표시 ───
+const EXCLUDE_TRIP_ID = {{ trip.id if trip else 'null' }};
+let vehicleAvail = {};   // {vehicle: {available, conflicts:[...]}}
+
+function _f(n) { return document.querySelector(`[name=${n}]`).value; }
+
+async function refreshAvailability() {
+  const dep = _f('departure_date');
+  if (!dep) { vehicleAvail = {}; annotateVehicleOptions(); renderVehicleWarning(); return; }
+  const p = new URLSearchParams({
+    departure: dep, departure_time: _f('departure_time') || '',
+    return: _f('return_date') || '', return_time: _f('return_time') || '',
+  });
+  if (EXCLUDE_TRIP_ID) p.set('exclude', EXCLUDE_TRIP_ID);
+  try {
+    const r = await fetch(`/business-trips/vehicle-availability?${p}`);
+    const d = await r.json();
+    vehicleAvail = d.availability || {};
+  } catch (e) { vehicleAvail = {}; }
+  annotateVehicleOptions();
+  renderVehicleWarning();
+}
+
+function annotateVehicleOptions() {
+  const sel = document.getElementById('vehicleSelect');
+  for (const opt of sel.options) {
+    if (!opt.value) continue;
+    const info = vehicleAvail[opt.value];
+    const base = opt.value;
+    opt.textContent = (info && !info.available) ? `${base} (예약중)` : base;
+  }
+}
+
+function renderVehicleWarning() {
+  const sel = document.getElementById('vehicleSelect');
+  const box = document.getElementById('vehicleWarning');
+  const info = vehicleAvail[sel.value];
+  if (info && !info.available) {
+    const lines = info.conflicts.map(c => `· ${c.label}`).join('<br>');
+    box.innerHTML = `<span class="text-danger">⚠ 이 기간 <strong>${sel.value}</strong>은(는) 이미 배정되어 있습니다:<br>${lines}</span>`;
+  } else {
+    box.innerHTML = '';
+  }
+}
+
+['departure_date','departure_time','return_date','return_time'].forEach(n => {
+  const el = document.querySelector(`[name=${n}]`);
+  if (el) el.addEventListener('change', refreshAvailability);
+});
+
+// 제출 시 중복이면 한 번 더 확인
+document.getElementById('tripForm').addEventListener('submit', function (ev) {
+  const sel = document.getElementById('vehicleSelect');
+  const info = vehicleAvail[sel.value];
+  if (info && !info.available) {
+    const names = info.conflicts.map(c => c.label).join('\n');
+    if (!confirm(`${sel.value}은(는) 해당 기간에 이미 배정되어 있습니다:\n${names}\n\n그래도 등록할까요?`)) {
+      ev.preventDefault();
+    }
+  }
+});
+
+// 진입 시(수정 등) 초기 조회
+document.addEventListener('DOMContentLoaded', refreshAvailability);
 </script>
 {% endblock %}

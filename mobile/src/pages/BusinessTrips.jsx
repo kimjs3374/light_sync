@@ -23,6 +23,23 @@ export default function BusinessTrips() {
   const [vehicles, setVehicles] = useState([]);
   const [detail, setDetail] = useState(null);
   const [detailData, setDetailData] = useState(null);
+  const [vehicleAvail, setVehicleAvail] = useState({});   // {vehicle: {available, conflicts}}
+
+  // 출발/복귀일 바뀌면 차량 예약 가용성 조회
+  useEffect(() => {
+    if (!showForm || !form.departure_date) { setVehicleAvail({}); return; }
+    const p = new URLSearchParams({ departure: form.departure_date });
+    if (form.return_date) p.set('return', form.return_date);
+    let cancelled = false;
+    api.get(`/business-trips/vehicle-availability?${p}`)
+      .then(d => { if (!cancelled) setVehicleAvail(d.availability || {}); })
+      .catch(() => { if (!cancelled) setVehicleAvail({}); });
+    return () => { cancelled = true; };
+  }, [showForm, form.departure_date, form.return_date]);
+
+  const selVehicleConflict = form.vehicle && vehicleAvail[form.vehicle]
+    && !vehicleAvail[form.vehicle].available
+    ? vehicleAvail[form.vehicle].conflicts : null;
 
   const load = () => {
     api.get('/business-trips').then(d => setItems(d.business_trips || [])).catch(() => {}).finally(() => setLoading(false));
@@ -43,6 +60,10 @@ export default function BusinessTrips() {
   const create = async () => {
     if (!form.title || !form.destination) return alert('제목과 목적지를 입력해주세요');
     if (!form.departure_date || !form.return_date) return alert('출발일시와 복귀예상일시를 입력해주세요');
+    if (selVehicleConflict) {
+      const names = selVehicleConflict.map(c => c.label).join('\n');
+      if (!confirm(`${form.vehicle}은(는) 해당 기간에 이미 배정되어 있습니다:\n${names}\n\n그래도 등록할까요?`)) return;
+    }
     const payload = {
       ...form,
       members: (form.members || []).filter(m => (m.name || '').trim()),
@@ -189,8 +210,20 @@ export default function BusinessTrips() {
             <div style={s.fl}>이동수단</div>
             <select value={form.vehicle} onChange={e => setForm(f => ({...f, vehicle: e.target.value}))} style={s.inp}>
               <option value="">선택</option>
-              {vehicles.map(v => <option key={v} value={v}>{v}</option>)}
+              {vehicles.map(v => {
+                const info = vehicleAvail[v];
+                const busy = info && !info.available;
+                return <option key={v} value={v}>{busy ? `${v} (예약중)` : v}</option>;
+              })}
             </select>
+            {selVehicleConflict && (
+              <div style={{ fontSize: 12, color: 'var(--red)', padding: '2px 2px 0' }}>
+                ⚠ 이 기간 <strong>{form.vehicle}</strong>은(는) 이미 배정됨:
+                {selVehicleConflict.map((c, i) => (
+                  <div key={i} style={{ fontSize: 11, marginTop: 2 }}>· {c.label}</div>
+                ))}
+              </div>
+            )}
 
             <div style={s.fl}>출장목적 상세</div>
             <textarea placeholder="상세 목적을 입력하세요" value={form.purpose} onChange={e => setForm(f => ({...f, purpose: e.target.value}))} style={{...s.inp, minHeight: 50}} rows={2} />

@@ -106,8 +106,34 @@ app.logger.setLevel(logging.INFO)
 app.jinja_env.auto_reload = app.config.get("TEMPLATES_AUTO_RELOAD", True)
 app.jinja_env.globals['pagination_query'] = pagination_query
 
+# 진단(최우선 실행) — origin에 도달하는 모든 관련 POST를 CSRF 검사 이전에 무조건 기록
+from flask import request as _rq0
+@app.before_request
+def _log_promotion_posts():
+    try:
+        if _rq0.method == 'POST' and 'promotion' in _rq0.path:
+            app.logger.warning('RAW_POST path=%s ct=%s len=%s ua=%r',
+                               _rq0.path, _rq0.content_type,
+                               _rq0.content_length,
+                               _rq0.headers.get('User-Agent', '')[:120])
+    except Exception:
+        pass
+
 # CSRF Protection
 csrf = CSRFProtect(app)
+
+# 진단 — CSRF 거부가 조용히 400을 뱉어 "반응 없음"처럼 보이는지 추적(모바일 지정 이슈)
+from flask_wtf.csrf import CSRFError as _CSRFError
+from flask import request as _rq
+@app.errorhandler(_CSRFError)
+def _log_csrf_error(e):
+    try:
+        app.logger.warning('CSRF_FAIL method=%s path=%s reason=%s ua=%r',
+                            _rq.method, _rq.path, e.description,
+                            _rq.headers.get('User-Agent', '')[:120])
+    except Exception:
+        pass
+    return e.description, 400
 
 # Bearer 토큰 인증 경로에서 세션 쿠키 누출 차단 + CSRF 우회
 from modules.auth_decorators import init_auth_security
@@ -306,6 +332,7 @@ app.register_blueprint(archive_bp)
 app.register_blueprint(approval_archive_bp)
 app.register_blueprint(chat_archive_bp)
 app.register_blueprint(channel_chat_bp)
+csrf.exempt(channel_chat_bp)  # bot/worker callback (non-browser) CSRF exempt
 app.register_blueprint(cert_bp)
 app.register_blueprint(lighting_layout_bp)
 app.register_blueprint(processing_order_bp)
@@ -491,6 +518,15 @@ csrf.exempt(_cp)
 # 모바일 앱 API는 CSRF 면제
 csrf.exempt(app_api_bp)
 
+# 모바일 API는 토큰 인증 + 사내 공유IP(NAT) 환경 → IP기반 200/hour 기본제한 제외.
+# (아카이브 이미지 프록시는 화면당 수십 요청 → 200/hour 즉시 초과로 이미지가 429로 전멸했음)
+# 단, 로그인(app_login)은 무차별 대입 방지 위해 기본 제한 유지 → 제외 대상에서 뺀다.
+_RATELIMIT_KEEP = {'app_api.app_login'}
+with app.app_context():
+    for _ep, _vf in list(app.view_functions.items()):
+        if _ep.startswith('app_api.') and _ep not in _RATELIMIT_KEEP:
+            limiter.exempt(_vf)
+
 # 대용량 업로드만 CSRF exempt (사내망 직접 요청)
 with app.app_context():
     _upload_view = app.view_functions.get('mail.api_upload_large')
@@ -643,7 +679,10 @@ def serve_mobile(path=''):
     """모바일 SPA — 빌드된 정적 파일 서빙"""
     if path and os.path.isfile(os.path.join(_mobile_dist, path)):
         return send_from_directory(_mobile_dist, path)
-    return send_from_directory(_mobile_dist, 'index.html')
+    # SPA 엔트리(index.html)는 절대 캐시하지 않음 → 재배포 시 항상 최신 번들 로드
+    resp = send_from_directory(_mobile_dist, 'index.html')
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return resp
 
 
 # =====================================================================
@@ -719,6 +758,22 @@ def cleanup_mail_files_cli():
             deleted += 1
         db.commit()
     click.echo(f"[메일정리] 만료 파일 {deleted}건 삭제")
+
+
+@app.cli.command('update-trip-status')
+def update_trip_status_cli():
+    """출장 저장 status 를 날짜 기준 실제 상태로 보정 (crontab용, 멱등).
+
+    표시(MCP/웹/대시보드)는 이미 유효상태를 계산하므로 이 보정 없이도 정상 동작하나,
+    DB 직접 열람·저장값 의존 화면의 정합성을 위해 주기 실행한다."""
+    from modules.db_context import get_db
+    from modules.services.business_trip_status import reconcile_stored_status
+
+    with get_db() as db:
+        result = reconcile_stored_status(db)
+        db.commit()
+    detail = ", ".join(f"{k} {v}건" for k, v in result["changes"].items()) or "변경 없음"
+    click.echo(f"[출장상태] 보정 {result['updated']}건 — {detail}")
 
 
 @app.cli.command('sync-hometax-invoices')

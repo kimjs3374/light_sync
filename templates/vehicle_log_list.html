@@ -173,6 +173,18 @@
       </div>
       <form id="createForm" enctype="multipart/form-data" onsubmit="submitCreate(event)">
         <div class="modal-body">
+          {% if trip_options %}
+          <div class="mb-2 p-2 rounded" style="background:#f1f5f9;">
+            <label class="form-label small text-muted mb-1">출장에서 불러오기 (선택)</label>
+            <select id="cf_trip" class="form-select form-select-sm" onchange="onTripSelect()">
+              <option value="">직접 입력</option>
+              {% for t in trip_options %}
+              <option value="{{ t.trip_id }}">{{ t.label }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text small text-muted">차량·목적지·목적·날짜가 자동으로 채워집니다. 출발지는 본사 기본(수정 가능), 계기판만 입력하세요.</div>
+          </div>
+          {% endif %}
           <div class="row g-2">
             <div class="col-md-4">
               <label class="form-label small text-muted mb-1">사용일자 *</label>
@@ -331,7 +343,57 @@ function openCreateModal() {
   document.getElementById('cf_last_hint').textContent = '';
   document.getElementById('createForm').reset();
   document.getElementById('cf_use_date').value = today;
+  const tripSel = document.getElementById('cf_trip');
+  if (tripSel) tripSel.value = '';
   new bootstrap.Modal(document.getElementById('createModal')).show();
+}
+
+// 출장 상세의 '운행일지 작성' 버튼에서 ?trip_id=N 로 진입 시 자동 오픈 + 프리필
+document.addEventListener('DOMContentLoaded', function () {
+  const tripId = new URLSearchParams(location.search).get('trip_id');
+  if (!tripId) return;
+  const tripSel = document.getElementById('cf_trip');
+  if (!tripSel) return;
+  // 후보 목록에 해당 출장이 없으면(오래된 건) 옵션을 즉석 추가
+  if (!tripSel.querySelector(`option[value="${tripId}"]`)) {
+    const opt = new Option(`출장 #${tripId}`, tripId, true, true);
+    tripSel.add(opt);
+  }
+  openCreateModal();
+  tripSel.value = tripId;
+  onTripSelect();
+});
+
+// ─── 출장에서 프리필 ───
+async function onTripSelect() {
+  const tripId = document.getElementById('cf_trip').value;
+  if (!tripId) return;
+  try {
+    const res = await fetch(`/vehicle-logs/trip-prefill/${tripId}`);
+    const d = await res.json();
+    if (!d.ok) { alert(d.error || '불러오기 실패'); return; }
+    const p = d.prefill;
+    const f = document.getElementById('createForm');
+    if (p.use_date) document.getElementById('cf_use_date').value = p.use_date;
+    document.getElementById('cf_vehicle').value = p.vehicle || '';
+    f.origin.value = p.origin || '본사';
+    f.destination.value = p.destination || '';
+    f.purpose.value = p.purpose || '';
+    // 차량에 맞춰 주행 전 km 자동 채움 (프리필로 온 last_odometer 우선)
+    const odoStart = document.getElementById('cf_odo_start');
+    const hint = document.getElementById('cf_last_hint');
+    if (p.last_odometer != null) {
+      odoStart.value = p.last_odometer;
+      hint.textContent = `직전 주행 후: ${p.last_odometer.toLocaleString()} km (자동 채움)`;
+    } else {
+      odoStart.value = '';
+      hint.textContent = '직전 기록 없음 — 주행 전 km을 직접 입력하세요';
+    }
+    updateDistance();
+    document.getElementById('cf_odo_end').focus();
+  } catch (e) {
+    alert('불러오기 실패: ' + e.message);
+  }
 }
 
 function onVehicleChange() {

@@ -19,14 +19,19 @@ def register(mcp: FastMCP):
         """출장 목록 조회. 출장일정, 참가자, 차량정보를 반환합니다.
         ★ '출장 일정', '누가 출장 가', '이번주 출장' 등의 질문에 사용.
         status: 예정 / 진행중 / 완료 / 취소
+          ★ 상태는 저장값이 아니라 날짜로 계산합니다(ERP 웹과 동일).
+            '진행중' = 오늘 실제 출장 나가 있는 사람. '완료' = 복귀일 지남.
         search: 제목 또는 목적지 검색
         """
         from modules.models.misc_entities import BusinessTrip
+        from modules.services.business_trip_status import (
+            effective_status, filter_by_effective_status,
+        )
         session = get_session()
         try:
             q = session.query(BusinessTrip)
             if status:
-                q = q.filter(BusinessTrip.status == status)
+                q = filter_by_effective_status(q, status)
             if search:
                 q = q.filter(
                     BusinessTrip.title.ilike(f"%{search}%")
@@ -40,7 +45,7 @@ def register(mcp: FastMCP):
                     "id": t.id,
                     "title": _s(t.title),
                     "destination": _s(t.destination),
-                    "status": _s(t.status),
+                    "status": effective_status(t),  # 날짜 기준 실제 상태
                     "vehicle": _s(t.vehicle),
                     "departure_date": _sd(t.departure_date),
                     "return_date": _sd(t.return_date),
@@ -57,6 +62,7 @@ def register(mcp: FastMCP):
         ★ 특정 출장의 상세 내역 확인 시 사용.
         """
         from modules.models.misc_entities import BusinessTrip
+        from modules.services.business_trip_status import effective_status
         session = get_session()
         try:
             trip = session.get(BusinessTrip, trip_id)
@@ -74,7 +80,7 @@ def register(mcp: FastMCP):
                 "title": _s(trip.title),
                 "destination": _s(trip.destination),
                 "purpose": _s(trip.purpose),
-                "status": _s(trip.status),
+                "status": effective_status(trip),  # 날짜 기준 실제 상태
                 "vehicle": _s(trip.vehicle),
                 "departure_date": _sd(trip.departure_date),
                 "return_date": _sd(trip.return_date),

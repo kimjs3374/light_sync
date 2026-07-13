@@ -26,41 +26,9 @@ def _sync_g2b_daily():
         logger.error(f"[scheduler] G2B 일일동기화 오류: {e}")
 
 
-def _auto_update_trip_status():
-    """출장 상태 자동 전환 (10분마다)
-    예정  → 진행중 : departure_date <= 지금
-    진행중 → 완료   : return_date   <= 지금
-    """
-    from modules.db_context import get_db
-    from modules.models import BusinessTrip
-
-    now = datetime.datetime.now()
-    updated = 0
-    try:
-        with get_db() as db:
-            # 예정 → 진행중
-            to_ongoing = db.query(BusinessTrip).filter(
-                BusinessTrip.status == '예정',
-                BusinessTrip.departure_date <= now,
-            ).all()
-            for trip in to_ongoing:
-                trip.status = '진행중'
-                updated += 1
-
-            # 예정/진행중 → 완료
-            to_done = db.query(BusinessTrip).filter(
-                BusinessTrip.status.in_(['예정', '진행중']),
-                BusinessTrip.return_date <= now,
-            ).all()
-            for trip in to_done:
-                trip.status = '완료'
-                updated += 1
-
-            if updated:
-                db.commit()
-                logger.info(f"[scheduler] 출장 상태 자동 업데이트 {updated}건")
-    except Exception as e:
-        logger.error(f"[scheduler] 출장 상태 업데이트 오류: {e}")
+# 출장 상태 자동 전환은 crontab(flask update-trip-status)으로 이관됨.
+#   기존 in-process 버전은 gunicorn 멀티워커에서 미동작 이력 + '출장중' 값을
+#   완료 전환에서 누락하는 버그가 있었다. 로직은 services/business_trip_status.py 단일화.
 
 
 def _cleanup_expired_mail_files():
@@ -279,13 +247,9 @@ def init_scheduler(app):
         return
 
     _scheduler = BackgroundScheduler(daemon=True)
-    _scheduler.add_job(
-        _auto_update_trip_status,
-        trigger='interval',
-        minutes=10,
-        id='trip_status_update',
-        replace_existing=True,
-    )
+    # 출장 상태 보정은 crontab(flask update-trip-status)으로 이관.
+    #   APScheduler in-process 방식은 gunicorn 멀티워커에서 신뢰불가(실제로 미동작 이력).
+    #   표시 로직은 이미 날짜기준 유효상태를 계산하므로 이 job 없이도 정상.
     _scheduler.add_job(
         lambda: _process_scheduled_mails(app),
         trigger='interval',

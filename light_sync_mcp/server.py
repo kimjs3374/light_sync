@@ -101,7 +101,7 @@ INSTRUCTIONS = """
 - 다른 사용자의 개인 계정은 **절대 접근 불가** — `account_id` 명시해도 차단됨.
 - `requester_username` 없거나 식별 실패 시 모든 도구가 error 반환.
 
-## Tool 분류 (111개)
+## Tool 분류 (113개)
 
 ### 현장/프로젝트 (8개)
 - `get_projects(status, year, month, search)` — 현장 목록
@@ -295,7 +295,7 @@ INSTRUCTIONS = """
 - `write_preview_delivery_complete(project_search, completed_date?)` — 납품완료 처리
 - `write_preview_as_register(project_search, defect_type?, symptom?, received_date?)` — AS(하자) 접수 등록
 - `write_preview_billing_complete(project_search, invoice_date?)` — 청구완료(세금계산서 발행) 처리
-- `write_preview_vehicle_log(destination?, distance_km?, purpose?, vehicle?, use_date?, driver_name?)` — 운행일지 등록
+- `write_preview_vehicle_log(origin?, destination?, distance_km?, purpose?, vehicle?, use_date?, driver_name?, odometer_end?, from_trip_id?)` — 운행일지 등록 (출발지 필수, 계기판은 직전 기록에서 자동 채움). `from_trip_id` 지정 시 그 출장의 차량·목적지·목적·날짜·출발지 자동 프리필 → 거리/계기판만 받으면 됨
 - `write_preview_business_trip(destination?, departure_date?, travelers?, purpose?, vehicle?, return_date?, ...)` — 출장 등록
 - `write_preview_daily_report(department?, items?, report_date?, reporter_name?)` — 일일업무보고 등록
 - `write_preview_po_status(po_search?, new_status?)` — 발주서 상태 변경 (작성중/발송완료/입고대기/입고완료/취소)
@@ -304,6 +304,17 @@ INSTRUCTIONS = """
 - `write_preview_leave_request(requester_username, start_date, end_date?, leave_type?, period?, reason)` — 휴가 상신 (전자결재)
   · 결재선 자동 구성(부서장→임원진). 본인 명의만 가능. 승인 시 연차 자동 차감.
   · 모두 `status=needs_info`면 question 으로 추가 질문, `status=preview`면 확인 버튼 제시.
+
+### 확정 도구 (2개) — 버튼 없는 봇(카카오워크)용
+- `confirm_leave_request(session_token)` — 휴가 상신 확정
+- `confirm_vehicle_log(session_token)` — 운행일지 등록 확정
+  · 신원은 서버가 `KAKAO_ERP_USER` 로 주입. preview 기안자/운전자와 대조해 명의 위조 차단.
+  · Mattermost 는 확인 버튼(`/mattermost/action`)으로 처리하므로 이 도구가 필요 없다.
+
+### 프로필별 노출 (환경변수)
+- 비-READONLY (mmbot/채널봇): 전체 113개
+- `LIGHT_SYNC_MCP_READONLY=1` + `LIGHT_SYNC_MCP_WRITE_ALLOW=<도구명 CSV>`: 목록에 적힌 쓰기 도구만
+- `LIGHT_SYNC_MCP_READONLY=1` 단독: 조회 100개만
 
 ### 메일 발송 — write_preview 패턴 (1개, 권한 격리 ⚠️)
 - `write_preview_email_send(requester_username, to, subject, body, cc?, bcc?, account_id?, request_read_receipt=True, large_file_ids?)` — 메일 발송 preview

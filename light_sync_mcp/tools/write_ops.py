@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import uuid
 from typing import Any, Dict, Optional
 
@@ -20,8 +21,14 @@ from mcp.server.fastmcp import FastMCP
 from ..db import get_session
 from ._helpers import _s, _erp_url
 
-# ── 차량 선택지 (ERP와 동일) ──────────────────────────────
-VEHICLE_CHOICES = ['쏘렌토 9539', '스타리아 3417', '포터 8804', '개인차량', '대중교통', '기타']
+# ── 차량 선택지 ───────────────────────────────────────────
+#   실제 목록은 DashboardSetting['business_trip_vehicles'] 프리셋이 원본이다.
+#   (routes/business_trip.py:_get_vehicle_choices 와 동일 소스)
+#   아래는 프리셋을 읽지 못했을 때만 쓰는 폴백값.
+VEHICLE_SETTING_KEY = 'business_trip_vehicles'
+VEHICLE_CHOICES_FALLBACK = ['쏘렌토 9539', '트럭 1467', '자차이용', '대중교통']
+# 운행일지는 회사차량만 기록한다 (routes/vehicle_log.py:EXCLUDED_VEHICLES)
+EXCLUDED_VEHICLES = {'개인차량', '대중교통', '기타', '도보', ''}
 
 # ── 결함 유형 (한국어 → 코드) ─────────────────────────────
 DEFECT_LABEL_MAP = {
@@ -381,18 +388,53 @@ def register(mcp: FastMCP):
         vehicle: Optional[str] = None,
         use_date: Optional[str] = None,
         driver_name: Optional[str] = None,
+        origin: Optional[str] = None,
+        odometer_end: Optional[int] = None,
+        from_trip_id: Optional[int] = None,
     ) -> str:
         """운행일지 등록 preview.
 
         ★ 필수 필드:
+          - origin: 출발지 (예: 본사, 세종공장)
           - destination: 목적지 (예: 세종시청, 장흥현장)
           - distance_km: 운행거리 km (정수)
           - purpose: 운행목적 (예: 현장점검, AS처리)
-          - vehicle: 차량 (쏘렌토 9539/스타리아 3417/포터 8804/개인차량/대중교통/기타)
+          - vehicle: 차량 — 회사차량 프리셋에서만 선택 (ERP 관리화면에서 편집)
           - driver_name: 운전자 이름
+
+        ★ 선택 필드:
           - use_date: 운행일 (생략 시 오늘)
+          - odometer_end: 주행 후 계기판 km. 주행 전 계기판은 같은 차량의
+            직전 기록에서 자동으로 채워집니다.
+          - from_trip_id: 출장 ID. 지정하면 그 출장의 차량·목적지·목적·날짜·출발지(본사)를
+            자동으로 채웁니다. "OO 출장 운행일지 써줘" 처리 시 get_business_trips 로 찾은
+            trip_id 를 넘기고, 거리(km)나 계기판만 받으면 됩니다.
         """
         today = datetime.date.today()
+
+        # 출장 연동: 지정한 출장에서 겹치는 필드를 채운다(사용자 명시값이 우선).
+        if from_trip_id is not None:
+            from modules.models.entities import BusinessTrip
+            from modules.services.vehicle_log_trip_link import trip_to_log_defaults
+            _s = get_session()
+            try:
+                _trip = _s.get(BusinessTrip, from_trip_id)
+                if not _trip:
+                    return json.dumps({"status": "error", "intent": "write_preview_vehicle_log",
+                        "message": f"출장 #{from_trip_id} 을 찾을 수 없습니다."}, ensure_ascii=False)
+                _d = trip_to_log_defaults(_s, _trip)
+                if not _d:
+                    return json.dumps({"status": "error", "intent": "write_preview_vehicle_log",
+                        "message": f"출장 #{from_trip_id}({_trip.vehicle})은 회사차량이 아니라 운행일지 대상이 아닙니다."},
+                        ensure_ascii=False)
+            finally:
+                _s.close()
+            vehicle = vehicle or _d["vehicle"]
+            destination = destination or _d["destination"]
+            purpose = purpose or _d["purpose"]
+            origin = origin or _d["origin"]
+            use_date = use_date or _d["use_date"]
+            driver_name = driver_name or _d["driver_name"]
 
         if not destination:
             return json.dumps({"status": "needs_info", "intent": "write_preview_vehicle_log",
@@ -401,48 +443,73 @@ def register(mcp: FastMCP):
                 "collected": {},
             }, ensure_ascii=False)
 
-        if distance_km is None:
+        if not origin:
             return json.dumps({"status": "needs_info", "intent": "write_preview_vehicle_log",
-                "question": f"'{destination}' 운행 거리가 몇 km입니까?",
-                "hint": "정수로 입력 (예: 185)",
+                "question": f"'{destination}'으로 어디에서 출발하셨습니까?",
+                "hint": "예: 본사, 세종공장, 자택",
                 "collected": {"destination": destination},
+            }, ensure_ascii=False)
+
+        # 계기판(odometer_end)이 있으면 거리는 직전 기록에서 도출하므로 거리를 굳이 안 물어도 된다.
+        if distance_km is None and odometer_end is None:
+            return json.dumps({"status": "needs_info", "intent": "write_preview_vehicle_log",
+                "question": f"'{origin} → {destination}' 운행 거리가 몇 km입니까? (또는 계기판 값)",
+                "hint": "정수로 입력 (예: 185). 계기판 사진이 있으면 주행 후 km을 알려주세요.",
+                "collected": {"origin": origin, "destination": destination},
             }, ensure_ascii=False)
 
         if not purpose:
             return json.dumps({"status": "needs_info", "intent": "write_preview_vehicle_log",
                 "question": "운행 목적을 입력해주세요.",
                 "hint": "예: 현장점검, AS처리, 자재운반, 계약미팅",
-                "collected": {"destination": destination, "distance_km": distance_km},
+                "collected": {"origin": origin, "destination": destination,
+                              "distance_km": distance_km},
             }, ensure_ascii=False)
 
+        allowed_vehicles = _company_vehicles()
+
         if not vehicle:
-            choices_str = " / ".join(VEHICLE_CHOICES)
+            choices_str = " / ".join(allowed_vehicles)
             return json.dumps({"status": "needs_info", "intent": "write_preview_vehicle_log",
                 "question": "어떤 차량을 이용했습니까?",
                 "hint": choices_str,
-                "collected": {"destination": destination, "distance_km": distance_km, "purpose": purpose},
+                "collected": {"origin": origin, "destination": destination,
+                              "distance_km": distance_km, "purpose": purpose},
             }, ensure_ascii=False)
 
-        matched_vehicle = _match_vehicle(vehicle)
+        matched_vehicle = _match_vehicle(vehicle, allowed_vehicles)
         if not matched_vehicle:
-            choices_str = " / ".join(VEHICLE_CHOICES)
+            choices_str = " / ".join(allowed_vehicles)
             return json.dumps({"status": "needs_info", "intent": "write_preview_vehicle_log",
                 "question": f"'{vehicle}' 차량을 인식하지 못했습니다. 다시 선택해주세요.",
                 "hint": choices_str,
-                "collected": {"destination": destination, "distance_km": distance_km, "purpose": purpose},
+                "collected": {"origin": origin, "destination": destination,
+                              "distance_km": distance_km, "purpose": purpose},
             }, ensure_ascii=False)
+
+        # 신원 주입: 봇 채널은 서버가 KAKAO_ERP_USER 로 본인을 강제한다(명의 위조 차단).
+        forced_user = os.environ.get("KAKAO_ERP_USER", "").strip()
+        if forced_user:
+            forced_name = _fullname_of(forced_user)
+            if not forced_name:
+                return json.dumps({"status": "error", "intent": "write_preview_vehicle_log",
+                    "message": f"ERP 계정 '{forced_user}'을 찾을 수 없어 운행일지를 등록할 수 없습니다."},
+                    ensure_ascii=False)
+            driver_name = forced_name
 
         if not driver_name:
             return json.dumps({"status": "needs_info", "intent": "write_preview_vehicle_log",
                 "question": "운전자 이름을 입력해주세요.",
                 "hint": "예: 김정수, 김선중",
-                "collected": {"destination": destination, "distance_km": distance_km,
-                              "purpose": purpose, "vehicle": vehicle},
+                "collected": {"origin": origin, "destination": destination,
+                              "distance_km": distance_km, "purpose": purpose,
+                              "vehicle": matched_vehicle},
             }, ensure_ascii=False)
 
         parsed_date = _parse_date(use_date) if use_date else today
+        the_date = parsed_date or today
 
-        # ERP user 조회 (이름 기준)
+        # ERP user + 직전 계기판 조회
         session = get_session()
         try:
             from modules.models.entities import User
@@ -452,21 +519,64 @@ def register(mcp: FastMCP):
             user_id = erp_user.id if erp_user else None
             dept = erp_user.user_group if erp_user else None
             position = erp_user.position if erp_user else None
+
+            last_odo = _get_last_odometer(session, matched_vehicle, the_date)
         finally:
             session.close()
+
+        # 계기판이 주어지면 ERP 폼과 동일하게 거리는 계기판에서 도출한다.
+        if odometer_end is not None:
+            odometer_end = int(odometer_end)
+            if last_odo is not None:
+                if odometer_end < last_odo:
+                    return json.dumps({"status": "needs_info", "intent": "write_preview_vehicle_log",
+                        "question": f"주행 후 계기판({odometer_end}km)이 직전 기록({last_odo}km)보다 작습니다. 다시 확인해주세요.",
+                        "hint": f"{matched_vehicle}의 직전 주행 후 계기판은 {last_odo}km 입니다.",
+                        "collected": {"destination": destination, "distance_km": distance_km,
+                                      "purpose": purpose, "vehicle": matched_vehicle},
+                    }, ensure_ascii=False)
+                derived = odometer_end - last_odo
+                if distance_km is None:
+                    distance_km = derived  # 계기판에서 거리 도출
+                elif derived != int(distance_km):
+                    return json.dumps({"status": "needs_info", "intent": "write_preview_vehicle_log",
+                        "question": (f"말씀하신 거리({distance_km}km)와 계기판으로 계산한 거리({derived}km)가 "
+                                     f"다릅니다. 어느 쪽이 맞습니까?"),
+                        "hint": f"직전 계기판 {last_odo}km → 입력하신 주행 후 {odometer_end}km",
+                        "collected": {"destination": destination, "purpose": purpose,
+                                      "vehicle": matched_vehicle, "driver_name": driver_name},
+                    }, ensure_ascii=False)
+            elif distance_km is None:
+                # 직전 계기판 기록이 없어 계기판만으론 거리를 못 구한다.
+                return json.dumps({"status": "needs_info", "intent": "write_preview_vehicle_log",
+                    "question": (f"{matched_vehicle}의 직전 계기판 기록이 없어 계기판만으로는 거리를 "
+                                 f"계산할 수 없습니다. 운행 거리(km)를 직접 알려주세요."),
+                    "hint": "정수로 입력 (예: 185)",
+                    "collected": {"destination": destination, "purpose": purpose,
+                                  "vehicle": matched_vehicle, "driver_name": driver_name},
+                }, ensure_ascii=False)
 
         token = _store_session("confirm_vehicle_log", {
             "vehicle": matched_vehicle,
             "destination": destination,
             "distance_km": int(distance_km),
             "purpose": purpose,
-            "use_date": (parsed_date or today).isoformat(),
+            "use_date": the_date.isoformat(),
             "driver_name": driver_name,
             "user_id": user_id,
             "user_department": dept,
             "user_position": position,
-            "origin": "출발지 미기재",
+            "origin": origin,
+            "odometer_end": odometer_end,
         })
+
+        # 계기판 표시값 — 실제 기록은 confirm 시점에 재조회해 확정한다.
+        if odometer_end is not None:
+            odo_label = f"{last_odo if last_odo is not None else '?'} → {odometer_end}km"
+        elif last_odo is not None:
+            odo_label = f"{last_odo} → {last_odo + int(distance_km)}km (자동계산)"
+        else:
+            odo_label = "직전 기록 없음 (미기재)"
 
         return json.dumps({
             "status": "preview",
@@ -476,12 +586,86 @@ def register(mcp: FastMCP):
             "fields": {
                 "운전자": driver_name,
                 "차량": matched_vehicle,
-                "운행일": (parsed_date or today).isoformat(),
+                "운행일": the_date.isoformat(),
+                "출발지": origin,
                 "목적지": destination,
                 "거리": f"{distance_km}km",
+                "계기판": odo_label,
                 "목적": purpose,
             },
+            "notice": "사용자가 동의하면 confirm_vehicle_log(session_token) 로 등록됩니다. "
+                      "(Mattermost 는 확인 버튼으로도 처리됩니다.)",
         }, ensure_ascii=False)
+
+    @mcp.tool()
+    def confirm_vehicle_log(session_token: str) -> str:
+        """운행일지 등록 확정 — write_preview_vehicle_log 의 preview 를 실제로 기록.
+
+        ★ 사용자가 미리보기를 보고 '네/응/그래/확인/등록해' 등으로 명확히 동의했을 때만
+          호출한다. 본인 신원은 서버가 주입(KAKAO_ERP_USER)하며 preview 운전자와 대조해
+          남의 명의 기록을 차단한다.
+
+        Args:
+            session_token: write_preview_vehicle_log 가 반환한 session_token
+        """
+        from modules.models.misc_entities import PendingWriteSession
+        from modules.services.vehicle_log_write import write_vehicle_log
+
+        forced = os.environ.get("KAKAO_ERP_USER", "").strip()
+        if not forced:
+            return json.dumps({"status": "error",
+                "message": "확정 권한이 없습니다(신원 미주입)."}, ensure_ascii=False)
+        if not session_token:
+            return json.dumps({"status": "error",
+                "message": "session_token 이 필요합니다. 먼저 운행일지 미리보기를 만들어 주세요."},
+                ensure_ascii=False)
+
+        session = get_session()
+        try:
+            row = session.get(PendingWriteSession, session_token)
+            if not row:
+                return json.dumps({"status": "error",
+                    "message": "세션을 찾을 수 없습니다(30분 만료됐을 수 있음). 다시 등록해주세요."},
+                    ensure_ascii=False)
+            if row.used:
+                return json.dumps({"status": "error",
+                    "message": "이미 등록 처리된 운행일지입니다."}, ensure_ascii=False)
+            if row.expires_at < datetime.datetime.now():
+                return json.dumps({"status": "error",
+                    "message": "미리보기가 만료되었습니다(30분 초과). 다시 등록해주세요."},
+                    ensure_ascii=False)
+            if row.intent_type != "confirm_vehicle_log":
+                return json.dumps({"status": "error",
+                    "message": "운행일지 세션이 아닙니다."}, ensure_ascii=False)
+
+            try:
+                payload = json.loads(row.payload_json)
+            except Exception:
+                return json.dumps({"status": "error",
+                    "message": "세션 payload 파싱 오류."}, ensure_ascii=False)
+
+            # preview 운전자와 확정자 대조 (명의 위조 차단)
+            clicker_name = _fullname_of(forced)
+            if not clicker_name or clicker_name != payload.get("driver_name"):
+                return json.dumps({"status": "error",
+                    "message": "본인 명의의 운행일지만 등록할 수 있습니다."}, ensure_ascii=False)
+
+            result = write_vehicle_log(session, payload)
+            if not result.get("ok"):
+                session.rollback()
+                return json.dumps({"status": "error",
+                    "message": result.get("msg", "등록 실패")}, ensure_ascii=False)
+
+            row.used = True
+            session.commit()
+            return json.dumps({"status": "done", "message": result["label"],
+                               "detail": result["detail"]}, ensure_ascii=False)
+        except Exception as e:
+            session.rollback()
+            return json.dumps({"status": "error",
+                "message": f"등록 중 오류: {e}"}, ensure_ascii=False)
+        finally:
+            session.close()
 
     # ══════════════════════════════════════════════════════
     # 5. 출장 등록
@@ -587,8 +771,10 @@ def register(mcp: FastMCP):
                               "departure_time": departure_time, "travelers": travelers},
             }, ensure_ascii=False)
 
+        trip_vehicles = _vehicle_presets()
+
         if not vehicle:
-            choices_str = " / ".join(VEHICLE_CHOICES)
+            choices_str = " / ".join(trip_vehicles)
             return json.dumps({"status": "needs_info", "intent": "write_preview_business_trip",
                 "question": "이동수단이 무엇입니까?",
                 "hint": choices_str,
@@ -597,11 +783,11 @@ def register(mcp: FastMCP):
                               "purpose": purpose},
             }, ensure_ascii=False)
 
-        matched_vehicle = _match_vehicle(vehicle)
+        matched_vehicle = _match_vehicle(vehicle, trip_vehicles)
         if not matched_vehicle:
             return json.dumps({"status": "needs_info", "intent": "write_preview_business_trip",
                 "question": f"'{vehicle}' 이동수단을 인식하지 못했습니다.",
-                "hint": " / ".join(VEHICLE_CHOICES),
+                "hint": " / ".join(trip_vehicles),
                 "collected": {"destination": destination, "departure_date": departure_date,
                               "departure_time": departure_time, "travelers": travelers,
                               "purpose": purpose},
@@ -657,6 +843,23 @@ def register(mcp: FastMCP):
         depart_dt = f"{parsed_depart.isoformat()}T{parsed_depart_time}:00"
         return_dt = f"{parsed_return.isoformat()}T{parsed_return_time}:00"
 
+        # 차량 예약 충돌 확인 (같은 회사차량이 겹치는 기간에 이미 배정됐는지)
+        import datetime as _dt2
+        vehicle_notice = None
+        _s2 = get_session()
+        try:
+            from modules.services.vehicle_availability import vehicle_conflicts
+            _confs = vehicle_conflicts(
+                _s2, matched_vehicle,
+                _dt2.datetime.fromisoformat(depart_dt),
+                _dt2.datetime.fromisoformat(return_dt))
+            if _confs:
+                _labels = "; ".join(c["label"] for c in _confs)
+                vehicle_notice = (f"⚠ {matched_vehicle}은(는) 이 기간에 이미 배정되어 있습니다: "
+                                  f"{_labels}. 그래도 등록하려면 확인해 주세요.")
+        finally:
+            _s2.close()
+
         token = _store_session("confirm_business_trip", {
             "title": f"{destination} 출장 — {purpose}",
             "destination": destination,
@@ -681,6 +884,7 @@ def register(mcp: FastMCP):
                 "출장자": ", ".join(traveler_list),
                 "목적": purpose,
             },
+            **({"notice": vehicle_notice} if vehicle_notice else {}),
         }, ensure_ascii=False)
 
     # ══════════════════════════════════════════════════════
@@ -1451,167 +1655,9 @@ def register(mcp: FastMCP):
             session.close()
 
     # ══════════════════════════════════════════════════════
-    # 11. 휴가 상신 (전자결재)
+    # 11. 휴가 상신 → light_sync_mcp/tools/leave_write.py 로 분리
+    #     (READONLY 봇도 '휴가 전용' 쓰기만 열 수 있도록. tools_registry 에서 등록)
     # ══════════════════════════════════════════════════════
-    @mcp.tool()
-    def write_preview_leave_request(
-        requester_username: str,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        leave_type: Optional[str] = None,
-        period: Optional[str] = None,
-        reason: Optional[str] = None,
-    ) -> str:
-        """휴가 상신 preview — 확인 시 전자결재 휴가신청서가 상신됩니다.
-
-        결재선은 ERP와 동일하게 자동 구성됩니다 (부서장 → 임원진).
-        승인되면 연차가 자동 차감됩니다.
-
-        ★ 필수 필드:
-          - requester_username: 채널 태그의 user="..." 값 (기안자 = 본인만 가능)
-          - start_date: 시작일 (YYYY-MM-DD / M/D / 오늘 / 내일)
-          - leave_type: 연차(기본) / 병가 / 경조사 / 공가 / 기타
-          - period: 종일(기본) / 오전반차 / 오후반차
-          - end_date: 종료일 (생략 시 시작일과 동일)
-          - reason: 사유
-        """
-        from modules.services import approval_service as svc
-
-        if not requester_username:
-            return json.dumps({"status": "error",
-                "message": "requester_username 이 필요합니다. 본인 명의로만 상신할 수 있습니다."},
-                ensure_ascii=False)
-
-        if not start_date:
-            return json.dumps({"status": "needs_info", "intent": "write_preview_leave_request",
-                "question": "휴가 시작일이 언제입니까?",
-                "hint": "예: 내일, 2026-07-20, 7/20",
-                "collected": {}}, ensure_ascii=False)
-
-        parsed_start = _parse_date(start_date)
-        if not parsed_start:
-            return json.dumps({"status": "needs_info", "intent": "write_preview_leave_request",
-                "question": f"'{start_date}' 날짜를 인식하지 못했습니다. 다시 입력해주세요.",
-                "hint": "YYYY-MM-DD 또는 M/D",
-                "collected": {}}, ensure_ascii=False)
-
-        parsed_end = _parse_date(end_date) if end_date else parsed_start
-        if not parsed_end:
-            parsed_end = parsed_start
-        if parsed_end < parsed_start:
-            return json.dumps({"status": "error",
-                "message": "종료일이 시작일보다 빠릅니다."}, ensure_ascii=False)
-
-        ltype = (leave_type or '연차').strip()
-        if ltype not in LEAVE_TYPES:
-            return json.dumps({"status": "needs_info", "intent": "write_preview_leave_request",
-                "question": f"'{ltype}' 휴가 종류를 인식하지 못했습니다.",
-                "hint": " / ".join(LEAVE_TYPES),
-                "collected": {"start_date": parsed_start.isoformat()}}, ensure_ascii=False)
-
-        prd = (period or '종일').strip()
-        if prd not in LEAVE_PERIODS:
-            return json.dumps({"status": "needs_info", "intent": "write_preview_leave_request",
-                "question": f"'{prd}' 기간 구분을 인식하지 못했습니다.",
-                "hint": " / ".join(LEAVE_PERIODS),
-                "collected": {"start_date": parsed_start.isoformat(), "leave_type": ltype}},
-                ensure_ascii=False)
-
-        if '반차' in prd:
-            parsed_end = parsed_start  # 반차는 하루
-
-        if not reason:
-            return json.dumps({"status": "needs_info", "intent": "write_preview_leave_request",
-                "question": "휴가 사유를 입력해주세요.",
-                "hint": "예: 개인사유, 병원진료, 경조사",
-                "collected": {"start_date": parsed_start.isoformat(),
-                              "end_date": parsed_end.isoformat(),
-                              "leave_type": ltype, "period": prd}}, ensure_ascii=False)
-
-        session = get_session()
-        try:
-            from modules.models.entities import User
-            drafter = (session.query(User).filter(User.username == requester_username).first()
-                       or session.query(User)
-                       .filter(User.email.ilike(f"{requester_username}@%")).first())
-            if not drafter:
-                return json.dumps({"status": "error",
-                    "message": f"'{requester_username}' 사용자를 ERP에서 찾을 수 없습니다."},
-                    ensure_ascii=False)
-
-            # 사용일수 — ERP 상신과 동일한 산정식
-            if '반차' in prd:
-                days = 0.5
-            else:
-                from modules.services import holiday_service
-                days = float(holiday_service.working_days(parsed_start, parsed_end))
-            if days <= 0:
-                return json.dumps({"status": "error",
-                    "message": f"{parsed_start} ~ {parsed_end} 구간에 근무일이 없습니다 "
-                               "(주말/공휴일). 날짜를 확인해주세요."}, ensure_ascii=False)
-
-            # 결재선 미리 확인 (상신 시점에 다시 구성)
-            line = svc.resolve_default_line(session, drafter)
-            line_label = " → ".join(f"{s['approver_name']} {s['approver_position'] or ''}".strip()
-                                    for s in line) or "본인 전결 (상위 결재자 없음)"
-
-            # 잔여 연차 확인 (연차만 차감)
-            balance_note = ""
-            if ltype == '연차':
-                from modules.services import hr_service
-                summary = hr_service.leave_summary(session, drafter)
-                after = round(summary['remaining'] - days, 1)
-                balance_note = f"잔여 {summary['remaining']}일 → 사용 후 {after}일"
-                if after < 0:
-                    balance_note += "  ⚠️ 잔여 연차 부족"
-
-            position = (drafter.position or '').strip()
-            drafter_name = _s(drafter.full_name)
-            drafter_dept = _s(drafter.user_group)
-            title = f"{drafter_dept} {drafter_name} {position} 휴가신청서".strip()
-            title = " ".join(title.split())
-
-            token = _store_session("confirm_leave_request", {
-                "drafter_id": drafter.id,
-                "title": title,
-                "form_data": {
-                    "leave_type": ltype,
-                    "period": prd,
-                    "start_date": parsed_start.isoformat(),
-                    "end_date": parsed_end.isoformat(),
-                    "start_time": "",
-                    "end_time": "",
-                    "days": str(days),
-                    "reason": reason,
-                    "emergency_contact": _s(drafter.phone_number),
-                },
-                "content": reason,
-            }, user_name=drafter_name)
-        finally:
-            session.close()
-
-        fields = {
-            "기안자": " ".join(f"{drafter_dept} {drafter_name} {position}".split()),
-            "휴가종류": ltype,
-            "기간구분": prd,
-            "기간": (parsed_start.isoformat() if parsed_start == parsed_end
-                     else f"{parsed_start.isoformat()} ~ {parsed_end.isoformat()}"),
-            "사용일수": f"{days}일",
-            "사유": reason,
-            "결재선": line_label,
-        }
-        if balance_note:
-            fields["연차잔여"] = balance_note
-
-        return json.dumps({
-            "status": "preview",
-            "action_type": "confirm_leave_request",
-            "session_token": token,
-            "summary": f"휴가 상신 — {ltype} {days}일",
-            "fields": fields,
-            "notice": "확인 버튼을 누르면 전자결재로 상신됩니다. "
-                      "승인 완료(또는 부서장 선효력) 시 연차가 자동 차감됩니다.",
-        }, ensure_ascii=False)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1693,16 +1739,58 @@ def _map_defect(label: str) -> Optional[str]:
     return None
 
 
-def _match_vehicle(text: str) -> Optional[str]:
+def _fullname_of(username: str) -> Optional[str]:
+    """ERP username → full_name (KAKAO_ERP_USER 신원 확정용)"""
+    from modules.models.entities import User
+    session = get_session()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        return user.full_name if user else None
+    finally:
+        session.close()
+
+
+def _vehicle_presets() -> list:
+    """차량 프리셋 (출장/운행일지 공용). ERP 관리화면에서 편집되는 값."""
+    from modules.models.entities import DashboardSetting
+    session = get_session()
+    try:
+        row = session.query(DashboardSetting).filter_by(
+            setting_key=VEHICLE_SETTING_KEY).first()
+        if row and row.setting_value:
+            presets = json.loads(row.setting_value)
+            if isinstance(presets, list) and presets:
+                return presets
+    except Exception:
+        pass
+    finally:
+        session.close()
+    return list(VEHICLE_CHOICES_FALLBACK)
+
+
+def _company_vehicles() -> list:
+    """운행일지 기록 대상 — 회사차량만"""
+    return [v for v in _vehicle_presets() if v not in EXCLUDED_VEHICLES]
+
+
+def _match_vehicle(text: str, choices: Optional[list] = None) -> Optional[str]:
     text = text.strip()
-    for v in VEHICLE_CHOICES:
+    if choices is None:
+        choices = _vehicle_presets()
+    for v in choices:
         if text in v or v in text:
             return v
     tl = text.lower()
-    for v in VEHICLE_CHOICES:
+    for v in choices:
         if tl in v.lower():
             return v
     return None
+
+
+def _get_last_odometer(session, vehicle: str, before_date) -> Optional[int]:
+    """직전 동일 차량 기록의 주행 후 km (실제 구현은 서비스 모듈)."""
+    from modules.services.vehicle_log_write import get_last_odometer
+    return get_last_odometer(session, vehicle, before_date)
 
 
 def _match_dept(text: str) -> Optional[str]:

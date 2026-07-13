@@ -629,25 +629,8 @@ def _write_billing_complete(session, payload, actor, mm_user_name):
 
 
 def _write_vehicle_log(session, payload, erp_user):
-    from modules.models.entities import VehicleLog
-    import datetime as _dt
-
-    vl = VehicleLog(
-        use_date=_dt.date.fromisoformat(payload["use_date"]),
-        vehicle=payload["vehicle"],
-        user_name=payload["driver_name"],
-        user_id=payload.get("user_id"),
-        user_department=payload.get("user_department"),
-        user_position=payload.get("user_position"),
-        origin=payload.get("origin", "출발지 미기재"),
-        destination=payload["destination"],
-        distance_km=payload["distance_km"],
-        purpose=payload["purpose"],
-        odometer_end=0,  # 채팅 등록 시 계기판 미입력
-    )
-    session.add(vl)
-    return {"ok": True, "label": "운행일지 등록됨",
-            "detail": f"- {payload['driver_name']} / {payload['vehicle']}\n- {payload['destination']} {payload['distance_km']}km"}
+    from modules.services.vehicle_log_write import write_vehicle_log
+    return write_vehicle_log(session, payload)
 
 
 def _write_business_trip(session, payload):

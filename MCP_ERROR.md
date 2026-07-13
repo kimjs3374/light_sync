@@ -85,6 +85,58 @@ direction 필터 없이 합산하면 매출이 2배 가까이 부풀려집니다
 
 ## 3. MCP Tool 추가 이력
 
+### 2026-07-13 — 출장 ↔ 운행일지 연동 (프리필) + 계기판 거리도출 버그 수정
+
+출장 데이터가 운행일지와 거의 겹침(차량·목적지·목적·날짜·인원). 계기판/거리만 빼고 프리필.
+
+| 구분 | 내용 |
+|------|------|
+| 신규 | `modules/services/vehicle_log_trip_link.py` — `trip_to_log_defaults(session, trip)` 단일 소스.<br>회사차량 출장만(대중교통 등 제외), 출발지 기본 '본사'(수정가능) |
+| MCP | `write_preview_vehicle_log(from_trip_id=...)` — 출장에서 차량·목적지·목적·날짜·출발지 자동 프리필.<br>카카오 AX: "OO 출장 운행일지 써줘" → `get_business_trips(search)` → `write_preview_vehicle_log(from_trip_id, 계기판)` → `confirm_vehicle_log` |
+| 웹 | 운행일지 작성 모달에 '출장 불러오기' 드롭다운(`/vehicle-logs/trip-prefill/<id>`).<br>출장 상세에 '운행일지 작성' 버튼 → `/vehicle-logs?trip_id=N` 자동 오픈+프리필 |
+| 버그 | `odometer_end`(계기판)만 주면 거리를 못 물어 진행 불가였음 → 계기판에서 거리 도출.<br>**카카오 주력 흐름(계기판 사진→odometer_end)이 이 버그로 막혀 있었음** |
+| 봇 | 카카오 AX 프롬프트(`scripts/kakao_brain.py` SYSTEM_PROMPT)에 출장연동 흐름 추가.<br>카카오봇 config=`mcp-erp-only.json`(READONLY+WRITE_ALLOW), mmbot 아님 |
+
+★ 카카오봇 도구 게이트: `chatbot_permissions.allowed_tools`는 읽기전용만(kakao_brain.py:126).<br>쓰기 도구는 MCP config `WRITE_ALLOW` + `--dangerously-skip-permissions`로 도달(권한테이블 무관).
+
+### 2026-07-13 — 출장 상태 판정 버그 수정 (저장값 → 날짜기준 유효상태)
+
+봇이 "진행중 출장"을 물으면 4~6월 방치건을 오늘 출장중처럼 답하고, 정작 오늘 실제 출장자는 누락.
+
+| 구분 | 내용 |
+|------|------|
+| 원인 | `get_business_trips`/`get_business_trip_detail` 가 저장 `status` 컬럼을 그대로 필터.<br>ERP 웹은 출발/복귀일로 **계산한** 유효상태를 씀(`eff_status_expr`). 둘이 불일치 |
+| 증상1 | 저장 status=진행중 7건(전부 복귀일 지남) → 웹기준 완료인데 MCP는 진행중으로 반환 |
+| 증상2 | 오늘 실제 출장 #139(저장 status=예정)를 `status='진행중'` 필터가 누락 |
+| 증상3 | 문서에 없는 유령 값 `출장중`(#46) 혼재. 스케줄러 완료전환이 이 값을 누락 |
+| 수정 | 상태 판정을 `modules/services/business_trip_status.py` 단일 소스로 추출.<br>MCP·웹 목록(`_build_trip_query`)이 같은 로직 공유. status 는 날짜 기준 계산 |
+| 데이터 | 저장 status 88건 일괄 보정(예정→완료 79, 진행중→완료 7, 출장중→완료 1, 예정→진행중 1) |
+| 스케줄러 | 죽어있던 APScheduler `_auto_update_trip_status`(10분) 제거 → **crontab `flask update-trip-status`(10분)** 로 이관.<br>[[feedback_scheduler_crontab]] 원칙(gunicorn 멀티워커는 crontab 필수) 준수 |
+
+★ 저장 status 컬럼은 이제 표시에 무관(모든 경로가 날짜 계산). crontab 보정은 DB 직접열람·저장값 의존 화면용.
+
+### 2026-07-10 — 운행일지 쓰기 정상화 + 쓰기도구 허용목록 게이트 (112 → 113 Tool)
+
+`write_preview_vehicle_log` 는 원래 있었으나 봇이 "등록 도구 없다"고 답한 원인 규명 및 결함 수정.
+
+| 구분 | 내용 |
+|------|------|
+| 원인 | 카카오워크 봇은 `LIGHT_SYNC_MCP_READONLY=1` 프로필 → write 도구 미등록. 도구 부재가 아니라 프로필 문제 |
+| 버그 | `write_ops.VEHICLE_CHOICES` 가 하드코딩 낡은 값. 실제 차량은 `쏘렌토 9539/트럭 1467/자차이용`.<br>최다 사용 `트럭 1467` 등록 불가, 유령 차량(`포터 8804`) 통과 |
+| 버그 | `odometer_end=0` 하드코딩 + `odometer_start` 미기록 → 계기판 컬럼 공란 |
+| 버그 | `origin` 을 상수 `"출발지 미기재"` 로 고정 |
+| 개선 | 차량 목록을 `DashboardSetting['business_trip_vehicles']` 프리셋에서 로드 (ERP 폼과 동일 소스).<br>운행일지는 `EXCLUDED_VEHICLES` 제외한 회사차량만 |
+| 개선 | `origin` 필수 승격, `odometer_end` 선택 입력. 주행 전 계기판은 직전 기록에서 **confirm 시점에** 재조회해 자동 채움 |
+| 개선 | 거리 ↔ 계기판 불일치 시 조용히 덮어쓰지 않고 되물음. 역주행 계기판은 preview/confirm 양쪽에서 거부 |
+| 신규 | `confirm_vehicle_log(session_token)` — 버튼 없는 봇(카카오워크)용 확정 도구.<br>`confirm_leave_request` 와 동일하게 `KAKAO_ERP_USER` 신원 대조로 명의 위조 차단 |
+| 신규 | `LIGHT_SYNC_MCP_WRITE_ALLOW=<도구명 CSV>` — 쓰기 도구를 **개별 허용**.<br>기존 `LIGHT_SYNC_MCP_WRITE_LEAVE_ONLY=1` 은 하위호환 유지 |
+| 리팩터 | 기록 로직을 `modules/services/vehicle_log_write.py` 로 추출.<br>Flask 버튼 경로(`routes/mattermost_action.py`)와 MCP confirm 경로가 같은 코드 사용 |
+
+⚠️ **채널봇/ERP 웹챗봇은 운행일지 등록 불가 (미해결)**
+- 채널봇: MCP 서버 프로세스를 다수 사용자가 공유 → `KAKAO_ERP_USER` env 주입 불가.
+  preview 는 되지만 `confirm_vehicle_log` 가 "신원 미주입"으로 거부. 요청단위 신원 전달 배관 필요.
+- ERP 웹챗봇: `chatbot_permissions.allowed_tools` 에 vehicle 도구가 14명 전원 0개 → 조회조차 차단.
+
 ### 2026-07-09 — 전체 점검 + 전자결재·인사 도메인 추가 (100 → 111 Tool)
 
 전 Tool 실호출 점검 후 결함 수정 및 미커버 도메인 보강.

@@ -124,6 +124,12 @@ def log_list():
         vehicles = _get_company_vehicles(db)
         users = db.query(User).filter(User.is_active != False).order_by(User.full_name).all()  # noqa: E712
 
+        # 출장 연동: 로그인 사용자(=운전자 본인)가 출장자로 등록된 회사차량 출장만 후보 제공
+        from modules.services.vehicle_log_trip_link import recent_trips_for_vehicle_log
+        trip_options = recent_trips_for_vehicle_log(
+            db, user_id=session.get('user_id'),
+            user_name=session.get('full_name'), limit=15)
+
         # 합계
         total_distance = sum((l.distance_km or 0) for l in logs)
         total_fuel = sum((l.fuel_amount or 0) for l in logs)
@@ -133,6 +139,7 @@ def log_list():
             logs=logs,
             vehicles=vehicles,
             users=users,
+            trip_options=trip_options,
             current_year=today.year,
             filters={
                 'vehicle': vehicle,
@@ -372,3 +379,21 @@ def last_odometer():
     with get_db() as db:
         last = _get_last_odometer(db, vehicle)
         return jsonify(ok=True, odometer=last)
+
+
+@vehicle_log_bp.route('/vehicle-logs/trip-prefill/<int:trip_id>')
+@menu_required('vehicle_log')
+def trip_prefill(trip_id):
+    """출장 → 운행일지 작성 프리필. 회사차량 출장이 아니면 ok=False."""
+    from modules.models import BusinessTrip
+    from modules.services.vehicle_log_trip_link import trip_to_log_defaults
+    with get_db() as db:
+        trip = db.get(BusinessTrip, trip_id)
+        if not trip:
+            return jsonify(ok=False, error='출장을 찾을 수 없습니다'), 404
+        defaults = trip_to_log_defaults(db, trip)
+        if not defaults:
+            return jsonify(ok=False, error='회사차량 출장이 아니라 운행일지 대상이 아닙니다'), 400
+        # 직전 계기판도 같이 내려 폼이 주행 전 km까지 채우게 함
+        defaults['last_odometer'] = _get_last_odometer(db, defaults['vehicle'])
+        return jsonify(ok=True, prefill=defaults)

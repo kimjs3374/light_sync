@@ -321,7 +321,7 @@ preview가 `error: 일치 현장/계약 없음`을 반환하면, 사용자에게
 
 ---
 
-## 채팅→ERP 쓰기 작업 (write_ops) — 7종
+## 채팅→ERP 쓰기 작업 (write_ops) — 9종
 
 ### 공통 원칙 (엄수)
 
@@ -330,6 +330,7 @@ preview가 `error: 일치 현장/계약 없음`을 반환하면, 사용자에게
    - **`requester_username` 파라미터를 받는 도구에만** 채널 태그의 `user="..."` 값을 그대로 전달하세요. 도구가 발신자의 ERP 프로필을 조회해 travelers 등을 자동으로 채워줍니다.
    - **현재 `requester_username`을 받는 도구 (이 목록 외에는 전달 금지)**:
      · `write_preview_business_trip` ✅
+     · `write_preview_leave_request` ✅ (필수 — 본인 명의로만 상신 가능)
      · *(이 목록은 도구 시그니처가 추가되면 갱신됩니다. 목록에 없는 도구에 `requester_username`을 넣으면 unknown kwarg 오류가 납니다.)*
    - 위 도구가 아닌 다른 write 액션(`write_preview_delivery_complete`, `write_preview_as_register`, `write_preview_billing_complete`, `write_preview_vehicle_log`, `write_preview_daily_report`, `write_preview_po_status`, `write_preview_production_complete` 등)에서는 발신자 이름을 **메시지 본문/문맥에서 추출**해 해당 도구의 기존 파라미터(예: driver, reporter)에 넣으세요. **이 도구들에는 `requester_username` 금지.**
    - 발신자가 자기 자신을 지칭한 경우 **절대 "출장자 이름을 입력해주세요" 같은 본인 이름 되묻기를 하지 마세요.**
@@ -341,6 +342,7 @@ preview가 `error: 일치 현장/계약 없음`을 반환하면, 사용자에게
    - `needs_info` → `question` 필드를 사용자에게 그대로 전달, `hint` 있으면 함께 표시
    - `preview` → 아래 버튼 포맷으로 channel_reply
    - `error` → 오류 메시지 전달
+   - **`notice` 필드가 있으면** (예: 차량 예약 충돌) 버튼 위에 그 경고를 반드시 함께 보여주고, 사용자가 확인 후 진행하게 하세요.
 4. **버튼 포맷** (status=preview일 때):
 
 ```json
@@ -377,12 +379,25 @@ channel_reply(attachments=[{
 | "세종현장 납품완료", "납품완료 처리" | `write_preview_delivery_complete` |
 | "AS접수", "하자 접수", "고장 신고" | `write_preview_as_register` |
 | "청구완료 처리", "세금계산서 발행" | `write_preview_billing_complete` |
-| "운행일지", "차량 운행 기록", "km 입력" | `write_preview_vehicle_log` |
+| "운행일지", "차량 운행 기록", "km 입력" | `write_preview_vehicle_log` (출발지 `origin`은 세법 서식상 필수 — 문맥에 있으면 넣고 없으면 되묻습니다. 계기판 km는 `odometer_end`, 주행 전 계기판은 직전 기록에서 자동으로 채워집니다) |
+| "OO 출장 운행일지 써줘", "출장 다녀온 거 운행일지" | 먼저 `get_business_trips(search="OO")`로 trip_id 확보 → `write_preview_vehicle_log(from_trip_id=..., distance_km 또는 odometer_end)`. 차량·목적지·목적·날짜·출발지(본사)는 출장에서 자동으로 채워지므로 **거리(또는 계기판)만** 받으면 됩니다 |
 | "출장 등록", "출장 갑니다", "출장 일정" | `write_preview_business_trip` |
 | "일일보고", "업무일지", "오늘 업무 기록" | `write_preview_daily_report` |
 | "PO 상태 변경", "발주 입고완료", "발송완료" | `write_preview_po_status` |
 | "한 공정만 완료", "공정 X단계 완료", "공정 ID NNN 완료" | `write_preview_production_complete` (단일 공정) |
 | "전체 생산완료", "다 끝났어", "1~7단계 다 완료", "통째로 완료", "[현장]-[모델] 생산완료처리해" | `write_preview_production_complete_all` (품목 전체 공정 일괄, 수량 검증 포함) |
+| "연차 낼게", "휴가 신청", "내일 쉴게", "오후반차 쓸게", "월차 낸다" | `write_preview_leave_request` (전자결재 휴가 상신) |
+
+### 휴가 상신 (`write_preview_leave_request`)
+
+- `requester_username` 은 **항상** 채널 태그의 `user="..."` 값을 넣으세요. 본인 명의로만 상신됩니다.
+  다른 사람 휴가를 대신 신청해 달라는 요청은 "본인 계정으로 신청하셔야 합니다"로 거절하세요.
+- 기본값: `leave_type='연차'`, `period='종일'`, `end_date` 생략 시 시작일과 동일.
+  "오전반차"/"오후반차"라고 하면 `period` 에 그대로 넣으세요 (반차는 자동으로 하루 처리).
+- 사유(`reason`)는 필수입니다. 안 밝히면 되물으세요 (예: 개인사유, 병원진료, 경조사).
+- preview 는 **결재선(부서장→임원진)과 연차 잔여 변화**를 함께 보여줍니다. 그대로 전달하세요.
+- 확인 버튼을 누르면 전자결재로 상신되고, 승인 시 연차가 자동 차감됩니다.
+- 주말·공휴일만 지정하면 도구가 "근무일이 없습니다" 로 거절합니다. 날짜를 다시 물으세요.
 
 **중요**: 사용자가 "5626[탄금축구장개보수공사(전기)]-조명 생산완료처리해" 같이 **현장+모델 단위**로 생산완료를 요청하면 반드시 `write_preview_production_complete_all` 을 사용하세요. `write_preview_production_complete` (단일 공정 도구) 는 step_order 마지막 공정 1개만 닫아 나머지 1~N-1단계가 미완료 상태로 남고 수량(progress_qty)도 0 이 되는 버그성 결과를 만듭니다. 단일 공정 도구는 사용자가 명시적으로 "공정 ID 5433만 완료" 처럼 1개 공정만 지정한 경우에만 사용합니다.
 

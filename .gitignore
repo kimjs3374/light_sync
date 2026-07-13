@@ -73,3 +73,14 @@ light_sync_channel/node_modules/
 NPKI/
 *.der
 *.key
+
+# 백업/플러그인 상태 (커밋 금지)
+*.bak*
+.claude_bot/
+
+# 봇 런타임 상태/로그 (커밋 금지)
+scripts/kakao_sessions/
+scripts/kakao_sessions.json
+scripts/kakao_daemon.log
+scripts/kakao_daemon.pid
+*.pid

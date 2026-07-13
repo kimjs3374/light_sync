@@ -52,51 +52,24 @@ def _parse_datetime(date_str, time_str):
 
 
 def _build_trip_query(db, status_filter, search):
-    """목록/엑셀 공용: 상태·검색 필터가 적용된 쿼리 + effective status 식 반환"""
+    """목록/엑셀 공용: 상태·검색 필터가 적용된 쿼리 + effective status 식 반환.
+
+    상태 판정은 modules/services/business_trip_status.py 단일 소스 (MCP 도구와 공유).
+    """
     from sqlalchemy.orm import joinedload
-    from sqlalchemy import func, case, or_
+    from modules.services.business_trip_status import (
+        eff_status_sql_expr, filter_by_effective_status,
+    )
     now = datetime.datetime.now()
 
-    # 복귀 미정이면 출발일 다음날 00:00을 묵시 복귀로 (당일 출장은 다음날 완료)
-    implicit_return = func.coalesce(
-        BusinessTrip.return_date,
-        func.date_trunc('day', BusinessTrip.departure_date) + datetime.timedelta(days=1),
-    )
-
-    # 효과적 상태(effective status) — 취소 외에는 날짜 기반
-    eff_status_expr = case(
-        (BusinessTrip.status == '취소', '취소'),
-        (BusinessTrip.departure_date == None, '예정'),  # noqa: E711
-        (BusinessTrip.departure_date > now, '예정'),
-        (implicit_return <= now, '완료'),
-        else_='진행중',
-    )
+    eff_status_expr = eff_status_sql_expr(now)
 
     query = db.query(BusinessTrip).options(
         joinedload(BusinessTrip.members)
     ).order_by(BusinessTrip.departure_date.desc())
 
     if status_filter:
-        if status_filter == '취소':
-            query = query.filter(BusinessTrip.status == '취소')
-        elif status_filter == '예정':
-            query = query.filter(
-                BusinessTrip.status != '취소',
-                or_(BusinessTrip.departure_date == None, BusinessTrip.departure_date > now),  # noqa: E711
-            )
-        elif status_filter == '진행중':
-            query = query.filter(
-                BusinessTrip.status != '취소',
-                BusinessTrip.departure_date != None,  # noqa: E711
-                BusinessTrip.departure_date <= now,
-                implicit_return > now,
-            )
-        elif status_filter == '완료':
-            query = query.filter(
-                BusinessTrip.status != '취소',
-                BusinessTrip.departure_date != None,  # noqa: E711
-                implicit_return <= now,
-            )
+        query = filter_by_effective_status(query, status_filter, now)
     if search:
         like = f'%{search}%'
         query = query.filter(
@@ -307,6 +280,21 @@ def trip_detail(trip_id):
         return render_template('business_trip_detail.html',
                                trip=trip,
                                status_choices=TRIP_STATUS_CHOICES)
+
+
+@business_trip_bp.route('/business-trips/vehicle-availability')
+@menu_required('business_trip')
+def vehicle_availability_check():
+    """선택한 기간에 회사차량별 예약 가능 여부. 출장 폼에서 실시간 조회."""
+    from modules.services.vehicle_availability import vehicle_availability
+    departure = _parse_datetime(request.args.get('departure'), request.args.get('departure_time'))
+    if not departure:
+        return jsonify(ok=True, availability={})
+    return_dt = _parse_datetime(request.args.get('return'), request.args.get('return_time'))
+    exclude = safe_int(request.args.get('exclude'), 0) or None
+    with get_db() as db:
+        av = vehicle_availability(db, departure, return_dt, exclude_trip_id=exclude)
+    return jsonify(ok=True, availability=av)
 
 
 @business_trip_bp.route('/business-trips/<int:trip_id>/edit', methods=['GET', 'POST'])
