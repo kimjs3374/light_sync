@@ -928,6 +928,14 @@ def register(mcp: FastMCP):
         parsed_return_time = _parse_time(return_time) or "18:00"
 
         traveler_list = [t.strip() for t in travelers.split(",") if t.strip()]
+        if not traveler_list:
+            return json.dumps({"status": "needs_info", "intent": "write_preview_business_trip",
+                "question": "출장자 이름을 입력해주세요.",
+                "hint": "여러 명이면 쉼표로 구분 (예: 김정수, 김선중)",
+                "collected": {"destination": destination, "departure_date": departure_date,
+                              "departure_time": departure_time, "purpose": purpose,
+                              "vehicle": vehicle, "return_date": return_date},
+            }, ensure_ascii=False)
 
         session = get_session()
         try:

@@ -60,6 +60,7 @@ export default function BusinessTrips() {
   const create = async () => {
     if (!form.title || !form.destination) return alert('제목과 목적지를 입력해주세요');
     if (!form.departure_date || !form.return_date) return alert('출발일시와 복귀예상일시를 입력해주세요');
+    if (!(form.members || []).some(m => (m.name || '').trim())) return alert('출장인원을 최소 1명 이상 입력해주세요');
     if (selVehicleConflict) {
       const names = selVehicleConflict.map(c => c.label).join('\n');
       if (!confirm(`${form.vehicle}은(는) 해당 기간에 이미 배정되어 있습니다:\n${names}\n\n그래도 등록할까요?`)) return;
@@ -240,7 +241,7 @@ export default function BusinessTrips() {
               </button>
             </div>
             {(form.members || []).length === 0 && (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 0' }}>인원을 추가하지 않으면 본인만 출장으로 등록됩니다.</div>
+              <div style={{ fontSize: 11, color: 'var(--danger, #c0392b)', padding: '4px 0' }}>출장인원을 최소 1명 이상 추가해주세요.</div>
             )}
             {(form.members || []).map((m, idx) => (
               <div key={idx} style={{ padding: 8, background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>

@@ -194,6 +194,10 @@ def trip_export():
 def trip_create():
     with get_db() as db:
         if request.method == 'POST':
+            member_names = [n.strip() for n in request.form.getlist('member_name') if n.strip()]
+            if not member_names:
+                flash('출장인원을 최소 1명 이상 입력해주세요.', 'error')
+                return redirect(url_for('business_trip.trip_create'))
             trip = BusinessTrip(
                 title=request.form.get('title', '').strip(),
                 destination=request.form.get('destination', '').strip(),
@@ -311,6 +315,10 @@ def trip_edit(trip_id):
             return redirect(url_for('business_trip.trip_list'))
 
         if request.method == 'POST':
+            member_names = [n.strip() for n in request.form.getlist('member_name') if n.strip()]
+            if not member_names:
+                flash('출장인원을 최소 1명 이상 입력해주세요.', 'error')
+                return redirect(url_for('business_trip.trip_edit', trip_id=trip.id))
             trip.title = request.form.get('title', '').strip()
             trip.destination = request.form.get('destination', '').strip()
             trip.purpose = request.form.get('purpose', '').strip() or None

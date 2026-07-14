@@ -215,6 +215,13 @@ function renderVehicleWarning() {
 
 // 제출 시 중복이면 한 번 더 확인
 document.getElementById('tripForm').addEventListener('submit', function (ev) {
+  const filledNames = Array.from(document.querySelectorAll('[name=member_name]'))
+    .filter(el => el.value.trim());
+  if (filledNames.length === 0) {
+    ev.preventDefault();
+    alert('출장인원을 최소 1명 이상 입력해주세요.');
+    return;
+  }
   const sel = document.getElementById('vehicleSelect');
   const info = vehicleAvail[sel.value];
   if (info && !info.available) {

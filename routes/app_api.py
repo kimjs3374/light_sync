@@ -2798,7 +2798,7 @@ def app_po_send_email(po_id):
             sig_lines.append(f'Mobile : {sig_user.phone_number}')
         sig_lines.append(f'Office : {sig_user.office_tel if sig_user and sig_user.office_tel else "061-392-5508"}')
         sig_lines.append(f'Fax    : {sig_user.office_fax if sig_user and sig_user.office_fax else "061-392-5518"}')
-        sig_lines.append('주  소 : 전라남도 장성군 동화면 전자농공단지2길 55')
+        sig_lines.append('주  소 : 전남광주 장성군 동화면 전자농공단지2길 55')
         sig_lines.append('홈페이지 : https://www.magnatech.co.kr')
         sig_lines.append('=' * 65)
         body_lines.extend(sig_lines)
@@ -4363,6 +4363,9 @@ def app_business_trip_create():
     departure_date = data.get('departure_date', '').strip()
     if not title or not destination or not departure_date:
         return jsonify(ok=False, error='제목, 출장장소, 출발일을 입력해주세요'), 400
+    member_names = [(m.get('name') or '').strip() for m in (data.get('members') or [])]
+    if not any(member_names):
+        return jsonify(ok=False, error='출장인원을 최소 1명 이상 입력해주세요'), 400
 
     user_id = request._app_user_id
     with get_db() as db:
