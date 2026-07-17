@@ -17,7 +17,7 @@ COMPANY_TEL = '061-392-5508'
 COMPANY_FAX = '061-392-5518'
 COMPANY_EMAIL = 'sales@mgnt.kr'
 COMPANY_HOMEPAGE = 'www.magnatech.co.kr'
-COMPANY_ADDR = '전남 장성군 동화면 전자농공단지2길 55'
+COMPANY_ADDR = '전남광주 장성군 동화면 전자농공단지2길 55'
 COMPANY_CEO = '박선후 / 대표이사'
 
 

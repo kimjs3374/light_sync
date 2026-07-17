@@ -134,6 +134,27 @@ def determine_org_type(org_name):
     return '청'
 
 
+def normalize_org_name(org_name):
+    """수요기관명을 전남광주통합특별시 약칭 표기로 정규화한다.
+
+    2026-07-01 전라남도+광주광역시 → 전남광주통합특별시 행정통합. 실무상 약칭 '전남광주'를 쓴다.
+    전라남도/광주광역시/전남광주통합특별시 → '전남광주' (예: '전라남도 여수시'→'전남광주 여수시').
+    교육청도 통합 대상: '전남광주통합특별시교육청'(약칭 '전남광주교육청'). 문자열 내 모든 접두어를 치환.
+    - 경찰청(시도경찰청)은 국가경찰이라 통합 대상 여부가 불확실하므로 손대지 않는다.
+    - 경기도 광주시 등 다른 시도는 접두어가 달라 영향 없음.
+    """
+    if not org_name:
+        return org_name
+    n = org_name.strip()
+    if '경찰' in n:
+        return org_name
+    if not any(old in n for old in ('전남광주통합특별시', '전라남도', '광주광역시')):
+        return org_name
+    for old in ('전남광주통합특별시', '전라남도', '광주광역시'):
+        n = n.replace(old, '전남광주')
+    return n
+
+
 def generate_doc_number(db_session, doc_date=None):
     """
     공문번호를 자동채번한다.

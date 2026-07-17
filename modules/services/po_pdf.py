@@ -16,7 +16,7 @@ COMPANY_NAME = '(주)매그나텍'
 COMPANY_CEO = '박선후'
 COMPANY_TEL = '061)392-5508'
 COMPANY_FAX = '061)392-5518'
-COMPANY_ADDR_1 = '전라남도 장성군 동화면 전자농공단지2길'
+COMPANY_ADDR_1 = '전남광주 장성군 동화면 전자농공단지2길'
 COMPANY_ADDR_2 = '55 (동화 전자농공단지내)'
 
 

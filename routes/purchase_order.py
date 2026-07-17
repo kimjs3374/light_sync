@@ -648,7 +648,7 @@ def po_send_email(po_id):
             sig_lines.append(f'Mobile : {sig_user.phone_number}')
         sig_lines.append(f'Office : {sig_user.office_tel if sig_user and sig_user.office_tel else "061-392-5508"}')
         sig_lines.append(f'Fax    : {sig_user.office_fax if sig_user and sig_user.office_fax else "061-392-5518"}')
-        sig_lines.append('주  소 : 전라남도 장성군 동화면 전자농공단지2길 55')
+        sig_lines.append('주  소 : 전남광주 장성군 동화면 전자농공단지2길 55')
         sig_lines.append('홈페이지 : https://www.magnatech.co.kr')
         sig_lines.append('=' * 65)
         body_lines.extend(sig_lines)

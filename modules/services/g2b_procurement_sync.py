@@ -19,7 +19,7 @@ import requests
 
 from modules.models import (
     G2bProcurement, Project, Contract, ContractItem,
-    DETAIL_ITEM_OPTIONS, normalize_detail_item,
+    DETAIL_ITEM_OPTIONS, normalize_detail_item, normalize_org_name,
 )
 
 logger = logging.getLogger(__name__)
@@ -185,7 +185,7 @@ def _upsert_item(db, item):
         'cntrct_dlvr_req_date': _parse_date(item.get('cntrctDlvrReqDate')),
         'cntrct_dlvr_req_nm': str(item.get('cntrctDlvrReqNm', '')).strip() or None,
         'cntrct_mthd_nm': str(item.get('cntrctMthdNm', '')).strip() or None,
-        'dminstt_nm': str(item.get('dminsttNm', '')).strip() or None,
+        'dminstt_nm': normalize_org_name(str(item.get('dminsttNm', '')).strip()) or None,
         'dminstt_cd': str(item.get('dminsttCd', '')).strip() or None,
         'dminstt_rgn_nm': str(item.get('dminsttRgnNm', '')).strip() or None,
         'dmnd_instt_div_nm': str(item.get('dmndInsttDivNm', '')).strip() or None,
