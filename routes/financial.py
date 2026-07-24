@@ -24,6 +24,7 @@ from modules.models import (
     MATCH_STATUS_CHOICES,
 )
 from modules.services.warranty_auto import auto_create_warranty
+from modules.services.tax_invoice_agg import deduped_invoice_subq
 from difflib import SequenceMatcher
 from modules.activity import log_activity
 
@@ -88,22 +89,24 @@ def financial_dashboard():
         current_month_start = today.replace(day=1)
         next_month = (current_month_start + datetime.timedelta(days=32)).replace(day=1)
 
+        # 승인번호 정규화 중복제거 서브쿼리 (이중저장 과대계상 방지)
+        inv = deduped_invoice_subq(db)
         # G2B 매칭된 정상 세금계산서만
-        matched_filter = TaxInvoice.match_status.in_(['자동매칭', '수동매칭'])
-        normal_filter = TaxInvoice.invoice_type == '세금계산서'
+        matched_filter = inv.c.match_status.in_(['자동매칭', '수동매칭'])
+        normal_filter = inv.c.invoice_type == '세금계산서'
 
         # KPI (G2B 매칭된 것만)
         monthly_supply = db.query(
-            func.coalesce(func.sum(TaxInvoice.supply_amount), 0)
+            func.coalesce(func.sum(inv.c.supply_amount), 0)
         ).filter(normal_filter, matched_filter,
-                 TaxInvoice.issue_date >= current_month_start,
-                 TaxInvoice.issue_date < next_month).scalar() or 0
+                 inv.c.issue_date >= current_month_start,
+                 inv.c.issue_date < next_month).scalar() or 0
 
         total_supply = db.query(
-            func.coalesce(func.sum(TaxInvoice.supply_amount), 0)
+            func.coalesce(func.sum(inv.c.supply_amount), 0)
         ).filter(normal_filter, matched_filter).scalar() or 0
 
-        total_cnt = db.query(func.count(TaxInvoice.id)).filter(
+        total_cnt = db.query(func.count(inv.c.id)).filter(
             normal_filter, matched_filter).scalar() or 0
 
         kpi = {
@@ -123,10 +126,10 @@ def financial_dashboard():
         for m in months:
             m_end = (m + datetime.timedelta(days=32)).replace(day=1)
             amt = db.query(
-                func.coalesce(func.sum(TaxInvoice.supply_amount), 0)
+                func.coalesce(func.sum(inv.c.supply_amount), 0)
             ).filter(normal_filter, matched_filter,
-                     TaxInvoice.issue_date >= m,
-                     TaxInvoice.issue_date < m_end).scalar() or 0
+                     inv.c.issue_date >= m,
+                     inv.c.issue_date < m_end).scalar() or 0
             monthly_labels.append(f"{m.month}월")
             monthly_amounts.append(int(amt))
 
@@ -135,21 +138,21 @@ def financial_dashboard():
         count_values = []
         for m in months:
             m_end = (m + datetime.timedelta(days=32)).replace(day=1)
-            cnt = db.query(func.count(TaxInvoice.id)).filter(
+            cnt = db.query(func.count(inv.c.id)).filter(
                 normal_filter, matched_filter,
-                TaxInvoice.issue_date >= m,
-                TaxInvoice.issue_date < m_end).scalar() or 0
+                inv.c.issue_date >= m,
+                inv.c.issue_date < m_end).scalar() or 0
             count_labels.append(f"{m.month}월")
             count_values.append(cnt)
 
         # Chart 3: 수요기관별 매출 TOP 10 (G2B 매칭분, buyer_name = 수요기관)
         top_buyers = db.query(
-            TaxInvoice.buyer_name,
-            func.sum(TaxInvoice.supply_amount).label('total')
+            inv.c.buyer_name,
+            func.sum(inv.c.supply_amount).label('total')
         ).filter(normal_filter, matched_filter,
-                 TaxInvoice.buyer_name.isnot(None)
-        ).group_by(TaxInvoice.buyer_name).order_by(
-            func.sum(TaxInvoice.supply_amount).desc()
+                 inv.c.buyer_name.isnot(None)
+        ).group_by(inv.c.buyer_name).order_by(
+            func.sum(inv.c.supply_amount).desc()
         ).limit(10).all()
 
         buyer_labels = [r[0] or '(미상)' for r in top_buyers]
@@ -158,9 +161,9 @@ def financial_dashboard():
         # ===== 년도별 계약 대비 매출 + 이월 =====
         # 매칭된 세금계산서 G2B 번호 set
         invoiced_nos = set(
-            r[0] for r in db.query(TaxInvoice.g2b_contract_no).filter(
+            r[0] for r in db.query(inv.c.g2b_contract_no).filter(
                 normal_filter, matched_filter,
-                TaxInvoice.g2b_contract_no.isnot(None),
+                inv.c.g2b_contract_no.isnot(None),
             ).all()
         )
 
@@ -232,12 +235,12 @@ def financial_dashboard():
 
         # 년도별 조달 세금계산서 발행금액 추이 (전체 연도)
         yearly_invoice_rows = db.query(
-            extract('year', TaxInvoice.issue_date).label('yr'),
-            func.sum(TaxInvoice.total_amount),
-            func.count(TaxInvoice.id),
+            extract('year', inv.c.issue_date).label('yr'),
+            func.sum(inv.c.total_amount),
+            func.count(inv.c.id),
         ).filter(
             matched_filter,
-            TaxInvoice.issue_date.isnot(None),
+            inv.c.issue_date.isnot(None),
         ).group_by('yr').order_by('yr').all()
 
         yearly_invoice_chart = {
@@ -334,10 +337,11 @@ def tax_invoice_list():
                 if p.cntrct_dlvr_req_no not in g2b_map:
                     g2b_map[p.cntrct_dlvr_req_no] = p
 
-        # 합계 (G2B 매칭된 정상 세금계산서만)
-        sum_supply = db.query(func.coalesce(func.sum(TaxInvoice.supply_amount), 0)).filter(
-            TaxInvoice.invoice_type == '세금계산서',
-            TaxInvoice.match_status.in_(['자동매칭', '수동매칭']),
+        # 합계 (G2B 매칭된 정상 세금계산서만) — 정규화 중복제거
+        _inv = deduped_invoice_subq(db)
+        sum_supply = db.query(func.coalesce(func.sum(_inv.c.supply_amount), 0)).filter(
+            _inv.c.invoice_type == '세금계산서',
+            _inv.c.match_status.in_(['자동매칭', '수동매칭']),
         ).scalar() or 0
 
         # 탭 뱃지용 건수

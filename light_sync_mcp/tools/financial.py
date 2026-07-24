@@ -24,30 +24,32 @@ def register(mcp: FastMCP):
         Args:
             direction: '매출'(기본) / '매입'
         """
-        from modules.models.entities import TaxInvoice
         from sqlalchemy import func, extract
+        from modules.services.tax_invoice_agg import deduped_invoice_subq
         session = get_session()
         try:
-            base = session.query(TaxInvoice).filter(TaxInvoice.direction == direction)
+            # 승인번호 정규화 중복제거 후 집계 (이중저장 과대계상 방지)
+            inv = deduped_invoice_subq(session)
+            base = session.query(inv).filter(inv.c.direction == direction)
             if month:
                 rows = base.with_entities(
-                    func.date(TaxInvoice.issue_date).label("date"),
-                    func.sum(TaxInvoice.supply_amount).label("supply"),
-                    func.sum(TaxInvoice.total_amount).label("total"),
-                    func.count(TaxInvoice.id).label("count"),
+                    func.date(inv.c.issue_date).label("date"),
+                    func.sum(inv.c.supply_amount).label("supply"),
+                    func.sum(inv.c.total_amount).label("total"),
+                    func.count(inv.c.id).label("count"),
                 ).filter(
-                    extract("year", TaxInvoice.issue_date) == year,
-                    extract("month", TaxInvoice.issue_date) == month,
-                ).group_by(func.date(TaxInvoice.issue_date)).order_by("date").all()
+                    extract("year", inv.c.issue_date) == year,
+                    extract("month", inv.c.issue_date) == month,
+                ).group_by(func.date(inv.c.issue_date)).order_by("date").all()
                 items = [{"date": str(r.date), "supply_amount": int(r.supply or 0),
                           "total_amount": int(r.total or 0), "count": r.count} for r in rows]
             else:
                 rows = base.with_entities(
-                    extract("month", TaxInvoice.issue_date).label("month"),
-                    func.sum(TaxInvoice.supply_amount).label("supply"),
-                    func.sum(TaxInvoice.total_amount).label("total"),
-                    func.count(TaxInvoice.id).label("count"),
-                ).filter(extract("year", TaxInvoice.issue_date) == year
+                    extract("month", inv.c.issue_date).label("month"),
+                    func.sum(inv.c.supply_amount).label("supply"),
+                    func.sum(inv.c.total_amount).label("total"),
+                    func.count(inv.c.id).label("count"),
+                ).filter(extract("year", inv.c.issue_date) == year
                 ).group_by("month").order_by("month").all()
                 items = [{"month": int(r.month), "supply_amount": int(r.supply or 0),
                           "total_amount": int(r.total or 0), "count": r.count} for r in rows]
@@ -140,29 +142,30 @@ def register(mcp: FastMCP):
 
         ⚠️ 매출은 direction='매출'만 집계합니다 (tax_invoices 에 매입이 함께 저장됨).
         """
-        from modules.models.entities import TaxInvoice
         from sqlalchemy import func, extract
+        from modules.services.tax_invoice_agg import deduped_invoice_subq
         session = get_session()
         try:
+            inv = deduped_invoice_subq(session)
+
             def _agg(dirn):
                 q = session.query(
-                    func.sum(TaxInvoice.supply_amount).label("supply"),
-                    func.sum(TaxInvoice.total_amount).label("total"),
-                    func.count(TaxInvoice.id).label("count"),
-                ).filter(TaxInvoice.direction == dirn)
+                    func.sum(inv.c.supply_amount).label("supply"),
+                    func.sum(inv.c.total_amount).label("total"),
+                    func.count(inv.c.id).label("count"),
+                ).filter(inv.c.direction == dirn)
                 if year:
-                    q = q.filter(extract("year", TaxInvoice.issue_date) == year)
+                    q = q.filter(extract("year", inv.c.issue_date) == year)
                 return q.first()
 
             sales = _agg('매출')
             purchase = _agg('매입')
 
-            unpaid_q = session.query(func.sum(TaxInvoice.total_amount)) \
-                .filter(TaxInvoice.direction == '매출')
+            unpaid_q = session.query(func.sum(inv.c.total_amount)) \
+                .filter(inv.c.direction == '매출')
             if year:
-                unpaid_q = unpaid_q.filter(extract("year", TaxInvoice.issue_date) == year)
-            if hasattr(TaxInvoice, "payment_status"):
-                unpaid_q = unpaid_q.filter(TaxInvoice.payment_status.in_(["미수금", "부분입금"]))
+                unpaid_q = unpaid_q.filter(extract("year", inv.c.issue_date) == year)
+            unpaid_q = unpaid_q.filter(inv.c.payment_status.in_(["미수금", "부분입금"]))
             unpaid = int(unpaid_q.scalar() or 0)
             total = int(sales.total or 0)
 
@@ -197,25 +200,26 @@ def register(mcp: FastMCP):
             vendor: 공급자(매입처) 상호 검색
             limit: 거래처 상위 N개 (기본 30)
         """
-        from modules.models.entities import TaxInvoice
         from sqlalchemy import func, extract
+        from modules.services.tax_invoice_agg import deduped_invoice_subq
         session = get_session()
         try:
+            inv = deduped_invoice_subq(session)
             q = session.query(
-                TaxInvoice.supplier_name.label("vendor"),
-                func.sum(TaxInvoice.supply_amount).label("supply"),
-                func.sum(TaxInvoice.total_amount).label("total"),
-                func.count(TaxInvoice.id).label("count"),
+                inv.c.supplier_name.label("vendor"),
+                func.sum(inv.c.supply_amount).label("supply"),
+                func.sum(inv.c.total_amount).label("total"),
+                func.count(inv.c.id).label("count"),
             ).filter(
-                TaxInvoice.direction == '매입',
-                extract("year", TaxInvoice.issue_date) == year,
+                inv.c.direction == '매입',
+                extract("year", inv.c.issue_date) == year,
             )
             if month:
-                q = q.filter(extract("month", TaxInvoice.issue_date) == month)
+                q = q.filter(extract("month", inv.c.issue_date) == month)
             if vendor:
-                q = q.filter(TaxInvoice.supplier_name.ilike(f"%{vendor}%"))
+                q = q.filter(inv.c.supplier_name.ilike(f"%{vendor}%"))
 
-            grouped = q.group_by(TaxInvoice.supplier_name).subquery()
+            grouped = q.group_by(inv.c.supplier_name).subquery()
             # 전체 합계 — limit 과 무관하게 조건에 걸린 매입 전량 기준
             totals = session.query(
                 func.coalesce(func.sum(grouped.c.supply), 0),
@@ -223,8 +227,8 @@ def register(mcp: FastMCP):
                 func.count(),
             ).first()
 
-            rows = (q.group_by(TaxInvoice.supplier_name)
-                     .order_by(func.sum(TaxInvoice.total_amount).desc())
+            rows = (q.group_by(inv.c.supplier_name)
+                     .order_by(func.sum(inv.c.total_amount).desc())
                      .limit(limit).all())
 
             items = [{
@@ -275,11 +279,12 @@ def register(mcp: FastMCP):
             include_exception: 사용자가 "예외 포함" 명시할 때만 True (기본 False).
                               status='예외' 단독 조회는 status 매개변수로 가능.
         """
-        from modules.models.entities import G2bProcurement, TaxInvoice
+        from modules.models.entities import G2bProcurement
         from modules.models.contract_entities import Contract
         from modules.models import Project
         from sqlalchemy import func, desc, or_
         from sqlalchemy.orm import joinedload
+        from modules.services.tax_invoice_agg import deduped_invoice_subq
         import datetime
         session = get_session()
         try:
@@ -325,10 +330,12 @@ def register(mcp: FastMCP):
                 paid_amt = 0
                 unpaid_amt = int(g2b_amt)
                 if ct.payment_status == '부분입금':
-                    paid_amt = session.query(func.coalesce(func.sum(TaxInvoice.total_amount), 0)) \
+                    # 정규화 중복제거 후 합산 (이중저장분 이중차감 방지)
+                    _inv = deduped_invoice_subq(session)
+                    paid_amt = session.query(func.coalesce(func.sum(_inv.c.total_amount), 0)) \
                         .filter(
-                            TaxInvoice.contract_id == ct.id,
-                            TaxInvoice.invoice_type == '세금계산서',
+                            _inv.c.contract_id == ct.id,
+                            _inv.c.invoice_type == '세금계산서',
                         ) \
                         .scalar() or 0
                     unpaid_amt = int(g2b_amt) - int(paid_amt)

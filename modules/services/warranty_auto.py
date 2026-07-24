@@ -134,7 +134,7 @@ def recalc_contract_payment_status(db, contract, latest_issue_date=None):
         str: 계산된 payment_status
     """
     from sqlalchemy import func, text as sa_text
-    from modules.models import TaxInvoice
+    from modules.services.tax_invoice_agg import deduped_invoice_subq
 
     # 예외/변경완료/취소 상태는 건드리지 않음
     if contract.payment_status in ('예외', '변경완료', '취소'):
@@ -147,9 +147,10 @@ def recalc_contract_payment_status(db, contract, latest_issue_date=None):
             'SELECT SUM(prdct_amt) FROM light_sync.g2b_procurements WHERE cntrct_dlvr_req_no = :no'
         ), {'no': contract.g2b_contract_no}).scalar() or 0
 
-    # 매칭된 세금계산서 합계 (수정세금계산서 +/- 상쇄 포함)
-    invoiced_total = db.query(func.coalesce(func.sum(TaxInvoice.total_amount), 0)).filter(
-        TaxInvoice.contract_id == contract.id,
+    # 매칭된 세금계산서 합계 (수정세금계산서 +/- 상쇄 포함) — 정규화 중복제거
+    _inv = deduped_invoice_subq(db)
+    invoiced_total = db.query(func.coalesce(func.sum(_inv.c.total_amount), 0)).filter(
+        _inv.c.contract_id == contract.id,
     ).scalar() or 0
 
     # 다량구매할인율 허용 (나라장터 0.5%~2% 할인 적용 시 세금계산서 < G2B)

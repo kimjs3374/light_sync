@@ -75,17 +75,25 @@ check("get_process_summary total_processes",
       call('get_process_summary')['total_processes'],
       db("select count(*) from light_sync.production_processes"))
 
-# 6. 매출 (2025 공급가)
+# 6. 매출 (2025 공급가) — 승인번호 정규화 중복제거 기준
 check("get_revenue_summary 2025 공급가",
       call('get_revenue_summary', year=2025)['grand_total_supply'],
-      db("select sum(supply_amount) from light_sync.tax_invoices "
-         "where direction='매출' and extract(year from issue_date)=2025"))
+      db("select coalesce(sum(supply_amount),0) from ("
+         "  select distinct on (regexp_replace(approval_no,'[^0-9]','','g')) supply_amount "
+         "  from light_sync.tax_invoices "
+         "  where direction='매출' and extract(year from issue_date)=2025 "
+         "  order by regexp_replace(approval_no,'[^0-9]','','g'), supply_amount desc"
+         ") d"))
 
-# 7. 매입 (2025 합계)
+# 7. 매입 (2025 합계) — 승인번호 정규화 중복제거 기준
 check("get_purchase_summary 2025 합계",
       call('get_purchase_summary', year=2025)['grand_total'],
-      db("select sum(total_amount) from light_sync.tax_invoices "
-         "where direction='매입' and extract(year from issue_date)=2025"))
+      db("select coalesce(sum(total_amount),0) from ("
+         "  select distinct on (regexp_replace(approval_no,'[^0-9]','','g')) supply_amount, total_amount "
+         "  from light_sync.tax_invoices "
+         "  where direction='매입' and extract(year from issue_date)=2025 "
+         "  order by regexp_replace(approval_no,'[^0-9]','','g'), supply_amount desc"
+         ") d"))
 
 # 8. 거래처 총수
 check("get_vendor_list total", call('get_vendor_list')['total'],
