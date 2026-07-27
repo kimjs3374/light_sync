@@ -38,16 +38,17 @@ def _save_spec_schema(data):
 
 
 def _load_spec_meta():
-    if os.path.isfile(_SPEC_META_PATH):
-        with open(_SPEC_META_PATH, encoding='utf-8') as f:
-            return json.load(f)
-    return {}
+    # 알림/히스토리 문구도 같은 값을 써야 하므로 spec_utils 를 단일 출처로 둔다.
+    from modules.spec_utils import load_spec_meta
+    return load_spec_meta()
 
 
 def _save_spec_meta(data):
-    os.makedirs(os.path.dirname(_SPEC_META_PATH), exist_ok=True)
-    with open(_SPEC_META_PATH, 'w', encoding='utf-8') as f:
+    from modules.spec_utils import SPEC_META_PATH, _meta_cache
+    os.makedirs(os.path.dirname(SPEC_META_PATH), exist_ok=True)
+    with open(SPEC_META_PATH, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    _meta_cache['mtime'] = None   # 저장 즉시 알림 문구에도 반영
 from modules.history_board import get_project_history_context
 from modules.activity import log_activity
 from modules.priority_utils import (

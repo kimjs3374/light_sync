@@ -8,7 +8,7 @@ from modules.models import (
 )
 from modules.history_board import append_history_log
 from modules.notification_engine import notify
-from modules.spec_utils import BOOLEAN_SPEC_FIELDS
+from modules.spec_utils import BOOLEAN_SPEC_FIELDS, spec_field_label, is_boolean_spec_field
 
 
 # --- Spec helpers (moved from routes/sales.py) ---
@@ -59,9 +59,12 @@ def _extract_item_spec(form, category):
 
 
 def _spec_label(key):
-    """내부 필드명 → 사람이 읽는 라벨. 모르는 키는 그대로 노출한다."""
-    from modules.models import SPEC_FIELD_LABELS
-    return SPEC_FIELD_LABELS.get(key, key)
+    """내부 필드명 → 표시명.
+
+    관리자설정(스펙항목 설정)에서 저장한 라벨이 있으면 그걸 쓰고,
+    없으면 기본 라벨, 그것도 없으면 키 원문.
+    """
+    return spec_field_label(key)
 
 
 def _spec_value_text(key, value):
@@ -71,7 +74,7 @@ def _spec_value_text(key, value):
     """
     if value is None or value == '':
         return '미입력'
-    if key in BOOLEAN_SPEC_FIELDS or isinstance(value, bool):
+    if is_boolean_spec_field(key) or isinstance(value, bool):
         return '예' if is_true_value(value) else '아니오'
     if isinstance(value, list):
         # bom_breakdown: [{'렌즈': '20도', '바이저': '480', 'qty': 20}, ...]
