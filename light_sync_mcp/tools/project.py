@@ -7,6 +7,23 @@ from mcp.server.fastmcp import FastMCP
 from ..db import get_session
 from ._helpers import _s, _sn, _sd
 
+# projects.status 의 완료값. 전체 현장의 91%(1,237/1,357)가 여기에 해당해서
+# 필터 없이 검색하면 진행중 현장이 limit 에 밀려 아예 안 나온다.
+DONE_PROJECT_STATUS = "납품완료"
+
+
+def _scope_summary(total, returned, included_done):
+    """조회 범위를 응답에 명시 — 봇이 '전부 봤다'고 오해하지 않도록"""
+    return {
+        "total_matched": total,
+        "returned": returned,
+        "done_excluded": not included_done,
+        "note": (
+            f"검색조건 전체 {total}건 중 {returned}건 반환"
+            + ("" if included_done else " (납품완료 제외 — 완료건까지 보려면 include_done=True)")
+        ),
+    }
+
 
 def register(mcp: FastMCP):
 
@@ -18,12 +35,18 @@ def register(mcp: FastMCP):
         month: Optional[int] = None,
         search: Optional[str] = None,
         limit: int = 100,
+        include_done: bool = False,
     ) -> str:
         """현장 목록 조회. 상태, 계약 여부, 연도, 월, 검색어로 필터링합니다.
         status: '설계/영업'(미계약), '계약'(납품대기/진행중), '납품완료'(완료)
         ★ '납품해야 되는 현장' = status='계약' (계약 체결 후 납품 전 현장)
         ★ '진행 중인 현장' = status='계약'
         month: 1~12 (year와 함께 사용)
+
+        ★ 기본은 **납품완료 현장을 제외**합니다 (전체 현장의 91%가 납품완료라
+          제외하지 않으면 진행중 현장이 limit 에 밀려 안 보임).
+          "작년에 납품한 OO", "완료된 현장" 처럼 완료건이 필요하면
+          include_done=True 를 붙이거나 status='납품완료' 를 지정하세요.
         """
         from modules.models.entities import Project
         from sqlalchemy import extract
@@ -44,20 +67,27 @@ def register(mcp: FastMCP):
                     | Project.short_name.ilike(f"%{search}%")
                     | Project.site_address.ilike(f"%{search}%")
                 )
+            total = q.count()
+            # status 를 명시했으면 사용자가 이미 범위를 정한 것 — 덧씌우지 않는다
+            if not include_done and not status:
+                q = q.filter(Project.status.isnot(None), Project.status != DONE_PROJECT_STATUS)
             projects = q.order_by(Project.created_at.desc()).limit(limit).all()
 
-            return json.dumps([{
-                "id": p.id,
-                "project_no": _s(p.project_no),
-                "temp_name": _s(p.temp_name),
-                "short_name": _s(p.short_name),
-                "status": _s(p.status),
-                "is_contracted": p.is_contracted,
-                "is_urgent": p.is_urgent,
-                "contract_date": _sd(p.contract_date),
-                "site_address": _s(p.site_address),
-                "created_at": _sd(p.created_at),
-            } for p in projects], ensure_ascii=False)
+            return json.dumps({
+                "summary": _scope_summary(total, len(projects), include_done or bool(status)),
+                "projects": [{
+                    "id": p.id,
+                    "project_no": _s(p.project_no),
+                    "temp_name": _s(p.temp_name),
+                    "short_name": _s(p.short_name),
+                    "status": _s(p.status),
+                    "is_contracted": p.is_contracted,
+                    "is_urgent": p.is_urgent,
+                    "contract_date": _sd(p.contract_date),
+                    "site_address": _s(p.site_address),
+                    "created_at": _sd(p.created_at),
+                } for p in projects],
+            }, ensure_ascii=False)
         finally:
             session.close()
 
@@ -134,27 +164,40 @@ def register(mcp: FastMCP):
             session.close()
 
     @mcp.tool()
-    def search_projects(query: str) -> str:
-        """현장 통합 검색. 현장명, 약칭, 주소, 관리번호로 검색합니다."""
+    def search_projects(query: str, include_done: bool = False, limit: int = 50) -> str:
+        """현장 통합 검색. 현장명, 약칭, 주소, 관리번호로 검색합니다.
+
+        ★ 기본은 **납품완료 현장을 제외**합니다. 전체 현장의 91%가 납품완료라
+          제외하지 않으면 완료건이 limit 을 다 채워서 진행중 현장이 0건으로 나온다
+          (예: '가로등' 검색 시 완료 30건에 밀려 진행중 17건이 전부 누락).
+          완료된 현장을 찾을 때만 include_done=True 를 붙이세요.
+        """
         from modules.models.entities import Project
         session = get_session()
         try:
-            projects = session.query(Project).filter(
+            q = session.query(Project).filter(
                 Project.temp_name.ilike(f"%{query}%")
                 | Project.short_name.ilike(f"%{query}%")
                 | Project.site_address.ilike(f"%{query}%")
                 | Project.project_no.ilike(f"%{query}%")
-            ).order_by(Project.created_at.desc()).limit(30).all()
+            )
+            total = q.count()
+            if not include_done:
+                q = q.filter(Project.status.isnot(None), Project.status != DONE_PROJECT_STATUS)
+            projects = q.order_by(Project.created_at.desc()).limit(limit).all()
 
-            return json.dumps([{
-                "id": p.id,
-                "project_no": _s(p.project_no),
-                "temp_name": _s(p.temp_name),
-                "short_name": _s(p.short_name),
-                "status": _s(p.status),
-                "is_contracted": p.is_contracted,
-                "site_address": _s(p.site_address),
-            } for p in projects], ensure_ascii=False)
+            return json.dumps({
+                "summary": _scope_summary(total, len(projects), include_done),
+                "projects": [{
+                    "id": p.id,
+                    "project_no": _s(p.project_no),
+                    "temp_name": _s(p.temp_name),
+                    "short_name": _s(p.short_name),
+                    "status": _s(p.status),
+                    "is_contracted": p.is_contracted,
+                    "site_address": _s(p.site_address),
+                } for p in projects],
+            }, ensure_ascii=False)
         finally:
             session.close()
 

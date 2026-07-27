@@ -15,11 +15,18 @@ def register(mcp: FastMCP):
         project_id: Optional[int] = None,
         payment_status: Optional[str] = None,
         limit: int = 50,
+        include_done: bool = False,
     ) -> str:
         """계약 목록 조회. 현장별, 수금 상태별 필터링.
         payment_status: 미수금, 부분입금, 입금완료
+
+        ★ 기본은 **수금 완료된 계약을 제외**합니다 (입금완료/청구완료/변경완료/취소 +
+          예외처리분). 전체 계약의 96%(1,250/1,302)가 입금완료라 제외하지 않으면
+          진행중 계약이 limit 에 밀립니다.
+          payment_status 를 명시하거나 include_done=True 를 붙이면 전체를 봅니다.
         """
         from modules.models.entities import Contract, Project
+        from modules.contract_filters import DONE_STATUSES
         session = get_session()
         try:
             q = session.query(Contract)
@@ -27,6 +34,13 @@ def register(mcp: FastMCP):
                 q = q.filter(Contract.project_id == project_id)
             if payment_status:
                 q = q.filter(Contract.payment_status == payment_status)
+            total = q.count()
+            # payment_status 를 명시했으면 사용자가 범위를 정한 것 — 덧씌우지 않는다
+            if not include_done and not payment_status:
+                q = q.filter(
+                    Contract.payment_status.notin_(DONE_STATUSES),
+                    Contract.is_excluded.isnot(True),
+                )
             contracts = q.order_by(Contract.contract_date.desc()).limit(limit).all()
 
             result = []
@@ -43,7 +57,19 @@ def register(mcp: FastMCP):
                     "payment_status": _s(c.payment_status),
                     "is_urgent_prod": c.is_urgent_prod,
                 })
-            return json.dumps(result, ensure_ascii=False)
+            scoped = include_done or bool(payment_status)
+            return json.dumps({
+                "summary": {
+                    "total_matched": total,
+                    "returned": len(result),
+                    "done_excluded": not scoped,
+                    "note": (
+                        f"검색조건 전체 {total}건 중 {len(result)}건 반환"
+                        + ("" if scoped else " (수금완료 계약 제외 — 전체를 보려면 include_done=True)")
+                    ),
+                },
+                "contracts": result,
+            }, ensure_ascii=False)
         finally:
             session.close()
 

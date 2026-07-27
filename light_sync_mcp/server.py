@@ -17,6 +17,11 @@ INSTRUCTIONS = """
    매출은 `get_revenue_summary()`(기본 direction='매출'), 매입/지출은 `get_purchase_summary()`.
    direction 없이 합산하면 매출이 2배로 부풀려집니다.
 4. **현장 검색**: `search_projects()`로 현장 ID 확보 → 다른 Tool에 project_id 전달.
+4-1. **완료건은 기본 제외됩니다**: 현장의 91%가 납품완료, 계약의 96%가 입금완료라
+   `search_projects` / `get_projects` / `get_contracts` / `get_deliveries` 는 기본적으로
+   완료건을 빼고 돌려줍니다. 응답의 `summary.note` 에 "전체 N건 중 M건 반환"이 들어있으니
+   그대로 읽고 답하세요. **"작년에 납품한 OO", "완료된 현장" 처럼 완료건을 물으면
+   `include_done=True`** (또는 `status='납품완료'` / `payment_status='입금완료'`)를 붙이세요.
 5. **휴가/근태는 전자결재 기준**: 카카오워크 캘린더는 더 이상 쓰지 않습니다.
    `get_today_attendance()` / `get_leave_calendar()` 모두 승인된 휴가신청서를 봅니다.
 6. **Tool 1개로 해결하세요**: 여러 Tool을 순차 호출하지 말고, 가장 적합한 Tool 1개를 바로 호출하세요.
@@ -104,9 +109,9 @@ INSTRUCTIONS = """
 ## Tool 분류 (113개)
 
 ### 현장/프로젝트 (8개)
-- `get_projects(status, year, month, search)` — 현장 목록
+- `get_projects(status, year, month, search, include_done=False)` — 현장 목록 (기본 납품완료 제외)
 - `get_project_detail(project_id)` — 현장 상세
-- `search_projects(query)` — 현장명/약칭/주소 통합 검색
+- `search_projects(query, include_done=False, limit=50)` — 현장명/약칭/주소 통합 검색 (기본 납품완료 제외)
 - `get_project_timeline(project_id)` — 납품/생산 타임라인
 - `get_project_contacts(project_id, query, category)` — 현장 담당자(감독관/감리/시공사)
 - `get_delivery_summary(year, month)` — 납품집계 (G2B 조달 실적)
@@ -132,7 +137,7 @@ INSTRUCTIONS = """
   · 기본 최근 24개월. 사용자가 "전체"/"5년치" 명시 시 include_old=True
 
 ### 납품 (3개)
-- `get_deliveries(project_id, status)` — 납품 현황
+- `get_deliveries(project_id, status, include_done=False)` — 납품 현황 (기본 납품완료 제외, project_id 지정 시 전부)
 - `get_delivery_detail(delivery_id)` — 납품 상세 (분할 포함)
 - `get_delivery_status_summary()` — 상태별 요약 통계
 
@@ -254,7 +259,7 @@ INSTRUCTIONS = """
 - `get_my_approval_drafts(requester_username, limit)` — 내가 상신한 문서 + 진행상태
 
 ### 계약 (2개)
-- `get_contracts(project_id, payment_status, limit)` — 계약 목록 (수금상태·현장연결)
+- `get_contracts(project_id, payment_status, limit, include_done=False)` — 계약 목록 (기본 수금완료 제외)
 - `get_contract_detail(contract_id)` — 계약 상세
 ★ 조달 원문(품목/금액/납기)은 `get_g2b_contract_detail()` 이 더 정확합니다.
 

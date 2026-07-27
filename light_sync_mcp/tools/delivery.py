@@ -17,6 +17,7 @@ def register(mcp: FastMCP):
         limit: int = 50,
         months_back: int = 24,
         include_old: bool = False,
+        include_done: bool = False,
     ) -> str:
         """특정 현장의 납품 상세 현황 조회 (분할납품 포함).
         ★ '납품해야 되는 현장 몇 건?' 질문에는 이 Tool 대신 get_projects(status='계약') 사용.
@@ -25,9 +26,13 @@ def register(mcp: FastMCP):
 
         기본은 **최근 24개월** 생성된 납품만 (옛날 waiting 1,000+건 데이터 오염 방지).
 
+        ★ 기본은 **납품완료(done)를 제외**합니다. 특정 현장(project_id)을 볼 때는
+          완료건도 함께 봐야 하므로 제외하지 않습니다.
+
         Args:
             months_back: 최근 N개월 기간 필터 (기본 24). project_id 명시 시 무시.
             include_old: True 시 전체 기간 (기본 False).
+            include_done: True 시 납품완료 건까지 포함 (기본 False).
         """
         from modules.models.entities import Delivery, Project
         import datetime
@@ -38,6 +43,9 @@ def register(mcp: FastMCP):
                 q = q.filter(Delivery.delivery_status.ilike(f"%{status}%"))
             if project_id:
                 q = q.filter(Delivery.project_id == project_id)
+            # status/project_id 를 명시했으면 범위를 이미 정한 것 — 덧씌우지 않는다
+            elif not include_done and not status:
+                q = q.filter(Delivery.delivery_status != "done")
             # 기간 필터 — project_id 명시 안 됐을 때만 적용 (특정 현장 조회는 옛날 거라도 봄)
             if not project_id and not include_old and months_back > 0:
                 cutoff = datetime.datetime.now() - datetime.timedelta(days=30 * months_back)
