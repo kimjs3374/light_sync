@@ -732,6 +732,8 @@ def sync_g2b_changes_cli():
         f"[G2B변경] 완료: 갱신 {result['updated']}건, "
         f"납품기한수정 {result.get('date_fixed', 0)}건, "
         f"수량수정 {result.get('qty_fixed', 0)}건, "
+        f"품목재정렬 {result.get('reconciled', 0)}건, "
+        f"계약취소 {result.get('cancelled', 0)}건, "
         f"수동확인 {result.get('needs_review', 0)}건"
     )
 
@@ -755,10 +757,17 @@ def sync_g2b_quantities_cli(do_apply):
     for c in result['changes']:
         click.echo(f"  [수량] {c['g2b_no']} {c['chg_ord']}차({c['method']}) — {c['detail']}"
                    f"  | {(c['contract_name'] or '')[:35]}")
+    for c in result['reconciles']:
+        click.echo(f"  [품목] {c['g2b_no']} {c['chg_ord']}차 — {c['detail']}"
+                   f"  | {(c['contract_name'] or '')[:35]}")
+    for c in result['cancels']:
+        click.echo(f"  [취소] {c['g2b_no']} {c['chg_ord']}차 — {c['detail']}"
+                   f"  | {(c['contract_name'] or '')[:35]}")
     for r in result['reviews']:
         click.echo(f"  [확인] {r['g2b_no']} — {r['reason']}  | {(r['contract_name'] or '')[:35]}")
     click.echo(
         f"[G2B수량:{mode}] 수량수정 {result['qty_fixed']}건(품목 {result['items_fixed']}), "
+        f"품목재정렬 {result['reconciled']}건, 계약취소 {result['cancelled']}건, "
         f"수동확인 {result['needs_review']}건"
     )
 

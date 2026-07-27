@@ -350,12 +350,15 @@ def sync_changes(db):
         f"[G2B조달] 변경계약 동기화 완료: 신규 {created}, 갱신 {updated}, "
         f"오류 {errors}, 정리 {cleaned}, 납품기한수정 {date_fixed}, "
         f"수량수정 {qty_result['qty_fixed']}건(품목 {qty_result['items_fixed']}), "
+        f"품목재정렬 {qty_result['reconciled']}건, 계약취소 {qty_result['cancelled']}건, "
         f"수동확인 {qty_result['needs_review']}건"
     )
     return {'created': created, 'updated': updated, 'errors': errors,
             'total_fetched': len(all_items), 'date_fixed': date_fixed,
             'qty_fixed': qty_result['qty_fixed'],
             'items_fixed': qty_result['items_fixed'],
+            'reconciled': qty_result['reconciled'],
+            'cancelled': qty_result['cancelled'],
             'needs_review': qty_result['needs_review']}
 
 
@@ -460,6 +463,116 @@ def _match_g2b_items(g2b_rows, contract_items):
     return None, None
 
 
+def _item_dependency_count(db, contract_item_id):
+    """계약품목에 물려 있는 실무 데이터 수 — 0 이어야 삭제해도 안전하다.
+
+    ContractItem 관계는 cascade='all, delete-orphan' 이라 그냥 지우면
+    바코드·도면·자재발주·생산공정이 조용히 같이 날아간다.
+    """
+    row = db.execute(text('''
+        SELECT (SELECT count(*) FROM light_sync.contract_barcodes    WHERE contract_item_id = :i)
+             + (SELECT count(*) FROM light_sync.drawings             WHERE contract_item_id = :i)
+             + (SELECT count(*) FROM light_sync.material_orders      WHERE contract_item_id = :i)
+             + (SELECT count(*) FROM light_sync.production_processes WHERE contract_item_id = :i)
+             + (SELECT count(*) FROM light_sync.delivery_split_items WHERE contract_item_id = :i) AS n
+    '''), {'i': contract_item_id}).first()
+    return int(row.n or 0)
+
+
+def _reconcile_items(db, contract, g2b_rows, contract_items, dry_run):
+    """조달내역을 정본으로 계약품목 구성을 맞춘다 (1:1 매칭 실패 시에만 호출).
+
+    - G2B 에만 있는 품목      → ContractItem 신규 생성
+    - 양쪽에 있는 품목        → 수량 갱신
+    - ERP 에만 남은 품목      → 수량 0. 종속 데이터가 없으면 삭제, 있으면 남기고 보고
+
+    모델명 정확매칭만 사용한다. 여기서 순번 위치매칭까지 하면 모델이 교체된 계약을
+    "이름만 바뀐 같은 품목"으로 오인해 엉뚱한 품목의 수량을 덮어쓴다.
+
+    Returns:
+        dict: {detail, blocked[]}
+    """
+    remaining = list(contract_items)
+    matched, new_rows = [], []
+    for g in g2b_rows:
+        keys = _model_name_keys(g.prdct_idnt_no_nm)
+        hit = next((ci for ci in remaining if (ci.model_name or '').strip() in keys), None)
+        if hit is not None:
+            remaining.remove(hit)
+            matched.append((g, hit))
+        else:
+            new_rows.append(g)
+
+    parts, blocked = [], []
+
+    for g, ci in matched:
+        new_qty, old_qty = (g.prdct_qty or 0), (ci.quantity or 0)
+        label = _s_model(ci.model_name) or ci.category
+        # 조달내역에 취소선(수량 0 AND 금액 0)으로 남은 품목은 계약에서 빠진 것 —
+        # 모델 교체건에서 옛 모델이 0EA 로 계속 붙어 있는 걸 막는다
+        if (g.prdct_qty or 0) == 0 and (g.prdct_amt or 0) == 0:
+            deps = _item_dependency_count(db, ci.id)
+            if deps == 0:
+                parts.append(f"[삭제] {label} {old_qty}EA (조달 취소선)")
+                if not dry_run:
+                    db.delete(ci)
+            elif old_qty:
+                parts.append(f"[수량0] {label} {old_qty}→0EA (조달 취소선)")
+                blocked.append(
+                    f'조달내역에서 취소된 품목 "{label}" 에 실무데이터 {deps}건이 남아 있어 '
+                    f'삭제하지 않고 수량만 0 처리 — 확인 필요'
+                )
+                if not dry_run:
+                    ci.quantity = 0
+            # old_qty 가 이미 0 이고 종속 데이터가 있으면 더 할 일이 없다.
+            # 매 실행마다 같은 알림을 쏘지 않도록 여기서 조용히 넘긴다
+            # (이 상태는 감사(audit-g2b-drift)가 품목구성으로 계속 보여준다)
+            continue
+        if new_qty != old_qty:
+            parts.append(f"{label} {old_qty}→{new_qty}EA")
+            if not dry_run:
+                ci.quantity = new_qty
+
+    for g in new_rows:
+        if (g.prdct_qty or 0) == 0 and (g.prdct_amt or 0) == 0:
+            continue  # 취소된 품목을 새로 만들 이유가 없다
+        model_name = (g.prdct_idnt_no_nm or g.prdct_clsfc_no_nm or '').strip()
+        parts.append(f"[신규] {_s_model(model_name)} {g.prdct_qty or 0}EA")
+        if not dry_run:
+            db.add(ContractItem(
+                contract_id=contract.id,
+                category=normalize_detail_item(
+                    g.dtil_prdct_clsfc_no_nm, default=DETAIL_ITEM_OPTIONS[0]
+                ),
+                model_name=model_name,
+                quantity=g.prdct_qty or 0,
+            ))
+
+    for ci in remaining:
+        deps = _item_dependency_count(db, ci.id)
+        label = _s_model(ci.model_name) or ci.category
+        if deps == 0:
+            parts.append(f"[삭제] {label} {ci.quantity or 0}EA")
+            if not dry_run:
+                db.delete(ci)
+        else:
+            parts.append(f"[수량0] {label} {ci.quantity or 0}→0EA")
+            blocked.append(
+                f'조달내역에서 빠진 품목 "{label}" 에 실무데이터 {deps}건(바코드/도면/자재발주/'
+                f'생산공정/납품회차)이 남아 있어 삭제하지 않고 수량만 0 처리 — 확인 필요'
+            )
+            if not dry_run:
+                ci.quantity = 0
+
+    return {'detail': ', '.join(parts), 'blocked': blocked}
+
+
+def _s_model(name):
+    """로그·알림용 모델명 축약 — 원문 전체가 저장된 경우가 있어 길다"""
+    name = (name or '').strip()
+    return name if len(name) <= 40 else name[:37] + '...'
+
+
 def sync_item_quantities(db, dry_run=False):
     """G2B 변경계약 수량 → ContractItem.quantity 반영 (활성 계약 한정).
 
@@ -467,12 +580,16 @@ def sync_item_quantities(db, dry_run=False):
     (delivery_actions.sync_deliveries), 여기서 갱신해야 조달 변경분이
     납품/생산 화면까지 흘러간다.
 
-    자동 반영 제외 대상 — needs_review로 분류하고 알림만 발송:
-      - 전 품목 취소건(prdct_qty=0 AND prdct_amt=0) → 계약 취소 처리는 조달내역에서 수동
-      - 품목이 추가/삭제되어 1:1 매칭이 불가능한 건
+    조달내역이 정본이므로 아래도 전부 자동 반영한다:
+      - 전 품목 취소(prdct_qty=0 AND prdct_amt=0) → is_excluded + exclude_reason='취소'
+        (payment_status 는 실제 수금상태라 건드리지 않는다 — 조달내역 예외처리 API와 동일)
+      - 품목 추가/삭제 → _reconcile_items() 로 G2B 기준 재정렬
+
+    사람 확인이 남는 유일한 경우: 조달내역에서 빠진 품목에 실무데이터(바코드/도면/
+    자재발주/생산공정/납품회차)가 물려 있어 삭제하지 못하고 수량만 0 처리한 건.
 
     Returns:
-        dict: {qty_fixed, items_fixed, needs_review, changes[], reviews[]}
+        dict: {qty_fixed, items_fixed, cancelled, reconciled, needs_review, ...}
     """
     from modules.contract_filters import DONE_STATUSES
     from modules.history_board import append_history_log
@@ -486,7 +603,7 @@ def sync_item_quantities(db, dry_run=False):
         Contract.is_excluded.isnot(True),
     ).all()
 
-    changes, reviews = [], []
+    changes, reviews, cancelled, reconciled = [], [], [], []
     touched_projects = set()
 
     for contract in contracts:
@@ -504,24 +621,86 @@ def sync_item_quantities(db, dry_run=False):
 
         # 취소건: 전 품목이 수량 0 AND 금액 0 — auto_create_contracts와 동일 판정
         if all((r.prdct_qty or 0) == 0 and (r.prdct_amt or 0) == 0 for r in g2b_rows):
-            reviews.append({
+            detail = f'G2B {max_chg}차 변경으로 전량 취소 (수량 0 / 금액 0)'
+            cancelled.append({
                 'contract_id': contract.id,
                 'project_id': contract.project_id,
                 'g2b_no': contract.g2b_contract_no,
                 'contract_name': contract.contract_name,
-                'reason': '전 품목 취소(수량 0/금액 0) — 계약 취소 처리 필요',
+                'chg_ord': max_chg,
+                'detail': detail,
             })
+            if contract.project_id:
+                touched_projects.add(contract.project_id)
+            logger.info(
+                f"[G2B조달] 계약취소 반영: {contract.g2b_contract_no} 차수{max_chg} "
+                f"({(contract.contract_name or '')[:30]})"
+            )
+            if not dry_run:
+                # 예외처리는 is_excluded 플래그로만 — payment_status 는 실제 수금상태이므로
+                # 건드리지 않는다 (조달내역 화면의 예외처리 API와 동일한 방식)
+                contract.is_excluded = True
+                contract.exclude_reason = '취소'
+                contract.exclude_note = detail
+                contract.g2b_change_ord = max_chg
+                for ci in contract_items:
+                    ci.quantity = 0
+                if contract.project_id:
+                    append_history_log(
+                        db,
+                        project_id=contract.project_id,
+                        user_name='시스템',
+                        content=f'G2B 변경계약({max_chg}차) 전량취소 — 예외처리(취소) 자동 반영',
+                        scope='contract',
+                        kind='system',
+                    )
             continue
 
-        pairs, method = _match_g2b_items(g2b_rows, contract_items)
+        # 취소선(수량 0 AND 금액 0)을 품목 수에 넣으면 모델 교체건이 1:1 로 잘못 맞아
+        # 옛 모델이 0EA 로 계속 남는다. 살아있는 품목끼리만 매칭한다.
+        live_rows = [
+            r for r in g2b_rows
+            if not ((r.prdct_qty or 0) == 0 and (r.prdct_amt or 0) == 0)
+        ]
+        pairs, method = _match_g2b_items(live_rows, contract_items)
         if pairs is None:
-            reviews.append({
-                'contract_id': contract.id,
-                'project_id': contract.project_id,
-                'g2b_no': contract.g2b_contract_no,
-                'contract_name': contract.contract_name,
-                'reason': f'품목 구성 불일치 (G2B {len(g2b_rows)}종 / ERP {len(contract_items)}종)',
-            })
+            # 품목이 추가/삭제된 변경계약 — 조달내역을 정본으로 품목 구성을 맞춘다
+            recon = _reconcile_items(db, contract, g2b_rows, contract_items, dry_run)
+            if recon['detail']:
+                reconciled.append({
+                    'contract_id': contract.id,
+                    'project_id': contract.project_id,
+                    'g2b_no': contract.g2b_contract_no,
+                    'contract_name': contract.contract_name,
+                    'chg_ord': max_chg,
+                    'detail': recon['detail'],
+                })
+                if contract.project_id:
+                    touched_projects.add(contract.project_id)
+                logger.info(
+                    f"[G2B조달] 품목 재정렬: {contract.g2b_contract_no} 차수{max_chg} "
+                    f"{recon['detail']} ({(contract.contract_name or '')[:30]})"
+                )
+                if not dry_run:
+                    contract.g2b_change_ord = max_chg
+                    if contract.project_id:
+                        append_history_log(
+                            db,
+                            project_id=contract.project_id,
+                            user_name='시스템',
+                            content=f'G2B 변경계약({max_chg}차) 품목 재정렬 — {recon["detail"]}',
+                            scope='contract',
+                            kind='system',
+                        )
+            # 종속 데이터가 있어 지우지 못한 품목은 사람이 확인해야 한다
+            for note in recon['blocked']:
+                reviews.append({
+                    'contract_id': contract.id,
+                    'project_id': contract.project_id,
+                    'g2b_no': contract.g2b_contract_no,
+                    'contract_name': contract.contract_name,
+                    'reason': note,
+                })
             continue
 
         diffs = []
@@ -588,6 +767,21 @@ def sync_item_quantities(db, dry_run=False):
                 'detail': c['detail'],
             }, dedupe_key=f"qty_changed:{c['contract_id']}:{c['chg_ord']}:{c['detail']}")
 
+        for c in reconciled:
+            notify(db, 'contract.qty_changed', {
+                'contract_name': c['contract_name'] or c['g2b_no'],
+                'project_id': c['project_id'],
+                'chg_ord': c['chg_ord'],
+                'detail': f"품목 재정렬 — {c['detail']}",
+            }, dedupe_key=f"reconciled:{c['contract_id']}:{c['chg_ord']}:{c['detail']}")
+
+        for c in cancelled:
+            notify(db, 'contract.cancelled', {
+                'contract_name': c['contract_name'] or c['g2b_no'],
+                'project_id': c['project_id'],
+                'detail': c['detail'],
+            }, dedupe_key=f"cancelled:{c['contract_id']}:{c['chg_ord']}")
+
         for r in reviews:
             notify(db, 'contract.change_review', {
                 'contract_name': r['contract_name'] or r['g2b_no'],
@@ -598,8 +792,12 @@ def sync_item_quantities(db, dry_run=False):
     return {
         'qty_fixed': len(changes),
         'items_fixed': sum(c['item_count'] for c in changes),
+        'cancelled': len(cancelled),
+        'reconciled': len(reconciled),
         'needs_review': len(reviews),
         'changes': changes,
+        'cancels': cancelled,
+        'reconciles': reconciled,
         'reviews': reviews,
     }
 

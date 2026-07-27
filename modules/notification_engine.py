@@ -74,6 +74,15 @@ EVENT_REGISTRY: Dict[str, Dict[str, Any]] = {
         'kakao': True,
         'kakao_format': 'text',
     },
+    'contract.cancelled': {
+        'title': '[계약취소] {contract_name}',
+        'message': '{detail} — 예외처리(취소) 자동 반영',
+        'target': 'all',
+        'noti_type': 'contract',
+        'link': '/contract_detail/{project_id}',
+        'kakao': True,
+        'kakao_format': 'text',
+    },
     'contract.change_review': {
         'title': '[변경계약 확인필요] {contract_name}',
         'message': '{reason}',

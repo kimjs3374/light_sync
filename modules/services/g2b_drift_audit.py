@@ -92,12 +92,18 @@ def audit_g2b_drift(db):
         elif all((r.prdct_qty or 0) == 0 and (r.prdct_amt or 0) == 0 for r in g2b_rows):
             add('계약취소의심', contract, '전 품목 수량 0 / 금액 0 — 계약 취소 처리 필요')
         else:
-            pairs, method = _match_g2b_items(g2b_rows, contract_items)
+            # 취소선(수량 0 AND 금액 0)은 계약에서 빠진 품목이라 ERP 에 없는 게 정상.
+            # 이걸 세면 모델 교체건이 정리된 뒤에도 영원히 불일치로 잡힌다.
+            live_rows = [
+                r for r in g2b_rows
+                if not ((r.prdct_qty or 0) == 0 and (r.prdct_amt or 0) == 0)
+            ]
+            pairs, method = _match_g2b_items(live_rows, contract_items)
             if pairs is None:
-                g2b_models = ', '.join(_norm(r.prdct_idnt_no_nm)[:30] for r in g2b_rows)
+                g2b_models = ', '.join(_norm(r.prdct_idnt_no_nm)[:30] for r in live_rows)
                 erp_models = ', '.join(_norm(ci.model_name)[:30] for ci in contract_items)
                 add('품목구성', contract,
-                    f'G2B {len(g2b_rows)}종 [{g2b_models}] vs ERP {len(contract_items)}종 [{erp_models}]')
+                    f'G2B {len(live_rows)}종 [{g2b_models}] vs ERP {len(contract_items)}종 [{erp_models}]')
             else:
                 diffs = [
                     f"{_norm(ci.model_name) or ci.category} {ci.quantity or 0}→{g.prdct_qty or 0}"
