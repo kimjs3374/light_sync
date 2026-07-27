@@ -129,6 +129,15 @@ def sync_deliveries(db, project_id=None, project_ids=None):
         if all_deliveries and all(d.delivery_status == "done" for d in all_deliveries):
             if project.status != "납품완료":
                 project.status = "납품완료"
+        elif project.status == "납품완료" and all_deliveries:
+            # 완료로 올리기만 하고 되돌리지 않아, 변경계약으로 물량이 늘어도
+            # 현장은 납품완료로 남아 있었다(소제지구: 계획 375/완료 192인데 납품완료).
+            #
+            # 단 회차를 한 번도 등록한 적 없는 현장은 건드리지 않는다. 과거 완료건
+            # 1,200여건이 G2B 동기화로만 생성돼 delivery_status='waiting' 인데,
+            # 이걸 되돌리면 완료된 현장이 전부 진행중으로 뒤집힌다.
+            if any(d.splits for d in all_deliveries):
+                project.status = "계약"
 
 
 # --- Action Handlers ---

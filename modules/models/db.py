@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import sessionmaker
@@ -9,6 +11,8 @@ from .helpers import _read_env_value, normalize_detail_item, quote_ident
 
 # 최고관리자 계정 username — 변경 시 여기만 수정
 SUPERADMIN_USERNAME = "magnatech"
+
+logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------
 # DB 연결 및 초기화
@@ -633,7 +637,15 @@ def init_db():
         if not admin_exists:
             import bcrypt
             import os
-            admin_pw = os.environ.get('ADMIN_DEFAULT_PASSWORD', 'blues55088--')
+            # 기본 비밀번호를 코드에 박아두지 않는다 — 저장소에 남으면 그대로 자격증명이 된다.
+            # ADMIN_DEFAULT_PASSWORD 가 없으면 계정을 만들지 않고 넘어간다.
+            admin_pw = (os.environ.get('ADMIN_DEFAULT_PASSWORD') or '').strip()
+            if not admin_pw:
+                logger.warning(
+                    '[초기화] ADMIN_DEFAULT_PASSWORD 미설정 — 최고관리자 계정을 생성하지 않았습니다. '
+                    '환경변수를 설정한 뒤 다시 기동하세요.'
+                )
+                return
             hashed_pw = bcrypt.hashpw(admin_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             db.add(User(username=SUPERADMIN_USERNAME, password_hash=hashed_pw, full_name="매그나텍",
                         phone_number="010-0000-0000", user_group="최고관리자", role="admin", is_approved=True))

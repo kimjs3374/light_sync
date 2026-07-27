@@ -1629,3 +1629,21 @@ WHERE t.direction='매출' AND t.approval_no LIKE '%-%'
               WHERE d.direction='매출' AND d.approval_no NOT LIKE '%-%'
                 AND d.approval_no = regexp_replace(t.approval_no,'[^0-9]','','g'));
 -- 결과: 매출 5,062 → 2,666행 (정규화 distinct 일치, 잔여 하이픈 0).
+
+-- ============================================================
+-- 2026-07-27  누락 FK/필터 인덱스 10종
+--   전수 점검에서 발견. 인덱스가 208개 있었는데 정작 매 화면에서
+--   조인되는 FK 가 빠져 있었다. material_orders(25,180행)·
+--   tax_invoices(15,511행)가 자재·계약관리와 매출/미수금 화면의 병목.
+--   운영 중 잠금을 피하려 CONCURRENTLY 로 생성(트랜잭션 밖에서 실행할 것).
+-- ============================================================
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_contracts_g2b_no         ON light_sync.contracts       (g2b_contract_no);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_contracts_project_id     ON light_sync.contracts       (project_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_contracts_payment_status ON light_sync.contracts       (payment_status);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_contract_items_contract  ON light_sync.contract_items  (contract_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_deliveries_contract      ON light_sync.deliveries      (contract_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_deliveries_project       ON light_sync.deliveries      (project_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_delivery_splits_delivery ON light_sync.delivery_splits (delivery_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_material_orders_ci       ON light_sync.material_orders (contract_item_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tax_invoices_g2b_no      ON light_sync.tax_invoices    (g2b_contract_no);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tax_invoices_contract    ON light_sync.tax_invoices    (contract_id);

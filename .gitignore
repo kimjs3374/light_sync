@@ -89,3 +89,6 @@ scripts/kakao_daemon.pid
 vehicle_refs/*.jpg
 vehicle_refs/*.jpeg
 vehicle_refs/*.png
+
+# MCP 설정 (DATABASE_URL 등 자격증명 포함)
+.mcp.json

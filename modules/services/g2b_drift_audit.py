@@ -123,6 +123,19 @@ def audit_g2b_drift(db):
         # ── 현장 필드 (사용자 수정 가능 — 보고만) ──
         project = db.query(Project).get(contract.project_id) if contract.project_id else None
         if project:
+            # 현장 status 와 실제 납품 진행이 어긋나는지 (회차가 기록된 현장만 판정)
+            if project.status == '납품완료':
+                rows = db.execute(text('''
+                    SELECT count(*) FILTER (WHERE d.delivery_status <> 'done') AS undone,
+                           count(*) FILTER (WHERE EXISTS(
+                               SELECT 1 FROM light_sync.delivery_splits s WHERE s.delivery_id = d.id)) AS with_split
+                    FROM light_sync.deliveries d
+                    WHERE d.project_id = :p AND d.contract_id IS NOT NULL
+                '''), {'p': project.id}).first()
+                if rows and rows.undone and rows.with_split:
+                    add('현장상태', contract,
+                        f"현장 status='납품완료' 인데 미완료 납품 {rows.undone}건 (회차 기록 있음)")
+
             g2b_org = _norm(rep.dminstt_nm)
             erp_org = _norm(project.short_name)
             if g2b_org and normalize_org_name(erp_org) != normalize_org_name(g2b_org)[:50]:
