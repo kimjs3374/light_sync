@@ -343,12 +343,20 @@ def sync_changes(db):
     # 납품기한 변경 감지: G2B 테이블 vs Contract 테이블 비교
     date_fixed = _sync_delivery_dates(db)
 
+    # 변경계약 수량 반영: G2B 최종차수 수량 → ContractItem.quantity → 납품 계획수량
+    qty_result = sync_item_quantities(db)
+
     logger.info(
         f"[G2B조달] 변경계약 동기화 완료: 신규 {created}, 갱신 {updated}, "
-        f"오류 {errors}, 정리 {cleaned}, 납품기한수정 {date_fixed}"
+        f"오류 {errors}, 정리 {cleaned}, 납품기한수정 {date_fixed}, "
+        f"수량수정 {qty_result['qty_fixed']}건(품목 {qty_result['items_fixed']}), "
+        f"수동확인 {qty_result['needs_review']}건"
     )
     return {'created': created, 'updated': updated, 'errors': errors,
-            'total_fetched': len(all_items), 'date_fixed': date_fixed}
+            'total_fetched': len(all_items), 'date_fixed': date_fixed,
+            'qty_fixed': qty_result['qty_fixed'],
+            'items_fixed': qty_result['items_fixed'],
+            'needs_review': qty_result['needs_review']}
 
 
 def _sync_delivery_dates(db):
@@ -378,6 +386,222 @@ def _sync_delivery_dates(db):
         )
 
     return len(rows)
+
+
+def _sno_key(row):
+    """품목순번 정렬키 — '2'가 '10'보다 앞서도록 숫자 우선 비교"""
+    sno = (row.prdct_sno or '').strip()
+    return (0, int(sno), '') if sno.isdigit() else (1, 0, sno)
+
+
+def _final_g2b_items(db, req_no):
+    """계약번호의 품목순번별 최종 변경차수 행만 순번순으로 반환.
+
+    _cleanup_non_final()이 비최종 행을 지우지만, 정리 이전 데이터나
+    수동 입력분이 남아 있을 수 있어 여기서 한 번 더 최종차수를 고른다.
+    """
+    best = {}
+    for row in db.query(G2bProcurement).filter(
+        G2bProcurement.cntrct_dlvr_req_no == req_no
+    ).all():
+        sno = (row.prdct_sno or '').strip()
+        chg = (row.cntrct_dlvr_req_chg_ord or '00').strip()
+        cur = best.get(sno)
+        if cur is None or chg > (cur.cntrct_dlvr_req_chg_ord or '00').strip():
+            best[sno] = row
+    return sorted(best.values(), key=_sno_key)
+
+
+def _model_name_keys(raw):
+    """G2B 규격문자열 → ContractItem.model_name 후보 키.
+
+    계약 자동생성 경로가 둘이라 model_name 저장 형태가 다르다:
+      - g2b_contract_sync._parse_g2b_item() → 'MTPF-201-5'  (쉼표 3번째 토큰)
+      - g2b_procurement_sync.auto_create_contracts() → 원문 전체
+    양쪽 모두를 후보로 만들어 정확매칭한다 (ILIKE 부분매칭 금지).
+    """
+    raw = (raw or '').strip()
+    if not raw:
+        return set()
+    keys = {raw}
+    parts = [p.strip() for p in raw.split(',')]
+    if len(parts) >= 3:
+        keys.add(parts[2])
+    elif len(parts) == 2:
+        keys.add(parts[1])
+    return {k for k in keys if k}
+
+
+def _match_g2b_items(g2b_rows, contract_items):
+    """G2B 품목 ↔ ContractItem 1:1 매칭.
+
+    Returns:
+        (pairs, method) — 매칭 실패 시 (None, None)
+    """
+    # 1) 모델명 정확매칭 — 모든 품목이 1:1로 떨어질 때만 인정
+    remaining = list(contract_items)
+    pairs = []
+    for g in g2b_rows:
+        keys = _model_name_keys(g.prdct_idnt_no_nm)
+        hits = [ci for ci in remaining if (ci.model_name or '').strip() in keys]
+        if len(hits) != 1:
+            pairs = None
+            break
+        pairs.append((g, hits[0]))
+        remaining.remove(hits[0])
+    if pairs is not None and not remaining:
+        return pairs, '모델명'
+
+    # 2) 품목 수가 같으면 순번 위치매칭 (모델명 표기가 바뀐 변경계약 대응)
+    if len(g2b_rows) == len(contract_items):
+        return list(zip(g2b_rows, contract_items)), '순번'
+
+    # 3) 품목이 추가/삭제된 변경계약 — 자동 판단 불가
+    return None, None
+
+
+def sync_item_quantities(db, dry_run=False):
+    """G2B 변경계약 수량 → ContractItem.quantity 반영 (활성 계약 한정).
+
+    납품관리 계획수량은 sum(contract_items.quantity)로 계산되므로
+    (delivery_actions.sync_deliveries), 여기서 갱신해야 조달 변경분이
+    납품/생산 화면까지 흘러간다.
+
+    자동 반영 제외 대상 — needs_review로 분류하고 알림만 발송:
+      - 전 품목 취소건(prdct_qty=0 AND prdct_amt=0) → 계약 취소 처리는 조달내역에서 수동
+      - 품목이 추가/삭제되어 1:1 매칭이 불가능한 건
+
+    Returns:
+        dict: {qty_fixed, items_fixed, needs_review, changes[], reviews[]}
+    """
+    from modules.contract_filters import DONE_STATUSES
+    from modules.history_board import append_history_log
+    from modules.notification_engine import notify
+    from modules.services.delivery_actions import sync_deliveries
+
+    contracts = db.query(Contract).filter(
+        Contract.g2b_contract_no.isnot(None),
+        Contract.g2b_contract_no != '',
+        Contract.payment_status.notin_(DONE_STATUSES),
+        Contract.is_excluded.isnot(True),
+    ).all()
+
+    changes, reviews = [], []
+    touched_projects = set()
+
+    for contract in contracts:
+        g2b_rows = _final_g2b_items(db, contract.g2b_contract_no)
+        if not g2b_rows:
+            continue
+
+        contract_items = db.query(ContractItem).filter(
+            ContractItem.contract_id == contract.id
+        ).order_by(ContractItem.id).all()
+        if not contract_items:
+            continue
+
+        max_chg = max((r.cntrct_dlvr_req_chg_ord or '00').strip() for r in g2b_rows)
+
+        # 취소건: 전 품목이 수량 0 AND 금액 0 — auto_create_contracts와 동일 판정
+        if all((r.prdct_qty or 0) == 0 and (r.prdct_amt or 0) == 0 for r in g2b_rows):
+            reviews.append({
+                'contract_id': contract.id,
+                'project_id': contract.project_id,
+                'g2b_no': contract.g2b_contract_no,
+                'contract_name': contract.contract_name,
+                'reason': '전 품목 취소(수량 0/금액 0) — 계약 취소 처리 필요',
+            })
+            continue
+
+        pairs, method = _match_g2b_items(g2b_rows, contract_items)
+        if pairs is None:
+            reviews.append({
+                'contract_id': contract.id,
+                'project_id': contract.project_id,
+                'g2b_no': contract.g2b_contract_no,
+                'contract_name': contract.contract_name,
+                'reason': f'품목 구성 불일치 (G2B {len(g2b_rows)}종 / ERP {len(contract_items)}종)',
+            })
+            continue
+
+        diffs = []
+        for g, ci in pairs:
+            new_qty = g.prdct_qty or 0
+            old_qty = ci.quantity or 0
+            if new_qty == old_qty:
+                continue
+            diffs.append((ci, old_qty, new_qty))
+
+        chg_stale = (contract.g2b_change_ord or '00') != max_chg
+        if not diffs and not chg_stale:
+            continue
+
+        detail = ', '.join(
+            f"{ci.model_name or ci.category} {old}→{new}EA" for ci, old, new in diffs
+        )
+
+        if not dry_run:
+            for ci, _old, new_qty in diffs:
+                ci.quantity = new_qty
+            contract.g2b_change_ord = max_chg
+
+        if diffs:
+            changes.append({
+                'contract_id': contract.id,
+                'project_id': contract.project_id,
+                'g2b_no': contract.g2b_contract_no,
+                'contract_name': contract.contract_name,
+                'chg_ord': max_chg,
+                'method': method,
+                'detail': detail,
+                'item_count': len(diffs),
+            })
+            if contract.project_id:
+                touched_projects.add(contract.project_id)
+
+            logger.info(
+                f"[G2B조달] 수량 수정({method}): {contract.g2b_contract_no} "
+                f"차수{max_chg} {detail} ({(contract.contract_name or '')[:30]})"
+            )
+
+            if not dry_run and contract.project_id:
+                append_history_log(
+                    db,
+                    project_id=contract.project_id,
+                    user_name='시스템',
+                    content=f'G2B 변경계약({max_chg}차) 수량 반영 — {detail}',
+                    scope='contract',
+                    kind='system',
+                )
+
+    if not dry_run:
+        db.flush()
+        # 납품 계획수량 재계산 — 수량이 바뀐 현장만
+        for project_id in touched_projects:
+            sync_deliveries(db, project_id=project_id)
+
+        for c in changes:
+            notify(db, 'contract.qty_changed', {
+                'contract_name': c['contract_name'] or c['g2b_no'],
+                'project_id': c['project_id'],
+                'chg_ord': c['chg_ord'],
+                'detail': c['detail'],
+            }, dedupe_key=f"qty_changed:{c['contract_id']}:{c['chg_ord']}:{c['detail']}")
+
+        for r in reviews:
+            notify(db, 'contract.change_review', {
+                'contract_name': r['contract_name'] or r['g2b_no'],
+                'project_id': r['project_id'],
+                'reason': r['reason'],
+            }, dedupe_key=f"change_review:{r['contract_id']}:{r['reason']}")
+
+    return {
+        'qty_fixed': len(changes),
+        'items_fixed': sum(c['item_count'] for c in changes),
+        'needs_review': len(reviews),
+        'changes': changes,
+        'reviews': reviews,
+    }
 
 
 def sync_bulk(db, start_year=2020, end_year=None):

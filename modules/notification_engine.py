@@ -65,6 +65,24 @@ EVENT_REGISTRY: Dict[str, Dict[str, Any]] = {
         'kakao': True,
         'kakao_format': 'workboard',
     },
+    'contract.qty_changed': {
+        'title': '[변경계약 수량반영] {contract_name}',
+        'message': '{chg_ord}차 변경 — {detail}',
+        'target': 'all',
+        'noti_type': 'contract',
+        'link': '/contract_detail/{project_id}',
+        'kakao': True,
+        'kakao_format': 'text',
+    },
+    'contract.change_review': {
+        'title': '[변경계약 확인필요] {contract_name}',
+        'message': '{reason}',
+        'target': 'all',
+        'noti_type': 'contract',
+        'link': '/contract_detail/{project_id}',
+        'kakao': True,
+        'kakao_format': 'text',
+    },
 
     # ── 납품 ──
     'delivery.scheduled': {

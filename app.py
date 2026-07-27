@@ -730,7 +730,85 @@ def sync_g2b_changes_cli():
 
     click.echo(
         f"[G2B변경] 완료: 갱신 {result['updated']}건, "
-        f"납품기한수정 {result.get('date_fixed', 0)}건"
+        f"납품기한수정 {result.get('date_fixed', 0)}건, "
+        f"수량수정 {result.get('qty_fixed', 0)}건, "
+        f"수동확인 {result.get('needs_review', 0)}건"
+    )
+
+
+@app.cli.command('sync-g2b-quantities')
+@click.option('--apply', 'do_apply', is_flag=True, help='실제 반영 (없으면 미리보기만)')
+def sync_g2b_quantities_cli(do_apply):
+    """G2B 최종 변경차수 수량 → 계약품목/납품 계획수량 반영 (기존건 백필용).
+
+    기본은 미리보기(dry-run). 실제 반영은 --apply 필요.
+    """
+    from modules.db_context import get_db
+    from modules.services.g2b_procurement_sync import sync_item_quantities
+
+    with get_db() as db:
+        result = sync_item_quantities(db, dry_run=not do_apply)
+        if do_apply:
+            db.commit()
+
+    mode = '반영' if do_apply else '미리보기'
+    for c in result['changes']:
+        click.echo(f"  [수량] {c['g2b_no']} {c['chg_ord']}차({c['method']}) — {c['detail']}"
+                   f"  | {(c['contract_name'] or '')[:35]}")
+    for r in result['reviews']:
+        click.echo(f"  [확인] {r['g2b_no']} — {r['reason']}  | {(r['contract_name'] or '')[:35]}")
+    click.echo(
+        f"[G2B수량:{mode}] 수량수정 {result['qty_fixed']}건(품목 {result['items_fixed']}), "
+        f"수동확인 {result['needs_review']}건"
+    )
+
+
+@app.cli.command('audit-g2b-drift')
+def audit_g2b_drift_cli():
+    """G2B 원본 ↔ ERP 전 필드 대조 감사 (읽기 전용, crontab용).
+
+    G2B→ERP는 '생성 시 1회 복사' 구조라 원본이 바뀌어도 ERP는 스냅샷으로 남는다.
+    어긋난 필드를 사람이 발견하기 전에 로그로 먼저 드러내는 것이 목적.
+    수정하지 않고 알림도 보내지 않는다 — 로그만 남긴다.
+    """
+    from modules.db_context import get_db
+    from modules.services.g2b_drift_audit import audit_g2b_drift
+
+    with get_db() as db:
+        result = audit_g2b_drift(db)
+
+    findings = result['findings']
+    total = sum(len(v) for v in findings.values())
+    click.echo(f"[G2B감사] 활성 계약 {result['total']}건 대조 — 불일치 {total}건")
+    for category in sorted(findings):
+        rows = findings[category]
+        click.echo(f"  ── {category} {len(rows)}건")
+        for r in rows:
+            click.echo(f"     {r['g2b_no']} | {(r['contract_name'] or '')[:30]} | {r['detail']}")
+
+
+@app.cli.command('normalize-project-org-names')
+@click.option('--apply', 'do_apply', is_flag=True, help='실제 반영 (없으면 미리보기만)')
+def normalize_project_org_names_cli(do_apply):
+    """현장 수요기관명(projects.short_name)에 전남광주 통합 표기 적용.
+
+    G2B 값으로 덮어쓰지 않고 기존 값에 normalize_org_name()만 적용한다
+    (short_name은 담당자가 직접 수정하는 필드라 수정분을 보존해야 함).
+    """
+    from modules.db_context import get_db
+    from modules.services.g2b_drift_audit import normalize_project_org_names
+
+    with get_db() as db:
+        result = normalize_project_org_names(db, dry_run=not do_apply)
+        if do_apply:
+            db.commit()
+
+    for c in result['changes']:
+        if c['active']:
+            click.echo(f"  [활성] {c['project_no']}: {c['old']} → {c['new']}")
+    click.echo(
+        f"[수요기관명:{'반영' if do_apply else '미리보기'}] "
+        f"{result['fixed']}건 (활성 {result['logged']}건만 히스토리 기록)"
     )
 
 
