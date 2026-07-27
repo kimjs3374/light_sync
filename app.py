@@ -796,6 +796,31 @@ def audit_g2b_drift_cli():
             click.echo(f"     {r['g2b_no']} | {(r['contract_name'] or '')[:30]} | {r['detail']}")
 
 
+@app.cli.command('fix-contract-item-groups')
+@click.option('--apply', 'do_apply', is_flag=True, help='실제 반영 (없으면 미리보기만)')
+def fix_contract_item_groups_cli(do_apply):
+    """계약 뱃지(item_group)를 실제 계약품목 기준으로 정정.
+
+    item_group 이 실제 품목군에 없는 계약만 고친다 (담당자가 고른 유효값은 보존).
+    """
+    from modules.db_context import get_db
+    from modules.services.g2b_drift_audit import sync_contract_item_groups
+
+    with get_db() as db:
+        result = sync_contract_item_groups(db, dry_run=not do_apply)
+        if do_apply:
+            db.commit()
+
+    for c in result['changes']:
+        mark = '[활성]' if c['active'] else '     '
+        click.echo(f"  {mark} {c['g2b_no']}: '{c['old']}' → '{c['new']}'  실제={c['cats']}"
+                   f"  | {(c['contract_name'] or '')[:32]}")
+    click.echo(
+        f"[품목군:{'반영' if do_apply else '미리보기'}] {result['fixed']}건 "
+        f"(활성 {result['logged']}건만 히스토리 기록)"
+    )
+
+
 @app.cli.command('normalize-project-org-names')
 @click.option('--apply', 'do_apply', is_flag=True, help='실제 반영 (없으면 미리보기만)')
 def normalize_project_org_names_cli(do_apply):

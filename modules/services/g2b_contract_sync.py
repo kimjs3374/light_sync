@@ -187,15 +187,17 @@ def sync_g2b_to_contracts(db):
             G2bProcurement.cntrct_dlvr_req_no == g2b_no
         ).all()
 
-        # 첫 번째 품목의 item_group을 계약의 대표 상세품목으로 사용
-        first_item_group = DETAIL_ITEM_OPTIONS[0]
-        if items:
-            first_item_group, _, _ = _parse_g2b_item(items[0])
+        # 계약 뱃지에 쓰이는 대표 상세품목 — 첫 품목만 보면 품목군이 섞인 계약에서
+        # 소수 품목이 대표가 된다. 가장 많은 품목군을 쓴다.
+        from modules.services.g2b_procurement_sync import _representative_item_group
+        representative_group = _representative_item_group(
+            _parse_g2b_item(it)[0] for it in items
+        )
 
         contract = Contract(
             project_id=project_id,
             contract_name=g.contract_name or f'G2B-{g2b_no}',
-            item_group=first_item_group,
+            item_group=representative_group,
             g2b_contract_no=g2b_no,
             contract_date=g.contract_date,
             delivery_due_date=g.delivery_date,

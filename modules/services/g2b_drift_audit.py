@@ -12,6 +12,8 @@
 """
 import logging
 
+from sqlalchemy import text
+
 from modules.models import Contract, ContractItem, Project, normalize_org_name
 from modules.services.g2b_procurement_sync import _final_g2b_items, _match_g2b_items
 
@@ -87,6 +89,12 @@ def audit_g2b_drift(db):
             ContractItem.contract_id == contract.id
         ).order_by(ContractItem.id).all()
 
+        # ── 계약 뱃지(item_group)가 실제 품목군과 맞는지 ──
+        cats = [ci.category for ci in contract_items if ci.category]
+        if cats and contract.item_group not in cats:
+            add('품목군뱃지', contract,
+                f"뱃지 '{contract.item_group}' vs 실제 {sorted(set(cats))}")
+
         if not contract_items:
             add('품목없음', contract, 'ERP 계약품목 0건')
         elif all((r.prdct_qty or 0) == 0 and (r.prdct_amt or 0) == 0 for r in g2b_rows):
@@ -136,6 +144,65 @@ def audit_g2b_drift(db):
     )
 
     return {'total': len(contracts), 'findings': findings}
+
+
+def sync_contract_item_groups(db, dry_run=True):
+    """계약 뱃지(contracts.item_group)를 실제 계약품목 기준으로 바로잡는다.
+
+    auto_create_contracts 가 item_group 을 품목과 무관하게 LED투광등기구로 박아넣어,
+    보안등·가로등주 계약까지 투광등기구 뱃지로 보이던 것을 정정한다.
+    item_group 이 실제 품목군 목록에 **없는** 경우만 고친다 — 품목군이 섞인 계약에서
+    담당자가 대표값을 골라놨을 수 있으므로, 유효한 값이면 건드리지 않는다.
+
+    Returns:
+        dict: {fixed, changes[]}
+    """
+    from modules.history_board import append_history_log
+    from modules.services.g2b_procurement_sync import _representative_item_group
+
+    rows = db.execute(text('''
+        SELECT c.id, c.item_group, c.contract_name, c.project_id, c.g2b_contract_no,
+               array_agg(ci.category ORDER BY ci.id) AS cats
+        FROM light_sync.contracts c
+        JOIN light_sync.contract_items ci ON ci.contract_id = c.id
+        GROUP BY c.id, c.item_group, c.contract_name, c.project_id, c.g2b_contract_no
+    ''')).fetchall()
+
+    active_ids = _active_project_ids(db)
+    changes, logged = [], 0
+    for r in rows:
+        cats = [c for c in (r.cats or []) if c]
+        if not cats or r.item_group in cats:
+            continue
+        new_group = _representative_item_group(cats)
+        if new_group == r.item_group:
+            continue
+        is_active = r.project_id in active_ids
+        changes.append({
+            'contract_id': r.id, 'project_id': r.project_id,
+            'g2b_no': r.g2b_contract_no, 'contract_name': r.contract_name,
+            'old': r.item_group, 'new': new_group,
+            'cats': sorted(set(cats)), 'active': is_active,
+        })
+        if not dry_run:
+            db.execute(text('UPDATE light_sync.contracts SET item_group = :g WHERE id = :i'),
+                       {'g': new_group, 'i': r.id})
+            if is_active and r.project_id:
+                append_history_log(
+                    db,
+                    project_id=r.project_id,
+                    user_name='시스템',
+                    content=f'계약 품목군 정정 — {r.item_group} → {new_group} (실제 품목: {", ".join(sorted(set(cats)))})',
+                    scope='contract',
+                    kind='system',
+                )
+                logged += 1
+        elif is_active and r.project_id:
+            logged += 1
+
+    logger.info('[G2B감사] 계약 품목군 정정 %s: %d건',
+                '미리보기' if dry_run else '반영', len(changes))
+    return {'fixed': len(changes), 'logged': logged, 'changes': changes}
 
 
 def _active_project_ids(db):

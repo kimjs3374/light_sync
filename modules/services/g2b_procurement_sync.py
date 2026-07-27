@@ -463,6 +463,21 @@ def _match_g2b_items(g2b_rows, contract_items):
     return None, None
 
 
+def _representative_item_group(categories):
+    """계약 뱃지에 쓸 대표 품목군 — 가장 많은 카테고리, 동수면 먼저 나온 것.
+
+    계약에 품목군이 섞여 있으면(전체의 7%) 하나만 대표로 보일 수밖에 없다.
+    최소한 '실제로 계약에 있는 품목군'이어야 한다.
+    """
+    ordered = [c for c in categories if c]
+    if not ordered:
+        return DETAIL_ITEM_OPTIONS[0]
+    counts = defaultdict(int)
+    for c in ordered:
+        counts[c] += 1
+    return max(ordered, key=lambda c: (counts[c], -ordered.index(c)))
+
+
 def _item_dependency_count(db, contract_item_id):
     """계약품목에 물려 있는 실무 데이터 수 — 0 이어야 삭제해도 안전하다.
 
@@ -960,13 +975,19 @@ def auto_create_contracts(db, since_date=None):
         db.flush()  # project.id 확보
 
         # 4) Contract 생성
+        #    item_group 은 화면 뱃지로 노출되는 대표 품목군이다. 예전엔 품목과 무관하게
+        #    DETAIL_ITEM_OPTIONS[0](LED투광등기구)을 박아넣어, 보안등·가로등주 계약까지
+        #    전부 투광등기구 뱃지로 보였다.
         new_contract = Contract(
             project_id=new_project.id,
             contract_name=contract_name,
             contract_date=contract_date,
             delivery_due_date=delivery_due_date,
             g2b_contract_no=req_no,
-            item_group=DETAIL_ITEM_OPTIONS[0],
+            item_group=_representative_item_group(
+                normalize_detail_item(it.dtil_prdct_clsfc_no_nm, default=DETAIL_ITEM_OPTIONS[0])
+                for it in valid_items
+            ),
         )
         db.add(new_contract)
         db.flush()  # contract.id 확보
