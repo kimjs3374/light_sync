@@ -192,3 +192,32 @@ DRAWING_REQUIRED_ITEMS = [
 ]
 ADMIN_STATUS_STEPS = ['자재확인중', '발주진행중', '발주완료', '입고진행중', '입고완료']
 PROD_STATUS_STEPS = ['자재대기중', '생산대기중', '생산중', '생산완료']
+
+
+# ── 계약품목 스펙 필드 표시 메타 ──────────────────────────────
+# 협의변경 알림·히스토리에 내부 필드명(body_type)과 파이썬 값(None/True)이
+# 그대로 새어 나가던 문제로 신설. data/spec_meta.json 이 없을 때의 기본값이며,
+# 화면(sales_spec_admin.html DEFAULT_META)과 같은 라벨을 쓴다.
+SPEC_FIELD_LABELS = {
+    'lens_angle':                '렌즈각도',
+    'spacing_distance':          '이격거리',
+    'body_type':                 '일체형/분리형',
+    'has_stabilizer_box':        '안정기 BOX 유무',
+    'stabilizer_vendor_contact': '안정기 업체 연락처',
+    'stabilizer_address':        '안정기 설치 주소',
+    'smps_shipment_schedule':    'SMPS 출하 일정',
+    'smps_model':                'SMPS 모델',
+    'is_integrated':             '일체형 여부',
+    'is_painted':                '도장 여부',
+    'paint_color':               '도장 색상',
+    'replace_or_new':            '교체/신설',
+    'anchor_spacing':            '앙카 간격',
+    'arm_type':                  '암대 타입',
+    'tower_height':              '타워 높이',
+    'lamp_count':                '등기구 수량',
+    'stainless_finish_type':     '스텐 마감',
+    'is_prof_inspection':        '전문기관 검수',
+    'cable_type':                '케이블 사양',
+    'base_cover_note':           '베이스커버 비고',
+    'bom_breakdown':             '렌즈/바이저 내역',
+}

@@ -58,13 +58,61 @@ def _extract_item_spec(form, category):
     return spec
 
 
+def _spec_label(key):
+    """내부 필드명 → 사람이 읽는 라벨. 모르는 키는 그대로 노출한다."""
+    from modules.models import SPEC_FIELD_LABELS
+    return SPEC_FIELD_LABELS.get(key, key)
+
+
+def _spec_value_text(key, value):
+    """스펙 값을 알림/히스토리에 쓸 문자열로 변환.
+
+    파이썬 표현(None / True / [{'렌즈': ...}])이 그대로 나가던 것을 막는다.
+    """
+    if value is None or value == '':
+        return '미입력'
+    if key in BOOLEAN_SPEC_FIELDS or isinstance(value, bool):
+        return '예' if is_true_value(value) else '아니오'
+    if isinstance(value, list):
+        # bom_breakdown: [{'렌즈': '20도', '바이저': '480', 'qty': 20}, ...]
+        parts = []
+        for row in value:
+            if isinstance(row, dict):
+                qty = row.get('qty')
+                desc = ' '.join(f"{k} {v}" for k, v in row.items() if k != 'qty' and v not in (None, ''))
+                parts.append(f"{desc} {qty}EA".strip() if qty not in (None, '') else desc)
+            else:
+                parts.append(str(row))
+        return ' / '.join(p for p in parts if p) or '미입력'
+    if isinstance(value, dict):
+        inner = ', '.join(f"{k} {v}" for k, v in value.items() if v not in (None, ''))
+        return inner or '미입력'
+    return str(value)
+
+
+def _is_blank(value):
+    """None 과 '' 는 둘 다 '미입력'이므로 서로 바뀌어도 변경이 아니다."""
+    return value is None or value == ''
+
+
 def _diff_spec(old_spec, new_spec):
+    """협의내용 변경분을 사람이 읽을 수 있는 문장으로.
+
+    빈값 ↔ 빈값(None → '')은 변경으로 치지 않는다. 이걸 걸러내지 않으면
+    폼을 한 번 저장할 때마다 미입력 항목 전부가 '변경'으로 알림에 실렸다.
+    """
     old_spec = old_spec or {}
     new_spec = new_spec or {}
     changed = []
     for k in sorted(set(list(old_spec.keys()) + list(new_spec.keys()))):
-        if old_spec.get(k) != new_spec.get(k):
-            changed.append(f"{k}: {old_spec.get(k)} → {new_spec.get(k)}")
+        old_v, new_v = old_spec.get(k), new_spec.get(k)
+        if old_v == new_v:
+            continue
+        if _is_blank(old_v) and _is_blank(new_v):
+            continue
+        changed.append(
+            f"{_spec_label(k)}: {_spec_value_text(k, old_v)} → {_spec_value_text(k, new_v)}"
+        )
     return changed
 
 
