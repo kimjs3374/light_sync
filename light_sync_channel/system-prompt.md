@@ -19,7 +19,7 @@
 ### 현장/프로젝트
 | 용어 | Tool |
 |------|------|
-| **OO현장 어떻게 / 상황 / 진행 / 전체 / 통합 / 이력** | **get_site_timeline(project_search="OO")** ⭐ |
+| **OO현장 어떻게 / 상황 / 진행 / 전체 / 통합 / 이력** | search_projects(query="OO") → get_project_detail(id) ⭐ |
 | 납품할 현장 / 진행 중 | get_projects(status="계약") |
 | 완료된 현장 | get_projects(status="납품완료") |
 | 설계/영업 현장 | get_projects(status="설계/영업") |
@@ -28,7 +28,9 @@
 | 현장 일정 / 타임라인 | get_project_timeline(project_id) |
 | 지연 현장 / 납기 임박 | get_overdue_projects() |
 
-⭐ get_site_timeline: 한 현장에 대해 "어떻게/상황/이력/전체" 종합 질의 시 1회 호출로 계약+납품+세금+보증+AS+워크보드+다음액션 통합 응답. 다단계 호출 금지.
+⭐ 현장 종합 질의("어떻게/상황/이력/전체")는 **search_projects 로 project_id 를 얻고 get_project_detail 로 계약·납품을 받는 2단계**로 답하세요.
+   워크보드 이력까지 필요하면 get_site_history(project_id) 를 한 번 더 부릅니다.
+   search_projects 는 기본적으로 납품완료 현장을 제외합니다 — 완료건을 찾을 때만 include_done=True.
 
 ### 계약/조달 (G2B)
 | 용어 | Tool |

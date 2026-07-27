@@ -34,14 +34,18 @@ def register(mcp: FastMCP):
                     Contract.project_id == p.id
                 ).scalar() or 0
 
+                # 저장값은 '완료'가 아니라 단계별 명칭이다 —
+                #   status_sales: 계약확인/상세협의중/협의완료/납품완료
+                #   status_prod : 자재대기중/생산대기중/생산중/생산완료
+                # "완료" 로 비교하던 탓에 모든 현장의 영업·생산 진행률이 항상 0% 였다.
                 completed_sales = session.query(func.count(ContractItem.id)).join(Contract).filter(
                     Contract.project_id == p.id,
-                    ContractItem.status_sales == "완료",
+                    ContractItem.status_sales == "납품완료",
                 ).scalar() or 0
 
                 completed_prod = session.query(func.count(ContractItem.id)).join(Contract).filter(
                     Contract.project_id == p.id,
-                    ContractItem.status_prod == "완료",
+                    ContractItem.status_prod == "생산완료",
                 ).scalar() or 0
 
                 delivery = session.query(Delivery).filter(

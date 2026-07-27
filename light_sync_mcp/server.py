@@ -106,7 +106,7 @@ INSTRUCTIONS = """
 - 다른 사용자의 개인 계정은 **절대 접근 불가** — `account_id` 명시해도 차단됨.
 - `requester_username` 없거나 식별 실패 시 모든 도구가 error 반환.
 
-## Tool 분류 (113개)
+## Tool 분류 (114개)
 
 ### 현장/프로젝트 (8개)
 - `get_projects(status, year, month, search, include_done=False)` — 현장 목록 (기본 납품완료 제외)

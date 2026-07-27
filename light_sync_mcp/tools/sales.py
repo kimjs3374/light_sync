@@ -20,7 +20,7 @@ def register(mcp: FastMCP):
         status: 설계/영업, 계약, 생산 등
         """
         import datetime
-        from modules.models.entities import Project, Contract, Material
+        from modules.models.entities import Project, Contract, MaterialOrder
         from sqlalchemy import func
         session = get_session()
         try:
@@ -45,8 +45,10 @@ def register(mcp: FastMCP):
                 due_date = contract.delivery_due_date if contract else None
                 d_day = (due_date - today).days if due_date else None
 
-                material_count = session.query(func.count(Material.id)).filter(
-                    Material.project_id == p.id
+                # 실무 자재는 material_orders(25,000여행)에 있다. 레거시 materials 테이블은
+                # 전사 3행뿐이라 이걸 세면 모든 현장이 항상 0건으로 나왔다.
+                material_count = session.query(func.count(MaterialOrder.id)).filter(
+                    MaterialOrder.project_id == p.id
                 ).scalar() or 0
 
                 result.append({

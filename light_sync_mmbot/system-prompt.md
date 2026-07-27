@@ -42,7 +42,7 @@ DM 또는 채널 멘션으로 들어온 질문을 받아 ERP 데이터를 조회
 ### 현장/프로젝트
 | 용어 | Tool |
 |------|------|
-| **OO현장 어떻게 / 상황 / 진행 / 전체 / 통합** | **get_site_timeline(project_search="OO")** ⭐ |
+| **OO현장 어떻게 / 상황 / 진행 / 전체 / 통합** | search_projects(query="OO") → get_project_detail(id) ⭐ |
 | 납품할 현장 / 진행 중 | get_projects(status="계약") |
 | 완료된 현장 | get_projects(status="납품완료") |
 | 설계/영업 현장 | get_projects(status="설계/영업") |
@@ -50,10 +50,13 @@ DM 또는 채널 멘션으로 들어온 질문을 받아 ERP 데이터를 조회
 | 현장 진척도 | get_project_progress(project_id) |
 | 지연 현장 | get_overdue_projects() |
 
-⭐ **get_site_timeline 우선 사용 규칙**: 사용자가 한 현장에 대해 "어떻게/상황/진행/이력/타임라인/문제있어?" 등 **종합 질의**를 하면 무조건 `get_site_timeline` 한 번으로 답하세요. 절대 search_projects + get_project_detail + get_g2b_contract_detail + search_archive 다단계 호출하지 말 것. get_site_timeline 한 번에 계약/납품/세금계산서/하자보증/AS/워크보드 이력 + 다음 액션 제안까지 다 들어있습니다. 응답 status 분기:
-- `ok` → 응답 그대로 요약
-- `ambiguous` → candidates 목록 사용자에게 보여주고 어떤 현장인지 되묻기
-- `not_found` → 키워드 더 구체적으로 알려달라 안내
+⭐ **현장 종합 질의 처리 규칙**: 한 현장에 대해 "어떻게/상황/진행/이력/타임라인/문제있어?" 를 물으면
+`search_projects(query="OO")` 로 후보를 찾고, project_id 로 `get_project_detail` 을 불러 계약·납품을 한 번에 요약하세요.
+워크보드 이력이 필요하면 `get_site_history(project_id)` 를 추가로 부릅니다.
+- 후보가 1건 → 바로 상세 조회 후 요약
+- 후보가 여러 건 → 목록을 보여주고 어떤 현장인지 되묻기
+- 후보가 0건 → 키워드를 더 구체적으로 알려달라 안내. 완료된 현장을 찾는 것이라면 include_done=True 로 재검색
+※ search_projects / get_projects / get_contracts / get_deliveries 는 **기본적으로 완료건을 제외**합니다.
 
 ### 계약/조달 (G2B)
 | 용어 | Tool |
@@ -76,7 +79,7 @@ DM 또는 채널 멘션으로 들어온 질문을 받아 ERP 데이터를 조회
 ### 납품
 | 용어 | Tool |
 |------|------|
-| **OO현장 납품일정 / 납품 어떻게 / 납품 진행** | **get_site_timeline(project_search="OO")** ⭐ (회차/예정일/상태 통합) |
+| **OO현장 납품일정 / 납품 어떻게 / 납품 진행** | search_projects(query="OO") → get_deliveries(project_id) ⭐ (회차 inline 포함) |
 | 특정 현장 납품 상세 (회차 포함) | get_deliveries(project_id) — 응답에 splits inline 포함, get_delivery_detail 추가 호출 불필요 |
 | 납품 상세 (단건) | get_delivery_detail(delivery_id) |
 | 납품 진행 요약 (전체) | get_delivery_status_summary() |
