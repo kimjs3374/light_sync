@@ -476,7 +476,10 @@ SET search_path TO light_sync, public;
 
 -- Warranty 비정규화 필드 (기존 테이블에 컬럼 추가)
 ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS contract_name VARCHAR(200);
-ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS project_name VARCHAR(200);
+-- [미적용] project_name — 바로 위에서 "불필요 컬럼 제거"로 DROP 해놓고 여기서 다시 ADD 하는
+--   모순된 구문. Warranty 모델(misc_entities.py)에도 없고 실제 DB 에도 없다.
+--   2026-07-27 전수 점검에서 확인 후 의도적으로 실행하지 않음.
+-- ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS project_name VARCHAR(200);
 ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS item_group VARCHAR(50);
 ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS model_name VARCHAR(200);
 ALTER TABLE light_sync.warranties ADD COLUMN IF NOT EXISTS quantity INTEGER;
