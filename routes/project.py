@@ -10,6 +10,7 @@ from sqlalchemy import text
 from modules.db_context import get_db
 from modules.kakao_archive import fmt_dt_short
 from modules.contract_filters import active_contract_filter
+from modules.search_filters import project_list_search_filter, contract_list_search_filter
 from modules.utils import safe_int, parse_date
 from modules.pagination import make_pagination
 from modules.spec_utils import format_spec_summary
@@ -141,9 +142,14 @@ def project_list():
 
     with get_db() as db:
         today = datetime.date.today()
-        all_projects = db.query(Project).filter(
+        base_query = db.query(Project).filter(
             ~Project.project_no.like('G-%'),  # G2B 계약 프로젝트 제외 (계약관리에서 관리)
-        ).options(
+        )
+        # 검색어를 DB 로 내려 후보를 줄인다. 최종 판정은 아래 파이썬 매칭이 그대로 한다.
+        pre_filter = project_list_search_filter(q)
+        if pre_filter is not None:
+            base_query = base_query.filter(pre_filter)
+        all_projects = base_query.options(
             joinedload(Project.materials),
             joinedload(Project.contacts),
             joinedload(Project.priority_override),
@@ -287,6 +293,11 @@ def contract_list():
         base_query = db.query(Project).filter(Project.is_contracted == True)
         if not show_done:
             base_query = base_query.filter(active_contract_filter())
+        # 검색어를 DB 로 내려 후보를 줄인다. 최종 판정은 아래 파이썬 매칭이 그대로 한다.
+        # 스펙요약 라벨에 걸리는 검색어는 None 이 와서 기존 전량조회 경로를 탄다.
+        pre_filter = contract_list_search_filter(q)
+        if pre_filter is not None:
+            base_query = base_query.filter(pre_filter)
         projects = base_query.options(
             joinedload(Project.contracts).joinedload(Contract.items).joinedload(ContractItem.material_orders),
             joinedload(Project.materials),

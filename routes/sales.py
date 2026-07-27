@@ -10,6 +10,7 @@ from modules.pagination import make_pagination
 
 from modules.db_context import get_db
 from modules.contract_filters import active_contract_filter
+from modules.search_filters import sales_search_filter
 from modules.models import (
     Project, Contract, ContractItem,
     DETAIL_ITEM_OPTIONS, LIGHTING_DETAIL_ITEMS,
@@ -89,6 +90,10 @@ def sales_list():
         base_query = db.query(Project).filter(Project.is_contracted == True)
         if not show_done:
             base_query = base_query.filter(active_contract_filter())
+        # 검색어를 DB 로 내려 후보를 줄인다. 최종 판정은 아래 _match_project 가 그대로 한다.
+        pre_filter = sales_search_filter(q)
+        if pre_filter is not None:
+            base_query = base_query.filter(pre_filter)
         projects = base_query.options(
             joinedload(Project.contracts).joinedload(Contract.items),
             joinedload(Project.priority_override),

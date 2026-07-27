@@ -54,7 +54,17 @@ def _parse_datetime_local(value):
     return None
 
 
-def sync_deliveries(db, project_id=None):
+def sync_deliveries(db, project_id=None, project_ids=None):
+    """계약품목 수량 기준으로 납품 계획/실적을 재계산한다.
+
+    project_id  : 현장 1건만
+    project_ids : 현장 여러 건 (목록 화면이 실제로 표시할 현장만 넘긴다).
+                  빈 리스트를 넘기면 아무것도 하지 않는다 — 전체 동기화로 새지 않도록
+                  None(=전체) 과 반드시 구분해서 처리한다.
+    둘 다 없으면 계약된 전 현장 (수동 동기화 버튼 / 배치용).
+    """
+    if project_ids is not None and not project_ids:
+        return
     q = db.query(Project).filter(Project.is_contracted.is_(True)).options(
         joinedload(Project.contacts),
         joinedload(Project.contracts).joinedload(Contract.items),
@@ -63,6 +73,8 @@ def sync_deliveries(db, project_id=None):
     )
     if project_id:
         q = q.filter(Project.id == project_id)
+    elif project_ids is not None:
+        q = q.filter(Project.id.in_(project_ids))
 
     projects = q.all()
     today = datetime.date.today()

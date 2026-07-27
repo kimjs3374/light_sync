@@ -50,7 +50,23 @@
 </div>
 
 {# --- 검색/필터 --- #}
+<ul class="nav nav-tabs mb-0" style="border-bottom:1px solid #dee2e6;">
+    {% for code, label in view_tabs.items() %}
+    <li class="nav-item">
+        <a class="nav-link {% if view == code %}active fw-bold{% else %}text-muted{% endif %}"
+           style="white-space:nowrap;"
+           href="{{ url_for('delivery.delivery_management', view=code, q=filters.q,
+                            status=filters.status, sort=filters.sort, show_done=filters.show_done) }}">
+            {{ label }}
+            <span class="badge {% if view == code %}text-bg-secondary{% else %}text-bg-light{% endif %}"
+                  style="font-size:.7rem;">{{ tab_counts[code] }}</span>
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+
 <form class="card border-0 shadow-sm mb-4" method="GET">
+    <input type="hidden" name="view" value="{{ view }}">
     <div class="filter-collapse-body" id="filterBody">
     <div class="card-body row g-2 align-items-end">
         <div class="col-md-4">
@@ -77,7 +93,8 @@
         <div class="col-12 col-md-4 text-md-end d-flex align-items-center justify-content-end gap-3">
             <label class="form-check-label small" style="white-space:nowrap">
                 <input type="checkbox" class="form-check-input" name="show_done" value="1"
-                       {{ 'checked' if filters.show_done == '1' }} onchange="this.form.submit()"> 완료건 포함
+                       {{ 'checked' if filters.show_done == '1' }} onchange="this.form.submit()"
+                       title="입금·변경완료·취소된 계약의 현장까지 포함합니다 (납품 완료 여부와는 별개)"> 수금완료 현장 포함
             </label>
             <div>
                 <a href="{{ url_for('delivery.delivery_management') }}" class="btn btn-outline-secondary btn-sm">초기화</a>

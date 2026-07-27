@@ -12,6 +12,7 @@ from modules.history_board import append_history_log, get_project_history_contex
 from modules.activity import log_activity
 from modules.db_context import get_db
 from modules.contract_filters import active_contract_filter
+from modules.search_filters import delivery_search_filter
 from modules.models import Project, Contract, ContractItem, User, Delivery, DeliverySplit, DeliverySplitItem, DeliveryPhoto
 from modules.storage_adapter import download_bytes
 from modules.priority_utils import (
@@ -48,6 +49,13 @@ STATUS_LABELS = {
     "coordinating": "납품협의중",
     "in_progress": "납품진행중",
     "done": "납품완료",
+}
+# 납품 진행상태 탭 — 기본은 진행중만. 완료건은 탭을 눌러야 보인다.
+# (기존 show_done 체크박스는 payment_status 기준이라 납품 완료 여부와 무관하다)
+VIEW_TABS = {
+    "active": "진행중",
+    "done": "납품완료",
+    "all": "전체",
 }
 PHOTO_TYPE_OPTIONS = ["production_done", "loading", "delivery_done", "etc"]
 PHOTO_TYPE_LABELS = {
@@ -115,17 +123,28 @@ def delivery_management():
             flash("납품 동기화 완료", "success")
             return redirect(url_for("delivery.delivery_management"))
 
-        sync_deliveries(db)
-        db.commit()
-
         q = (request.args.get("q") or "").strip().lower()
         status_filter = (request.args.get("status") or "all").strip()
         sort_by = (request.args.get("sort") or "due_asc").strip()
         show_done = request.args.get("show_done", "") == "1"
+        view = (request.args.get("view") or "active").strip()
+        if view not in VIEW_TABS:
+            view = "active"
 
         base_query = db.query(Project).filter(Project.is_contracted.is_(True))
         if not show_done:
             base_query = base_query.filter(active_contract_filter())
+        # 검색어를 DB 로 내려 후보를 줄인다. 최종 판정은 아래 파이썬 매칭이 그대로 한다.
+        pre_filter = delivery_search_filter(q)
+        if pre_filter is not None:
+            base_query = base_query.filter(pre_filter)
+
+        # 화면에 나올 현장만 동기화한다. 예전에는 GET 마다 전 현장(1,300여건)을
+        # 재계산·커밋해서 검색을 해도 부하가 그대로였다.
+        candidate_ids = [pid for (pid,) in base_query.with_entities(Project.id).all()]
+        sync_deliveries(db, project_ids=candidate_ids)
+        db.commit()
+
         projects = base_query.options(
             joinedload(Project.contracts),
             joinedload(Project.deliveries).joinedload(Delivery.splits),
@@ -135,6 +154,7 @@ def delivery_management():
         today = datetime.date.today()
         filtered = []
         stats = {"total_projects": len(projects), "filtered_projects": 0, "total_deliveries": 0, "waiting": 0, "working": 0, "done": 0}
+        tab_counts = {"active": 0, "done": 0, "all": 0}
 
         for project in projects:
             project._matched_deliveries = []
@@ -159,6 +179,14 @@ def delivery_management():
                     delivery.delivery_status or "",
                 ]).lower()
                 if q and q not in hay:
+                    continue
+                # 탭 건수는 검색어까지 반영한 뒤, 진행상태 필터 적용 전에 센다
+                is_done = delivery.delivery_status == "done"
+                tab_counts["done" if is_done else "active"] += 1
+                tab_counts["all"] += 1
+                if view == "active" and is_done:
+                    continue
+                if view == "done" and not is_done:
                     continue
                 if status_filter != "all" and delivery.delivery_status != status_filter:
                     continue
@@ -239,7 +267,11 @@ def delivery_management():
             priority_projects=priority_projects,
             stats=stats,
             pagination=pagination,
-            filters={"q": request.args.get("q", ""), "status": status_filter, "sort": sort_by, "show_done": "1" if show_done else ""},
+            filters={"q": request.args.get("q", ""), "status": status_filter, "sort": sort_by,
+                     "show_done": "1" if show_done else "", "view": view},
+            view=view,
+            view_tabs=VIEW_TABS,
+            tab_counts=tab_counts,
             status_labels=STATUS_LABELS,
             status_badge=_status_badge,
         )
