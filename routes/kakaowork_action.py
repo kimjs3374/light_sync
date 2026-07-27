@@ -58,6 +58,63 @@ def _resolve_erp_user_by_kakao(session, react_user_id: str) -> User | None:
     return None
 
 
+def _handle_delivery_check(verb, split_id_raw, react_user_id):
+    """납품예정 경과 확인 DM 의 버튼 처리.
+
+    권한: 해당 납품건의 담당자 본인 또는 관리자만. 남의 현장을 임의로 완료 처리할 수 없다.
+    """
+    from modules.kakaowork_notifier import send_dm_text
+    from modules.services.delivery_reminder import complete_split, resolve_owner
+    from modules.history_board import append_history_log
+    from modules.models import Delivery, DeliverySplit
+
+    if not split_id_raw.isdigit():
+        return jsonify({"text": "⚠️ 잘못된 요청입니다."}), 200
+
+    split_id = int(split_id_raw)
+    with get_db() as session:
+        user = _resolve_erp_user_by_kakao(session, react_user_id)
+        if not user:
+            return jsonify({"text": "⚠️ ERP 사용자 매칭 실패 — 웹에서 처리해 주세요."}), 200
+
+        split = session.query(DeliverySplit).get(split_id)
+        delivery = session.query(Delivery).get(split.delivery_id) if split else None
+        if not split or not delivery:
+            return jsonify({"text": "⚠️ 납품 회차를 찾을 수 없습니다."}), 200
+
+        owner = resolve_owner(session, delivery.contact_name)
+        is_admin = (user.role == 'admin') or (user.user_group == '임원진')
+        if not is_admin and (not owner or owner.id != user.id):
+            return jsonify({"text": "⚠️ 본인이 담당한 납품건이 아닙니다."}), 200
+
+        if verb == "dlv_done":
+            ok, msg = complete_split(session, split_id, user.full_name)
+            if ok:
+                session.commit()
+                logger.info("[kakao-action] 납품완료 split=%s by=%s", split_id, user.full_name)
+            else:
+                session.rollback()
+            text_out = ("✅ " if ok else "⚠️ ") + msg
+        else:
+            append_history_log(
+                session,
+                project_id=delivery.project_id,
+                user_name=user.full_name,
+                content=f'{split.split_no}차 납품 아직 미완료 회신 (카카오워크) — 내일 다시 확인 예정',
+                scope='delivery',
+                kind='system',
+            )
+            session.commit()
+            text_out = "🕐 미완료로 기록했습니다. 내일 다시 확인 요청드립니다."
+
+    try:
+        if react_user_id:
+            send_dm_text(str(react_user_id), text_out)
+    except Exception:
+        pass
+    return jsonify({"text": text_out}), 200
+
+
 @kakaowork_action_bp.route("/kakaowork/action", methods=["POST", "GET"])
 def kakaowork_action():
     """KakaoWork interactive(submit_action) 콜백 — 전자결재 승인/반려 즉시 처리."""
@@ -76,6 +133,11 @@ def kakaowork_action():
     logger.info("[kakao-action] value=%s user=%s", value, react_user_id)
 
     parts = value.split("|")
+
+    # ── 납품확인 버튼 (dlv_done|<split_id> / dlv_pending|<split_id>) ──
+    if len(parts) == 2 and parts[0] in ("dlv_done", "dlv_pending"):
+        return _handle_delivery_check(parts[0], parts[1], react_user_id)
+
     if len(parts) != 3 or parts[0] not in ("approve", "reject"):
         return jsonify({"text": "알 수 없는 요청입니다."}), 200
     verb, doc_id, step_id = parts[0], parts[1], parts[2]

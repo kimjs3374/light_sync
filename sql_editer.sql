@@ -1650,3 +1650,11 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_delivery_splits_delivery ON light_sy
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_material_orders_ci       ON light_sync.material_orders (contract_item_id);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tax_invoices_g2b_no      ON light_sync.tax_invoices    (g2b_contract_no);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tax_invoices_contract    ON light_sync.tax_invoices    (contract_id);
+
+-- ============================================================
+-- 2026-07-27  납품 회차 예정시각 (delivery_splits.scheduled_time)
+--   "납품예정시간 지나면 바로 담당자에게 확인 DM" 기능용.
+--   기존에는 scheduled_date(Date)뿐이라 '시간이 지났는지' 판정이 불가능했다.
+--   NULL 이면 기본 마감시각(18:00)으로 간주한다.
+-- ============================================================
+ALTER TABLE light_sync.delivery_splits ADD COLUMN IF NOT EXISTS scheduled_time TIME;

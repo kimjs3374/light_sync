@@ -284,6 +284,66 @@ def send_approval_request_dm(approver_name: str, doc_id: int, step_id: int,
         return None
 
 
+def send_delivery_check_dm(owner_name: str, split_id: int, project_name: str,
+                           contract_name: str, split_no: int, quantity: int,
+                           due_date, elapsed_days: int,
+                           owner_dept: str = "", owner_email: str = "") -> bool:
+    """납품예정시각이 지난 회차에 대해 담당자에게 완료 여부를 묻는 버튼 DM.
+
+    버튼 클릭 → 카카오워크 콘솔에 등록된 콜백(/kakaowork/action)으로 전송.
+    value 포맷: "dlv_done|<split_id>" / "dlv_pending|<split_id>".
+    결재 DM 과 같은 봇(DM 버튼봇) 토큰을 쓴다 — 그룹알림봇과 섞으면 안 된다.
+    """
+    if _kakaowork_disabled():
+        logger.info("카카오워크 납품확인 DM 차단(KAKAOWORK_DISABLED): split=%s", split_id)
+        return False
+    headers = _kakao_headers()
+    if not headers:
+        logger.debug("카카오워크 납품확인 DM 스킵: 토큰 미설정")
+        return False
+
+    user_id = find_user_id(owner_name, dept=owner_dept, email=owner_email)
+    if not user_id:
+        logger.warning("카카오워크 납품확인 DM 스킵: 사용자 매칭 실패 name=%s", owner_name)
+        return False
+    conv_id = _open_dm(user_id)
+    if not conv_id:
+        return False
+
+    elapsed = "오늘 예정" if elapsed_days <= 0 else f"{elapsed_days}일 경과"
+    summary = (f"🚚 납품 확인 — {project_name}\n"
+               f"{split_no}차 {quantity}EA · 예정 {due_date} ({elapsed})")
+    if contract_name:
+        summary += f"\n계약: {contract_name[:40]}"
+    summary += "\n\n납품 완료하셨나요?"
+
+    blocks = [
+        {"type": "text", "text": summary, "markdown": False},
+        {"type": "button", "text": "✅ 납품완료", "style": "primary",
+         "action_type": "submit_action", "action_name": "delivery_done",
+         "value": f"dlv_done|{split_id}"},
+        {"type": "button", "text": "🕐 아직", "style": "default",
+         "action_type": "submit_action", "action_name": "delivery_pending",
+         "value": f"dlv_pending|{split_id}"},
+    ]
+
+    cfg = load_kakaowork_config()
+    try:
+        r = requests.post(f"{cfg['api_base_url']}/v1/messages.send",
+                          headers=headers,
+                          json={"conversation_id": conv_id, "text": summary, "blocks": blocks},
+                          timeout=15)
+        body = r.json() if r.text else {}
+        ok = r.status_code == 200 and not (
+            isinstance(body, dict) and (body.get("success") is False or body.get("error")))
+        if not ok:
+            logger.warning("카카오워크 납품확인 DM 전송 실패: %s %s", r.status_code, str(body)[:200])
+        return ok
+    except Exception as exc:
+        logger.warning("카카오워크 납품확인 DM 예외: %s", exc)
+        return False
+
+
 def build_production_complete_text(project_name: str, model_name: str, quantity: int, category: str = '') -> str:
     """품목 단위 생산완료 알림 텍스트"""
     lines = [

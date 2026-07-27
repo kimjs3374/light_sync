@@ -4,6 +4,7 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    Time,
     ForeignKey,
     Integer,
     String,
@@ -58,6 +59,9 @@ class DeliverySplit(Base):
     split_no = Column(Integer, default=1)
     quantity = Column(Integer, default=0)
     scheduled_date = Column(Date, nullable=True)
+    # 납품예정 시각. NULL 이면 마감시각(DELIVERY_DUE_HOUR, 기본 18시)으로 간주.
+    # 이 시각이 지나면 담당자에게 카카오워크 확인 DM 이 나간다.
+    scheduled_time = Column(Time, nullable=True)
     confirmed_date = Column(Date, nullable=True)
     loading_done_at = Column(DateTime, nullable=True)
     delivered_done_at = Column(DateTime, nullable=True)

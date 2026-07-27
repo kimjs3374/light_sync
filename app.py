@@ -772,6 +772,32 @@ def sync_g2b_quantities_cli(do_apply):
     )
 
 
+@app.cli.command('check-delivery-overdue')
+@click.option('--dry-run', is_flag=True, help='발송 없이 대상만 출력')
+def check_delivery_overdue_cli(dry_run):
+    """납품예정시각 경과 회차 → 담당자에게 카카오워크 확인 DM (crontab용).
+
+    scheduled_time 이 없으면 DELIVERY_DUE_HOUR(기본 18시)를 마감시각으로 본다.
+    같은 회차에 하루 두 번 묻지 않는다.
+    """
+    from modules.db_context import get_db
+    from modules.services.delivery_reminder import run_delivery_checks
+
+    with get_db() as db:
+        result = run_delivery_checks(db, dry_run=dry_run)
+        if not dry_run:
+            db.commit()
+
+    for it in result['items']:
+        click.echo(f"  [DM] {it['label']} → {it['owner']} ({it['elapsed']}일 경과)")
+    for u in result['unassigned_items']:
+        click.echo(f"  [담당자없음] {u['label']} (contact_name={u['contact_name']!r})")
+    click.echo(
+        f"[납품확인{':미리보기' if dry_run else ''}] 대상 {result['total']}건 — "
+        f"DM {result['sent']}건, 담당자없음 {result['unassigned']}건, 오늘이미발송 {result['skipped']}건"
+    )
+
+
 @app.cli.command('audit-g2b-drift')
 def audit_g2b_drift_cli():
     """G2B 원본 ↔ ERP 전 필드 대조 감사 (읽기 전용, crontab용).

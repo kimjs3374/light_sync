@@ -54,6 +54,20 @@ def _parse_datetime_local(value):
     return None
 
 
+
+def _parse_time(value):
+    """'14:30' → datetime.time. 비면 None(= 마감시각 18시로 간주)."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.datetime.strptime(value, fmt).time()
+        except ValueError:
+            continue
+    return None
+
+
 def sync_deliveries(db, project_id=None, project_ids=None):
     """계약품목 수량 기준으로 납품 계획/실적을 재계산한다.
 
@@ -192,6 +206,7 @@ def handle_add_split(db, project, form, current_user, **ctx):
             split_no=safe_int(form.get("split_no"), 1),
             quantity=total_qty,
             scheduled_date=parse_date(form.get("scheduled_date")),
+            scheduled_time=_parse_time(form.get("scheduled_time")),
             confirmed_date=parse_date(form.get("confirmed_date")),
             status=(form.get("status") or "waiting"),
             note=(form.get("note") or "").strip() or None,
@@ -249,6 +264,7 @@ def handle_update_split(db, project, form, current_user, **ctx):
 
         split.split_no = safe_int(form.get("split_no"), split.split_no)
         split.scheduled_date = parse_date(form.get("scheduled_date"))
+        split.scheduled_time = _parse_time(form.get("scheduled_time"))
         split.confirmed_date = parse_date(form.get("confirmed_date"))
         split.loading_done_at = _parse_datetime_local(form.get("loading_done_at"))
         split.delivered_done_at = _parse_datetime_local(form.get("delivered_done_at"))

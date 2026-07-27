@@ -130,6 +130,15 @@ EVENT_REGISTRY: Dict[str, Dict[str, Any]] = {
         'kakao': True,
         'kakao_format': 'text',
     },
+    'delivery.check_unassigned': {
+        'title': '[납품확인 불가] 담당자 미배정 {count}건',
+        'message': '{detail} — 담당자를 지정해 주세요',
+        'target': 'all',
+        'noti_type': 'delivery',
+        'link': '/delivery_management',
+        'kakao': True,
+        'kakao_format': 'text',
+    },
     'delivery.completed': {
         'title': '[납품 완료] {contract_name}',
         'message': '{detail}',
