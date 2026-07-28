@@ -56,6 +56,21 @@ def _auto_register_mail_account(db, user, plain_password):
         mailcow_imap_port = int(os.environ.get('MAILCOW_IMAPS_PORT', '993'))
         mailcow_smtp_port = int(os.environ.get('MAILCOW_SUBMISSION_PORT', '587'))
 
+        # 공유 업무메일함과 주소가 겹치면 개인계정을 만들지 않는다.
+        # (대표이사 username='magna' ↔ 업무메일 magna@mgnt.kr 처럼 겹치는 경우,
+        #  같은 메일함이 공유·개인으로 이중 등록되고 비밀번호가 서로 덮어써진다)
+        shared = db.execute(_text(
+            "SELECT id FROM light_sync.mail_accounts "
+            "WHERE lower(email) = lower(:email) AND is_shared IS TRUE LIMIT 1"
+        ), {"email": mailcow_email}).fetchone()
+        if shared:
+            import logging
+            logging.getLogger(__name__).warning(
+                "메일계정 자동등록 건너뜀 — %s 는 공유 업무메일함(계정#%s), ERP 사용자: %s",
+                mailcow_email, shared[0], user.username,
+            )
+            return
+
         existing = db.execute(_text(
             "SELECT id FROM light_sync.mail_accounts WHERE email = :email AND user_id = :uid"
         ), {"email": mailcow_email, "uid": user.id}).fetchone()
