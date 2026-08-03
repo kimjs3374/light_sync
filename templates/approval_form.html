@@ -412,6 +412,9 @@
     function submitDelete() { document.getElementById('eaDeleteForm').submit(); }
 
     // ── 휴가: 기간(종일/오전반차/오후반차) → 일수 자동 (종일=근무일수, 반차=0.5) ──
+    // 반차 기본 시간대: 오전 09:00~12:00 / 오후 13:00~18:00 (12~13 점심시간 제외)
+    const EA_HALF_AM = ['09:00', '12:00'];
+    const EA_HALF_PM = ['13:00', '18:00'];
     function eaIso(d) {
       return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
@@ -450,12 +453,12 @@
         if (timeRow) timeRow.style.display = '';
         if (dateLbl) dateLbl.textContent = '날짜';
         if (resetTimes || !st.value) {
-          if (period === '오전반차') { st.value = '09:00'; et.value = '14:00'; }
-          else { st.value = '14:00'; et.value = '18:00'; }
+          if (period === '오전반차') { st.value = EA_HALF_AM[0]; et.value = EA_HALF_AM[1]; }
+          else { st.value = EA_HALF_PM[0]; et.value = EA_HALF_PM[1]; }
         }
         if (hint) hint.textContent = (period === '오전반차')
-          ? ('🔔 ' + (et.value || '14:00') + ' 출근(복귀)')
-          : ('🔔 ' + (st.value || '14:00') + ' 조퇴');
+          ? ('🔔 ' + EA_HALF_PM[0] + ' 출근(복귀)')
+          : ('🔔 ' + (st.value || EA_HALF_PM[0]) + ' 조퇴');
         if (sd.value) ed.value = sd.value;
         dd.value = 0.5;
       } else {

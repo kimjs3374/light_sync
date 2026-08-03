@@ -38,6 +38,13 @@
         {% elif doc.status == 'approved' %}<span class="badge bg-success">결재완료</span>
         {% elif doc.status == 'rejected' %}<span class="badge bg-danger">반려</span>
         {% else %}<span class="badge bg-secondary">회수</span>{% endif %}
+        {% if doc.form_key == 'overtime' and (doc.status == 'approved' or is_admin) %}
+        <a href="{{ url_for('approval.approval_overtime_excel', doc_id=doc.id) }}"
+           class="btn btn-sm btn-outline-success" style="white-space:nowrap"
+           title="특근대장 엑셀 다운로드">
+          <i class="bi bi-file-earmark-excel"></i> 엑셀
+        </a>
+        {% endif %}
         <a href="{{ url_for('approval.approval_list') }}" class="btn btn-sm">목록</a>
       </div>
     </div>

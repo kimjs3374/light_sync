@@ -183,7 +183,7 @@ def complete_split(db, split_id, user_name):
     """
     from modules.models import DeliverySplit, Delivery
     from modules.history_board import append_history_log
-    from modules.services.delivery_actions import sync_deliveries
+    from modules.services.delivery_actions import sync_deliveries, mark_split_delivered
 
     split = db.query(DeliverySplit).get(split_id)
     if not split:
@@ -193,10 +193,8 @@ def complete_split(db, split_id, user_name):
 
     delivery = db.query(Delivery).get(split.delivery_id)
     now = datetime.datetime.now()
-    split.status = '완료'
-    split.delivered_done_at = now
-    if not split.confirmed_date:
-        split.confirmed_date = now.date()
+    # 버튼 클릭 시점을 납품일시로 확정 (status/납품일시/확정일 한 세트)
+    mark_split_delivered(split, delivered_at=now, now=now)
 
     project_id = delivery.project_id if delivery else None
     if project_id:
@@ -204,7 +202,7 @@ def complete_split(db, split_id, user_name):
             db,
             project_id=project_id,
             user_name=user_name or '시스템',
-            content=f'{split.split_no}차 {split.quantity or 0}EA 납품완료 처리 (카카오워크 확인)',
+            content=f"{split.split_no}차 {split.quantity or 0}EA 납품완료 처리 ({split.delivered_done_at.strftime('%Y-%m-%d %H:%M')}, 카카오워크 확인)",
             scope='delivery',
             kind='system',
         )

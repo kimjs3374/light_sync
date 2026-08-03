@@ -18,6 +18,10 @@ from ..db import get_session
 from ._helpers import _s
 from .write_ops import _parse_date, _store_session, LEAVE_TYPES, LEAVE_PERIODS
 
+# 반차 기본 시간대 — ERP 기안 폼(templates/approval_form.html)과 동일.
+# 오전 09:00~12:00 / 오후 13:00~18:00 (12~13 점심시간 제외)
+HALF_TIMES = {'오전반차': ('09:00', '12:00'), '오후반차': ('13:00', '18:00')}
+
 
 def register(mcp: FastMCP):
 
@@ -44,7 +48,7 @@ def register(mcp: FastMCP):
           - requester_username: (서버가 자동 주입 — 본인 명의로만 상신) 비워도 됨
           - start_date: 시작일 (YYYY-MM-DD / M/D / 오늘 / 내일)
           - leave_type: 연차(기본) / 병가 / 경조사 / 공가 / 기타
-          - period: 종일(기본) / 오전반차 / 오후반차
+          - period: 종일(기본) / 오전반차(09:00~12:00) / 오후반차(13:00~18:00)
           - end_date: 종료일 (생략 시 시작일과 동일)
           - reason: 사유
         """
@@ -120,16 +124,18 @@ def register(mcp: FastMCP):
             # 사용일수 — ERP 상신과 동일한 산정식
             if '반차' in prd:
                 days = 0.5
+                half_st, half_et = HALF_TIMES.get(prd, ('', ''))
             else:
                 from modules.services import holiday_service
                 days = float(holiday_service.working_days(parsed_start, parsed_end))
+                half_st, half_et = '', ''
             if days <= 0:
                 return json.dumps({"status": "error",
                     "message": f"{parsed_start} ~ {parsed_end} 구간에 근무일이 없습니다 "
                                "(주말/공휴일). 날짜를 확인해주세요."}, ensure_ascii=False)
 
             # 결재선 미리 확인 (상신 시점에 다시 구성)
-            line = svc.resolve_default_line(session, drafter)
+            line = svc.resolve_default_line(session, drafter, form_key='leave')
             line_label = " → ".join(f"{s['approver_name']} {s['approver_position'] or ''}".strip()
                                     for s in line) or "본인 전결 (상위 결재자 없음)"
 
@@ -157,8 +163,8 @@ def register(mcp: FastMCP):
                     "period": prd,
                     "start_date": parsed_start.isoformat(),
                     "end_date": parsed_end.isoformat(),
-                    "start_time": "",
-                    "end_time": "",
+                    "start_time": half_st,
+                    "end_time": half_et,
                     "days": str(days),
                     "reason": reason,
                     "emergency_contact": _s(drafter.phone_number),
@@ -178,6 +184,8 @@ def register(mcp: FastMCP):
             "사유": reason,
             "결재선": line_label,
         }
+        if half_st:
+            fields["휴가시간"] = f"{half_st} ~ {half_et}"
         if balance_note:
             fields["연차잔여"] = balance_note
 

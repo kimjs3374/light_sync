@@ -4932,12 +4932,30 @@ def app_delivery_split_update(delivery_id, split_id):
             return jsonify(ok=False, error='납품 분할을 찾을 수 없습니다'), 404
 
         import datetime as _dt
+        from modules.services.delivery_actions import is_split_done, mark_split_delivered
         changes = []
         if 'scheduled_date' in data and data['scheduled_date']:
             split.scheduled_date = _dt.date.fromisoformat(data['scheduled_date'])
             changes.append('예정일')
+        if 'confirmed_date' in data and data['confirmed_date']:
+            split.confirmed_date = _dt.date.fromisoformat(data['confirmed_date'])
+            changes.append('확정일')
+        if 'loading_done_at' in data:
+            split.loading_done_at = _dt.datetime.fromisoformat(data['loading_done_at']) if data['loading_done_at'] else None
+            changes.append('상차완료')
+        _delivered_at = None
+        if 'delivered_done_at' in data:
+            _delivered_at = _dt.datetime.fromisoformat(data['delivered_done_at']) if data['delivered_done_at'] else None
+            split.delivered_done_at = _delivered_at
+            changes.append('납품일시')
         if 'status' in data:
-            split.status = data['status']
+            if is_split_done(data['status']):
+                # 상태만 완료로 바꾸고 끝내면 납품일시가 비어 납품실적 집계에서 빠진다.
+                _at = mark_split_delivered(split, delivered_at=_delivered_at, status=data['status'])
+                if '납품일시' not in changes:
+                    changes.append(f"납품일시 {_at.strftime('%Y-%m-%d %H:%M')}")
+            else:
+                split.status = data['status']
             changes.append('상태')
         if 'quantity' in data:
             split.quantity = int(data['quantity'])
@@ -7690,7 +7708,7 @@ def app_approval_forms():
         forms = svc.get_active_forms(db)
         out = []
         for f in forms:
-            line = svc.resolve_default_line(db, me, f.default_line)
+            line = svc.resolve_default_line(db, me, f.default_line, form_key=f.form_key)
             refs = [{'id': r.id, 'name': r.full_name, 'position': r.position or ''}
                     for r in svc.resolve_default_refs(db, f.form_key) if r.id != me.id]
             out.append({
@@ -7788,13 +7806,20 @@ def app_approval_create():
         if not title:
             return jsonify(ok=False, error='제목을 입력하세요'), 400
 
-        # 라인아이템(지출명세 등) 합계 계산 → amount
+        # 라인아이템(지출명세/특근내역 등) 합계 계산 → amount
         for field in (form.field_schema or []):
             if field.get('type') == 'lineitems':
-                rows = form_data.get(field['key']) or []
+                rows = form_data.get(field['key'])
+                # 클라이언트가 문자열/단일객체 등 엉뚱한 형태를 보내도 500 내지 않는다
+                if isinstance(rows, dict):
+                    rows = [rows]
+                elif not isinstance(rows, list):
+                    rows = []
                 total = 0
                 clean = []
                 for r in rows:
+                    if not isinstance(r, dict):
+                        continue
                     if not any((str(v or '').strip()) for v in r.values()):
                         continue
                     try:
@@ -7839,7 +7864,8 @@ def app_approval_create():
                     approver_dept=u.user_group, role='approval', status='waiting'))
                 order += 1
         else:
-            for i, s in enumerate(svc.resolve_default_line(db, me, form.default_line), 1):
+            for i, s in enumerate(svc.resolve_default_line(
+                    db, me, form.default_line, form_key=form.form_key), 1):
                 doc.steps.append(ApprovalStep(step_order=i, status='waiting', **s))
 
         # 양식별 기본 수신자 (휴가/지출 → 관리부 서은미 과장)

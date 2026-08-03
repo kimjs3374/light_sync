@@ -37,6 +37,11 @@ LINE_TOKEN_LABEL = {
 # 결재선 자동 구성에서 제외할 그룹 (시스템 계정)
 _EXCLUDED_GROUPS = {'최고관리자'}
 
+# 대표이사 결재를 받는 양식 — 지출결의서·품의서만.
+# 나머지 양식(휴가/출장/특근 등)은 전무까지로 끝낸다.
+CEO_APPROVAL_FORMS = {'expense', 'proposal'}
+CEO_RANK = POSITION_RANK['대표이사']  # 100
+
 
 def position_rank(position):
     return POSITION_RANK.get((position or '').strip(), 0)
@@ -359,23 +364,31 @@ def get_senior_chain(db, min_rank=0):
     return seniors
 
 
-def resolve_default_line(db, drafter, line_tokens=None):
+def resolve_default_line(db, drafter, line_tokens=None, form_key=None):
     """기본 결재선 토큰 → 실제 결재자 리스트(dict) 변환.
 
     기안자 → 부서장 → 부장 → 이사 → 상무 → 전무 → 대표 (존재자 전부).
     기안자보다 하위/동급, 중복은 제외.
+
+    form_key: 양식 키. CEO_APPROVAL_FORMS(지출결의서·품의서)가 아니면 대표이사를
+        자동 결재선에서 제외한다. None이면 종전대로 대표이사까지 포함(호환용).
+        관리자가 양식 결재선에 특정 사용자 ID를 직접 지정한 경우는 의도로 보고 제외하지 않음.
     반환: [{approver_id, approver_name, approver_position, approver_dept, role}, ...]
     """
     tokens = line_tokens or ['dept_head', 'executive']
     drafter_rank = position_rank(drafter.position)
+    ceo_allowed = (form_key is None) or (form_key in CEO_APPROVAL_FORMS)
     steps = []
     seen = {drafter.id}
 
-    def _add(user, role='approval'):
+    def _add(user, role='approval', allow_ceo=False):
         if not user or user.id in seen:
             return
         # 기안자보다 상위 직급만
         if position_rank(user.position) <= drafter_rank:
+            return
+        # 대표이사는 지출결의서·품의서에서만 자동 결재선에 들어간다
+        if not (ceo_allowed or allow_ceo) and position_rank(user.position) >= CEO_RANK:
             return
         seen.add(user.id)
         steps.append({
@@ -395,7 +408,8 @@ def resolve_default_line(db, drafter, line_tokens=None):
             for sr in get_senior_chain(db, min_rank=drafter_rank):
                 _add(sr)
         elif isinstance(tok, int):
-            _add(db.query(User).get(tok))
+            # 관리자가 직접 지정한 결재자 — 대표이사라도 그대로 존중
+            _add(db.query(User).get(tok), allow_ceo=True)
     return steps
 
 
@@ -462,7 +476,7 @@ def submit_document(db, doc):
         raise ValueError('이미 상신된 문서입니다.')
     if not doc.steps:
         drafter = db.query(User).get(doc.drafter_id)
-        if drafter and not resolve_default_line(db, drafter):
+        if drafter and not resolve_default_line(db, drafter, form_key=doc.form_key):
             return _self_approve(db, doc)
         raise ValueError('결재선이 비어 있습니다. 결재자를 1명 이상 지정하세요.')
 
@@ -534,7 +548,7 @@ def submit_leave_from_payload(db, payload, clicker_user):
     db.add(doc)
     db.flush()
 
-    for order, s in enumerate(resolve_default_line(db=db, drafter=drafter), start=1):
+    for order, s in enumerate(resolve_default_line(db=db, drafter=drafter, form_key='leave'), start=1):
         doc.steps.append(ApprovalStep(step_order=order, **s))
     for u in resolve_default_refs(db, 'leave'):
         doc.references.append(ApprovalReference(

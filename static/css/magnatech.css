@@ -1053,7 +1053,10 @@ html.sb-collapsed .sidebar-quick-btn,
     .sidebar, .sidebar-backdrop, .mobile-menu-btn,
     #chatbotPanel, #chatbotBackdrop, .no-print, .page-hero .btn,
     .pagination, .sidebar-flyout-popup, .page-sticky-bar,
-    .alert, .flash-auto-hide { display: none !important; }
+    .alert, .flash-auto-hide,
+    /* 화면 우상단 고정 UI — 안 숨기면 용지 우상단(견적서 로고 자리)에 그대로 찍힌다 */
+    #notiFixedBell, #notiDropdown,
+    #timelinePanel, #timelineBackdrop { display: none !important; }
     .main-content { margin-left: 0 !important; padding: 10px !important; }
     body { background: #fff !important; font-size: 10pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .page-hero {

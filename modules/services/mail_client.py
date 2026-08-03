@@ -646,12 +646,11 @@ class MailClient:
             pass  # already attached
         msg.attach(alt)
 
-        # 첨부파일
+        # 첨부파일 (구형 관공서 뷰어에서도 강제 다운로드되도록 헤더 구성)
         if attachments:
+            from modules.services.mail_attach import build_attachment_part
             for filename, file_bytes in attachments:
-                att = MIMEApplication(file_bytes)
-                att.add_header('Content-Disposition', 'attachment', filename=filename)
-                msg.attach(att)
+                msg.attach(build_attachment_part(filename, file_bytes))
 
         # 수신자 목록
         recipients = []
@@ -727,10 +726,9 @@ class MailClient:
         if html_body:
             msg.attach(MIMEText(html_body, 'html', 'utf-8'))
         if attachments:
+            from modules.services.mail_attach import build_attachment_part
             for filename, file_bytes in attachments:
-                att = MIMEApplication(file_bytes)
-                att.add_header('Content-Disposition', 'attachment', filename=filename)
-                msg.attach(att)
+                msg.attach(build_attachment_part(filename, file_bytes))
 
         # 임시보관함 폴더 탐색 (없으면 생성)
         draft_folders = ['Drafts', 'INBOX.Drafts', 'Draft']

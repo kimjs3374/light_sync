@@ -1658,3 +1658,19 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tax_invoices_contract    ON light_sy
 --   NULL 이면 기본 마감시각(18:00)으로 간주한다.
 -- ============================================================
 ALTER TABLE light_sync.delivery_splits ADD COLUMN IF NOT EXISTS scheduled_time TIME;
+
+-- ============================================================
+-- 2026-07-30  납품완료 회차 납품일시 백필 (delivered_done_at)
+--   상태만 '완료'로 바뀌고 delivered_done_at 이 NULL 인 회차가 51건 중 25건.
+--   주간 납품실적(routes/report.py)·부서 주간보고(dept_report.py)가
+--   delivered_done_at 구간으로 집계하므로 그 회차가 실적에서 통째로 빠졌다.
+--   확정일(없으면 예정일) + 예정시각(없으면 마감 18:00) 으로 채운다.
+--   ※ 실행 완료 (25건). 이후 신규 처리는 delivery_actions.mark_split_delivered() 가
+--     status·delivered_done_at·confirmed_date 를 항상 한 세트로 기록한다.
+-- ============================================================
+UPDATE light_sync.delivery_splits
+SET delivered_done_at = COALESCE(confirmed_date, scheduled_date)::timestamp
+                        + COALESCE(scheduled_time, '18:00'::time)
+WHERE COALESCE(status,'') IN ('done','완료')
+  AND delivered_done_at IS NULL
+  AND COALESCE(confirmed_date, scheduled_date) IS NOT NULL;

@@ -36,6 +36,61 @@ PHOTO_TYPE_ALIASES = {
 }
 SPLIT_STATUS_DONE_VALUES = {"done", "완료"}
 
+# scheduled_time 이 없는 회차의 기본 마감시각 (delivery_reminder.DUE_HOUR 와 동일 기준)
+DELIVERY_DUE_HOUR = int(os.environ.get("DELIVERY_DUE_HOUR", "18"))
+
+
+# --- 납품완료 확정 (status + 납품일시 + 확정일을 항상 한 세트로) ---
+
+def is_split_done(status):
+    return (status or "").strip() in SPLIT_STATUS_DONE_VALUES
+
+
+def resolve_delivered_at(split, on_date=None, now=None):
+    """납품완료 일시(날짜+시각)를 결정한다.
+
+    날짜만 아는 경로(채팅 확인·MCP 확정)에서도 시각을 반드시 채운다.
+      · on_date 가 오늘이면 → 현재시각
+      · 오늘이 아니면      → 그 날짜의 예정시각(없으면 마감시각 18:00)
+      · on_date 가 없으면  → 확정일 → 예정일 → 오늘 순으로 날짜를 잡는다
+    """
+    now = now or datetime.datetime.now()
+    day = on_date or getattr(split, "confirmed_date", None) or getattr(split, "scheduled_date", None) or now.date()
+    if isinstance(day, datetime.datetime):
+        return day
+    if day == now.date():
+        return now
+    t = getattr(split, "scheduled_time", None) or datetime.time(DELIVERY_DUE_HOUR, 0)
+    return datetime.datetime.combine(day, t)
+
+
+def mark_split_delivered(split, on_date=None, delivered_at=None, status=None, now=None):
+    """회차를 납품완료로 확정한다 — status / delivered_done_at / confirmed_date 동시 처리.
+
+    status 만 '완료'로 바꾸고 delivered_done_at 을 비워두면 주간 납품실적
+    (routes/report.py, light_sync_mcp/tools/dept_report.py)이 delivered_done_at
+    구간으로 집계하기 때문에 그 회차가 실적에서 통째로 사라진다.
+    완료 처리 경로는 반드시 이 함수를 거친다.
+
+    Returns: 확정된 delivered_done_at (datetime)
+    """
+    now = now or datetime.datetime.now()
+    if status:
+        split.status = status
+    elif not is_split_done(split.status):
+        split.status = "완료"
+
+    if delivered_at:
+        split.delivered_done_at = delivered_at
+    elif on_date:
+        split.delivered_done_at = resolve_delivered_at(split, on_date=on_date, now=now)
+    elif not split.delivered_done_at:
+        split.delivered_done_at = resolve_delivered_at(split, now=now)
+
+    if not split.confirmed_date:
+        split.confirmed_date = split.delivered_done_at.date()
+    return split.delivered_done_at
+
 
 # --- Utility functions (moved from routes/delivery.py) ---
 
@@ -211,6 +266,9 @@ def handle_add_split(db, project, form, current_user, **ctx):
             status=(form.get("status") or "waiting"),
             note=(form.get("note") or "").strip() or None,
         )
+        # 처음부터 완료로 등록하는 경우(당일 납품 후 사후 입력)도 납품일시를 채운다
+        if is_split_done(split.status):
+            mark_split_delivered(split, status=split.status)
         db.add(split)
         db.flush()
 
@@ -267,8 +325,16 @@ def handle_update_split(db, project, form, current_user, **ctx):
         split.scheduled_time = _parse_time(form.get("scheduled_time"))
         split.confirmed_date = parse_date(form.get("confirmed_date"))
         split.loading_done_at = _parse_datetime_local(form.get("loading_done_at"))
-        split.delivered_done_at = _parse_datetime_local(form.get("delivered_done_at"))
-        split.status = form.get("status") or split.status or "waiting"
+        new_status = form.get("status") or split.status or "waiting"
+        new_delivered_at = _parse_datetime_local(form.get("delivered_done_at"))
+        if is_split_done(new_status):
+            # 완료로 저장하면 납품일시·확정일이 반드시 함께 남는다.
+            # 납품완료 칸을 비워둔 채 상태만 완료로 바꿔도 확정일/예정일+예정시각
+            # (오늘이면 현재시각)으로 채운다 — 비워두면 납품실적 집계에서 빠진다.
+            mark_split_delivered(split, delivered_at=new_delivered_at, status=new_status)
+        else:
+            split.status = new_status
+            split.delivered_done_at = new_delivered_at
         split.note = (form.get("note") or "").strip() or None
 
         if item_qtys:
@@ -276,7 +342,10 @@ def handle_update_split(db, project, form, current_user, **ctx):
         else:
             split.quantity = safe_int(form.get("quantity"), split.quantity)
 
-        append_history_log(db, project_id=project.id, user_name="시스템", content=f"{current_user} {split.split_no}차 회차 수정 (상태: {split.status})", scope="delivery", kind="system")
+        _log_suffix = ""
+        if is_split_done(split.status) and split.delivered_done_at:
+            _log_suffix = f", 납품일시: {split.delivered_done_at.strftime('%Y-%m-%d %H:%M')}"
+        append_history_log(db, project_id=project.id, user_name="시스템", content=f"{current_user} {split.split_no}차 회차 수정 (상태: {split.status}{_log_suffix})", scope="delivery", kind="system")
         return {'flash': ('회차가 수정되었습니다.', 'success')}
     return {}
 

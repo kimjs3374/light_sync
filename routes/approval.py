@@ -7,7 +7,7 @@ import datetime
 import os
 
 from flask import (Blueprint, render_template, request, redirect, url_for,
-                   flash, session, jsonify, Response, abort)
+                   flash, session, jsonify, Response, abort, send_file)
 from werkzeug.utils import secure_filename
 from sqlalchemy import or_, and_
 
@@ -20,6 +20,7 @@ from modules.models import (
     ApprovalReference, ApprovalAttachment, ApprovalComment, User,
 )
 from modules.services import approval_service as svc
+from modules.services.overtime_excel import export_overtime_excel, make_filename
 
 approval_bp = Blueprint('approval', __name__, url_prefix='/approval')
 
@@ -179,10 +180,11 @@ def approval_new():
         holidays = []
         me = db.query(User).get(_me())
         # 본인 전결 대상: 자동 결재선이 비는 최상위 기안자
-        self_approval = not svc.resolve_default_line(db, me)
+        self_approval = not svc.resolve_default_line(
+            db, me, form_key=form.form_key if form else None)
         default_refs = []
         if form:
-            steps = svc.resolve_default_line(db, me, form.default_line)
+            steps = svc.resolve_default_line(db, me, form.default_line, form_key=form.form_key)
             default_line = steps
             # 양식별 기본 수신자 (휴가/지출 → 관리부 서은미 과장). 본인 제외.
             default_refs = [{'user_id': r.id, 'user_name': r.full_name, 'ref_type': 'receiver'}
@@ -229,7 +231,8 @@ def approval_edit(doc_id):
         leave_balance = None
         holidays = []
         drafter = db.query(User).get(doc.drafter_id)
-        self_approval = not svc.resolve_default_line(db, drafter) if drafter else False
+        self_approval = (not svc.resolve_default_line(db, drafter, form_key=doc.form_key)
+                         if drafter else False)
         if form and form.form_key == 'leave':
             leave_balance = _leave_balance(db, drafter)
             holidays = _holiday_list()
@@ -687,6 +690,38 @@ def approval_attachment_delete(doc_id, att_id):
 
 
 # ────────────────────────────────────────────────────────
+# 특근대장 엑셀 다운로드
+# ────────────────────────────────────────────────────────
+
+@approval_bp.route('/<int:doc_id>/overtime.xlsx')
+@menu_required('approval')
+def approval_overtime_excel(doc_id):
+    """결재완료된 특근대장 → 부서_이름직급_x월_특근대장.xlsx"""
+    with get_db() as db:
+        doc = db.query(ApprovalDocument).get(doc_id)
+        if not doc:
+            abort(404)
+        if not _can_view(doc):
+            flash('열람 권한이 없습니다.', 'danger')
+            return redirect(url_for('approval.approval_list'))
+        if doc.form_key != 'overtime':
+            flash('특근대장 문서가 아닙니다.', 'warning')
+            return redirect(url_for('approval.approval_detail', doc_id=doc_id))
+        if doc.status != 'approved' and session.get('role') != 'admin':
+            flash('결재완료된 문서만 내려받을 수 있습니다.', 'warning')
+            return redirect(url_for('approval.approval_detail', doc_id=doc_id))
+
+        bio = export_overtime_excel(doc)
+        filename = make_filename(doc)
+        return send_file(
+            bio,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
+
+# ────────────────────────────────────────────────────────
 # API (결재선 자동 구성)
 # ────────────────────────────────────────────────────────
 
@@ -699,7 +734,7 @@ def api_default_line():
         me = db.query(User).get(_me())
         if not form or not me:
             return jsonify({'steps': []})
-        steps = svc.resolve_default_line(db, me, form.default_line)
+        steps = svc.resolve_default_line(db, me, form.default_line, form_key=form.form_key)
         return jsonify({'steps': steps})
 
 

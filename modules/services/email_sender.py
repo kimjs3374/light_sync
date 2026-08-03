@@ -63,11 +63,10 @@ def send_purchase_order_email(to_email, subject, body_text, pdf_bytes=None, pdf_
         # 본문
         msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
 
-        # PDF 첨부
+        # PDF 첨부 (구형 관공서 뷰어에서도 강제 다운로드되도록 헤더 구성)
         if pdf_bytes and pdf_filename:
-            attachment = MIMEApplication(pdf_bytes, _subtype='pdf')
-            attachment.add_header('Content-Disposition', 'attachment', filename=pdf_filename)
-            msg.attach(attachment)
+            from modules.services.mail_attach import build_attachment_part
+            msg.attach(build_attachment_part(pdf_filename, pdf_bytes))
 
         # SMTP 발송
         import ssl as _ssl
@@ -223,10 +222,9 @@ def send_email_with_attachments(to_email, subject, body_text, attachments=None,
         else:
             msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
 
+        from modules.services.mail_attach import build_attachment_part
         for fname, fbytes in attachments:
-            att = MIMEApplication(fbytes)
-            att.add_header('Content-Disposition', 'attachment', filename=fname)
-            msg.attach(att)
+            msg.attach(build_attachment_part(fname, fbytes))
 
         import ssl as _ssl
         smtp_ctx = _ssl.create_default_context()

@@ -172,6 +172,7 @@ def _action_complete_delivery(payload: Dict[str, Any], mm_user_name: str) -> Dic
         note: str
     """
     from modules.history_board import append_history_log
+    from modules.services.delivery_actions import mark_split_delivered
     from datetime import datetime as _dt, date as _date
 
     project_id = payload.get("project_id")
@@ -206,6 +207,7 @@ def _action_complete_delivery(payload: Dict[str, Any], mm_user_name: str) -> Dic
 
         completed_split_nos = []
         completed_total_qty = 0
+        completed_at_list = []
         for sid in split_ids:
             split = (
                 session.query(DeliverySplit)
@@ -217,11 +219,10 @@ def _action_complete_delivery(payload: Dict[str, Any], mm_user_name: str) -> Dic
                 continue
             if (split.status or "") in ("done", "완료"):
                 continue  # 이미 완료
-            split.status = "완료"
-            # delivered_done_at = 완료일 00:00 (시간 정보 없으면)
-            split.delivered_done_at = _dt(cd.year, cd.month, cd.day)
-            if not split.confirmed_date:
-                split.confirmed_date = cd.date()
+            # status·납품일시·확정일 한 세트로 확정 (완료일이 오늘이면 현재시각,
+            # 아니면 그 날짜의 예정시각/마감시각 18:00 — 00:00 으로 박으면 실적 시각이 틀어진다)
+            mark_split_delivered(split, on_date=cd.date())
+            completed_at_list.append(split.delivered_done_at)
             if note:
                 split.note = ((split.note or "") + f" / 완료처리(@{mm_user_name}): {note}").strip(" /")
             completed_split_nos.append(split.split_no)
@@ -232,9 +233,10 @@ def _action_complete_delivery(payload: Dict[str, Any], mm_user_name: str) -> Dic
 
         # history_log + sync_deliveries (delivery.delivery_status + notify('delivery.completed') 자동)
         no_str = ", ".join(f"{n}차" for n in sorted(completed_split_nos))
+        at_str = min(completed_at_list).strftime("%Y-%m-%d %H:%M") if completed_at_list else completed_date
         append_history_log(
             session, project_id=project.id, user_name="시스템",
-            content=f"{actor_display} {no_str} 납품완료 처리 (총 {completed_total_qty}EA, {completed_date}) [Mattermost@{mm_user_name}]",
+            content=f"{actor_display} {no_str} 납품완료 처리 (총 {completed_total_qty}EA, {at_str}) [Mattermost@{mm_user_name}]",
             scope="delivery", kind="system",
         )
         try:
@@ -470,7 +472,7 @@ def _action_write_confirm(action_type: str, token: str, mm_user_name: str) -> di
 
 
 def _write_delivery_complete(session, payload, actor, mm_user_name):
-    from modules.services.delivery_actions import sync_deliveries
+    from modules.services.delivery_actions import sync_deliveries, mark_split_delivered
     from modules.history_board import append_history_log
 
     project_id = payload["project_id"]
@@ -485,14 +487,14 @@ def _write_delivery_complete(session, payload, actor, mm_user_name):
 
     done_nos = []
     total_qty = 0
+    done_at_list = []
     for sid in split_ids:
         split = session.query(DeliverySplit).filter(DeliverySplit.id == sid).first()
         if not split or (split.status or "") in ("done", "완료"):
             continue
-        split.status = "완료"
-        split.delivered_done_at = _dt(cd.year, cd.month, cd.day)
-        if not split.confirmed_date:
-            split.confirmed_date = cd.date()
+        # status 만 바꾸지 않는다 — 납품일시(날짜+시각)·확정일까지 함께 확정
+        mark_split_delivered(split, on_date=cd.date())
+        done_at_list.append(split.delivered_done_at)
         done_nos.append(split.split_no)
         total_qty += int(split.quantity or 0)
 
@@ -500,12 +502,13 @@ def _write_delivery_complete(session, payload, actor, mm_user_name):
         return {"ok": False, "msg": "완료 처리할 회차 없음"}
 
     no_str = ", ".join(f"{n}차" for n in sorted(done_nos))
+    at_str = min(done_at_list).strftime("%Y-%m-%d %H:%M") if done_at_list else completed_date
     append_history_log(session, project_id=project_id, user_name=actor,
-        content=f"{no_str} 납품완료 (총 {total_qty}EA, {completed_date}) [채팅확인 @{mm_user_name}]",
+        content=f"{no_str} 납품완료 (총 {total_qty}EA, {at_str}) [채팅확인 @{mm_user_name}]",
         scope="delivery", kind="system", origin="chat_confirmed")
     sync_deliveries(session, project_id=project_id)
     return {"ok": True, "label": "납품완료 처리됨",
-            "detail": f"- {no_str} / 총 {total_qty}EA\n- 완료일: {completed_date}"}
+            "detail": f"- {no_str} / 총 {total_qty}EA\n- 완료일시: {at_str}"}
 
 
 def _write_as_register(session, payload, actor):
@@ -742,7 +745,8 @@ def _write_leave_request(session, payload, actor, mm_user_name):
     session.add(doc)
     session.flush()
 
-    for order, s in enumerate(svc.resolve_default_line(drafter=drafter, db=session), start=1):
+    for order, s in enumerate(svc.resolve_default_line(drafter=drafter, db=session,
+                                                       form_key='leave'), start=1):
         doc.steps.append(ApprovalStep(step_order=order, **s))
     for u in svc.resolve_default_refs(session, 'leave'):
         doc.references.append(ApprovalReference(

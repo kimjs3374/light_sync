@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional
 from mcp.server.fastmcp import FastMCP
 
 from ..db import get_session
-from ._helpers import _s, _erp_url
+from ._helpers import _s, _sd, _erp_url
 
 # ── 차량 선택지 ───────────────────────────────────────────
 #   실제 목록은 DashboardSetting['business_trip_vehicles'] 프리셋이 원본이다.
@@ -147,7 +147,7 @@ def register(mcp: FastMCP):
                 session.query(DeliverySplit)
                 .join(Delivery, DeliverySplit.delivery_id == Delivery.id)
                 .filter(Delivery.project_id == project.id)
-                .filter(DeliverySplit.status.in_(["예정", "진행중"]))
+                .filter(DeliverySplit.status.in_(["waiting", "coordinating", "in_progress"]))
                 .order_by(DeliverySplit.split_no.asc())
                 .all()
             )
@@ -155,8 +155,13 @@ def register(mcp: FastMCP):
             if not splits:
                 return json.dumps({"status": "error", "message": f"{project.temp_name}: 완료 처리할 납품 회차가 없습니다 (이미 완료됐거나 등록된 일정이 없음)."}, ensure_ascii=False)
 
+            # 완료 시 실제로 기록될 납품일시(날짜+시각)를 미리 계산해 보여준다.
+            # 확정 처리(_write_delivery_complete)와 같은 규칙을 쓴다.
+            from modules.services.delivery_actions import resolve_delivered_at
             split_info = [{"id": s.id, "split_no": s.split_no, "quantity": s.quantity,
-                           "scheduled_date": _s(s.scheduled_date)} for s in splits]
+                           "scheduled_date": _sd(s.scheduled_date),
+                           "납품일시": resolve_delivered_at(s, on_date=parsed_date).strftime("%Y-%m-%d %H:%M")}
+                          for s in splits]
             total_qty = sum(s.quantity or 0 for s in splits)
 
             token = _store_session("confirm_delivery_complete", {
@@ -173,6 +178,7 @@ def register(mcp: FastMCP):
                 "fields": {
                     "현장": _s(project.temp_name or project.short_name),
                     "납품완료일": parsed_date.isoformat(),
+                    "납품완료 시각": "처리시각(당일) / 예정시각·18:00(당일 아님)",
                     "처리 회차": f"{len(splits)}건",
                     "총 수량": f"{total_qty}EA",
                     "회차 목록": split_info,

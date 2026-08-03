@@ -2,11 +2,31 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 
+// 반차 기본 시간대: 오전 09:00~12:00 / 오후 13:00~18:00 (12~13 점심시간 제외)
+const HALF_AM = ['09:00', '12:00'];
+const HALF_PM = ['13:00', '18:00'];
+
 const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const isHoliday = (dateStr, hol) => {
   const w = new Date(dateStr + 'T00:00:00').getDay();
   return w === 0 || w === 6 || (hol && hol.has(dateStr));
 };
+// 특근 구분 (PC 양식과 동일)
+const OT_TYPES = ['연장', '야간', '휴일'];
+const OT_BLANK = { work_date: '', ot_type: '', start_time: '', end_time: '', break_hours: '', hours: '', work_content: '' };
+// 시작~종료 시각 + 휴게 → 특근시간(h). 자정 넘김 처리 (PC otHours와 동일)
+function otHours(start, end, brk) {
+  if (!start || !end) return '';
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
+  if ([sh, sm, eh, em].some(isNaN)) return '';
+  let mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins < 0) mins += 24 * 60;
+  let h = mins / 60 - (parseFloat(brk) || 0);
+  if (h < 0) h = 0;
+  return (Math.round(h * 100) / 100).toString();
+}
+
 // 시작~종료일 근무일수 (주말·공휴일 제외, 양끝 포함)
 function workingDays(s, e, holidays) {
   const sd = new Date(s + 'T00:00:00'), ed = new Date((e || s) + 'T00:00:00');
@@ -43,9 +63,14 @@ export default function ApprovalCreate() {
 
   const choose = (f) => {
     setPicked(f); setTitle(''); setContent('');
-    const fd = {}; (f.fields || []).forEach(x => { fd[x.key] = ''; });
+    const fd = {}; (f.fields || []).forEach(x => { fd[x.key] = x.type === 'lineitems' ? [] : ''; });
     if (f.form_key === 'leave') { fd.period = '종일'; fd.leave_type = '연차'; }
     if (f.form_key === 'expense') { fd.items = [{ item: '', amount: '', payee: '' }]; }
+    if (f.form_key === 'overtime') {
+      const now = new Date();
+      fd.work_month = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+      fd.entries = [{ ...OT_BLANK }];
+    }
     setFields(fd); setAttachFiles([]);
     setLine(f.default_line || []);
   };
@@ -62,8 +87,8 @@ export default function ApprovalCreate() {
     if (p.indexOf('반차') >= 0) {
       if (!nf.start_date) nf.start_date = iso(new Date());
       nf.end_date = nf.start_date;
-      if (p === '오전반차') { nf.start_time = '09:00'; nf.end_time = '14:00'; }
-      else { nf.start_time = '14:00'; nf.end_time = '18:00'; }
+      if (p === '오전반차') { nf.start_time = HALF_AM[0]; nf.end_time = HALF_AM[1]; }
+      else { nf.start_time = HALF_PM[0]; nf.end_time = HALF_PM[1]; }
       nf.days = '0.5';
     } else {
       nf.days = nf.start_date ? String(workingDays(nf.start_date, nf.end_date || nf.start_date, holidays)) : '';
@@ -82,7 +107,7 @@ export default function ApprovalCreate() {
     setFields(nf);
   };
   const returnHint = isHalf
-    ? (period === '오전반차' ? `🔔 ${fields.end_time || '14:00'} 출근(복귀)` : `🔔 ${fields.start_time || '14:00'} 조퇴`)
+    ? (period === '오전반차' ? `🔔 ${HALF_PM[0]} 출근(복귀)` : `🔔 ${fields.start_time || HALF_PM[0]} 조퇴`)
     : '';
   const afterLeave = (isLeave && balance && parseFloat(fields.days) > 0)
     ? Math.round((balance.remaining - parseFloat(fields.days)) * 100) / 100 : null;
@@ -96,6 +121,27 @@ export default function ApprovalCreate() {
   const delItem = (i) => setExItems(exItems.filter((_, idx) => idx !== i));
   const exTotal = exItems.reduce((sum, r) => sum + (parseInt((r.amount || '').toString().replace(/[^0-9-]/g, '')) || 0), 0);
 
+  // ── 특근대장 내역 (PC 특근대장 양식과 동일 항목) ──
+  const isOvertime = picked && picked.form_key === 'overtime';
+  const otRows = (Array.isArray(fields.entries) && fields.entries.length) ? fields.entries : [{ ...OT_BLANK }];
+  const setOtRows = (arr) => setFields({ ...fields, entries: arr.length ? arr : [{ ...OT_BLANK }] });
+  const updOt = (i, k, v) => setOtRows(otRows.map((r, idx) => {
+    if (idx !== i) return r;
+    const nr = { ...r, [k]: v };
+    // 시작·종료·휴게 변경 시 특근시간 자동 계산 (직접 수정도 가능)
+    if (k === 'start_time' || k === 'end_time' || k === 'break_hours') {
+      const h = otHours(nr.start_time, nr.end_time, nr.break_hours);
+      if (h !== '') nr.hours = h;
+    }
+    return nr;
+  }));
+  const addOt = () => setOtRows([...otRows, { ...OT_BLANK }]);
+  const delOt = (i) => setOtRows(otRows.filter((_, idx) => idx !== i));
+  const otTotal = otRows.reduce((sum, r) => sum + (parseFloat(r.hours) || 0), 0);
+  // 값이 하나라도 들어간 행 = 사용자가 쓴 행. 그 중 근무일자·특근시간이 빠진 행은 상신 차단
+  const otFilled = otRows.filter(r => Object.values(r).some(v => String(v || '').trim()));
+  const otBad = otFilled.filter(r => !(r.work_date || '').trim() || !((parseFloat(r.hours) || 0) > 0));
+
   const submit = async () => {
     if (!title.trim()) return alert('제목을 입력하세요');
     for (const fl of (picked.fields || [])) {
@@ -105,6 +151,11 @@ export default function ApprovalCreate() {
     if (isExpense) {
       const valid = exItems.filter(r => (r.item || '').trim() || (r.amount || '').toString().trim());
       if (!valid.length) return alert('지출명세를 1건 이상 입력하세요');
+    }
+    if (isOvertime) {
+      if (!(fields.work_month || '').trim()) return alert('대상월을 선택하세요');
+      if (!otFilled.length) return alert('특근내역을 1건 이상 입력하세요');
+      if (otBad.length) return alert('특근내역에 근무일자와 특근시간을 입력하세요');
     }
     if (!line.length) {
       if (!selfApproval) return alert('결재자를 1명 이상 지정하세요');
@@ -141,7 +192,8 @@ export default function ApprovalCreate() {
         <button onClick={goBack} style={s.back}>‹</button>
         <h1>{picked ? picked.name : '새 기안'}</h1>
       </div>
-      <div style={{ padding: 12 }}>
+      {/* 하단 고정 네비에 상신 버튼이 가려지지 않도록 여백 확보 (다른 작성화면과 동일) */}
+      <div style={{ padding: 12, paddingBottom: 80 }}>
         {!picked ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {forms.map(f => (
@@ -262,10 +314,66 @@ export default function ApprovalCreate() {
                   {attachFiles.length > 0 && <small style={{ color: 'var(--text-muted)' }}>{attachFiles.length}개 선택됨</small>}
                 </div>
               </>
+            ) : isOvertime ? (
+              <>
+                <div style={{ marginTop: 10 }}>
+                  <div style={s.fl}>대상월 *</div>
+                  <input style={s.inp} type="month" value={fields.work_month || ''}
+                    onChange={e => updateField('work_month', e.target.value)} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', marginTop: 12 }}>
+                  <span style={s.fl}>특근내역 *</span>
+                  <button type="button" onClick={addOt} style={{ ...s.qbtn, marginLeft: 'auto' }}>+ 날짜</button>
+                </div>
+                {otRows.map((r, i) => (
+                  <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 8, marginTop: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input style={{ ...s.inp, flex: 1 }} type="date" value={r.work_date || ''}
+                        onChange={e => updOt(i, 'work_date', e.target.value)} />
+                      <select style={{ ...s.inp, width: 90 }} value={r.ot_type || ''}
+                        onChange={e => updOt(i, 'ot_type', e.target.value)}>
+                        <option value="">구분</option>
+                        {OT_TYPES.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                      <button type="button" onClick={() => delOt(i)}
+                        style={{ background: 'none', border: 'none', color: 'var(--danger,#dc2626)', fontSize: 16 }}>✕</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
+                      <input style={{ ...s.inp, flex: 1 }} type="time" value={r.start_time || ''}
+                        onChange={e => updOt(i, 'start_time', e.target.value)} />
+                      <span style={{ color: 'var(--text-muted)' }}>~</span>
+                      <input style={{ ...s.inp, flex: 1 }} type="time" value={r.end_time || ''}
+                        onChange={e => updOt(i, 'end_time', e.target.value)} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
+                      <input style={{ ...s.inp, flex: 1 }} type="number" step="0.5" min="0" placeholder="휴게(h)"
+                        value={r.break_hours || ''} onChange={e => updOt(i, 'break_hours', e.target.value)} />
+                      <input style={{ ...s.inp, flex: 1 }} type="number" step="0.5" min="0" placeholder="특근시간(h)"
+                        value={r.hours || ''} onChange={e => updOt(i, 'hours', e.target.value)} />
+                    </div>
+                    <input style={{ ...s.inp, marginTop: 6 }} placeholder="업무내용"
+                      value={r.work_content || ''} onChange={e => updOt(i, 'work_content', e.target.value)} />
+                  </div>
+                ))}
+                <div style={{ textAlign: 'right', marginTop: 6, fontSize: 14 }}>
+                  월 합계 <b style={{ color: 'var(--accent)' }}>{Math.round(otTotal * 100) / 100}</b> h
+                </div>
+                <small style={{ color: 'var(--text-muted)' }}>시작·종료·휴게를 입력하면 특근시간이 자동 계산됩니다.</small>
+                <div style={{ marginTop: 10 }}>
+                  <div style={s.fl}>비고</div>
+                  <textarea style={{ ...s.inp, minHeight: 50 }} value={fields.reason || ''}
+                    onChange={e => updateField('reason', e.target.value)} />
+                </div>
+              </>
             ) : (picked.fields || []).map(fl => (
               <div key={fl.key} style={{ marginTop: 10 }}>
                 <div style={s.fl}>{fl.label}{fl.required ? ' *' : ''}</div>
-                {fl.type === 'textarea' ? (
+                {fl.type === 'lineitems' ? (
+                  // 다건 입력 전용 UI가 없는 양식 — 텍스트로 받으면 데이터가 깨지므로 입력 자체를 막는다
+                  <div style={{ ...s.inp, color: 'var(--text-muted)', fontSize: 12 }}>
+                    이 항목은 PC ERP에서 입력하세요
+                  </div>
+                ) : fl.type === 'textarea' ? (
                   <textarea style={{ ...s.inp, minHeight: 60 }} value={fields[fl.key] || ''}
                     onChange={e => updateField(fl.key, e.target.value)} />
                 ) : fl.type === 'select' ? (
@@ -275,7 +383,7 @@ export default function ApprovalCreate() {
                     {(fl.options || []).map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 ) : (
-                  <input style={s.inp} type={fl.type === 'number' ? 'number' : fl.type === 'date' ? 'date' : fl.type === 'time' ? 'time' : fl.type === 'datetime' ? 'datetime-local' : 'text'}
+                  <input style={s.inp} type={fl.type === 'number' ? 'number' : fl.type === 'date' ? 'date' : fl.type === 'time' ? 'time' : fl.type === 'month' ? 'month' : fl.type === 'datetime' ? 'datetime-local' : 'text'}
                     value={fields[fl.key] || ''} onChange={e => updateField(fl.key, e.target.value)}
                     placeholder={fl.suffix ? `단위: ${fl.suffix}` : ''} />
                 )}
