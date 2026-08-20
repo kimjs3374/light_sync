@@ -3891,7 +3891,7 @@ def app_sales_detail(item_id):
 @app_auth_required
 def app_sales_update_spec(item_id):
     """영업 품목 스펙(협의내용) 수정"""
-    from modules.services.sales_actions import _diff_spec, _derive_sales_status
+    from modules.services.sales_actions import build_spec_change_report, _derive_sales_status
     from modules.history_board import append_history_log
     from modules.notification_engine import notify
     data = request.get_json(silent=True) or {}
@@ -3924,34 +3924,35 @@ def app_sales_update_spec(item_id):
             contract.desired_delivery_date = parse_date(planned_delivery)
 
         project = contract.project if contract else None
-        changed_lines = []
-        if old_status != ci.status_sales:
-            changed_lines.append(f"영업단계: {old_status} → {ci.status_sales}")
-        spec_changes = _diff_spec(old_spec, merged_spec)
-        if spec_changes:
-            changed_lines.append('협의내용 변경: ' + '; '.join(spec_changes))
-        if contract and old_planned != contract.desired_delivery_date:
-            changed_lines.append(f"납품예정일: {old_planned or '-'} → {contract.desired_delivery_date or '-'}")
-
-        if changed_lines and project:
-            log_content = (
-                f"[협의관리] {current_user}님이 협의내용 수정\n"
-                f"대상: {ci.category}/{ci.model_name}({ci.quantity})\n"
-                + "\n".join(changed_lines)
-            )
-            append_history_log(db, project.id, '시스템 🤖', log_content, scope='sales')
-
+        report = None
+        if project:
             project_name = project.temp_name or project.short_name or f"현장#{project.id}"
-            _first_c = contract
-            _contract_name = _first_c.contract_name if _first_c else project_name
+            _contract_name = (contract.contract_name if contract else '') or project_name
+            detail_url = f"https://work.mgnt.kr/sales_management/{project.id}"
+            report = build_spec_change_report(
+                ci,
+                project_name=_contract_name,
+                current_user=current_user,
+                old_status=old_status,
+                new_status=ci.status_sales,
+                old_spec=old_spec,
+                new_spec=merged_spec,
+                old_delivery=old_planned,
+                new_delivery=contract.desired_delivery_date if contract else None,
+                detail_url=detail_url,
+            )
+
+        if report:
+            append_history_log(db, project.id, '시스템 🤖', report['log'], scope='sales')
+
             notify(db, 'issue.flagged', {
                 'contract_name': _contract_name,
                 'project_name': project_name,
                 'project_id': project.id,
-                'detail': f"{ci.category}/{ci.model_name} — {', '.join(changed_lines)}",
-                'content': log_content,
-                'detail_url': f"https://work.mgnt.kr/sales_management/{project.id}",
-            })
+                'detail': report['summary'],
+                'content': report['log'],
+                'detail_url': detail_url,
+            }, kakao_text_override=report['kakao'])
 
         db.commit()
     return jsonify(ok=True, new_status=ci.status_sales)

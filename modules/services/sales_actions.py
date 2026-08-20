@@ -75,7 +75,9 @@ def _spec_value_text(key, value):
     if value is None or value == '':
         return '미입력'
     if is_boolean_spec_field(key) or isinstance(value, bool):
-        return '예' if is_true_value(value) else '아니오'
+        # '안정기 BOX 유무' 처럼 라벨이 유/무를 묻는 항목은 예/아니오보다 있음/없음이 읽힌다.
+        yes, no = ('있음', '없음') if _spec_label(key).endswith('유무') else ('예', '아니오')
+        return yes if is_true_value(value) else no
     if isinstance(value, list):
         # bom_breakdown: [{'렌즈': '20도', '바이저': '480', 'qty': 20}, ...]
         parts = []
@@ -86,7 +88,7 @@ def _spec_value_text(key, value):
                 parts.append(f"{desc} {qty}EA".strip() if qty not in (None, '') else desc)
             else:
                 parts.append(str(row))
-        return ' / '.join(p for p in parts if p) or '미입력'
+        return ', '.join(p for p in parts if p) or '미입력'
     if isinstance(value, dict):
         inner = ', '.join(f"{k} {v}" for k, v in value.items() if v not in (None, ''))
         return inner or '미입력'
@@ -98,25 +100,143 @@ def _is_blank(value):
     return value is None or value == ''
 
 
-def _diff_spec(old_spec, new_spec):
-    """협의내용 변경분을 사람이 읽을 수 있는 문장으로.
+def _spec_field_order(category):
+    """협의항목을 화면(폼)에 뜨는 순서대로 정렬하기 위한 기준 키 목록.
+
+    알파벳순으로 늘어놓으면 사용자가 입력한 순서와 어긋나 읽기 어렵다.
+    """
+    category = normalize_detail_item(category, default=DETAIL_ITEM_OPTIONS[0])
+    schema = CONTRACT_ITEM_SPEC_SCHEMA.get(category, {})
+    order = list(schema.get('required', []))
+    for trigger, rule in (schema.get('conditional_required') or {}).items():
+        for field in rule.get('fields', []):
+            if field not in order:
+                order.append(field)
+    return order
+
+
+def diff_spec_entries(old_spec, new_spec, category=None):
+    """협의내용 변경분을 [{label, old, new, is_new}] 로.
 
     빈값 ↔ 빈값(None → '')은 변경으로 치지 않는다. 이걸 걸러내지 않으면
     폼을 한 번 저장할 때마다 미입력 항목 전부가 '변경'으로 알림에 실렸다.
     """
     old_spec = old_spec or {}
     new_spec = new_spec or {}
-    changed = []
-    for k in sorted(set(list(old_spec.keys()) + list(new_spec.keys()))):
+    order = _spec_field_order(category) if category else []
+    keys = sorted(
+        set(list(old_spec.keys()) + list(new_spec.keys())),
+        key=lambda k: (order.index(k) if k in order else len(order), k)
+    )
+
+    entries = []
+    for k in keys:
         old_v, new_v = old_spec.get(k), new_spec.get(k)
         if old_v == new_v:
             continue
         if _is_blank(old_v) and _is_blank(new_v):
             continue
-        changed.append(
-            f"{_spec_label(k)}: {_spec_value_text(k, old_v)} → {_spec_value_text(k, new_v)}"
+        entries.append({
+            'key': k,
+            'label': _spec_label(k),
+            'old': _spec_value_text(k, old_v),
+            'new': _spec_value_text(k, new_v),
+            'is_new': _is_blank(old_v),
+        })
+    return entries
+
+
+def _diff_spec(old_spec, new_spec, category=None):
+    """(구형) 변경분을 '항목: 이전 → 이후' 문자열 리스트로."""
+    return [
+        f"{e['label']}: {e['old']} → {e['new']}"
+        for e in diff_spec_entries(old_spec, new_spec, category)
+    ]
+
+
+def _item_headline(item):
+    """품목 한 줄 — '카테고리 20EA'."""
+    cat = (item.category or '').strip() or '품목'
+    qty = safe_int(item.quantity, 0)
+    return f"{cat} {qty}EA" if qty else cat
+
+
+def _item_model_text(item):
+    """모델 한 줄 — 카테고리 중복 제거 + 콤마 나열 정리.
+
+    'LED투광등기구, 매그나텍, ARENA(M)-600, 600W' → '매그나텍 ARENA(M)-600 600W'
+    """
+    cat = (item.category or '').strip()
+    model = (item.model_name or '').strip()
+    if cat and model.startswith(cat):
+        model = model[len(cat):].lstrip(' ,/·-')
+    return ' '.join(p.strip() for p in model.split(',') if p.strip())
+
+
+def build_spec_change_report(item, project_name, current_user,
+                             old_status, new_status,
+                             old_spec, new_spec,
+                             old_delivery, new_delivery,
+                             detail_url=''):
+    """협의내용 수정 결과를 히스토리/알림용 문구로 조립.
+
+    변경분을 세미콜론으로 이어붙여 한 줄에 몰아넣던 것을 항목별 줄바꿈으로 바꾼다.
+    웹(routes/sales.py)과 모바일(routes/app_api.py)이 같은 문구를 쓰도록 여기 한 곳에서만 만든다.
+
+    Returns:
+        None (변경 없음) 또는 {'log', 'kakao', 'summary', 'entries'}
+    """
+    entries = diff_spec_entries(old_spec, new_spec, item.category)
+    stage_changed = (old_status or '') != (new_status or '')
+    delivery_changed = old_delivery != new_delivery
+    if not (entries or stage_changed or delivery_changed):
+        return None
+
+    head = [f"■ 품목 : {_item_headline(item)}"]
+    model_text = _item_model_text(item)
+    if model_text:
+        head.append(f"■ 모델 : {model_text}")
+    if stage_changed:
+        head.append(f"■ 영업단계 : {old_status or '-'} → {new_status or '-'}")
+    if delivery_changed:
+        head.append(
+            f"■ 납품예정일 : {new_delivery or '미정'}" if not old_delivery
+            else f"■ 납품예정일 : {old_delivery} → {new_delivery or '미정'}"
         )
-    return changed
+
+    body = list(head)
+    if entries:
+        body.append("")
+        body.append(f"■ 협의내용 {len(entries)}건")
+        for e in entries:
+            # 새로 채운 항목은 '미입력 →' 를 붙이지 않는다 — 값만 보이는 게 읽힌다.
+            value_text = e['new'] if e['is_new'] else f"{e['old']} → {e['new']}"
+            body.append(f" · {e['label']} : {value_text}")
+
+    log_content = "\n".join(
+        [f"[협의관리] {current_user}님이 협의내용 수정"] + body
+    )
+
+    kakao_lines = [f"[협의변경] {project_name}", ""] + body + ["", f"수정 : {current_user}"]
+    if detail_url:
+        kakao_lines.append(detail_url)
+    kakao_text = "\n".join(kakao_lines)
+
+    # ERP 알림센터 목록에 뜨는 한 줄 요약
+    summary_parts = [_item_headline(item)]
+    if stage_changed:
+        summary_parts.append(new_status or '-')
+    if entries:
+        summary_parts.append(f"협의내용 {len(entries)}건 변경")
+    if delivery_changed:
+        summary_parts.append(f"납품예정 {new_delivery or '미정'}")
+
+    return {
+        'log': log_content,
+        'kakao': kakao_text,
+        'summary': ' · '.join(summary_parts),
+        'entries': entries,
+    }
 
 
 def _is_filled_value(field, value):
@@ -191,53 +311,45 @@ def handle_update_sales_item(db, project, form, current_user, **ctx):
     if contract:
         contract.desired_delivery_date = planned_delivery
 
-    changed_lines = []
-    if old_status != item.status_sales:
-        changed_lines.append(f"영업단계: {old_status} → {item.status_sales}")
-    spec_changes = _diff_spec(old_spec, merged_spec)
-    if spec_changes:
-        changed_lines.append('협의내용 변경: ' + '; '.join(spec_changes))
-    if contract and old_planned_delivery != contract.desired_delivery_date:
-        changed_lines.append(f"납품예정일: {old_planned_delivery or '-'} → {contract.desired_delivery_date or '-'}")
+    project_name = project.temp_name or project.short_name or f"현장#{project.id}"
+    detail_url = f"https://work.mgnt.kr/sales_management/{project.id}"
 
-    if changed_lines:
-        log_content = (
-            f"[협의관리] {current_user}님이 협의내용 수정\n"
-            f"대상: {item.category}/{item.model_name}({item.quantity})\n"
-            + "\n".join(changed_lines)
-        )
+    # 계약명 조회 — 알림 제목은 현장명 아닌 계약명 기준
+    from modules.models import Contract as _C
+    _first_c = db.query(_C).filter(_C.project_id == project.id).first()
+    _contract_name = _first_c.contract_name if _first_c and _first_c.contract_name else project_name
+
+    report = build_spec_change_report(
+        item,
+        project_name=_contract_name,
+        current_user=current_user,
+        old_status=old_status,
+        new_status=item.status_sales,
+        old_spec=old_spec,
+        new_spec=merged_spec,
+        old_delivery=old_planned_delivery,
+        new_delivery=contract.desired_delivery_date if contract else None,
+        detail_url=detail_url,
+    )
+
+    if report:
         append_history_log(
             db,
             project_id=project.id,
             user_name='시스템 🤖',
-            content=log_content,
+            content=report['log'],
             scope='sales'
         )
 
         # 알림 엔진: ERP 내부 + 카카오워크 동시 발송
-        project_name = project.temp_name or project.short_name or f"현장#{project.id}"
-        detail_url = f"https://work.mgnt.kr/sales_management/{project.id}"
-        kakao_text = (
-            f"[협의변경]\n"
-            f"{project_name}\n"
-            f"\n"
-            f"품목: {item.category} / {item.model_name} ({item.quantity})\n"
-            + "\n".join(changed_lines) + f"\n수정자: {current_user}\n"
-            f"\n"
-            f"{detail_url}"
-        )
-        # 계약명 조회
-        from modules.models import Contract as _C
-        _first_c = db.query(_C).filter(_C.project_id == project.id).first()
-        _contract_name = _first_c.contract_name if _first_c and _first_c.contract_name else project_name
         notify(db, 'issue.flagged', {
             'contract_name': _contract_name,
             'project_name': project_name,
             'project_id': project.id,
-            'detail': f"{item.category}/{item.model_name} — {', '.join(changed_lines)}",
-            'content': log_content,
+            'detail': report['summary'],
+            'content': report['log'],
             'detail_url': detail_url,
-        }, kakao_text_override=kakao_text)
+        }, kakao_text_override=report['kakao'])
 
         return {'flash': ('협의내용이 저장되었습니다.', 'success')}
     return {'flash': ('저장되었습니다. (변경값 없음)', 'success')}
