@@ -166,18 +166,14 @@ def _item_model_text(item):
 
     'LED투광등기구, 매그나텍, ARENA(M)-600, 600W' → '매그나텍 ARENA(M)-600 600W'
     """
-    cat = (item.category or '').strip()
-    model = (item.model_name or '').strip()
-    if cat and model.startswith(cat):
-        model = model[len(cat):].lstrip(' ,/·-')
-    return ' '.join(p.strip() for p in model.split(',') if p.strip())
+    from modules.services.notification_bodies import model_label
+    return model_label(item.category, item.model_name)
 
 
 def build_spec_change_report(item, project_name, current_user,
                              old_status, new_status,
                              old_spec, new_spec,
-                             old_delivery, new_delivery,
-                             detail_url=''):
+                             old_delivery, new_delivery):
     """협의내용 수정 결과를 히스토리/알림용 문구로 조립.
 
     변경분을 세미콜론으로 이어붙여 한 줄에 몰아넣던 것을 항목별 줄바꿈으로 바꾼다.
@@ -192,49 +188,31 @@ def build_spec_change_report(item, project_name, current_user,
     if not (entries or stage_changed or delivery_changed):
         return None
 
-    head = [f"■ 품목 : {_item_headline(item)}"]
-    model_text = _item_model_text(item)
-    if model_text:
-        head.append(f"■ 모델 : {model_text}")
-    if stage_changed:
-        head.append(f"■ 영업단계 : {old_status or '-'} → {new_status or '-'}")
-    if delivery_changed:
-        head.append(
-            f"■ 납품예정일 : {new_delivery or '미정'}" if not old_delivery
-            else f"■ 납품예정일 : {old_delivery} → {new_delivery or '미정'}"
-        )
+    from modules import notification_format as nf
 
-    body = list(head)
+    detail_lines = []
     if entries:
-        body.append("")
-        body.append(f"■ 협의내용 {len(entries)}건")
+        detail_lines.append(nf.BLANK)
+        detail_lines.append(f"협의내용 {len(entries)}건")
         for e in entries:
             # 새로 채운 항목은 '미입력 →' 를 붙이지 않는다 — 값만 보이는 게 읽힌다.
-            value_text = e['new'] if e['is_new'] else f"{e['old']} → {e['new']}"
-            body.append(f" · {e['label']} : {value_text}")
+            value_text = e['new'] if e['is_new'] else f"{e['old']} {nf.ARROW} {e['new']}"
+            detail_lines.append(nf.bullet(f"{e['label']}: {value_text}"))
 
-    log_content = "\n".join(
-        [f"[협의관리] {current_user}님이 협의내용 수정"] + body
+    body = nf.body(
+        nf.kv('품목', _item_headline(item)),
+        nf.kv('모델', _item_model_text(item)),
+        nf.change('영업단계', old_status, new_status, blank='-') if stage_changed else None,
+        nf.change('납품예정일', old_delivery, new_delivery, blank='미정') if delivery_changed else None,
+        detail_lines,
+        nf.BLANK,
+        nf.kv('수정', current_user),
     )
 
-    kakao_lines = [f"[협의변경] {project_name}", ""] + body + ["", f"수정 : {current_user}"]
-    if detail_url:
-        kakao_lines.append(detail_url)
-    kakao_text = "\n".join(kakao_lines)
-
-    # ERP 알림센터 목록에 뜨는 한 줄 요약
-    summary_parts = [_item_headline(item)]
-    if stage_changed:
-        summary_parts.append(new_status or '-')
-    if entries:
-        summary_parts.append(f"협의내용 {len(entries)}건 변경")
-    if delivery_changed:
-        summary_parts.append(f"납품예정 {new_delivery or '미정'}")
-
     return {
-        'log': log_content,
-        'kakao': kakao_text,
-        'summary': ' · '.join(summary_parts),
+        # 3개 채널이 그대로 쓰는 본문 (제목·링크는 알림 엔진이 붙인다)
+        'body': body,
+        'log': nf.body(f"[협의관리] {current_user}님이 협의내용 수정", nf.BLANK, body),
         'entries': entries,
     }
 
@@ -312,7 +290,6 @@ def handle_update_sales_item(db, project, form, current_user, **ctx):
         contract.desired_delivery_date = planned_delivery
 
     project_name = project.temp_name or project.short_name or f"현장#{project.id}"
-    detail_url = f"https://work.mgnt.kr/sales_management/{project.id}"
 
     # 계약명 조회 — 알림 제목은 현장명 아닌 계약명 기준
     from modules.models import Contract as _C
@@ -329,7 +306,6 @@ def handle_update_sales_item(db, project, form, current_user, **ctx):
         new_spec=merged_spec,
         old_delivery=old_planned_delivery,
         new_delivery=contract.desired_delivery_date if contract else None,
-        detail_url=detail_url,
     )
 
     if report:
@@ -346,10 +322,8 @@ def handle_update_sales_item(db, project, form, current_user, **ctx):
             'contract_name': _contract_name,
             'project_name': project_name,
             'project_id': project.id,
-            'detail': report['summary'],
-            'content': report['log'],
-            'detail_url': detail_url,
-        }, kakao_text_override=report['kakao'])
+            'detail': report['body'],
+        })
 
         return {'flash': ('협의내용이 저장되었습니다.', 'success')}
     return {'flash': ('저장되었습니다. (변경값 없음)', 'success')}

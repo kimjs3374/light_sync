@@ -579,7 +579,12 @@ def _reconcile_items(db, contract, g2b_rows, contract_items, dry_run):
             if not dry_run:
                 ci.quantity = 0
 
-    return {'detail': ', '.join(parts), 'blocked': blocked}
+    from modules import notification_format as nf
+    return {
+        'detail': nf.body(nf.bullets(parts)),
+        'summary': ', '.join(parts),
+        'blocked': blocked,
+    }
 
 
 def _s_model(name):
@@ -689,12 +694,13 @@ def sync_item_quantities(db, dry_run=False):
                     'contract_name': contract.contract_name,
                     'chg_ord': max_chg,
                     'detail': recon['detail'],
+                    'summary': recon['summary'],
                 })
                 if contract.project_id:
                     touched_projects.add(contract.project_id)
                 logger.info(
                     f"[G2B조달] 품목 재정렬: {contract.g2b_contract_no} 차수{max_chg} "
-                    f"{recon['detail']} ({(contract.contract_name or '')[:30]})"
+                    f"{recon['summary']} ({(contract.contract_name or '')[:30]})"
                 )
                 if not dry_run:
                     contract.g2b_change_ord = max_chg
@@ -730,9 +736,15 @@ def sync_item_quantities(db, dry_run=False):
         if not diffs and not chg_stale:
             continue
 
-        detail = ', '.join(
-            f"{ci.model_name or ci.category} {old}→{new}EA" for ci, old, new in diffs
-        )
+        # 알림은 품목당 한 줄, 로그·중복키는 한 줄 요약을 쓴다
+        from modules import notification_format as nf
+        from modules.services.notification_bodies import model_label
+        change_lines = [
+            f"{model_label(ci.category, ci.model_name)} {nf.qty(old)} {nf.ARROW} {nf.qty(new)}EA"
+            for ci, old, new in diffs
+        ]
+        detail = nf.body(nf.bullets(change_lines))
+        summary = ', '.join(change_lines)
 
         if not dry_run:
             for ci, _old, new_qty in diffs:
@@ -748,6 +760,7 @@ def sync_item_quantities(db, dry_run=False):
                 'chg_ord': max_chg,
                 'method': method,
                 'detail': detail,
+                'summary': summary,
                 'item_count': len(diffs),
             })
             if contract.project_id:
@@ -755,7 +768,7 @@ def sync_item_quantities(db, dry_run=False):
 
             logger.info(
                 f"[G2B조달] 수량 수정({method}): {contract.g2b_contract_no} "
-                f"차수{max_chg} {detail} ({(contract.contract_name or '')[:30]})"
+                f"차수{max_chg} {summary} ({(contract.contract_name or '')[:30]})"
             )
 
             if not dry_run and contract.project_id:
@@ -780,15 +793,15 @@ def sync_item_quantities(db, dry_run=False):
                 'project_id': c['project_id'],
                 'chg_ord': c['chg_ord'],
                 'detail': c['detail'],
-            }, dedupe_key=f"qty_changed:{c['contract_id']}:{c['chg_ord']}:{c['detail']}")
+            }, dedupe_key=f"qty_changed:{c['contract_id']}:{c['chg_ord']}:{c.get('summary') or c['item_count']}")
 
         for c in reconciled:
             notify(db, 'contract.qty_changed', {
                 'contract_name': c['contract_name'] or c['g2b_no'],
                 'project_id': c['project_id'],
                 'chg_ord': c['chg_ord'],
-                'detail': f"품목 재정렬 — {c['detail']}",
-            }, dedupe_key=f"reconciled:{c['contract_id']}:{c['chg_ord']}:{c['detail']}")
+                'detail': f"품목 재정렬\n{c['detail']}",
+            }, dedupe_key=f"reconciled:{c['contract_id']}:{c['chg_ord']}:{c.get('summary') or ''}")
 
         for c in cancelled:
             notify(db, 'contract.cancelled', {

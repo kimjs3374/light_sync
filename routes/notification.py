@@ -6,6 +6,7 @@ from modules.auth_decorators import login_required
 from modules.db_context import get_db
 from modules.models import Notification, HistoryLog, Project
 from modules.pagination import make_pagination
+from modules import notification_format as nf
 from modules.utils import safe_int
 from modules.dashboard_utils import history_detail_link, project_detail_link
 
@@ -61,7 +62,7 @@ def notification_list():
                     'is_read': True,
                     'noti_type': 'comment',
                     'title': f'{log.user_name} · {project_name}',
-                    'message': log.content,
+                    'message': nf.clean(log.content),
                     'link': project_detail_link(project) + '#history-board' if project else '#',
                     'created_at': log.created_at,
                     'is_comment': True,
@@ -119,7 +120,8 @@ def recent_notifications():
             result.append({
                 'id': n.id,
                 'title': n.title,
-                'message': n.message,
+                # 패널은 한 줄짜리 좁은 영역이라 본문 대신 미리보기를 준다
+                'message': nf.preview(n.message, limit=60),
                 'noti_type': n.noti_type,
                 'link': n.link,
                 'is_read': n.is_read,
@@ -184,7 +186,7 @@ def dashboard_feed():
                     'noti_type': n.noti_type,
                     'noti_type_label': NOTI_TYPE_LABELS.get(n.noti_type, n.noti_type),
                     'title': n.title,
-                    'message': n.message,
+                    'message': nf.preview(n.message, limit=90),
                     'link': n.link,
                     'is_read': n.is_read,
                     'is_urgent': n.noti_type in ('delivery_urgent', 'delivery_overdue', 'issue'),
@@ -217,7 +219,7 @@ def dashboard_feed():
                     'noti_type': log.log_scope or 'common',
                     'noti_type_label': scope_labels.get(log.log_scope, '로그'),
                     'title': f'{log.user_name} · {project.short_name or project.temp_name}' if project else log.user_name,
-                    'message': content,
+                    'message': nf.preview(content, limit=90),
                     'link': history_detail_link(project, log.log_scope) if project else '#',
                     'is_read': True,
                     'is_urgent': is_issue,

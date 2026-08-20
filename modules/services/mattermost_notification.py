@@ -77,16 +77,18 @@ def _build_payload(title: str, message: str, link: Optional[str], emoji: str) ->
     링크가 있으면 attachment에 actions 대신 본문 끝에 마크다운 링크로 추가.
     굳이 attachment 안 쓰고 message 한 줄로 간단히.
     """
-    base_url = os.environ.get('SERVER_BASE_URL', '').rstrip('/')
-    text_parts = [f"{emoji} **{title}**"]
-    if message:
-        text_parts.append(message)
+    from modules import notification_format as nf
+
+    base_url = (os.environ.get('ERP_BASE_URL')
+                or os.environ.get('SERVER_BASE_URL') or '').rstrip('/')
+    # 제목과 본문 사이는 빈 줄로 띄운다 — 붙여 놓으면 제목이 본문 첫 줄처럼 읽힌다
+    text_parts = [f"{emoji} **{title}**", nf.BLANK, message]
     if link and base_url:
-        text_parts.append(f"→ [ERP에서 보기]({base_url}{link})")
+        text_parts += [nf.BLANK, f"→ [ERP에서 보기]({base_url}{link})"]
     elif link:
-        text_parts.append(f"→ ERP: `{link}`")
+        text_parts += [nf.BLANK, f"→ ERP: `{link}`"]
     return {
-        "text": "\n".join(text_parts),
+        "text": nf.body(*text_parts),
         "username": "ERP 알림",
         "icon_emoji": ":robot_face:",
     }
@@ -119,7 +121,6 @@ def send_mattermost_notification(
     message: str,
     link: Optional[str] = None,
     *,
-    text_override: Optional[str] = None,
     timeout: float = 5.0,
 ) -> bool:
     """Mattermost 채널에 알림 push.
@@ -137,15 +138,7 @@ def send_mattermost_notification(
         logger.debug("[mm-noti] webhook URL 없음 — skip: %s", event_type)
         return False
 
-    if text_override:
-        payload = {
-            "text": text_override,
-            "username": "ERP 알림",
-            "icon_emoji": ":robot_face:",
-        }
-    else:
-        emoji = _emoji_for(event_type)
-        payload = _build_payload(title, message, link, emoji)
+    payload = _build_payload(title, message, link, _emoji_for(event_type))
 
     try:
         r = requests.post(url, json=payload, timeout=timeout)

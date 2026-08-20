@@ -1,4 +1,3 @@
-import datetime as dt
 import json
 import logging
 import os
@@ -37,6 +36,14 @@ def load_kakaowork_config() -> Dict[str, str]:
         "post_path_template": post_path_template,
         "notify_conv_id": notify_conv_id,
     }
+
+
+def _erp_url(path: str) -> str:
+    """ERP 절대 주소 (알림 엔진 _erp_url 과 같은 규칙)."""
+    base = (os.environ.get('ERP_BASE_URL')
+            or os.environ.get('SERVER_BASE_URL')
+            or 'https://work.mgnt.kr').rstrip('/')
+    return base + ('' if path.startswith('/') else '/') + path
 
 
 def send_group_notification(text: str) -> bool:
@@ -344,92 +351,49 @@ def send_delivery_check_dm(owner_name: str, split_id: int, project_name: str,
         return False
 
 
-def build_production_complete_text(project_name: str, model_name: str, quantity: int, category: str = '') -> str:
-    """품목 단위 생산완료 알림 텍스트"""
-    lines = [
-        f"[생산완료] {project_name}",
-        "",
-        f"모델명 : {model_name or '-'}",
-        f"품목구분 : {category or '-'}",
-        f"수량 : {quantity}EA",
-        "",
-        f"(완료시각: {dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})",
-    ]
-    return "\n".join(lines)
-
-
-def build_site_complete_text(project_name: str, items_summary: List[Dict]) -> str:
-    """현장 전체 생산완료 알림 텍스트"""
-    lines = [
-        f"[🏭 현장 전체 생산완료] {project_name}",
-        "",
-    ]
-    for item in items_summary:
-        lines.append(f"- {item.get('model_name', '-')} / {item.get('quantity', 0)}EA")
-    total_qty = sum(item.get('quantity', 0) for item in items_summary)
-    lines.extend([
-        "",
-        f"총 {len(items_summary)}개 품목, {total_qty}EA 생산완료",
-        f"(완료시각: {dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})",
-    ])
-    return "\n".join(lines)
-
-
-def notify_production_complete(project_name: str, model_name: str, quantity: int, category: str = '') -> bool:
-    """품목 생산완료 시 그룹채팅 알림"""
-    text = build_production_complete_text(project_name, model_name, quantity, category)
-    return send_group_notification(text)
-
-
-def notify_site_complete(project_name: str, items_summary: List[Dict]) -> bool:
-    """현장 전체 생산완료 시 그룹채팅 알림"""
-    text = build_site_complete_text(project_name, items_summary)
-    return send_group_notification(text)
-
-
 def build_contract_workboard_text(project, contracts: List) -> str:
-    lines: List[str] = ["[신규 계약 현장 등록]"]
+    """신규 계약 워크보드 게시글 본문.
+
+    모델명을 한 줄에 콤마로 늘어놓던 것과 세부품목 목록이 같은 내용을 두 번
+    보여주고 있었다. 품목은 목록 한 곳으로 모은다.
+    """
+    from modules import notification_format as nf
+    from modules.services.notification_bodies import model_label
+
+    def when(d):
+        return d.strftime('%Y-%m-%d') if d else None
+
+    parts = ["[신규 계약 현장 등록]"]
 
     for idx, contract in enumerate(contracts, start=1):
-        item_lines = []
-        total_qty = 0
-        for item in getattr(contract, "items", []) or []:
-            model_name = (item.model_name or "").strip() or "-"
-            qty = int(item.quantity or 0)
-            total_qty += qty
-            item_lines.append(f"- {model_name} / {qty}EA")
+        items = list(getattr(contract, "items", []) or [])
+        total_qty = sum(int(item.quantity or 0) for item in items)
 
-        lines.extend(
-            [
-                f"{contract.contract_name or '-'}",
-                "",
-                f"계약일자 : {contract.contract_date.strftime('%Y-%m-%d') if contract.contract_date else '-'}",
-                f"납품기한 : {contract.delivery_due_date.strftime('%Y-%m-%d') if contract.delivery_due_date else '-'}",
-                f"모델명 : {', '.join([(item.model_name or '-').strip() or '-' for item in (getattr(contract, 'items', []) or [])]) or '-'}",
-                f"수량 : {total_qty}EA",
-            ]
-        )
-        if item_lines:
-            lines.append("세부품목 :")
-            lines.extend(item_lines)
-
-        if idx != len(contracts):
-            lines.append("")
-            lines.append("--------------------")
-            lines.append("")
-
-    detail_url = f"https://work.mgnt.kr/contract_detail/{project.id}"
-    lines.extend(
-        [
-            "",
-            f"{detail_url}",
-            "",
-            "※ 아래 댓글에 협의내용/업무내용을 이어서 작성해 주세요.",
-            f"(발행시각: {dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})",
+        parts += [
+            nf.BLANK,
+            contract.contract_name or '-',
+            nf.kv('계약일자', when(contract.contract_date)),
+            nf.kv('납품기한', when(contract.delivery_due_date)),
+            nf.kv('수량', f"{nf.qty(total_qty)}EA" if items else None),
         ]
-    )
+        if items:
+            parts += [
+                '품목',
+                nf.bullets([
+                    f"{model_label(item.category, item.model_name)} {nf.qty(item.quantity)}EA"
+                    for item in items
+                ]),
+            ]
+        if idx != len(contracts):
+            parts += [nf.BLANK, "--------------------"]
 
-    return "\n".join(lines)
+    parts += [
+        nf.BLANK,
+        _erp_url(f"/contract_detail/{project.id}"),
+        nf.BLANK,
+        "※ 아래 댓글에 협의내용/업무내용을 이어서 작성해 주세요.",
+    ]
+    return nf.body(*parts)
 
 
 def post_contract_summary(project, contracts: List) -> Tuple[bool, str, Optional[dict]]:

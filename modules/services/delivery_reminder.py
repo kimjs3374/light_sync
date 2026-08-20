@@ -150,9 +150,10 @@ def run_delivery_checks(db, dry_run=False, now=None):
 
     # 담당자 없는 건은 그룹방으로 — 아무도 모르는 채로 묻히지 않게
     if unassigned and not dry_run:
-        detail = ', '.join(f"{u['label']}({u['elapsed']}일 경과)" for u in unassigned[:5])
-        if len(unassigned) > 5:
-            detail += f" 외 {len(unassigned) - 5}건"
+        from modules import notification_format as nf
+        detail = nf.body(nf.bullets(
+            [f"{u['label']} — {u['elapsed']}일 경과" for u in unassigned], limit=5,
+        ))
         notify(db, 'delivery.check_unassigned', {
             'count': len(unassigned),
             'detail': detail,

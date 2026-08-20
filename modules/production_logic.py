@@ -279,7 +279,8 @@ def refresh_production_statuses(db, project_id=None):
 def _send_production_complete_notifications(db, completed_items, notify_fn):
     """생산완료 알림 발송 — 품목 단위 + 현장 전체 완료 감지"""
     from modules.models import Project
-    from modules.kakaowork_notifier import build_production_complete_text, build_site_complete_text
+    from modules import notification_format as nf
+    from modules.services.notification_bodies import model_label
 
     # 프로젝트별 그룹핑
     project_items = {}
@@ -297,16 +298,14 @@ def _send_production_complete_notifications(db, completed_items, notify_fn):
 
         # 품목 단위 알림
         for item in items:
-            kakao_text = build_production_complete_text(
-                project_name, item.model_name or '-', int(item.quantity or 0), item.category or ''
-            )
             notify_fn(db, 'production.item_complete', {
                 'contract_name': contract_name,
                 'project_name': project_name,
                 'project_id': pid,
-                'model_name': item.model_name or '-',
-                'quantity': int(item.quantity or 0),
-            }, kakao_text_override=kakao_text)
+                'model_name': model_label(item.category, item.model_name),
+                'category': item.category or '',
+                'quantity': nf.qty(item.quantity),
+            })
 
         # 현장 전체 완료 체크
         all_items = (
@@ -316,13 +315,19 @@ def _send_production_complete_notifications(db, completed_items, notify_fn):
             .all()
         )
         if all_items and all((ci.status_prod or '').strip() == '생산완료' for ci in all_items):
-            summary = [{'model_name': ci.model_name or '-', 'quantity': int(ci.quantity or 0)} for ci in all_items]
-            kakao_text = build_site_complete_text(project_name, summary)
+            total_qty = sum(int(ci.quantity or 0) for ci in all_items)
             notify_fn(db, 'production.site_complete', {
                 'contract_name': contract_name,
                 'project_name': project_name,
                 'project_id': pid,
-            }, kakao_text_override=kakao_text)
+                'detail': nf.body(
+                    nf.bullets([
+                        f"{model_label(ci.category, ci.model_name)} {nf.qty(ci.quantity)}EA"
+                        for ci in all_items
+                    ]),
+                    nf.kv('합계', f"{len(all_items)}개 품목 {nf.qty(total_qty)}EA"),
+                ),
+            })
 
 
 def can_start_process(item, process_obj):

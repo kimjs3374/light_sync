@@ -42,7 +42,8 @@ export default function Notifications() {
                 {n.title && <div className="msg-title">{n.title}</div>}
                 <div style={{
                   fontSize: 12, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.4,
-                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  whiteSpace: 'pre-line', overflowWrap: 'anywhere',
+                  display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
                 }}>
                   {n.message}
                 </div>

@@ -56,7 +56,7 @@
                         + '<div class="noti-color-bar" style="background:' + color + '"></div>'
                         + '<div class="noti-body">'
                         + '<div class="noti-title">' + (unread ? '<span class="noti-new">N</span>' : '') + escHtml(n.title) + '</div>'
-                        + (n.message ? '<div class="noti-msg">' + escHtml(n.message).substring(0, 60) + '</div>' : '')
+                        + (n.message ? '<div class="noti-msg">' + escHtml(n.message) + '</div>' : '')
                         + '<div class="noti-time">' + (n.created_at || '') + '</div>'
                         + '</div></a>';
                 }

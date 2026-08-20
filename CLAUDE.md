@@ -49,4 +49,6 @@
 - 테이블: 줄바꿈 금지, ellipsis 필수, 뱃지/버튼 white-space:nowrap
 - 폼 중첩 절대 금지
 - 모든 업무행위 히스토리 로그 필수 (append_history_log)
+- 알림 본문은 `modules/notification_format.py` 규칙 (`라벨: 값` 한 줄씩, 목록은 `· `, 변경은 `→`)
+- 알림은 notify() 본문 하나로 3채널(인앱·카카오·MM) 공용. 채널별 문구 분기 금지
 - 이름+직급 한국식 표기 (부서 이름 직급)

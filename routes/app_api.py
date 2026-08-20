@@ -36,6 +36,7 @@ from modules.models import (
 from modules.models.constants import DETAIL_ITEM_OPTIONS
 from modules.models.document_entities import DocumentPackage
 from modules.activity import log_activity
+from modules import notification_format as nf
 from config import MENU_REGISTRY, COMMON_MENU_KEYS
 from sqlalchemy import desc, func, extract
 from sqlalchemy.orm import joinedload
@@ -771,7 +772,7 @@ def app_notifications():
         return jsonify(ok=True, notifications=[{
             'id': n.id,
             'title': n.title or '',
-            'message': n.message or '',
+            'message': nf.clean(n.message),
             'noti_type': n.noti_type or 'system',
             'is_read': n.is_read,
             'created_at': str(n.created_at) if n.created_at else '',
@@ -3941,7 +3942,6 @@ def app_sales_update_spec(item_id):
         if project:
             project_name = project.temp_name or project.short_name or f"현장#{project.id}"
             _contract_name = (contract.contract_name if contract else '') or project_name
-            detail_url = f"https://work.mgnt.kr/sales_management/{project.id}"
             report = build_spec_change_report(
                 ci,
                 project_name=_contract_name,
@@ -3952,7 +3952,6 @@ def app_sales_update_spec(item_id):
                 new_spec=merged_spec,
                 old_delivery=old_planned,
                 new_delivery=contract.desired_delivery_date if contract else None,
-                detail_url=detail_url,
             )
 
         if report:
@@ -3962,10 +3961,8 @@ def app_sales_update_spec(item_id):
                 'contract_name': _contract_name,
                 'project_name': project_name,
                 'project_id': project.id,
-                'detail': report['summary'],
-                'content': report['log'],
-                'detail_url': detail_url,
-            }, kakao_text_override=report['kakao'])
+                'detail': report['body'],
+            })
 
         db.commit()
     return jsonify(ok=True, new_status=ci.status_sales)
@@ -4433,26 +4430,13 @@ def app_business_trip_create():
             creator_label = creator_user.full_name
             if creator_user.position:
                 creator_label = f"{creator_user.full_name} {creator_user.position}"
-        dep_str = trip.departure_date.strftime('%Y-%m-%d %H:%M') if trip.departure_date else '-'
-        ret_str = trip.return_date.strftime('%Y-%m-%d %H:%M') if trip.return_date else '-'
-        kakao_text = (
-            f"[출장등록] {trip.title}\n"
-            f"목적지: {trip.destination}\n"
-            f"출발: {dep_str}\n"
-            f"귀환: {ret_str}\n"
-            f"차량: {trip.vehicle or '-'}\n"
-            f"인원: {', '.join(member_labels) or '-'}\n"
-            f"등록자: {creator_label}"
-        )
         try:
+            from modules.services.notification_bodies import trip_created
             notify(db, 'trip.created', {
                 'destination': trip.destination or trip.title,
-                'detail': f"{dep_str}~{ret_str} · {', '.join(member_labels) or '-'}",
+                'detail': trip_created(trip, member_labels, creator_label),
                 'trip_id': trip.id,
-                'departure_date': dep_str,
-                'return_date': ret_str,
-                'members': ', '.join(member_labels) or '-',
-            }, kakao_text_override=kakao_text)
+            })
         except Exception:
             pass
 

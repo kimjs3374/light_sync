@@ -558,27 +558,18 @@ def _write_as_register(session, payload, actor):
             or (proj.temp_name or proj.short_name if proj else None)
             or f"현장#{payload['project_id']}"
         )
-        kakao_text = (
-            f"[AS접수] {proj_name}\n"
-            f"접수번호: {payload['case_no']}\n"
-            f"유형: {payload['defect_label']}\n"
-            f"증상: {payload['symptom']}\n"
-            f"접수일: {payload['received_date']}\n"
-            f"접수자: {actor}"
-        )
+        from modules import notification_format as nf
         notify(session, 'warranty.case_registered', {
-            'project': proj_name,
             'project_id': payload["project_id"],
-            'case_no': payload['case_no'],
-            'defect_label': payload['defect_label'],
-            'symptom': payload['symptom'],
-            'received_date': payload['received_date'],
-            'user_name': actor,
-            # EVENT_REGISTRY 호환 필드
             'contract_name': proj_name,
-            'detail': f"{payload['defect_label']}: {payload['symptom']}",
-        }, kakao_text_override=kakao_text,
-           dedupe_key=f"warranty.case_registered:{payload['case_no']}:{payload['received_date']}")
+            'detail': nf.body(
+                nf.kv('접수번호', payload['case_no']),
+                nf.kv('유형', payload['defect_label']),
+                nf.kv('증상', payload['symptom']),
+                nf.kv('접수일', payload['received_date']),
+                nf.kv('접수', actor),
+            ),
+        }, dedupe_key=f"warranty.case_registered:{payload['case_no']}:{payload['received_date']}")
     except Exception as _exc:
         # 알림 실패해도 등록은 성공으로 유지
         try:
@@ -611,11 +602,6 @@ def _write_billing_complete(session, payload, actor, mm_user_name):
     # 누락돼 있어 ERP알림 채널에 알림이 안 갔음. 출장/생산완료와 동일 회귀 패턴.
     try:
         from modules.notification_engine import notify
-        kakao_text = (
-            f"[계산서발행] {contract.contract_name or '-'}\n"
-            f"세금계산서 발행일: {payload['invoice_date']}\n"
-            f"처리자: {actor}"
-        )
         # contract_amount 는 일부 환경에서 property 가 없을 수 있어 getattr fallback.
         try:
             amount_val = getattr(contract, 'contract_amount', None) or '-'
@@ -628,7 +614,7 @@ def _write_billing_complete(session, payload, actor, mm_user_name):
             'project_id': payload.get("project_id") or '',
             'invoice_date': payload["invoice_date"],
             'amount': amount_val,
-        }, kakao_text_override=kakao_text)
+        })
     except Exception as _exc:
         # 알림 실패해도 등록은 성공으로 유지
         try:
@@ -686,25 +672,13 @@ def _write_business_trip(session, payload):
     # 누락돼 있어 ERP알림 채널에 알림이 안 갔음.
     try:
         from modules.notification_engine import notify
-        dep_str = trip.departure_date.strftime('%Y-%m-%d %H:%M') if trip.departure_date else '-'
-        ret_str = trip.return_date.strftime('%Y-%m-%d %H:%M') if trip.return_date else '-'
-        members_str = ', '.join(member_labels) if member_labels else (traveler_names or '-')
-        kakao_text = (
-            f"[출장등록] {trip.title}\n"
-            f"목적지: {trip.destination}\n"
-            f"출발: {dep_str}\n"
-            f"귀환: {ret_str}\n"
-            f"차량: {trip.vehicle or '-'}\n"
-            f"인원: {members_str}"
-        )
+        from modules.services.notification_bodies import trip_created
+        labels = member_labels or ([traveler_names] if traveler_names else [])
         notify(session, 'trip.created', {
             'destination': trip.destination or trip.title,
-            'detail': f"{dep_str}~{ret_str} · {members_str}",
+            'detail': trip_created(trip, labels),
             'trip_id': trip.id,
-            'departure_date': dep_str,
-            'return_date': ret_str,
-            'members': members_str,
-        }, kakao_text_override=kakao_text)
+        })
     except Exception as _exc:
         # 알림 실패해도 등록은 성공으로 유지
         try:

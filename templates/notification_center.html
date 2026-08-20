@@ -1,5 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+/* 알림 본문은 '라벨: 값' 여러 줄 — 줄바꿈을 살리고 긴 계약명은 흘려 넘긴다. */
+.noti-body-text {
+    font-size: .78rem;
+    line-height: 1.5;
+    margin-top: .25rem;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+</style>
 <div style="max-width:800px;margin:0 auto;">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 style="font-weight:700;margin:0;">알림센터</h5>
@@ -60,12 +70,10 @@
                     <span style="font-size:.82rem;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ noti_title }}</span>
                 </div>
                 {% if noti_message %}
-                {% if noti_type == 'daily_digest' %}
+                {# 알림 본문은 '라벨: 값' 여러 줄이 기본 — 줄바꿈을 살려서 보여준다.
+                   과거 알림 끝에 내부 dedupe 키가 붙어 나간 게 있어 함께 걷어낸다. #}
                 {% set clean_msg = noti_message.split(' [dk:')[0] if ' [dk:' in noti_message else noti_message %}
-                <pre class="mb-0 text-muted" style="font-size:.75rem;font-family:inherit;white-space:pre-line;margin-top:.25rem;">{{ clean_msg }}</pre>
-                {% else %}
-                <p class="mb-0 text-muted" style="font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ noti_message }}</p>
-                {% endif %}
+                <div class="mb-0 text-muted noti-body-text">{{ clean_msg }}</div>
                 {% endif %}
             </div>
             <small class="text-muted text-nowrap" style="font-size:.72rem;">{{ noti_created.strftime('%m/%d %H:%M') if noti_created else '' }}</small>

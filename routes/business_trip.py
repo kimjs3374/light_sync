@@ -233,25 +233,12 @@ def trip_create():
             creator_label = session.get('full_name', '-')
             if creator_user and creator_user.position:
                 creator_label = f"{creator_user.full_name} {creator_user.position}"
-            dep_str = trip.departure_date.strftime('%Y-%m-%d %H:%M') if trip.departure_date else '-'
-            ret_str = trip.return_date.strftime('%Y-%m-%d %H:%M') if trip.return_date else '-'
-            kakao_text = (
-                f"[출장등록] {trip.title}\n"
-                f"목적지: {trip.destination}\n"
-                f"출발: {dep_str}\n"
-                f"귀환: {ret_str}\n"
-                f"차량: {trip.vehicle or '-'}\n"
-                f"인원: {', '.join(member_labels) or '-'}\n"
-                f"등록자: {creator_label}"
-            )
+            from modules.services.notification_bodies import trip_created
             notify(db, 'trip.created', {
                 'destination': trip.destination or trip.title,
-                'detail': f"{dep_str}~{ret_str} · {', '.join(member_labels) or '-'}",
+                'detail': trip_created(trip, member_labels, creator_label),
                 'trip_id': trip.id,
-                'departure_date': dep_str,
-                'return_date': ret_str,
-                'members': ', '.join(member_labels) or '-',
-            }, kakao_text_override=kakao_text)
+            })
 
             flash('출장이 등록되었습니다.', 'success')
             return redirect(url_for('business_trip.trip_list'))

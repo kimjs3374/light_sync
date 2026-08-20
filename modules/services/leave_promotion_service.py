@@ -438,11 +438,14 @@ def run_promotion_cycle(db, as_of=None, do_email=True, do_notify=True, by='syste
     # 인사관리자 명단 알림
     if do_notify and rounds:
         mgr_ids = hr_manager_user_ids(db)
-        first_names = ', '.join(out['names']) or '없음'
-        second_names = ', '.join(c['user'].full_name for c in cand['second']) or '없음'
-        detail = ('1회차 촉구 %d명: %s / 2회차(미지정자) %d명: %s'
-                  % (len(cand['first']), first_names,
-                     len(cand['second']), second_names))
+        from modules import notification_format as nf
+        # 0명인 회차는 줄을 아예 빼야 '없음'만 늘어놓은 알림이 안 된다
+        detail = nf.body(
+            nf.kv('1회차 촉구 %d명' % len(cand['first']),
+                  ', '.join(out['names'])),
+            nf.kv('2회차 미지정 %d명' % len(cand['second']),
+                  ', '.join(c['user'].full_name for c in cand['second'])),
+        ) or '대상자 없음'
         try:
             notify(db, 'leave.promotion_admin',
                    {'count': len(cand['first']) + len(cand['second']), 'detail': detail},

@@ -184,7 +184,8 @@ def sync_deliveries(db, project_id=None, project_ids=None):
                         'contract_name': _c_name,
                         'project_name': _proj_name,
                         'project_id': project.id,
-                        'detail': f'{_c_name} 전체 납품 완료',
+                        # 계약명은 제목에 이미 들어간다 — 본문은 상태만
+                        'detail': '전 회차 납품이 완료되었습니다.',
                     })
             elif has_loading_done or has_today_split:
                 delivery.delivery_status = "in_progress"
@@ -283,20 +284,11 @@ def handle_add_split(db, project, form, current_user, **ctx):
         )
 
         # 알림 엔진: ERP 내부 + 카카오워크 동시 발송
+        # 본문은 세 채널이 그대로 나눠 쓴다 — 제목·링크는 엔진이 붙인다
+        from modules import notification_format as nf
         project_name = project.temp_name or project.short_name or f"현장#{project.id}"
-        sched_str = split.scheduled_date.strftime('%Y-%m-%d') if split.scheduled_date else '-'
-        detail_url = f"https://work.mgnt.kr/delivery_management/{project.id}"
-        kakao_text = (
-            f"[납품일정등록]\n"
-            f"{project_name}\n"
-            f"\n"
-            f"{('모델: ' + item_names + chr(10)) if item_names else ''}"
-            f"차수: {split.split_no}차  총수량: {split.quantity}EA\n"
-            f"납품예정일: {sched_str}\n"
-            f"등록자: {current_user}\n"
-            f"\n"
-            f"{detail_url}"
-        )
+        sched_str = split.scheduled_date.strftime('%Y-%m-%d') if split.scheduled_date else None
+
         # 계약명 조회
         from modules.models import Contract as _C
         _first_c = db.query(_C).filter(_C.project_id == project.id).first()
@@ -305,10 +297,13 @@ def handle_add_split(db, project, form, current_user, **ctx):
             'contract_name': _contract_name,
             'project_name': project_name,
             'project_id': project.id,
-            'detail': f"{split.split_no}차 {split.quantity}EA · {sched_str} 예정 · {current_user}",
-            'delivery_date': sched_str,
-            'manager_name': current_user,
-        }, kakao_text_override=kakao_text)
+            'detail': nf.body(
+                nf.kv('회차', f"{split.split_no}차 {nf.qty(split.quantity)}EA"),
+                nf.kv('모델', item_names),
+                nf.kv('납품예정일', sched_str, blank='미정'),
+                nf.kv('등록', current_user),
+            ),
+        })
 
         return {'flash': ('회차가 추가되었습니다.', 'success')}
     return {}
