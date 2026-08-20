@@ -1,8 +1,30 @@
 const API_BASE = import.meta.env.VITE_API_BASE || '/api/app';
 
+// 진행 중인 쓰기 요청 키 → Promise. 같은 요청이 겹쳐 들어오면 새로 쏘지 않고 붙여준다.
+// (모바일 이중 탭으로 출장/입고 등이 2건 생기는 사고 방지)
+function formDataKey(fd) {
+  const parts = [];
+  for (const [k, v] of fd.entries()) {
+    parts.push(v instanceof File ? `${k}=${v.name}:${v.size}:${v.lastModified}` : `${k}=${v}`);
+  }
+  return parts.join('&');
+}
+
 class ApiClient {
   constructor() {
     this.token = localStorage.getItem('token') || null;
+    this._inflight = new Map();
+  }
+
+  // key 가 이미 진행 중이면 그 Promise 를 그대로 돌려준다.
+  // 응답은 이미 파싱된 객체라 여러 호출자가 공유해도 안전 (Response body 재사용 문제 없음).
+  _dedupe(key, run) {
+    if (this._inflight.has(key)) return this._inflight.get(key);
+    const p = run();
+    this._inflight.set(key, p);
+    const clear = () => this._inflight.delete(key);
+    p.then(clear, clear);
+    return p;
   }
 
   setToken(token) {
@@ -14,7 +36,15 @@ class ApiClient {
     }
   }
 
-  async request(path, options = {}) {
+  request(path, options = {}) {
+    const method = (options.method || 'GET').toUpperCase();
+    if (method === 'GET' || method === 'HEAD') return this._request(path, options);
+    // 쓰기 요청만 중복 차단 — 조회는 그대로 통과
+    const key = `${method} ${path} ${options.body || ''}`;
+    return this._dedupe(key, () => this._request(path, options));
+  }
+
+  async _request(path, options = {}) {
     // absolute=true 일 때 path 를 그대로 사용 (e.g. /mail/api/* 호출용)
     const { absolute, ...rest } = options;
     const url = absolute ? path : `${API_BASE}${path}`;
@@ -66,7 +96,13 @@ class ApiClient {
   }
 
   // FormData POST (multipart) — 첨부 메일 발송 등
-  async postForm(path, formData, options = {}) {
+  postForm(path, formData, options = {}) {
+    // 파일명·크기까지 키에 넣어 같은 첨부 재전송만 막는다 (다른 파일 동시 업로드는 통과)
+    const key = `POSTFORM ${path} ${formDataKey(formData)}`;
+    return this._dedupe(key, () => this._postForm(path, formData, options));
+  }
+
+  async _postForm(path, formData, options = {}) {
     const { absolute } = options;
     const url = absolute ? path : `${API_BASE}${path}`;
     const headers = {};

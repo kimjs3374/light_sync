@@ -432,6 +432,14 @@ function handleFileSelect(files) {
 }
 
 function uploadFile(file) {
+    /* 같은 파일 중복 업로드 차단 (재선택·드롭 연타) */
+    const dupKey = window.LSUpload ? window.LSUpload.key('photo', file) : null;
+    if (dupKey && !window.LSUpload.begin(dupKey)) {
+        showToast(`${file.name}: 이미 업로드 중입니다.`, 'warning');
+        return;
+    }
+    const doneUpload = () => { if (dupKey) window.LSUpload.end(dupKey); };
+
     const uid = `up-${Date.now()}`;
     const list = document.getElementById('uploadProgressList');
     const item = document.createElement('div');
@@ -462,6 +470,7 @@ function uploadFile(file) {
         }
     };
     xhr.onload = () => {
+        doneUpload();
         item.remove();
         if (xhr.status === 200) {
             try {
@@ -476,7 +485,7 @@ function uploadFile(file) {
             catch { showToast('업로드 실패 '+xhr.status, 'danger'); }
         }
     };
-    xhr.onerror = () => { item.remove(); showToast('네트워크 오류', 'danger'); };
+    xhr.onerror = () => { doneUpload(); item.remove(); showToast('네트워크 오류', 'danger'); };
     xhr.send(fd);
 }
 

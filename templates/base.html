@@ -413,6 +413,7 @@
     });
     </script>
     <script src="{{ url_for('static', filename='js/csrf-inject.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/no-double-submit.js') }}"></script>
     {% if request.path != '/production/display' %}
     <script src="{{ url_for('static', filename='js/chatbot-panel.js') }}?v=20260331b"></script>
     {% endif %}

@@ -117,14 +117,26 @@ loadFiles('{{ current_scope }}');
 function uploadFiles(files, scope) {
     const bar = document.getElementById('bar-' + scope);
     const stat = document.getElementById('stat-' + scope);
+
+    /* 같은 파일 중복 업로드 차단 (재선택·드롭 연타) — 진행 중인 것만 걸러낸다 */
+    const keyOf = f => (window.LSUpload ? window.LSUpload.key('office:' + scope, f) : null);
+    const targets = Array.from(files).filter(f => {
+        const k = keyOf(f);
+        return !k || window.LSUpload.begin(k);
+    });
+    if (!targets.length) { alert('이미 업로드 중입니다.'); return; }
+
     document.getElementById('prog-' + scope).style.display = 'block';
-    let done = 0, total = files.length, errors = [];
-    Array.from(files).forEach(file => {
+    let done = 0, total = targets.length, errors = [];
+    targets.forEach(file => {
+        const dupKey = keyOf(file);
+        const doneUpload = () => { if (dupKey) window.LSUpload.end(dupKey); };
         const fd = new FormData(); fd.append('file', file); fd.append('scope', scope);
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/office/upload');
         xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = Math.round(e.loaded/e.total*100)+'%'; };
         xhr.onload = () => {
+            doneUpload();
             done++;
             if (xhr.status >= 400) {
                 let msg = '오류';
@@ -145,6 +157,7 @@ function uploadFiles(files, scope) {
             }
         };
         xhr.onerror = () => {
+            doneUpload();
             done++;
             errors.push(`${file.name}: 네트워크 오류`);
             stat.textContent = '네트워크 오류';
