@@ -3649,6 +3649,9 @@ def app_document_delete_attachment(req_no, att_id):
         att = db.query(DocumentAttachment).get(att_id)
         if not att or att.package_id != package.id:
             return jsonify(ok=False, error='첨부파일을 찾을 수 없습니다'), 404
+        if att.storage_path and att.storage_path.startswith('documents/'):
+            from modules.storage_adapter import delete_object
+            delete_object(att.storage_path)
         db.delete(att)
         db.commit()
         return jsonify(ok=True)
@@ -3725,6 +3728,12 @@ def app_document_delivery_pdf(req_no):
                          as_attachment=True, download_name=f"납품계_{package.business_name or req_no}.pdf")
 
 
+def _path_is_absolute(path):
+    """절대경로(/etc/…, C:\\…)인지 — 서류 뷰어에서 서버 파일 열람을 막는다."""
+    import os as _os
+    return _os.path.isabs(path) or path.startswith('/') or path.startswith('\\')
+
+
 @app_api_bp.route('/document-file')
 def app_document_view_file():
     """저장된 PDF/첨부파일 뷰어 — 토큰 인증, local filesystem or storage"""
@@ -3734,13 +3743,17 @@ def app_document_view_file():
     path = request.args.get('path', '').strip()
     if not path:
         return jsonify(ok=False, error='경로 누락'), 400
-    # 보안: 서류 관련 경로만 허용
+    # 보안: 서류 관련 경로만 허용.
+    # prefix 검사만으로는 `documents/../../etc/passwd` 로 빠져나갈 수 있어
+    # 상위 경로 이동과 절대경로를 먼저 막는다.
+    if '..' in path.replace('\\', '/').split('/') or _path_is_absolute(path):
+        return jsonify(ok=False, error='허용되지 않은 경로'), 403
     if not (path.startswith('static/uploads/documents') or path.startswith('documents/')):
         return jsonify(ok=False, error='허용되지 않은 경로'), 403
 
     import os as _os
-    # 1) 로컬 파일
-    abs_path = _os.path.join(current_app.root_path, path) if not _os.path.isabs(path) else path
+    # 1) 로컬 파일 (Storage 이전 전에 올라간 레거시 경로)
+    abs_path = _os.path.join(current_app.root_path, path)
     if _os.path.exists(abs_path):
         return send_file(abs_path)
     # 2) Supabase Storage

@@ -269,15 +269,19 @@ def generate_commencement_html_pdf(package, procurements, agent_user=None,
     # 10. 물품계약서 (업로드한 납품요구서 PDF)
     if package.req_pdf_path:
         req_path = package.req_pdf_path
-        if not os.path.isabs(req_path):
-            req_path = os.path.join(os.path.dirname(__file__), '..', '..', req_path)
-        if os.path.exists(req_path):
-            try:
-                r = pypdf.PdfReader(req_path)
-                for page in r.pages:
-                    writer.add_page(page)
-            except Exception as e:
-                logger.warning("납품요구서 PDF 읽기 실패: %s", e)
+        if req_path.startswith('documents/'):
+            _add_supabase_pdf(req_path)
+        else:
+            # 레거시 로컬 경로
+            if not os.path.isabs(req_path):
+                req_path = os.path.join(os.path.dirname(__file__), '..', '..', req_path)
+            if os.path.exists(req_path):
+                try:
+                    r = pypdf.PdfReader(req_path)
+                    for page in r.pages:
+                        writer.add_page(page)
+                except Exception as e:
+                    logger.warning("납품요구서 PDF 읽기 실패: %s", e)
 
     # 11. 예정공정표 — 엑셀 기반(기존 유지)
     # TODO: 공정표 HTML 템플릿 생성 시 교체

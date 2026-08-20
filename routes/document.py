@@ -21,8 +21,11 @@ from modules.models import (
     determine_org_type, generate_doc_number,
 )
 from modules.contract_filters import DONE_STATUSES
+from modules.pagination import make_pagination
+from modules.utils import safe_int
 from modules.activity import log_activity
-from modules.storage_adapter import upload_bytes, download_bytes, is_storage_enabled
+from modules.storage_adapter import upload_bytes, download_bytes, delete_object, is_storage_enabled
+from werkzeug.utils import secure_filename
 
 document_bp = Blueprint('document', __name__)
 
@@ -36,6 +39,28 @@ COMMON_DOCS = {
 }
 
 DRAWINGS_PREFIX = 'documents/drawings/'
+# 계약서·첨부도 Supabase Storage에 둔다 (static/ 저장 금지 — CLAUDE.md)
+CONTRACT_PDF_PREFIX = 'documents/contracts/'
+PKG_ATTACH_PREFIX = 'documents/package_attach/'
+
+
+def _is_storage_path(path):
+    """Supabase Storage 경로인지(레거시 로컬 경로가 아닌지) 판별한다."""
+    return bool(path) and str(path).startswith('documents/')
+
+
+def _read_document_file(path):
+    """계약서/첨부 실물을 읽는다. Storage 우선, 과거 로컬 경로도 계속 지원."""
+    if not path:
+        return None
+    if _is_storage_path(path):
+        return download_bytes(path)
+    abs_path = path if os.path.isabs(path) else os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path)
+    if os.path.exists(abs_path):
+        with open(abs_path, 'rb') as f:
+            return f.read()
+    return None
 
 
 def _fmt_money(val):
@@ -338,6 +363,49 @@ def document_detail(req_no):
                                total_supply=total_supply,
                                fmt_money=_fmt_money,
                                DOC_ATTACH_TYPES=DOC_ATTACH_TYPES)
+
+
+@document_bp.route('/documents/<req_no>/contract-pdf')
+@login_required
+@menu_required('documents')
+def view_contract_pdf(req_no):
+    """업로드된 계약서(납품요구서) PDF 열람."""
+    from flask import send_file
+
+    with get_db() as db:
+        package = db.query(DocumentPackage).filter(
+            DocumentPackage.procurement_req_no == req_no
+        ).first()
+        if not package or not package.req_pdf_path:
+            abort(404)
+        data = _read_document_file(package.req_pdf_path)
+        if data is None:
+            abort(404)
+        return send_file(io.BytesIO(data), mimetype='application/pdf',
+                         download_name=f'계약서_{package.business_name or req_no}.pdf')
+
+
+@document_bp.route('/documents/attachment/<int:att_id>')
+@login_required
+@menu_required('documents')
+def view_attachment(att_id):
+    """서류 패키지 첨부파일 열람."""
+    from flask import send_file
+
+    with get_db() as db:
+        att = db.query(DocumentAttachment).get(att_id)
+        if not att:
+            abort(404)
+        data = _read_document_file(att.storage_path)
+        if data is None:
+            abort(404)
+        ext = os.path.splitext(att.file_name or att.storage_path or '')[1].lower()
+        mimetype = {
+            '.pdf': 'application/pdf', '.png': 'image/png',
+            '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        }.get(ext, 'application/octet-stream')
+        return send_file(io.BytesIO(data), mimetype=mimetype,
+                         download_name=att.file_name or os.path.basename(att.storage_path))
 
 
 # ── 템플릿 관리 ──
@@ -938,6 +1006,8 @@ def _handle_document_action(db, package, procurements, action):
         if att_id:
             att = db.query(DocumentAttachment).get(int(att_id))
             if att and att.package_id == package.id:
+                if _is_storage_path(att.storage_path):
+                    delete_object(att.storage_path)
                 db.delete(att)
                 db.commit()
                 flash('첨부파일이 삭제되었습니다.', 'success')
@@ -1074,13 +1144,13 @@ def bulk_upload_contract_pdf():
                 db.add(package)
                 db.flush()
 
-            upload_dir = os.path.join('static', 'uploads', 'documents')
-            os.makedirs(upload_dir, exist_ok=True)
-            filepath = os.path.join(upload_dir, f'{package.procurement_req_no}_{fname}')
-            with open(filepath, 'wb') as f:
-                f.write(file_bytes)
+            storage_path = CONTRACT_PDF_PREFIX + f'{package.procurement_req_no}.pdf'
+            ok, msg = upload_bytes(storage_path, file_bytes, content_type='application/pdf')
+            if not ok:
+                results.append({'file': fname, 'status': 'fail', 'msg': f'저장 실패: {msg}'})
+                continue
 
-            package.req_pdf_path = filepath
+            package.req_pdf_path = storage_path
             package.contract_no = parsed.get('contract_no')
             package.contract_date = parsed.get('contract_date')
             package.fee = parsed.get('fee')
@@ -1136,18 +1206,15 @@ def _handle_upload_contract_pdf(db, package, procurements):
 
     file_bytes = file.read()
 
-    upload_dir = os.path.join('static', 'uploads', 'documents')
-    os.makedirs(upload_dir, exist_ok=True)
-    filename = f"{package.procurement_req_no}_{file.filename}"
-    filepath = os.path.join(upload_dir, filename)
-    with open(filepath, 'wb') as f:
-        f.write(file_bytes)
-
-    package.req_pdf_path = filepath
-
+    # 저장 전에 먼저 검증한다 — 엉뚱한 계약서를 올린 뒤 지우는 것보다,
+    # 애초에 올리지 않는 쪽이 Storage에 쓰레기를 안 남긴다.
+    parsed = None
     try:
         parsed = parse_contract_pdf(file_bytes)
+    except Exception as e:
+        flash(f'PDF 파싱 중 오류: {e}', 'danger')
 
+    if parsed:
         # 계약번호 불일치 검증 — 잘못된 계약서 업로드 방지
         parsed_req = re.sub(r'-\d{2}$', '', parsed.get('delivery_req_no', '').strip())
         if parsed_req and package.procurement_req_no:
@@ -1158,12 +1225,20 @@ def _handle_upload_contract_pdf(db, package, procurements):
                     f'현재 건({pkg_no})과 다릅니다. 올바른 계약서를 업로드해주세요.',
                     'danger'
                 )
-                try:
-                    os.remove(filepath)
-                except OSError:
-                    pass
                 return
 
+    storage_path = CONTRACT_PDF_PREFIX + f'{package.procurement_req_no}.pdf'
+    ok, msg = upload_bytes(storage_path, file_bytes, content_type='application/pdf')
+    if not ok:
+        flash(f'PDF 저장 실패: {msg}', 'danger')
+        return
+    package.req_pdf_path = storage_path
+
+    if not parsed:
+        db.commit()
+        return
+
+    try:
         package.contract_no = parsed.get('contract_no')
         package.contract_date = parsed.get('contract_date')
         package.fee = parsed.get('fee')
@@ -1246,18 +1321,22 @@ def _handle_upload_attachment(db, package):
         flash('파일을 선택해주세요.', 'warning')
         return
 
-    upload_dir = os.path.join('static', 'uploads', 'documents', 'attachments')
-    os.makedirs(upload_dir, exist_ok=True)
-    filename = f"{package.id}_{file_type}_{file.filename}"
-    filepath = os.path.join(upload_dir, filename)
-    file.save(filepath)
+    sort_order = len(package.attachments) + 1
+    # 한글 파일명은 secure_filename이 비워버리므로 원본은 file_name 컬럼에 따로 남긴다
+    safe_name = secure_filename(file.filename) or 'file'
+    storage_path = PKG_ATTACH_PREFIX + f'{package.id}/{sort_order}_{safe_name}'
+    ok, msg = upload_bytes(storage_path, file.read(),
+                           content_type=file.mimetype or 'application/octet-stream')
+    if not ok:
+        flash(f'첨부 저장 실패: {msg}', 'danger')
+        return
 
     att = DocumentAttachment(
         package_id=package.id,
         file_type=file_type,
         file_name=file.filename,
-        storage_path=filepath,
-        sort_order=len(package.attachments) + 1,
+        storage_path=storage_path,
+        sort_order=sort_order,
     )
     db.add(att)
     db.commit()

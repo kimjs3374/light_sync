@@ -132,7 +132,7 @@
                                 {{ '재업로드' if package.req_pdf_path else '업로드' }}
                             </button>
                             {% if package.req_pdf_path %}
-                            <a href="/{{ package.req_pdf_path }}" target="_blank" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">PDF 보기</a>
+                            <a href="{{ url_for('document.view_contract_pdf', req_no=package.procurement_req_no) }}" target="_blank" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;">PDF 보기</a>
                             {% endif %}
                         </div>
                     </form>
@@ -246,7 +246,7 @@
                         {% for att in attachments %}
                         <div class="att-item">
                             <span class="badge bg-light text-dark border" style="font-size:.7rem;white-space:nowrap;">{{ DOC_ATTACH_TYPES.get(att.file_type, att.file_type) }}</span>
-                            <a href="/{{ att.storage_path }}" target="_blank" class="small text-primary text-decoration-none flex-grow-1" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            <a href="{{ url_for('document.view_attachment', att_id=att.id) }}" target="_blank" class="small text-primary text-decoration-none flex-grow-1" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                                 {{ att.file_name }}
                             </a>
                             <form method="POST" class="d-inline" onsubmit="return confirm('삭제하시겠습니까?')">

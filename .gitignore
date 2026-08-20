@@ -32,6 +32,7 @@ static/commencement_files
 # 사용자 업로드/생성 문서는 Supabase Storage 전용 — repo 커밋 금지 (CLAUDE.md)
 static/documents/
 static/commencement_files/
+static/uploads/
 
 # 루트 다운로드 참고자료 / 저장된 웹페이지 junk
 /*.docx
