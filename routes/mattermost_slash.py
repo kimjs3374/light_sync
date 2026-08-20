@@ -418,6 +418,13 @@ def _cmd_history(text: str, response_url: str) -> None:
 @mattermost_slash_bp.route("/mattermost/slash", methods=["POST"])
 def slash_handler():
     """Mattermost 슬래시 커맨드 수신 엔드포인트."""
+    from modules.services.mattermost_api import mm_enabled
+    if not mm_enabled():
+        return jsonify({
+            "response_type": "ephemeral",
+            "text": "Mattermost 연동이 종료되었습니다. ERP에서 조회해 주세요.",
+        }), 200
+
     # token 검증
     token = request.form.get("token", "")
     if MM_SLASH_TOKEN and token != MM_SLASH_TOKEN:

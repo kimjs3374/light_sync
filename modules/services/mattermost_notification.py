@@ -127,6 +127,11 @@ def send_mattermost_notification(
     Returns:
         성공 시 True. URL 미설정/네트워크 오류 시 False (예외 발생 안 함).
     """
+    from modules.services.mattermost_api import mm_enabled
+    if not mm_enabled():
+        logger.debug("[mm-noti] MM_ENABLED=0 — skip: %s", event_type)
+        return False
+
     url = _resolve_webhook_url(event_type)
     if not url:
         logger.debug("[mm-noti] webhook URL 없음 — skip: %s", event_type)

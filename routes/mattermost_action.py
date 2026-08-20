@@ -299,7 +299,18 @@ def _action_approval(action_type: str, data: Dict[str, Any], mm_user_name: str) 
 
 @mattermost_action_bp.route("/mattermost/action", methods=["POST"])
 def mattermost_action():
-    """Mattermost interactive action endpoint."""
+    """Mattermost interactive action endpoint.
+
+    MM_ENABLED=0이면 차단. 아래 _write_* 실행기는 MCP confirm_write(카카오워크 봇·웹채널챗)가
+    라이브러리로 재사용하므로 게이트 대상이 아니다 — HTTP 진입점만 막는다.
+    """
+    from modules.services.mattermost_api import mm_enabled
+    if not mm_enabled():
+        logger.info("[mm-action] MM_ENABLED=0 — 차단")
+        return jsonify({
+            "ephemeral_text": "Mattermost 연동이 종료되었습니다. ERP에서 처리해 주세요."
+        }), 200
+
     payload = request.get_json(silent=True) or {}
     context = payload.get("context") or {}
     action_type = context.get("action_type") or ""

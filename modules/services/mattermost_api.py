@@ -19,6 +19,17 @@ MM_DOMAIN = os.environ.get("MATTERMOST_EMAIL_DOMAIN", "mgnt.kr")
 MM_DEFAULT_TEAM = os.environ.get("MATTERMOST_DEFAULT_TEAM", "magnatech")  # team URL slug
 
 
+def mm_enabled() -> bool:
+    """Mattermost 봇/알림 킬스위치 (.env: MM_ENABLED).
+
+    False면 DM·채널알림·슬래시·버튼콜백을 전부 차단한다.
+    계정 생성/비밀번호 동기화(sync_password, deactivate_user)는 이 플래그의 대상이 아니다 —
+    MM을 다시 켤 때 계정 상태가 어긋나지 않도록 계속 유지한다.
+    매 호출 시 env를 읽으므로 값만 되돌리고 재시작하면 즉시 복구된다.
+    """
+    return os.environ.get("MM_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
 def _headers():
     return {
         "Content-Type": "application/json",
@@ -226,6 +237,8 @@ def send_dm(username: str, message: str, attachments: list | None = None) -> boo
     attachments: 인터랙티브 버튼(props.attachments) — 승인/반려 버튼 등. None이면 순수 텍스트.
     실패해도 예외 없이 False 반환.
     """
+    if not mm_enabled():
+        return False
     if not MM_ADMIN_TOKEN or not username:
         return False
     try:
@@ -268,6 +281,8 @@ def send_dm_with_ref(username: str, message: str, attachments: list | None = Non
 
     처리 시 메시지 수정(버튼 제거)을 위해 post_id가 필요한 결재 알림용.
     """
+    if not mm_enabled():
+        return None
     if not MM_ADMIN_TOKEN or not username:
         return None
     try:
@@ -307,6 +322,8 @@ def update_approval_post(post_id: str, message: str) -> bool:
 
     일반봇 토큰으로는 결재봇 글을 수정할 수 없어 403 → 반드시 작성자 토큰 사용.
     """
+    if not mm_enabled():
+        return False
     if not post_id:
         return False
     token = _approval_bot_token() or MM_ADMIN_TOKEN
