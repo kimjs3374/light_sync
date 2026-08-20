@@ -12,8 +12,22 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
+from email.utils import formatdate, make_msgid
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_standard_headers(msg, from_addr):
+    """Message-ID / Date 표준 헤더를 붙인다.
+
+    smtplib.sendmail() 은 헤더를 자동 보완하지 않는다. 이 두 헤더가 없으면
+    rspamd 가 MISSING_MID(2.50) + MISSING_DATE(1.00) 을 매기고, 네이버는
+    550 5.7.1 SPAM 으로 반송한다 (2026-08-12 발주서 반송 사고).
+    MIME-Version 은 MIMEMultipart 가 이미 붙이므로 건드리지 않는다.
+    """
+    domain = from_addr.split('@')[-1] if '@' in from_addr else 'mgnt.kr'
+    msg['Date'] = formatdate(localtime=True)
+    msg['Message-ID'] = make_msgid(domain=domain)
 
 
 def _get_smtp_config():
@@ -55,10 +69,15 @@ def send_purchase_order_email(to_email, subject, body_text, pdf_bytes=None, pdf_
         }
 
     try:
+        from email.utils import formataddr
+        from email.header import Header
+
         msg = MIMEMultipart()
-        msg['From'] = config['user']
+        # 표시이름 없이 주소만 두면 수신측에서 발신처를 알아보기 어렵다
+        msg['From'] = formataddr((str(Header('(주)매그나텍 구매부', 'utf-8')), config['user']))
         msg['To'] = to_email
         msg['Subject'] = subject
+        _apply_standard_headers(msg, config['user'])
 
         # 본문
         msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
@@ -212,6 +231,8 @@ def send_email_with_attachments(to_email, subject, body_text, attachments=None,
         msg['From'] = display_from
         msg['To'] = to_email
         msg['Subject'] = subject
+        # Message-ID 우변은 From 헤더 도메인과 맞춘다
+        _apply_standard_headers(msg, display_email)
         if display_email != envelope_from:
             msg['Reply-To'] = display_email
         if body_html:
