@@ -109,7 +109,7 @@
         {% if writable %}
         <div class="mt-2">
           <button type="button" class="btn btn-xs btn-success" style="white-space:nowrap"
-                  onclick="openReturnModal({{ c.id }}, '{{ c.checkout_user_name }}')">반납처리</button>
+                  data-uname="{{ c.checkout_user_name | e }}" onclick="openReturnModal({{ c.id }}, this.dataset.uname)">반납처리</button>
         </div>
         {% endif %}
       </div>

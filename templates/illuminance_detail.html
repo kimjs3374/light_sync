@@ -121,7 +121,7 @@
                   onclick="editAreaName({{ area.id }}, this)" title="이름 수정">✏️</button>
           <button class="btn btn-xs btn-outline-danger py-0 px-1"
                   style="font-size:.68rem;line-height:1.4"
-                  onclick="deleteArea({{ area.id }}, '{{ area.area_name | e }}')" title="구역 삭제">🗑</button>
+                  data-aname="{{ area.area_name | e }}" onclick="deleteArea({{ area.id }}, this.dataset.aname)" title="구역 삭제">🗑</button>
         </div>
         <a class="area-card" href="{{ url_for('illuminance.area', project_id=project.id, area_id=area.id) }}"
            style="padding-right:4.5rem">

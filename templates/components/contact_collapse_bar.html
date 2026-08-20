@@ -62,7 +62,7 @@
                                     data-email="{{ con.email or '' }}"
                                     onclick="openContactEditFromBtn(this)">수정</button>
                             {% if contact_show_delete %}
-                            <button type="button" class="btn btn-link text-danger p-0 ms-1" onclick="deleteWithReason('{{ con.id }}', '{{ con.name }}')">❌</button>
+                            <button type="button" class="btn btn-link text-danger p-0 ms-1" data-cid="{{ con.id }}" data-cname="{{ con.name | e }}" onclick="deleteWithReason(this.dataset.cid, this.dataset.cname)">❌</button>
                             {% endif %}
                         </td>
                     </tr>

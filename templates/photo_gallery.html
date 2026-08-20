@@ -56,7 +56,7 @@
             <div class="site-item {% if selected and selected.id == site.id %}active{% endif %}"
                  data-site-id="{{ site.id }}"
                  data-site-name="{{ site.site_name | e }}"
-                 onclick="selectSite('{{ site.id }}', '{{ site.site_name | e }}')">
+                 onclick="selectSite(this.dataset.siteId, this.dataset.siteName)">
                 <div class="d-flex align-items-center justify-content-between gap-1">
                     <div style="min-width:0;">
                         <div class="site-item-name">{{ site.site_name }}</div>
@@ -78,7 +78,7 @@
         <!-- 현장 헤더 -->
         <div class="site-header-card" id="siteHeaderCard">
             <div class="site-title-row site-title-row-active" id="siteTitleRow" onclick="clearContractFilter()">
-                <div class="site-title">{{ selected.site_name }}</div>
+                <div class="site-title">{{ selected.temp_name }}</div>
                 <div class="site-contract-no">{{ selected.project_no or '' }}</div>
             </div>
             <div class="site-header-badges" id="siteHeaderBadges"></div>

@@ -129,7 +129,7 @@
                         <td style="white-space:nowrap">
                             {% if match_filter == 'exception' %}
                                 <button type="button" class="btn btn-xs btn-outline-danger" style="white-space:nowrap"
-                                    onclick="restoreException({{ c.id }}, '{{ (c.contract_name or '')[:30]|e }}')">
+                                    data-cname="{{ (c.contract_name or '')[:30]|e }}" onclick="restoreException({{ c.id }}, this.dataset.cname)">
                                     예외 해제
                                 </button>
                             {% else %}

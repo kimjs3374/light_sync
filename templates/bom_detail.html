@@ -104,7 +104,7 @@
                     {{ a.alias_name }}
                     {% if a.alias_type == 'manual' %}
                     <button type="button" class="btn-close ms-1" style="font-size:.5rem;"
-                            onclick="removeAlias({{ a.id }}, '{{ a.alias_name }}')"></button>
+                            data-aname="{{ a.alias_name | e }}" onclick="removeAlias({{ a.id }}, this.dataset.aname)"></button>
                     {% endif %}
                 </span>
                 {% endfor %}

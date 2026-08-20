@@ -202,7 +202,7 @@
                         {% set ps = c.linked.payment_status %}
                         {% if c.linked.is_excluded %}
                             <span class="badge bg-dark" style="font-size:.65rem;white-space:nowrap">예외</span>&#32;<button class="btn btn-outline-dark btn-xs" style="font-size:.6rem;padding:1px 5px;white-space:nowrap;line-height:1.4"
-                                onclick="openExcludeEdit('{{ c.req_no }}', '{{ (c.req_nm or "")|e }}')">수정</button>
+                                data-reqno="{{ c.req_no }}" data-reqnm="{{ (c.req_nm or "")|e }}" onclick="openExcludeEdit(this.dataset.reqno, this.dataset.reqnm)">수정</button>
                         {% elif ps == '청구완료' %}
                             <span class="badge bg-primary" style="font-size:.65rem;white-space:nowrap">청구완료</span>
                         {% elif ps == '입금완료' %}
@@ -211,7 +211,7 @@
                             <span class="badge bg-secondary" style="font-size:.65rem;white-space:nowrap">변경완료</span>
                         {% else %}
                             <span class="badge {{ 'bg-warning text-dark' if ps == '부분입금' else 'bg-secondary' }}" style="font-size:.65rem;white-space:nowrap">{{ ps or '미청구' }}</span>&#32;<button class="btn btn-outline-secondary btn-xs" style="font-size:.6rem;padding:1px 5px;white-space:nowrap;line-height:1.4"
-                                onclick="openExclude('{{ c.req_no }}', '{{ (c.req_nm or "")|e }}')">예외</button>
+                                data-reqno="{{ c.req_no }}" data-reqnm="{{ (c.req_nm or "")|e }}" onclick="openExclude(this.dataset.reqno, this.dataset.reqnm)">예외</button>
                         {% endif %}
                     {% else %}
                         -

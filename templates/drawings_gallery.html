@@ -52,7 +52,7 @@
             <div class="site-item {% if selected and selected.id == p.id %}active{% endif %}"
                  data-site-id="{{ p.id }}"
                  data-site-name="{{ p.site_name | e }}"
-                 onclick="selectSite('{{ p.id }}', '{{ p.site_name | e }}')">
+                 onclick="selectSite(this.dataset.siteId, this.dataset.siteName)">
                 <div class="d-flex align-items-center justify-content-between gap-1">
                     <div style="min-width:0;">
                         <div class="site-item-name">{{ p.site_name }}</div>
