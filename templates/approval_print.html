@@ -54,40 +54,50 @@ body {
 .doc-subtitle { text-align: center; font-size: 11pt; margin-bottom: 14px; }
 
 /* ── 표 공통: 인쇄물은 격자선이 있어야 칸이 읽힌다 ── */
-table { width: 100%; border-collapse: collapse; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 th, td {
     border: 1px solid #000;
     padding: 5px 8px;
     vertical-align: middle;
-    /* 인쇄물은 줄바꿈으로 다 보여준다 — 화면과 달리 ellipsis 로 자르면 안 된다 */
+    /* 인쇄물은 줄바꿈으로 다 보여준다 — 화면과 달리 ellipsis 로 자르면 안 된다.
+       단 한글은 단어 단위로 접어야 한다. anywhere 로 두면 칸이 좁을 때
+       '문 서 번 호' 처럼 한 글자씩 세로로 쌓인다. */
     white-space: normal;
-    overflow-wrap: anywhere;
+    word-break: keep-all;
+    overflow-wrap: break-word;
 }
-th { background: #f2f2f2; font-weight: 700; text-align: center; }
+th { background: #f2f2f2; font-weight: 700; text-align: center; white-space: nowrap; }
 
-/* ── 결재란 (기안 + 결재선) ── */
-.head-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
-.meta-table { flex: 1; }
-.meta-table th { width: 78px; font-size: 9.5pt; }
-.meta-table td { font-size: 9.5pt; }
-
-.stamp-table { border-collapse: collapse; }
+/* ── 결재란 — 기안문 관행대로 오른쪽 위에 자기 폭만큼만 ──
+   전역 table{width:100%} 를 그대로 두면 결재란이 폭을 다 먹고
+   옆에 둔 표를 짓눌러 글자가 세로로 쌓인다. 그래서 폭을 따로 푼다. */
+.stamp-wrap { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.stamp-table { width: auto; table-layout: auto; }
 .stamp-table .label {
-    writing-mode: vertical-rl; text-orientation: upright;
-    width: 22px; font-size: 9pt; letter-spacing: .2em;
-    background: #f2f2f2; font-weight: 700;
+    width: 24px; font-size: 9pt; font-weight: 700;
+    background: #f2f2f2; text-align: center;
+    /* 세로쓰기가 안 먹는 뷰어를 대비해 폭을 넉넉히 두지 않고 글자만 세운다 */
+    writing-mode: vertical-rl; text-orientation: upright; letter-spacing: .15em;
 }
-.stamp-table .slot { width: 62px; height: 62px; text-align: center; padding: 2px; }
+.stamp-table .slot { width: 72px; height: 64px; text-align: center; padding: 2px 3px; }
 .stamp-table .slot .role { font-size: 8.5pt; border-bottom: 1px solid #000; padding-bottom: 2px; }
-.stamp-table .slot .who { font-size: 10pt; font-weight: 700; padding-top: 8px; }
-.stamp-table .slot .when { font-size: 7.5pt; }
-.stamp-table .slot .pend { font-size: 8pt; }
+.stamp-table .slot .who { font-size: 10pt; font-weight: 700; padding-top: 9px; line-height: 1.2; }
+.stamp-table .slot .when { font-size: 7.5pt; line-height: 1.2; }
+.stamp-table .slot .pend { font-size: 8pt; color: #444; }
+
+/* ── 기안 정보 (제목 아래 가로 전체) ── */
+.meta-table { margin-bottom: 12px; }
+.meta-table th, .meta-table td { font-size: 9.5pt; }
+.meta-table th { text-align: center; }
 
 /* ── 섹션 ── */
 .section { margin-top: 12px; }
 .section-title { font-size: 10.5pt; font-weight: 700; margin: 0 0 4px; }
-.field-table th { width: 110px; text-align: left; }
-.inner-table th, .inner-table td { font-size: 9.5pt; }
+.field-table { table-layout: fixed; }
+.field-table > tbody > tr > th { width: 110px; text-align: left; }
+.inner-table { table-layout: auto; }
+.inner-table th, .inner-table td { font-size: 9pt; padding: 4px 6px; }
+.inner-table td { word-break: keep-all; }
 .num { text-align: right; }
 .pre { white-space: pre-wrap; }
 .muted { color: #444; }
@@ -111,8 +121,10 @@ th { background: #f2f2f2; font-weight: 700; text-align: center; }
     }
     /* 배경색이 있는 칸(표 머리)이 인쇄에서 흰색으로 날아가지 않게 */
     th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    /* 표가 장 경계에서 반으로 잘리지 않게 */
-    table, tr, .head-row { page-break-inside: avoid; }
+    /* 행 단위로만 안 잘리게 한다. 표 전체에 avoid 를 걸면 표가
+       통째로 다음 장으로 밀려 앞장이 절반쯤 비어버린다. */
+    tr, .stamp-wrap { page-break-inside: avoid; }
+    .section-title { page-break-after: avoid; }
 }
 </style>
 </head>
@@ -129,12 +141,41 @@ th { background: #f2f2f2; font-weight: 700; text-align: center; }
 {% set form = forms.get(doc.form_key) %}
 <div class="sheet">
 
+    {# ── 결재란은 기안문 관행대로 맨 위 오른쪽 ── #}
+    <div class="stamp-wrap">
+        <table class="stamp-table">
+            <tr>
+                <td class="label">결재</td>
+                <td class="slot">
+                    <div class="role">기안</div>
+                    <div class="who">{{ doc.drafter_name }}</div>
+                    <div class="when">{{ (doc.submitted_at or doc.created_at).strftime('%m/%d') }}</div>
+                </td>
+                {% for s in doc.steps %}
+                <td class="slot">
+                    <div class="role">{{ s.role_label }}</div>
+                    {% if s.status in ('approved', 'rejected') %}
+                    <div class="who">{{ s.approver_name }}</div>
+                    <div class="when">{{ s.acted_at.strftime('%m/%d') if s.acted_at else '' }}{% if s.status == 'rejected' %}<br>반려{% endif %}</div>
+                    {% else %}
+                    <div class="who">&nbsp;</div>
+                    <div class="pend">{{ '결재중' if s.status == 'current' else '대기' }}</div>
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+        </table>
+    </div>
+
     <h1 class="doc-title">{{ doc.form_name }}</h1>
     <div class="doc-subtitle">{{ doc.title }}</div>
 
-    {# ── 기안 정보 + 결재란 ── #}
-    <div class="head-row">
-        <table class="meta-table">
+    {# ── 기안 정보 ── #}
+    <table class="meta-table">
+        <colgroup>
+            <col style="width:80px"><col><col style="width:80px"><col>
+        </colgroup>
+        <tbody>
             <tr>
                 <th>문서번호</th><td>{{ doc.doc_no or '-' }}</td>
                 <th>기안일</th><td>{{ (doc.submitted_at or doc.created_at).strftime('%Y-%m-%d') }}</td>
@@ -156,36 +197,14 @@ th { background: #f2f2f2; font-weight: 700; text-align: center; }
                 <th>완료일</th>
                 <td>{{ doc.completed_at.strftime('%Y-%m-%d') if doc.completed_at else '-' }}</td>
             </tr>
-        </table>
-
-        <table class="stamp-table">
-            <tr>
-                <td class="label" rowspan="1">결재</td>
-                <td class="slot">
-                    <div class="role">기안</div>
-                    <div class="who">{{ doc.drafter_name }}</div>
-                    <div class="when">{{ (doc.submitted_at or doc.created_at).strftime('%m/%d') }}</div>
-                </td>
-                {% for s in doc.steps %}
-                <td class="slot">
-                    <div class="role">{{ s.role_label }}</div>
-                    {% if s.status in ('approved', 'rejected') %}
-                    <div class="who">{{ s.approver_name }}</div>
-                    <div class="when">{{ s.acted_at.strftime('%m/%d') if s.acted_at else '' }}{% if s.status == 'rejected' %} 반려{% endif %}</div>
-                    {% else %}
-                    <div class="who">&nbsp;</div>
-                    <div class="pend">{{ '결재중' if s.status == 'current' else '대기' }}</div>
-                    {% endif %}
-                </td>
-                {% endfor %}
-            </tr>
-        </table>
-    </div>
+        </tbody>
+    </table>
 
     {# ── 양식 내용 (상세 화면과 같은 라벨·순서) ── #}
     <div class="section">
         <div class="section-title">내용</div>
         <table class="field-table">
+            <colgroup><col style="width:110px"><col></colgroup>
             {% if form %}
                 {% for fld in form.field_schema %}
                 {% if fld.type == 'lineitems' %}
@@ -267,9 +286,10 @@ th { background: #f2f2f2; font-weight: 700; text-align: center; }
     <div class="section">
         <div class="section-title">결재 의견</div>
         <table>
+            <colgroup><col style="width:110px"><col style="width:60px">
+                      <col style="width:90px"><col></colgroup>
             <thead>
-                <tr><th style="width:110px">결재자</th><th style="width:70px">처리</th>
-                    <th style="width:90px">일시</th><th>의견</th></tr>
+                <tr><th>결재자</th><th>처리</th><th>일시</th><th>의견</th></tr>
             </thead>
             <tbody>
                 {% for s in commented %}
