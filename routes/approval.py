@@ -690,6 +690,56 @@ def approval_attachment_delete(doc_id, att_id):
 
 
 # ────────────────────────────────────────────────────────
+# 인쇄 (보관·제출용 종이 출력)
+# ────────────────────────────────────────────────────────
+
+@approval_bp.route('/print')
+@menu_required('approval')
+def approval_print():
+    """결재 문서 인쇄용 화면.
+
+    ?ids=12,15,19 로 여러 건을 한 번에 넘기면 문서마다 새 장으로 이어 붙인다
+    (완료함에서 한 달치를 골라 한 번에 뽑는 용도).
+
+    열람 권한이 없는 문서는 조용히 빼지 않고 몇 건이 빠졌는지 알려준다 —
+    "골라서 눌렀는데 말없이 덜 나오는" 상황을 만들지 않기 위해서.
+    """
+    raw = request.args.get('ids', '')
+    ids = [i for i in (_safe_int(x) for x in raw.split(',')) if i]
+    if not ids:
+        flash('인쇄할 문서를 선택해 주세요.', 'warning')
+        return redirect(url_for('approval.approval_list', tab='done'))
+
+    with get_db() as db:
+        found = db.query(ApprovalDocument).filter(ApprovalDocument.id.in_(ids)).all()
+        by_id = {d.id: d for d in found}
+        # 사용자가 고른 순서를 유지한다
+        docs, denied = [], 0
+        for i in ids:
+            doc = by_id.get(i)
+            if not doc:
+                continue
+            if _can_view(doc):
+                docs.append(doc)
+            else:
+                denied += 1
+
+        if not docs:
+            flash('인쇄할 수 있는 문서가 없습니다. (열람 권한 확인)', 'danger')
+            return redirect(url_for('approval.approval_list', tab='done'))
+        if denied:
+            flash(f'열람 권한이 없는 {denied}건은 제외했습니다.', 'warning')
+
+        # 양식별 field_schema — 상세 화면과 같은 라벨·순서로 찍기 위해 필요
+        forms = {f.form_key: f for f in db.query(ApprovalFormTemplate).filter(
+            ApprovalFormTemplate.form_key.in_({d.form_key for d in docs})).all()}
+
+        return render_template('approval_print.html',
+                               docs=docs, forms=forms,
+                               printed_at=datetime.datetime.now())
+
+
+# ────────────────────────────────────────────────────────
 # 특근대장 엑셀 다운로드
 # ────────────────────────────────────────────────────────
 

@@ -14,6 +14,7 @@
   .ea-table tbody tr { cursor:pointer; }
   .ea-table tbody tr:hover { background:#f8fafc; }
   .ea-table td.ea-title { max-width:360px; }
+  .ea-table .ea-chk-col { cursor:default; text-align:center; padding-left:6px; padding-right:6px; }
 </style>
 
 <div class="page-hero mg-fade">
@@ -84,11 +85,21 @@
   {% endfor %}
 </ul>
 
+{# ── 선택 인쇄 — 완료함에서 한 달치를 골라 한 번에 뽑는 용도 ── #}
+<div class="d-flex align-items-center gap-2 mb-2" id="eaPrintBar" style="min-height:31px">
+  <button type="button" class="btn btn-sm btn-outline-secondary" id="eaPrintBtn" disabled
+          style="white-space:nowrap"><i class="bi bi-printer"></i> 선택 인쇄</button>
+  <span class="text-muted" style="font-size:.78rem" id="eaPrintCount">문서를 선택하세요</span>
+</div>
+
 {# ── 목록 ── #}
 <div class="table-responsive mg-fade" style="animation-delay:.1s">
   <table class="table ea-table mb-0">
     <thead>
       <tr>
+        <th style="width:34px" class="ea-chk-col">
+          <input type="checkbox" class="form-check-input" id="eaChkAll" title="전체 선택">
+        </th>
         <th style="width:120px">문서번호</th>
         <th style="width:90px">양식</th>
         <th>제목</th>
@@ -101,6 +112,9 @@
     <tbody>
       {% for d in docs %}
       <tr onclick="location.href='{{ url_for('approval.approval_detail', doc_id=d.id) }}'">
+        <td class="ea-chk-col" onclick="event.stopPropagation()">
+          <input type="checkbox" class="form-check-input ea-chk" value="{{ d.id }}">
+        </td>
         <td class="text-muted" style="font-family:var(--mg-mono,monospace);font-size:.76rem">{{ d.doc_no or '임시저장' }}</td>
         <td><span class="badge bg-light text-dark border">{{ d.form_name }}</span></td>
         <td class="ea-title fw-semibold">{{ d.title }}</td>
@@ -123,9 +137,49 @@
         <td class="text-muted" style="font-size:.76rem">{{ (d.submitted_at or d.created_at).strftime('%Y-%m-%d') }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="7" class="text-center text-muted py-5">문서가 없습니다.</td></tr>
+      <tr><td colspan="8" class="text-center text-muted py-5">문서가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+
+<script>
+/* 선택 인쇄 — 체크한 문서를 고른 순서대로 /approval/print 에 넘긴다 */
+(function () {
+  var btn   = document.getElementById('eaPrintBtn');
+  var label = document.getElementById('eaPrintCount');
+  var all   = document.getElementById('eaChkAll');
+  if (!btn) return;
+
+  function boxes() { return Array.prototype.slice.call(document.querySelectorAll('.ea-chk')); }
+  function checked() { return boxes().filter(function (b) { return b.checked; }); }
+
+  function sync() {
+    var n = checked().length;
+    btn.disabled = n === 0;
+    label.textContent = n ? n + '건 선택됨' : '문서를 선택하세요';
+    if (all) {
+      var total = boxes().length;
+      all.checked = total > 0 && n === total;
+      all.indeterminate = n > 0 && n < total;
+    }
+  }
+
+  document.addEventListener('change', function (e) {
+    if (e.target.classList.contains('ea-chk')) sync();
+  });
+  if (all) {
+    all.addEventListener('change', function () {
+      boxes().forEach(function (b) { b.checked = all.checked; });
+      sync();
+    });
+  }
+  btn.addEventListener('click', function () {
+    var ids = checked().map(function (b) { return b.value; });
+    if (!ids.length) return;
+    window.open('{{ url_for('approval.approval_print') }}?ids=' + ids.join(',') + '&auto=1', '_blank');
+  });
+  sync();
+})();
+</script>
 {% endblock %}

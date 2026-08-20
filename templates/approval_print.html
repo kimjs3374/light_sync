@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>전자결재 문서 출력{% if docs|length == 1 %} — {{ docs[0].doc_no or docs[0].title }}{% endif %}</title>
+<style>
+/* ── 용지 ──────────────────────────────────────────────
+   A4 세로, 상하 15mm / 좌우 18mm. 브라우저 기본 머리말·꼬리말은
+   인쇄 대화상자에서 끄도록 안내한다 (CSS로는 못 없앤다). */
+@page { size: A4 portrait; margin: 15mm 18mm; }
+
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    background: #f1f5f9;
+    color: #000;
+    font-family: "Malgun Gothic", "맑은 고딕", -apple-system, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.5;
+}
+
+/* 화면에서는 종이처럼 보이게, 인쇄할 때는 그림자·여백 제거 */
+.sheet {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 12px auto;
+    padding: 15mm 18mm;
+    background: #fff;
+    box-shadow: 0 2px 12px rgba(0,0,0,.12);
+}
+
+/* ── 화면 전용 조작 막대 ── */
+.toolbar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; gap: 8px; align-items: center;
+    padding: 10px 16px;
+    background: #0f172a; color: #fff;
+    font-size: 13px;
+}
+.toolbar button, .toolbar a {
+    padding: 5px 14px; border: 0; border-radius: 6px;
+    font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none;
+}
+.toolbar .go { background: #2563eb; color: #fff; }
+.toolbar .back { background: #334155; color: #fff; }
+.toolbar .hint { margin-left: auto; color: #94a3b8; font-size: 12px; }
+
+/* ── 문서 머리 ── */
+.doc-title {
+    text-align: center;
+    font-size: 20pt; font-weight: 700; letter-spacing: .35em;
+    padding-bottom: 6px; margin: 0 0 4px;
+}
+.doc-subtitle { text-align: center; font-size: 11pt; margin-bottom: 14px; }
+
+/* ── 표 공통: 인쇄물은 격자선이 있어야 칸이 읽힌다 ── */
+table { width: 100%; border-collapse: collapse; }
+th, td {
+    border: 1px solid #000;
+    padding: 5px 8px;
+    vertical-align: middle;
+    /* 인쇄물은 줄바꿈으로 다 보여준다 — 화면과 달리 ellipsis 로 자르면 안 된다 */
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+th { background: #f2f2f2; font-weight: 700; text-align: center; }
+
+/* ── 결재란 (기안 + 결재선) ── */
+.head-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+.meta-table { flex: 1; }
+.meta-table th { width: 78px; font-size: 9.5pt; }
+.meta-table td { font-size: 9.5pt; }
+
+.stamp-table { border-collapse: collapse; }
+.stamp-table .label {
+    writing-mode: vertical-rl; text-orientation: upright;
+    width: 22px; font-size: 9pt; letter-spacing: .2em;
+    background: #f2f2f2; font-weight: 700;
+}
+.stamp-table .slot { width: 62px; height: 62px; text-align: center; padding: 2px; }
+.stamp-table .slot .role { font-size: 8.5pt; border-bottom: 1px solid #000; padding-bottom: 2px; }
+.stamp-table .slot .who { font-size: 10pt; font-weight: 700; padding-top: 8px; }
+.stamp-table .slot .when { font-size: 7.5pt; }
+.stamp-table .slot .pend { font-size: 8pt; }
+
+/* ── 섹션 ── */
+.section { margin-top: 12px; }
+.section-title { font-size: 10.5pt; font-weight: 700; margin: 0 0 4px; }
+.field-table th { width: 110px; text-align: left; }
+.inner-table th, .inner-table td { font-size: 9.5pt; }
+.num { text-align: right; }
+.pre { white-space: pre-wrap; }
+.muted { color: #444; }
+
+.footer-note {
+    margin-top: 16px; padding-top: 6px;
+    border-top: 1px solid #000;
+    font-size: 8.5pt; display: flex; justify-content: space-between;
+}
+
+/* 문서마다 새 장에서 시작. 마지막 문서 뒤에는 빈 장을 만들지 않는다. */
+.sheet + .sheet { page-break-before: always; }
+
+@media print {
+    body { background: #fff; }
+    .toolbar { display: none !important; }
+    .sheet {
+        width: auto; min-height: 0;
+        margin: 0; padding: 0;
+        box-shadow: none;
+    }
+    /* 배경색이 있는 칸(표 머리)이 인쇄에서 흰색으로 날아가지 않게 */
+    th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    /* 표가 장 경계에서 반으로 잘리지 않게 */
+    table, tr, .head-row { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+    <button class="go" onclick="window.print()">🖨 인쇄</button>
+    <a class="back" href="{{ url_for('approval.approval_list', tab='done') }}">목록</a>
+    <span>{{ docs|length }}건</span>
+    <span class="hint">인쇄 대화상자에서 “머리글/바닥글” 끄고 “배경 그래픽” 켜면 깔끔합니다.</span>
+</div>
+
+{% for doc in docs %}
+{% set form = forms.get(doc.form_key) %}
+<div class="sheet">
+
+    <h1 class="doc-title">{{ doc.form_name }}</h1>
+    <div class="doc-subtitle">{{ doc.title }}</div>
+
+    {# ── 기안 정보 + 결재란 ── #}
+    <div class="head-row">
+        <table class="meta-table">
+            <tr>
+                <th>문서번호</th><td>{{ doc.doc_no or '-' }}</td>
+                <th>기안일</th><td>{{ (doc.submitted_at or doc.created_at).strftime('%Y-%m-%d') }}</td>
+            </tr>
+            <tr>
+                <th>기안자</th>
+                <td>{{ doc.drafter_name }}{{ ' ' + doc.drafter_position if doc.drafter_position }}</td>
+                <th>소속</th><td>{{ doc.drafter_dept or '-' }}</td>
+            </tr>
+            <tr>
+                <th>결재상태</th>
+                <td>
+                    {% if doc.status == 'approved' %}결재완료
+                    {% elif doc.status == 'rejected' %}반려
+                    {% elif doc.status == 'pending' %}진행중{% if doc.effect_active %} (부서장 결재로 효력발생){% endif %}
+                    {% elif doc.status == 'canceled' %}회수
+                    {% else %}작성중{% endif %}
+                </td>
+                <th>완료일</th>
+                <td>{{ doc.completed_at.strftime('%Y-%m-%d') if doc.completed_at else '-' }}</td>
+            </tr>
+        </table>
+
+        <table class="stamp-table">
+            <tr>
+                <td class="label" rowspan="1">결재</td>
+                <td class="slot">
+                    <div class="role">기안</div>
+                    <div class="who">{{ doc.drafter_name }}</div>
+                    <div class="when">{{ (doc.submitted_at or doc.created_at).strftime('%m/%d') }}</div>
+                </td>
+                {% for s in doc.steps %}
+                <td class="slot">
+                    <div class="role">{{ s.role_label }}</div>
+                    {% if s.status in ('approved', 'rejected') %}
+                    <div class="who">{{ s.approver_name }}</div>
+                    <div class="when">{{ s.acted_at.strftime('%m/%d') if s.acted_at else '' }}{% if s.status == 'rejected' %} 반려{% endif %}</div>
+                    {% else %}
+                    <div class="who">&nbsp;</div>
+                    <div class="pend">{{ '결재중' if s.status == 'current' else '대기' }}</div>
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+        </table>
+    </div>
+
+    {# ── 양식 내용 (상세 화면과 같은 라벨·순서) ── #}
+    <div class="section">
+        <div class="section-title">내용</div>
+        <table class="field-table">
+            {% if form %}
+                {% for fld in form.field_schema %}
+                {% if fld.type == 'lineitems' %}
+                {% set rows = (doc.form_data.get(fld.key) if doc.form_data else []) or [] %}
+                <tr>
+                    <th>{{ fld.label }}</th>
+                    <td style="padding:0">
+                        <table class="inner-table" style="border:0">
+                            <thead>
+                                <tr>{% for c in fld.columns %}
+                                    <th class="{{ 'num' if c.key == 'amount' }}">{{ c.label }}</th>
+                                {% endfor %}</tr>
+                            </thead>
+                            <tbody>
+                                {% for r in rows %}
+                                <tr>{% for c in fld.columns %}
+                                    <td class="{{ 'num' if c.key == 'amount' }}">
+                                        {%- if c.key == 'amount' and r.get(c.key) -%}
+                                            {{ '{:,}'.format(r.get(c.key)|int) }}
+                                        {%- else -%}
+                                            {{ r.get(c.key) or '' }}
+                                        {%- endif -%}
+                                    </td>
+                                {% endfor %}</tr>
+                                {% else %}
+                                <tr><td colspan="{{ fld.columns|length }}">내역 없음</td></tr>
+                                {% endfor %}
+                            </tbody>
+                            {% if doc.amount %}
+                            <tfoot>
+                                <tr>
+                                    <th colspan="{{ fld.columns|length - 1 }}" class="num">합계</th>
+                                    <th class="num">{{ '{:,}'.format(doc.amount|int) }} 원</th>
+                                </tr>
+                            </tfoot>
+                            {% else %}
+                            {% set ns = namespace(hsum=0, has_hours=false) %}
+                            {% for c in fld.columns %}{% if c.key == 'hours' %}{% set ns.has_hours = true %}{% endif %}{% endfor %}
+                            {% if ns.has_hours %}
+                            {% for r in rows %}{% set ns.hsum = ns.hsum + (r.get('hours')|float(0)) %}{% endfor %}
+                            <tfoot>
+                                <tr><th colspan="{{ fld.columns|length }}" class="num">합계 {{ '{:g}'.format(ns.hsum) }} h</th></tr>
+                            </tfoot>
+                            {% endif %}
+                            {% endif %}
+                        </table>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <th>{{ fld.label }}</th>
+                    <td>{{ (doc.form_data.get(fld.key) if doc.form_data else '') or '-' }}{{ ' ' + fld.suffix if fld.suffix and doc.form_data and doc.form_data.get(fld.key) else '' }}</td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            {% endif %}
+            {% if doc.content %}
+            <tr><th>본문/비고</th><td class="pre">{{ doc.content }}</td></tr>
+            {% endif %}
+            {% if doc.references %}
+            <tr>
+                <th>참조/수신</th>
+                <td>{% for r in doc.references %}{{ r.ref_label }} {{ r.user_name }}{{ ', ' if not loop.last }}{% endfor %}</td>
+            </tr>
+            {% endif %}
+            {% if doc.attachments %}
+            <tr>
+                <th>첨부파일</th>
+                <td>{% for a in doc.attachments %}{{ a.filename }}{{ ', ' if not loop.last }}{% endfor %}
+                    <span class="muted">({{ doc.attachments|length }}건 — 파일은 ERP에서 확인)</span></td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+
+    {# ── 결재 의견 — 반려 사유가 종이에 남아야 나중에 근거가 된다 ── #}
+    {% set commented = doc.steps | selectattr('comment') | list %}
+    {% if commented %}
+    <div class="section">
+        <div class="section-title">결재 의견</div>
+        <table>
+            <thead>
+                <tr><th style="width:110px">결재자</th><th style="width:70px">처리</th>
+                    <th style="width:90px">일시</th><th>의견</th></tr>
+            </thead>
+            <tbody>
+                {% for s in commented %}
+                <tr>
+                    <td>{{ s.approver_name }}{{ ' ' + s.approver_position if s.approver_position }}</td>
+                    <td style="text-align:center">
+                        {%- if s.status == 'approved' -%}승인
+                        {%- elif s.status == 'rejected' -%}반려
+                        {%- else -%}-{%- endif -%}
+                    </td>
+                    <td style="text-align:center">{{ s.acted_at.strftime('%Y-%m-%d') if s.acted_at else '-' }}</td>
+                    <td class="pre">{{ s.comment }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="footer-note">
+        <span>(주)매그나텍 전자결재 — {{ doc.doc_no or '임시저장' }}</span>
+        <span>출력 {{ printed_at.strftime('%Y-%m-%d %H:%M') }}{% if docs|length > 1 %} · {{ loop.index }}/{{ docs|length }}{% endif %}</span>
+    </div>
+</div>
+{% endfor %}
+
+<script>
+// ?auto=1 로 들어오면 바로 인쇄 대화상자를 띄운다 (목록에서 한 번에 뽑을 때)
+if (new URLSearchParams(location.search).get('auto') === '1') {
+    window.addEventListener('load', function () { window.print(); });
+}
+</script>
+</body>
+</html>

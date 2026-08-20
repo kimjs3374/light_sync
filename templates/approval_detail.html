@@ -45,6 +45,10 @@
           <i class="bi bi-file-earmark-excel"></i> 엑셀
         </a>
         {% endif %}
+        <a href="{{ url_for('approval.approval_print', ids=doc.id) }}" target="_blank"
+           class="btn btn-sm btn-outline-secondary" style="white-space:nowrap" title="보관·제출용 인쇄">
+          <i class="bi bi-printer"></i> 인쇄
+        </a>
         <a href="{{ url_for('approval.approval_list') }}" class="btn btn-sm">목록</a>
       </div>
     </div>
