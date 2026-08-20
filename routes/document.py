@@ -1112,7 +1112,9 @@ def bulk_upload_page():
 @menu_required('documents')
 def bulk_upload_contract_pdf():
     """계약서 PDF 일괄 업로드 API — JSON 응답."""
-    from modules.services.contract_pdf_parser import parse_contract_pdf, update_procurement_from_pdf
+    from modules.services.contract_pdf_parser import (
+        parse_contract_pdf, update_procurement_from_pdf, req_no_candidates,
+    )
 
     files = request.files.getlist('files')
     if not files or not files[0].filename:
@@ -1140,10 +1142,8 @@ def bulk_upload_contract_pdf():
                 continue
 
             # 변경차수 제거: -00 또는 끝 00 (R26TA0148584300→R26TA01485843)
-            req_no = re.sub(r'-\d{2}$', '', req_no_raw)
-            candidates = [req_no]
-            if req_no.endswith('00') and len(req_no) > 12:
-                candidates.append(req_no[:-2])
+            candidates = req_no_candidates(req_no_raw)
+            req_no = candidates[0] if candidates else req_no_raw
 
             # 계약번호로 Contract 직접 매칭
             contract = None
@@ -1207,7 +1207,7 @@ def bulk_upload_contract_pdf():
 
             insp = parsed.get('inspection_org', '').strip()
             accp = parsed.get('acceptance_org', '').strip()
-            if insp and accp and insp != accp:
+            if orgs_really_differ(insp, accp):
                 ct = db.query(Contract).filter(
                     Contract.project_id == package.project_id
                 ).first() if package.project_id else None
@@ -1233,6 +1233,26 @@ def bulk_upload_contract_pdf():
         db.commit()
 
     return jsonify({'results': results})
+
+
+def orgs_really_differ(inspection_org, acceptance_org):
+    """검사기관 ≠ 검수기관(=전문기관검사)이라고 단정해도 되는지 판단한다.
+
+    PDF에서 기관명이 잘려나오면 `전남광주통합특별시남구` vs `구` 처럼 실제로는
+    같은 기관인데 다르게 보인다. 이 상태로 전문기관검사를 켜면 검사 일정과
+    서류가 통째로 잘못 흘러가므로, 파싱이 온전할 때만 판단한다.
+    """
+    insp = (inspection_org or '').strip()
+    accp = (acceptance_org or '').strip()
+    if not insp or not accp or insp == accp:
+        return False
+    # 기관명이라 보기 어려운 길이 → 파싱 실패로 간주
+    if len(insp) < 3 or len(accp) < 3:
+        return False
+    # 한쪽이 다른 쪽의 조각이면 접힌 값이 잘린 것
+    if insp in accp or accp in insp:
+        return False
+    return True
 
 
 def _handle_upload_contract_pdf(db, package, procurements):
@@ -1296,7 +1316,7 @@ def _handle_upload_contract_pdf(db, package, procurements):
         # 검사기관 ≠ 검수기관이면 전문기관검사로 설정
         insp = parsed.get('inspection_org', '').strip()
         accp = parsed.get('acceptance_org', '').strip()
-        if insp and accp and insp != accp:
+        if orgs_really_differ(insp, accp):
             contract = db.query(Contract).filter(
                 Contract.project_id == package.project_id
             ).first() if package.project_id else None
