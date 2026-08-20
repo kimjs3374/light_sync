@@ -33,7 +33,11 @@ export default function PurchaseOrderDetail() {
   };
 
   const sendEmail = async () => {
-    if (!confirm(`거래처 ${data.purchase_order.vendor_name}에 이메일을 발송할까요?`)) return;
+    const sentAt = data.purchase_order.email_sent_at;
+    const msg = sentAt
+      ? `[주의] 이미 ${sentAt}에 발송된 발주서입니다.\n거래처가 같은 발주서를 중복으로 받게 됩니다.\n\n그래도 ${data.purchase_order.vendor_name}에 다시 발송할까요?`
+      : `거래처 ${data.purchase_order.vendor_name}에 이메일을 발송할까요?`;
+    if (!confirm(msg)) return;
     setBusy(true);
     try {
       const r = await api.post(`/purchase-orders/${id}/send-email`, {});
@@ -91,7 +95,7 @@ export default function PurchaseOrderDetail() {
         <a href={pdfUrl} target="_blank" rel="noreferrer" style={btnStyle('var(--accent)', '#fff')}>📄 PDF</a>
         {po.vendor_email && (
           <button onClick={sendEmail} disabled={busy} style={btnStyle('var(--orange)', '#fff')}>
-            {busy ? '전송중...' : '📧 이메일 발송'}
+            {busy ? '전송중...' : (po.email_sent_at ? '📧 이메일 재발송' : '📧 이메일 발송')}
           </button>
         )}
         {isDraft && (

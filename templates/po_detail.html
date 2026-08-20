@@ -131,9 +131,14 @@
             {% if po.vendor and po.vendor.email %}
             <form method="POST" action="{{ url_for('purchase_order.po_send_email', po_id=po.id) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <button type="submit" class="btn btn-success w-100 action-btn"
-                    onclick="return confirm('{{ po.vendor.email }}로 발주서를 발송하시겠습니까?');">
-                    이메일 발송 ({{ po.vendor.email }})
+                {% if po.email_sent_at %}
+                <div class="alert alert-warning mb-2 py-2 small" style="border-radius:8px;">
+                    {{ po.email_sent_at.strftime('%m/%d %H:%M') }}에 {{ po.email_to or po.vendor.email }}로 발송된 발주서입니다.
+                </div>
+                {% endif %}
+                <button type="submit" class="btn {{ 'btn-outline-success' if po.email_sent_at else 'btn-success' }} w-100 action-btn"
+                    onclick="return confirm('{% if po.email_sent_at %}[주의] 이미 {{ po.email_sent_at.strftime('%m/%d %H:%M') }}에 발송된 발주서입니다.\n거래처가 같은 발주서를 중복으로 받게 됩니다.\n\n그래도 {{ po.vendor.email }}로 다시 발송하시겠습니까?{% else %}{{ po.vendor.email }}로 발주서를 발송하시겠습니까?{% endif %}');">
+                    {{ '이메일 재발송' if po.email_sent_at else '이메일 발송' }} ({{ po.vendor.email }})
                 </button>
             </form>
             {% elif po.vendor %}
