@@ -74,18 +74,50 @@ def _fmt_money(val):
 @login_required
 @menu_required('documents')
 def document_list():
-    """서류관리 목록 — 납품요구번호별 그룹핑."""
+    """서류관리 목록 — 납품요구번호별 그룹핑.
+
+    서류는 아카이브 성격이라 완료건도 찾아볼 수 있어야 한다.
+    기본은 진행건만 보여주고, show_done=1 이면 완료건까지 전부 포함한다.
+    (여기서 말하는 '완료'는 수금 기준 payment_status — 납품 완료 여부와는 별개)
+    """
     with get_db() as db:
         q = request.args.get('q', '').strip()
+        show_done = request.args.get('show_done', '') == '1'
+        page = safe_int(request.args.get('page'), 1)
+        per_page = 50
 
-        # 활성 계약(완료/예외 제외)이 있는 건만 표시
+        # 활성 계약(완료/예외 제외)이 있는 건
         active_req_nos_subq = db.query(Contract.g2b_contract_no).filter(
             Contract.g2b_contract_no.isnot(None),
             Contract.payment_status.notin_(DONE_STATUSES),
             Contract.is_excluded.isnot(True),
         ).subquery()
 
-        query = db.query(
+        def apply_filters(query):
+            """목록·건수·통계가 항상 같은 모집단을 보도록 필터를 한 곳에서 적용."""
+            query = query.filter(G2bProcurement.fnl_cntrct_dlvr_req_chg_ord_yn == 'Y')
+            if not show_done:
+                query = query.filter(
+                    G2bProcurement.cntrct_dlvr_req_no.in_(active_req_nos_subq)
+                )
+            if q:
+                query = query.filter(
+                    G2bProcurement.cntrct_dlvr_req_nm.ilike(f'%{q}%') |
+                    G2bProcurement.cntrct_dlvr_req_no.ilike(f'%{q}%') |
+                    G2bProcurement.dminstt_nm.ilike(f'%{q}%')
+                )
+            return query
+
+        # 필터링된 납품요구번호 집합 — 총건수/통계의 기준
+        filtered_sq = apply_filters(
+            db.query(G2bProcurement.cntrct_dlvr_req_no.label('rn'))
+        ).group_by(G2bProcurement.cntrct_dlvr_req_no).subquery()
+
+        total = db.query(func.count()).select_from(filtered_sq).scalar() or 0
+        pagination = make_pagination(page, per_page, total)
+        offset = (pagination['page'] - 1) * per_page
+
+        query = apply_filters(db.query(
             G2bProcurement.cntrct_dlvr_req_no,
             func.max(G2bProcurement.cntrct_dlvr_req_nm).label('business_name'),
             func.max(G2bProcurement.dminstt_nm).label('demand_org'),
@@ -93,21 +125,12 @@ def document_list():
             func.max(G2bProcurement.dlvr_tmlmt_date).label('delivery_due'),
             func.max(G2bProcurement.cntrct_dlvr_req_date).label('req_date'),
             func.count(G2bProcurement.id).label('item_count'),
-        ).filter(
-            G2bProcurement.fnl_cntrct_dlvr_req_chg_ord_yn == 'Y',
-            G2bProcurement.cntrct_dlvr_req_no.in_(active_req_nos_subq),
-        ).group_by(
+        )).group_by(
             G2bProcurement.cntrct_dlvr_req_no
-        )
+        ).order_by(
+            func.max(G2bProcurement.cntrct_dlvr_req_date).desc()
+        ).offset(offset).limit(per_page)
 
-        if q:
-            query = query.filter(
-                G2bProcurement.cntrct_dlvr_req_nm.ilike(f'%{q}%') |
-                G2bProcurement.cntrct_dlvr_req_no.ilike(f'%{q}%') |
-                G2bProcurement.dminstt_nm.ilike(f'%{q}%')
-            )
-
-        query = query.order_by(func.max(G2bProcurement.cntrct_dlvr_req_date).desc())
         groups = query.all()
 
         req_nos = [g.cntrct_dlvr_req_no for g in groups]
@@ -151,12 +174,28 @@ def document_list():
                 'status_text_color': status_text_color,
             })
 
+        # 통계는 현재 페이지가 아니라 필터된 전체 기준으로 집계
+        pkg_q = db.query(DocumentPackage).join(
+            filtered_sq, DocumentPackage.procurement_req_no == filtered_sq.c.rn
+        )
+        done_cnt = pkg_q.filter(DocumentPackage.delivery_generated.is_(True)).count()
+        delivery_ready_cnt = pkg_q.filter(
+            DocumentPackage.delivery_generated.isnot(True),
+            DocumentPackage.commencement_generated.is_(True),
+        ).count()
+        commencement_ready_cnt = pkg_q.filter(
+            DocumentPackage.delivery_generated.isnot(True),
+            DocumentPackage.commencement_generated.isnot(True),
+            DocumentPackage.req_pdf_path.isnot(None),
+        ).count()
+
         stats = {
-            'total': len(items),
-            'no_contract': sum(1 for i in items if i['status'] == '계약서 미등록'),
-            'commencement_ready': sum(1 for i in items if i['status'] == '착수계 생성가능'),
-            'delivery_ready': sum(1 for i in items if i['status'] == '납품계 생성가능'),
-            'done': sum(1 for i in items if i['status'] == '완료'),
+            'total': total,
+            # 나머지 = 패키지가 없거나 납품요구서 PDF 미등록
+            'no_contract': total - done_cnt - delivery_ready_cnt - commencement_ready_cnt,
+            'commencement_ready': commencement_ready_cnt,
+            'delivery_ready': delivery_ready_cnt,
+            'done': done_cnt,
         }
 
         # 공통 서류 등록 상태 — 모달 열 때만 확인 (AJAX)
@@ -164,6 +203,7 @@ def document_list():
 
         return render_template('document_list.html',
                                items=items, stats=stats, q=q, fmt_money=_fmt_money,
+                               show_done=show_done, pagination=pagination,
                                common_docs_status=common_docs_status,
                                storage_enabled=is_storage_enabled())
 

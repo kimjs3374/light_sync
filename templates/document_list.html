@@ -176,6 +176,14 @@
                 <input type="text" name="q" class="form-control form-control-sm"
                        placeholder="사업명, 납품요구번호, 수요기관 검색" value="{{ q }}">
             </div>
+            <div class="col-md-3 col-4">
+                <label class="small fw-bold d-block">&nbsp;</label>
+                <div class="form-check" style="white-space:nowrap">
+                    <input type="checkbox" class="form-check-input" name="show_done" value="1" id="showDoneChk"
+                           {{ 'checked' if show_done }} onchange="this.form.submit()">
+                    <label class="form-check-label small" for="showDoneChk">완료건 포함</label>
+                </div>
+            </div>
             <div class="col-12 col-md-3 text-md-end">
                 <a href="{{ url_for('document.document_list') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
                 <button type="submit" class="btn btn-primary btn-sm fw-bold">검색</button>
@@ -238,6 +246,8 @@
             </tbody>
         </table>
     </div>
+
+    {% include 'components/pagination.html' %}
 </div>
 {% endblock %}
 
