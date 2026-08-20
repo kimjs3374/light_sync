@@ -998,6 +998,33 @@ def remind_pending_approvals_cli():
     click.echo("[미결재알림] 결재자 %d명 / 문서 %d건 발송" % (n_appr, n_docs))
 
 
+@app.cli.command('check-mail-volume')
+@click.option('--dry-run', is_flag=True, help='알림 발송 없이 통계만 출력')
+@click.option('--force', is_flag=True, help='임계 미만/쿨다운 중이어도 알림 발송')
+def check_mail_volume_cli(dry_run, force):
+    """메일 발송량 급증 감시 → 임계 초과 시 카카오워크 알림 (crontab: 10분마다).
+
+    2026-08-12 오픈릴레이로 사흘간 10.5만건이 나가는 동안 감지되지 않은 사고 재발 방지.
+    스팸은 ERP를 거치지 않으므로 postfix 컨테이너 로그를 직접 센다.
+    """
+    from modules.services.mail_volume_monitor import run_volume_check
+
+    r = run_volume_check(dry_run=dry_run, force=force)
+    click.echo(
+        f"[메일감시] 최근 {r['window_minutes']}분 외부발송 {r['outbound']:,}건 "
+        f"(임계 {r['threshold']:,}) 내부배달 {r['internal']:,}건 릴레이차단 {r['rejects']:,}건"
+    )
+    if r['exceeded'] or force:
+        for d, c in r['top_domains']:
+            click.echo(f"  수신 {d}: {c:,}건")
+        for s, c in r['top_senders']:
+            click.echo(f"  발신 {s}: {c:,}건")
+    if r['suppressed']:
+        click.echo("  → 쿨다운 중이라 알림 억제")
+    elif r['exceeded']:
+        click.echo(f"  → 알림 발송 {'성공' if r['alerted'] else '실패/미발송'}")
+
+
 # =====================================================================
 # 백그라운드 스케줄러 (출장 상태 자동 업데이트 등)
 # - 개발: Werkzeug reloader 자식 프로세스에서만 실행 (이중 실행 방지)
