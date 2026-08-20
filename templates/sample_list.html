@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}시료관리{% endblock %}
+
+{% block content %}
+<style>
+  .smp-table th { font-size:.72rem; color:#64748b; font-weight:700; border-bottom:1px solid #e2e8f0;
+                  white-space:nowrap; background:#f8fafc; position:sticky; top:0; z-index:1; }
+  .smp-table td { vertical-align:middle; font-size:.82rem; padding:6px 8px; border-bottom:1px solid #e2e8f0;
+                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .smp-table tbody tr { transition:background .12s; }
+  .smp-table tbody tr:hover { background:#eef2ff; }
+  .stat-pill { display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:8px;
+               font-size:.82rem; font-weight:600; background:#f1f5f9; text-decoration:none; color:#0f172a; }
+  .stat-pill:hover { background:#e2e8f0; color:#0f172a; }
+  .stat-pill.on { outline:2px solid #3b82f6; }
+  .stat-pill .num { font-size:1.1rem; font-weight:700; }
+  .tab-bar .btn { font-size:.82rem; padding:5px 14px; border-radius:8px; }
+  .tab-bar .btn.active { background:#1e293b; color:#fff; }
+  .tab-bar .btn:not(.active) { background:#f1f5f9; color:#475569; }
+  .sample-no { font-family:var(--mg-mono); font-weight:700; font-size:.8rem; }
+  @media (max-width: 1199.98px) { .main-content .table { min-width:0 !important; table-layout:auto !important; } }
+</style>
+
+{% set STATUS_STYLE = {
+  '제작중':'bg-secondary', '보관중':'bg-success', '시험중':'bg-primary',
+  '반출':'bg-warning text-dark', '반납완료':'bg-info text-dark', '폐기':'bg-dark'
+} %}
+{% set qs = 'q=' ~ filters.q ~ '&purpose=' ~ filters.purpose %}
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Sample Management</div>
+            <h2>시료관리</h2>
+            <div class="hero-sub">시료 스펙과 시험 이력을 관리하고, QR 라벨로 실물에서 바로 조회합니다</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2" style="white-space:nowrap;">
+            <button type="button" id="btnLabelPdf" class="btn btn-outline-light btn-sm" disabled>
+                라벨프린터 PDF (<span id="selCount">0</span>)
+            </button>
+            <button type="button" id="btnLabels" class="btn btn-outline-light btn-sm" disabled>A4 라벨지</button>
+            {% if can_write %}
+            <a href="{{ url_for('sample.sample_create') }}" class="btn btn-hi btn-sm">+ 시료 등록</a>
+            {% endif %}
+        </div>
+    </div>
+
+    {# 통계 — 클릭 시 필터 #}
+    <div class="d-flex flex-wrap gap-3 mt-3">
+        <a href="?{{ qs }}" class="stat-pill {{ 'on' if not filters.status and not filters.expiry }}" style="border-left:3px solid #64748b;">
+            <span>전체</span><span class="num">{{ stats.total }}</span></a>
+        <a href="?status=보관중&{{ qs }}" class="stat-pill {{ 'on' if filters.status == '보관중' }}" style="border-left:3px solid #16a34a;">
+            <span>보관중</span><span class="num text-success">{{ stats.stored }}</span></a>
+        <a href="?status=시험중&{{ qs }}" class="stat-pill {{ 'on' if filters.status == '시험중' }}" style="border-left:3px solid #3b82f6;">
+            <span>시험중</span><span class="num text-primary">{{ stats.testing }}</span></a>
+        <a href="?status=반출&{{ qs }}" class="stat-pill {{ 'on' if filters.status == '반출' }}" style="border-left:3px solid #f59e0b;">
+            <span>반출</span><span class="num" style="color:#d97706;">{{ stats.out }}</span></a>
+        <a href="?expiry=warning&{{ qs }}" class="stat-pill {{ 'on' if filters.expiry == 'warning' }}" style="border-left:3px solid #f59e0b;">
+            <span>성적서 30일</span><span class="num" style="color:#d97706;">{{ stats.expiring }}</span></a>
+        <a href="?expiry=expired&{{ qs }}" class="stat-pill {{ 'on' if filters.expiry == 'expired' }}" style="border-left:3px solid #ef4444;">
+            <span>성적서 만료</span><span class="num text-danger">{{ stats.expired }}</span></a>
+    </div>
+</div>
+
+{# 용도 탭 + 검색 #}
+<div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
+    <div class="tab-bar d-flex gap-1 flex-wrap">
+        <a href="?status={{ filters.status }}&expiry={{ filters.expiry }}&q={{ filters.q }}"
+           class="btn {% if not filters.purpose %}active{% endif %}">전체 용도</a>
+        {% for p in purpose_choices %}
+        <a href="?purpose={{ p }}&status={{ filters.status }}&expiry={{ filters.expiry }}&q={{ filters.q }}"
+           class="btn {% if filters.purpose == p %}active{% endif %}">{{ p }}</a>
+        {% endfor %}
+    </div>
+    <form class="d-flex gap-2" method="get" action="{{ url_for('sample.sample_list') }}" style="max-width:340px;">
+        <input type="hidden" name="purpose" value="{{ filters.purpose }}">
+        <input type="hidden" name="status" value="{{ filters.status }}">
+        <input type="hidden" name="expiry" value="{{ filters.expiry }}">
+        <input type="text" name="q" value="{{ filters.q }}" class="form-control form-control-sm"
+               placeholder="시료번호, 모델명, 보관위치 검색" autocomplete="off">
+        <button class="btn btn-sm btn-dark" style="white-space:nowrap;">검색</button>
+        {% if filters.q or filters.purpose or filters.status or filters.expiry %}
+        <a href="{{ url_for('sample.sample_list') }}" class="btn btn-sm btn-outline-secondary" style="white-space:nowrap;">초기화</a>
+        {% endif %}
+    </form>
+</div>
+
+{# 테이블 #}
+<div class="table-responsive">
+    <table class="table smp-table mb-0">
+        <thead>
+            <tr>
+                <th style="width:34px;"><input type="checkbox" id="chkAll" class="form-check-input"></th>
+                <th style="width:130px;">시료번호</th>
+                <th>모델명</th>
+                <th class="text-center" style="width:96px;">용도</th>
+                <th class="text-center" style="width:82px;">상태</th>
+                <th style="width:150px;">보관위치</th>
+                <th class="text-center" style="width:92px;">제작일</th>
+                <th class="text-center" style="width:70px;">시험</th>
+                <th class="text-center" style="width:104px;">성적서 유효</th>
+                <th class="text-center" style="width:64px;">스캔</th>
+                <th class="text-center" style="width:104px;">QR</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for s in samples %}
+            {% set est = s.expiry_status %}
+            <tr>
+                <td><input type="checkbox" class="form-check-input chk-sample" value="{{ s.id }}"></td>
+                <td><a href="{{ url_for('sample.sample_detail', sample_id=s.id) }}" class="sample-no text-decoration-none">{{ s.sample_no }}</a></td>
+                <td style="max-width:0;" title="{{ s.model_name }}">{{ s.model_name }}</td>
+                <td class="text-center"><span class="badge bg-light text-dark border">{{ s.purpose }}</span></td>
+                <td class="text-center"><span class="badge {{ STATUS_STYLE.get(s.status, 'bg-secondary') }}">{{ s.status }}</span></td>
+                <td title="{{ s.location or '' }}">{{ s.location or '-' }}</td>
+                <td class="text-center">{{ s.mfg_date.strftime('%Y-%m-%d') if s.mfg_date else '-' }}</td>
+                <td class="text-center">{{ s.test_count }}건</td>
+                <td class="text-center">
+                    {% if est == 'expired' %}<span class="badge bg-danger">만료</span>
+                    {% elif est == 'critical' %}<span class="badge bg-danger">7일 이내</span>
+                    {% elif est == 'warning' %}<span class="badge bg-warning text-dark">30일 이내</span>
+                    {% elif est == 'ok' %}<span class="badge bg-success">유효</span>
+                    {% else %}<span class="text-muted">-</span>{% endif %}
+                </td>
+                <td class="text-center">{{ s.scan_count or 0 }}</td>
+                <td class="text-center">
+                    <a href="{{ url_for('sample.sample_label_pdf', sample_id=s.id) }}" target="_blank"
+                       class="btn btn-sm btn-outline-dark py-0 px-1" style="font-size:.7rem;">라벨</a>
+                    <a href="{{ url_for('sample.sample_public', token=s.qr_token) }}" target="_blank"
+                       class="btn btn-sm btn-outline-secondary py-0 px-1" style="font-size:.7rem;">QR</a>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="11" class="text-center text-muted py-5">등록된 시료가 없습니다.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% include 'components/pagination.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const chkAll = document.getElementById('chkAll');
+  const btnSheet = document.getElementById('btnLabels');
+  const btnPdf = document.getElementById('btnLabelPdf');
+  const counter = document.getElementById('selCount');
+  const sheetUrl = "{{ url_for('sample.sample_labels') }}";
+  const pdfUrl = "{{ url_for('sample.sample_labels_pdf') }}";
+
+  function selected() {
+    return Array.from(document.querySelectorAll('.chk-sample:checked')).map(el => el.value);
+  }
+  function refresh() {
+    const n = selected().length;
+    counter.textContent = n;
+    btnSheet.disabled = n === 0;
+    btnPdf.disabled = n === 0;
+  }
+  document.querySelectorAll('.chk-sample').forEach(el => el.addEventListener('change', refresh));
+  if (chkAll) {
+    chkAll.addEventListener('change', function () {
+      document.querySelectorAll('.chk-sample').forEach(el => { el.checked = chkAll.checked; });
+      refresh();
+    });
+  }
+  btnSheet.addEventListener('click', function () {
+    const ids = selected();
+    if (ids.length) window.open(sheetUrl + '?ids=' + ids.join(','), '_blank');
+  });
+  btnPdf.addEventListener('click', function () {
+    const ids = selected();
+    if (ids.length) window.open(pdfUrl + '?ids=' + ids.join(','), '_blank');
+  });
+  refresh();
+})();
+</script>
+{% endblock %}

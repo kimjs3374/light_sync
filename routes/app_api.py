@@ -26,6 +26,10 @@ from modules.models import (
     ProcessingOrder, TaxInvoice, Certification, BomHeader,
     Drawing, DrawingVersion, BusinessTrip, BusinessTripMember,
     Tool, ProjectPhoto, StockMovement,
+    Sample, SampleTest, SampleLog,
+    SAMPLE_PURPOSE_CHOICES, SAMPLE_STATUS_CHOICES, TEST_CATEGORY_CHOICES,
+    TEST_TYPE_CHOICES, TEST_RESULT_CHOICES, TEST_AGENCY_SUGGESTIONS, MEASURE_FIELDS,
+    append_sample_log, generate_sample_no,
     BomItem, QuotationItem, DeliverySplit, ProcessingOrderItem,
     Contact, Material, DeliverySplit, DeliverySplitItem, DeliveryPhoto,
 )
@@ -8261,3 +8265,550 @@ def app_chat_search(conv_id):
     for r in results:
         r['id'] = str(r['id'])
     return jsonify(ok=True, results=results)
+
+
+# =====================================================================
+# 시료관리 (생산부) — 시료 스펙 + 시험이력 + QR
+#   웹(routes/sample.py)과 동일한 규칙을 그대로 따른다:
+#   - 시료번호는 모델별 채번, 상태변경/시험등록은 전부 sample_logs 기록
+#   - internal_note 는 사내 전용 (공개 QR 페이지에는 안 나감)
+# =====================================================================
+
+def _sample_user_name():
+    """앱 토큰 사용자 → '이름 직급' 표기."""
+    with get_db() as db:
+        user = db.get(User, request._app_user_id)
+        if not user:
+            return '사용자'
+        return f"{user.full_name} {user.position or ''}".strip()
+
+
+def _sample_pdate(s):
+    if not s:
+        return None
+    try:
+        return datetime.date.fromisoformat(str(s).strip())
+    except Exception:
+        return None
+
+
+def _sample_pfloat(v):
+    try:
+        return float(str(v).strip()) if v not in (None, '') else None
+    except Exception:
+        return None
+
+
+def _sample_src():
+    """multipart / JSON 양쪽 지원."""
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        return request.form
+    return request.get_json(silent=True) or {}
+
+
+def _ser_sample_row(s):
+    """목록용 요약."""
+    return {
+        'id': s.id,
+        'sample_no': s.sample_no,
+        'model_name': s.model_name or '',
+        'purpose': s.purpose or '',
+        'status': s.status or '',
+        'location': s.location or '',
+        'made_by': s.made_by or '',
+        'mfg_date': str(s.mfg_date) if s.mfg_date else '',
+        'test_count': len(s.tests),
+        'expiry_status': s.expiry_status,
+        'scan_count': s.scan_count or 0,
+        'qr_token': s.qr_token,
+    }
+
+
+def _ser_sample_test(t):
+    return {
+        'id': t.id,
+        'test_category': t.test_category or '',
+        'test_type': t.test_type or '',
+        'agency': t.agency or '',
+        'request_date': str(t.request_date) if t.request_date else '',
+        'report_no': t.report_no or '',
+        'issued_date': str(t.issued_date) if t.issued_date else '',
+        'valid_until': str(t.valid_until) if t.valid_until else '',
+        'expiry_status': t.expiry_status,
+        'result': t.result or '',
+        'measured': [{'label': l, 'value': v} for l, v in t.measured_pairs],
+        'has_file': bool(t.file_path),
+        'file_name': t.file_name or '',
+        'tester': t.tester or '',
+        'note': t.note or '',
+        'is_public': t.is_public,
+    }
+
+
+@app_api_bp.route('/samples')
+@app_auth_required
+def app_samples():
+    """시료 목록 — 검색/용도/상태 필터."""
+    q = (request.args.get('q') or '').strip()
+    purpose = (request.args.get('purpose') or '').strip()
+    status = (request.args.get('status') or '').strip()
+
+    with get_db() as db:
+        query = db.query(Sample).options(joinedload(Sample.tests)).filter(
+            Sample.is_active.is_(True)
+        )
+        if q:
+            like = f'%{q}%'
+            query = query.filter(
+                Sample.sample_no.ilike(like)
+                | Sample.model_name.ilike(like)
+                | Sample.location.ilike(like)
+                | Sample.made_by.ilike(like)
+            )
+        if purpose:
+            query = query.filter(Sample.purpose == purpose)
+        if status:
+            query = query.filter(Sample.status == status)
+
+        samples = query.order_by(Sample.model_code, desc(Sample.seq)).limit(300).all()
+
+        base = db.query(Sample).filter(Sample.is_active.is_(True))
+        stats = {
+            'total': base.count(),
+            'stored': base.filter(Sample.status == '보관중').count(),
+            'testing': base.filter(Sample.status == '시험중').count(),
+            'out': base.filter(Sample.status == '반출').count(),
+        }
+        return jsonify(ok=True,
+                       samples=[_ser_sample_row(s) for s in samples],
+                       stats=stats,
+                       purpose_choices=SAMPLE_PURPOSE_CHOICES,
+                       status_choices=SAMPLE_STATUS_CHOICES)
+
+
+@app_api_bp.route('/samples/options')
+@app_auth_required
+def app_sample_options():
+    """등록/시험기록 폼 선택지."""
+    with get_db() as db:
+        certs = (db.query(Certification)
+                 .filter(Certification.is_active.is_(True))
+                 .order_by(Certification.cert_type, Certification.cert_name).all())
+        return jsonify(ok=True,
+                       purpose_choices=SAMPLE_PURPOSE_CHOICES,
+                       status_choices=SAMPLE_STATUS_CHOICES,
+                       category_choices=TEST_CATEGORY_CHOICES,
+                       type_choices=TEST_TYPE_CHOICES,
+                       result_choices=TEST_RESULT_CHOICES,
+                       agencies=TEST_AGENCY_SUGGESTIONS,
+                       measure_fields=[{'key': k, 'label': l, 'unit': u}
+                                       for k, l, u in MEASURE_FIELDS],
+                       certifications=[{'id': c.id,
+                                        'label': f'{c.cert_type} · {c.cert_name}'}
+                                       for c in certs])
+
+
+@app_api_bp.route('/samples/resolve')
+@app_auth_required
+def app_sample_resolve():
+    """QR 스캔 결과(URL 또는 토큰) → 시료 id. 앱 내 스캐너용.
+
+    스캔값이 전체 URL이면 슬래시가 섞여 경로 파라미터로 못 받으므로 ?v= 로 받는다.
+    """
+    raw = (request.args.get('v') or '').strip()
+    # 스캔값이 전체 URL(.../s/<token>)로 들어오는 경우 토큰만 추출
+    if '/s/' in raw:
+        raw = raw.split('/s/')[-1]
+    raw = raw.split('?')[0].split('#')[0].strip('/')
+
+    with get_db() as db:
+        s = db.query(Sample).filter(Sample.qr_token == raw).first()
+        if not s or not s.is_active:
+            return jsonify(ok=False, error='등록되지 않은 QR입니다'), 404
+        return jsonify(ok=True, sample_id=s.id, sample_no=s.sample_no,
+                       model_name=s.model_name or '')
+
+
+@app_api_bp.route('/samples/<int:sample_id>')
+@app_auth_required
+def app_sample_detail(sample_id):
+    """시료 상세 — 스펙 + 시험이력 + 이력로그."""
+    with get_db() as db:
+        s = (db.query(Sample)
+             .options(joinedload(Sample.tests), joinedload(Sample.logs))
+             .filter(Sample.id == sample_id).first())
+        if not s:
+            return jsonify(ok=False, error='시료를 찾을 수 없습니다'), 404
+
+        detail = _ser_sample_row(s)
+        detail.update({
+            'item_cd': s.item_cd or '',
+            'created_by': s.created_by or '',
+            'last_scanned_at': s.last_scanned_at.strftime('%Y-%m-%d %H:%M') if s.last_scanned_at else '',
+            'project': (f'{s.project.project_no} · {s.project.temp_name}') if s.project else '',
+            'project_id': s.project_id,
+            'public_note': s.public_note or '',
+            'internal_note': s.internal_note or '',
+            'has_photo': bool(s.photo_path),
+            'spec_pairs': [{'label': k, 'value': v} for k, v in s.spec_pairs],
+            # 수정 폼용 원본 값
+            'fields': {
+                'model_name': s.model_name or '',
+                'item_cd': s.item_cd or '',
+                'purpose': s.purpose or '',
+                'status': s.status or '',
+                'mfg_date': str(s.mfg_date) if s.mfg_date else '',
+                'made_by': s.made_by or '',
+                'location': s.location or '',
+                'led_chip': s.led_chip or '',
+                'pcb_spec': s.pcb_spec or '',
+                'cct': s.cct or '',
+                'lens_angle': s.lens_angle or '',
+                'smps_model': s.smps_model or '',
+                'input_voltage': s.input_voltage or '',
+                'ip_grade': s.ip_grade or '',
+                'body_material': s.body_material or '',
+                'watt': s.watt if s.watt is not None else '',
+                'lumen': s.lumen if s.lumen is not None else '',
+                'weight': s.weight if s.weight is not None else '',
+                'public_note': s.public_note or '',
+                'internal_note': s.internal_note or '',
+            },
+            'tests': [_ser_sample_test(t) for t in s.tests],
+            'logs': [{
+                'action': lg.action,
+                'content': lg.content or '',
+                'user_name': lg.user_name or '',
+                'origin': lg.origin,
+                'created_at': lg.created_at.strftime('%Y-%m-%d %H:%M') if lg.created_at else '',
+            } for lg in s.logs[:50]],
+        })
+        return jsonify(ok=True, sample=detail)
+
+
+def _apply_sample_fields(s, src):
+    """폼 → 시료 필드. 시료번호·QR 토큰은 건드리지 않는다."""
+    s.model_name = (src.get('model_name') or '').strip()
+    s.item_cd = (src.get('item_cd') or '').strip() or None
+    s.purpose = src.get('purpose') or '사내시험'
+    s.status = src.get('status') or '보관중'
+    s.mfg_date = _sample_pdate(src.get('mfg_date'))
+    s.made_by = (src.get('made_by') or '').strip() or None
+    s.location = (src.get('location') or '').strip() or None
+    for f in ('led_chip', 'pcb_spec', 'cct', 'lens_angle', 'smps_model',
+              'input_voltage', 'ip_grade', 'body_material'):
+        setattr(s, f, (src.get(f) or '').strip() or None)
+    for f in ('watt', 'lumen', 'weight'):
+        setattr(s, f, _sample_pfloat(src.get(f)))
+    s.public_note = (src.get('public_note') or '').strip() or None
+    s.internal_note = (src.get('internal_note') or '').strip() or None
+
+    project_id = src.get('project_id')
+    try:
+        s.project_id = int(project_id) if project_id not in (None, '', '0') else None
+    except (TypeError, ValueError):
+        s.project_id = None
+
+
+def _save_sample_upload(upload, subdir, key):
+    """Supabase Storage 업로드 → (경로, 원본파일명)."""
+    from werkzeug.utils import secure_filename
+    from modules.storage_adapter import upload_bytes
+    import os as _os
+
+    if not upload or not upload.filename:
+        return None, None
+    data = upload.read()
+    if not data:
+        return None, None
+    safe = secure_filename(upload.filename) or 'file'
+    ext = _os.path.splitext(safe)[1].lower() or '.jpg'
+    ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    path = f'documents/samples/{subdir}/{key}_{ts}{ext}'
+    ok, err = upload_bytes(path, data, upload.mimetype or 'application/octet-stream')
+    if not ok:
+        raise RuntimeError(f'파일 업로드 실패: {err}')
+    return path, upload.filename
+
+
+@app_api_bp.route('/samples/create', methods=['POST'])
+@app_auth_required
+def app_sample_create():
+    """시료 등록 — 모델별 자동 채번. multipart(사진) 지원."""
+    from sqlalchemy.exc import IntegrityError
+    from modules.models import normalize_model_code
+
+    src = _sample_src()
+    model_name = (src.get('model_name') or '').strip()
+    if not model_name:
+        return jsonify(ok=False, error='모델명을 입력해주세요'), 400
+
+    user_name = _sample_user_name()
+    with get_db() as db:
+        s = Sample()
+        _apply_sample_fields(s, src)
+        s.created_by = user_name
+
+        upload = request.files.get('photo') if request.files else None
+        try:
+            photo_path, _ = _save_sample_upload(upload, 'photos', normalize_model_code(model_name))
+        except RuntimeError as e:
+            return jsonify(ok=False, error=str(e)), 500
+        s.photo_path = photo_path
+
+        for attempt in range(3):
+            model_code, seq, sample_no = generate_sample_no(db, model_name)
+            s.model_code, s.seq, s.sample_no = model_code, seq, sample_no
+            try:
+                db.add(s)
+                db.flush()
+                break
+            except IntegrityError:
+                db.rollback()
+                db.expunge_all()
+                if attempt == 2:
+                    return jsonify(ok=False, error='시료번호 채번 실패. 다시 시도해주세요'), 409
+
+        append_sample_log(db, s.id, '등록',
+                          f'{s.sample_no} ({s.model_name}) 시료 등록 [모바일]',
+                          user_name=user_name, origin='mobile')
+        log_activity(db, '시료관리', '등록', f'{s.sample_no} 시료 등록',
+                     ref_type='sample', ref_id=s.id, ref_label=s.sample_no,
+                     user_name=user_name)
+        db.commit()
+        return jsonify(ok=True, sample_id=s.id, sample_no=s.sample_no)
+
+
+@app_api_bp.route('/samples/<int:sample_id>/edit', methods=['POST'])
+@app_auth_required
+def app_sample_edit(sample_id):
+    """시료 수정 — multipart(사진 교체) 지원."""
+    src = _sample_src()
+    if not (src.get('model_name') or '').strip():
+        return jsonify(ok=False, error='모델명을 입력해주세요'), 400
+
+    user_name = _sample_user_name()
+    with get_db() as db:
+        s = db.get(Sample, sample_id)
+        if not s:
+            return jsonify(ok=False, error='시료를 찾을 수 없습니다'), 404
+
+        before_status = s.status
+        _apply_sample_fields(s, src)
+
+        upload = request.files.get('photo') if request.files else None
+        try:
+            new_photo, _ = _save_sample_upload(upload, 'photos', s.sample_no)
+        except RuntimeError as e:
+            return jsonify(ok=False, error=str(e)), 500
+        if new_photo:
+            s.photo_path = new_photo
+
+        changes = ['스펙/정보 수정 [모바일]']
+        if before_status != s.status:
+            changes.append(f'상태 {before_status} → {s.status}')
+        append_sample_log(db, s.id, '수정', ' · '.join(changes),
+                          user_name=user_name, origin='mobile')
+        db.commit()
+        return jsonify(ok=True, sample_id=s.id)
+
+
+@app_api_bp.route('/samples/<int:sample_id>/status', methods=['POST'])
+@app_auth_required
+def app_sample_status(sample_id):
+    """상태 변경 — 웹과 동일하게 이력 기록."""
+    src = _sample_src()
+    new_status = (src.get('status') or '').strip()
+    note = (src.get('note') or '').strip()
+    if new_status not in SAMPLE_STATUS_CHOICES:
+        return jsonify(ok=False, error='알 수 없는 상태입니다'), 400
+
+    user_name = _sample_user_name()
+    with get_db() as db:
+        s = db.get(Sample, sample_id)
+        if not s:
+            return jsonify(ok=False, error='시료를 찾을 수 없습니다'), 404
+        before = s.status
+        s.status = new_status
+        content = f'{before} → {new_status}'
+        if note:
+            content += f' ({note})'
+        append_sample_log(db, s.id, '상태변경', f'{content} [모바일]',
+                          user_name=user_name, origin='mobile')
+        log_activity(db, '시료관리', '상태변경', f'{s.sample_no} {content}',
+                     ref_type='sample', ref_id=s.id, ref_label=s.sample_no,
+                     user_name=user_name)
+        db.commit()
+        return jsonify(ok=True, status=new_status)
+
+
+@app_api_bp.route('/samples/<int:sample_id>/tests', methods=['POST'])
+@app_auth_required
+def app_sample_test_create(sample_id):
+    """시험 기록 등록 — 성적서 촬영/첨부 지원(multipart)."""
+    src = _sample_src()
+    user_name = _sample_user_name()
+
+    measured = {}
+    known = {k for k, _l, _u in MEASURE_FIELDS}
+    for key in known:
+        val = (src.get(f'measure_{key}') or '').strip()
+        if val:
+            measured[key] = val
+
+    with get_db() as db:
+        s = db.get(Sample, sample_id)
+        if not s:
+            return jsonify(ok=False, error='시료를 찾을 수 없습니다'), 404
+
+        cert_id = src.get('certification_id')
+        try:
+            cert_id = int(cert_id) if cert_id not in (None, '', '0') else None
+        except (TypeError, ValueError):
+            cert_id = None
+
+        t = SampleTest(
+            sample_id=s.id,
+            test_category=src.get('test_category') or '공인시험',
+            test_type=(src.get('test_type') or '').strip() or None,
+            agency=(src.get('agency') or '').strip() or None,
+            request_date=_sample_pdate(src.get('request_date')),
+            report_no=(src.get('report_no') or '').strip() or None,
+            issued_date=_sample_pdate(src.get('issued_date')),
+            valid_until=_sample_pdate(src.get('valid_until')),
+            result=(src.get('result') or '').strip() or None,
+            measured_json=measured or None,
+            certification_id=cert_id,
+            tester=(src.get('tester') or '').strip() or None,
+            note=(src.get('note') or '').strip() or None,
+            created_by=user_name,
+        )
+
+        upload = request.files.get('report_file') if request.files else None
+        try:
+            path, orig = _save_sample_upload(upload, 'tests', s.sample_no)
+        except RuntimeError as e:
+            return jsonify(ok=False, error=str(e)), 500
+        t.file_path, t.file_name = path, orig
+
+        db.add(t)
+        db.flush()
+
+        desc_txt = f'{t.test_category} · {t.test_type or "-"}'
+        if t.agency:
+            desc_txt += f' · {t.agency}'
+        if t.result:
+            desc_txt += f' · {t.result}'
+        append_sample_log(db, s.id, '시험등록', f'{desc_txt} [모바일]',
+                          user_name=user_name, origin='mobile')
+        log_activity(db, '시료관리', '시험등록', f'{s.sample_no} {desc_txt}',
+                     ref_type='sample', ref_id=s.id, ref_label=s.sample_no,
+                     user_name=user_name)
+        db.commit()
+        return jsonify(ok=True, test_id=t.id)
+
+
+@app_api_bp.route('/samples/tests/<int:test_id>/delete', methods=['POST'])
+@app_auth_required
+def app_sample_test_delete(test_id):
+    user_name = _sample_user_name()
+    with get_db() as db:
+        t = db.get(SampleTest, test_id)
+        if not t:
+            return jsonify(ok=False, error='시험 기록을 찾을 수 없습니다'), 404
+        sample_id = t.sample_id
+        desc_txt = f'{t.test_category} · {t.report_no or t.test_type or "-"} 삭제 [모바일]'
+        db.delete(t)
+        append_sample_log(db, sample_id, '시험삭제', desc_txt,
+                          user_name=user_name, origin='mobile')
+        db.commit()
+        return jsonify(ok=True)
+
+
+@app_api_bp.route('/samples/<int:sample_id>/delete', methods=['POST'])
+@app_auth_required
+def app_sample_delete(sample_id):
+    """폐기 처리 — 웹과 동일(비활성 + 상태 폐기)."""
+    user_name = _sample_user_name()
+    with get_db() as db:
+        s = db.get(Sample, sample_id)
+        if not s:
+            return jsonify(ok=False, error='시료를 찾을 수 없습니다'), 404
+        s.is_active = False
+        s.status = '폐기'
+        append_sample_log(db, s.id, '폐기', '시료 폐기 처리 [모바일]',
+                          user_name=user_name, origin='mobile')
+        db.commit()
+        return jsonify(ok=True)
+
+
+# ── 시료 파일 뷰어 (img/embed 태그용 — 토큰 쿼리 인증) ──
+
+def _serve_sample_file(path, download_name=None):
+    import os as _os
+    from flask import Response, abort, send_file
+    from modules.storage_adapter import download_bytes
+
+    data = download_bytes(path)
+    if not data:
+        local = _os.path.join(current_app.static_folder, path) if current_app.static_folder else None
+        if local and _os.path.exists(local):
+            return send_file(local)
+        abort(404)
+    ext = _os.path.splitext(path)[1].lower().lstrip('.')
+    mime_map = {'pdf': 'application/pdf', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+                'png': 'image/png', 'webp': 'image/webp', 'gif': 'image/gif'}
+    name = _os.path.basename(download_name or path)
+    return Response(data, mimetype=mime_map.get(ext, 'application/octet-stream'),
+                    headers={'Content-Disposition': f'inline; filename="{name}"'})
+
+
+@app_api_bp.route('/samples/<int:sample_id>/photo')
+def app_sample_photo(sample_id):
+    from flask import abort
+    if not _verify_token_from_request():
+        abort(401)
+    with get_db() as db:
+        s = db.get(Sample, sample_id)
+        if not s or not s.photo_path:
+            abort(404)
+        return _serve_sample_file(s.photo_path)
+
+
+@app_api_bp.route('/samples/tests/<int:test_id>/file')
+def app_sample_test_file(test_id):
+    """성적서 원본 — 사내 열람이므로 불합격/A·S분석도 포함."""
+    from flask import abort
+    if not _verify_token_from_request():
+        abort(401)
+    with get_db() as db:
+        t = db.get(SampleTest, test_id)
+        if not t or not t.file_path:
+            abort(404)
+        return _serve_sample_file(t.file_path, t.file_name)
+
+
+@app_api_bp.route('/samples/<int:sample_id>/label.pdf')
+def app_sample_label_pdf(sample_id):
+    """모바일에서 라벨 PDF 받기 — 웹과 동일한 실치수 PDF."""
+    from flask import Response, abort, url_for
+    from routes.sample import _resolve_label_spec, _label_payload
+    from modules.services.sample_label_pdf import build_label_pdf
+
+    if not _verify_token_from_request():
+        abort(401)
+    spec = _resolve_label_spec(request.args)
+    with get_db() as db:
+        s = db.get(Sample, sample_id)
+        if not s:
+            abort(404)
+        payload = [_label_payload(s)]
+
+    def public_url_of(token):
+        return url_for('sample.sample_public', token=token, _external=True)
+
+    pdf = build_label_pdf(payload, spec, public_url_of)
+    return Response(pdf, mimetype='application/pdf', headers={
+        'Content-Disposition': f'inline; filename="{payload[0]["sample_no"]}_label.pdf"',
+        'Cache-Control': 'no-store',
+    })

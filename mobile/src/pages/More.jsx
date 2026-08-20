@@ -32,6 +32,7 @@ const CHANNELS = [
     { label: '생산1팀', path: '/production' },
     { label: '생산2팀', path: '/production?team=team2' },
     { label: '발주/입고현황', path: '/incoming' },
+    { label: '시료관리', path: '/samples' },
   ]},
   { group: '🗂 아카이브', items: [
     { label: '워크보드 아카이브', path: '/archive' },

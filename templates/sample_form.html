@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}{{ '시료 수정' if sample else '시료 등록' }}{% endblock %}
+
+{% block content %}
+<style>
+  .info-card { border:none; border-radius:12px; overflow:hidden; }
+  .info-card .card-header { background:linear-gradient(135deg,#f8fafc 0%,#f1f5f9 100%);
+                            border-bottom:2px solid #e2e8f0; padding:12px 20px; }
+  .info-label { font-size:.75rem; color:#94a3b8; font-weight:600; margin-bottom:2px;
+                text-transform:uppercase; letter-spacing:.3px; }
+  .action-btn { border-radius:8px; font-weight:600; font-size:.82rem; }
+  .spec-row { display:flex; gap:.5rem; margin-bottom:.5rem; }
+  .req::after { content:' *'; color:#ef4444; }
+</style>
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">{{ 'Edit Sample' if sample else 'New Sample' }}</div>
+            <h2>{{ sample.sample_no if sample else '시료 등록' }}</h2>
+            <div class="hero-sub">
+                {% if sample %}{{ sample.model_name }} — 스펙과 보관 정보를 수정합니다
+                {% else %}시료번호는 모델별로 자동 채번됩니다 (예: ARENA-200S-001){% endif %}
+            </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap" style="white-space:nowrap;">
+            <a href="{{ url_for('sample.sample_detail', sample_id=sample.id) if sample else url_for('sample.sample_list') }}"
+               class="btn btn-outline-light btn-sm action-btn">취소</a>
+            <button type="submit" form="sampleForm" class="btn btn-hi btn-sm action-btn">
+                {{ '수정 저장' if sample else '시료 등록' }}
+            </button>
+        </div>
+    </div>
+</div>
+
+<form method="POST" enctype="multipart/form-data" id="sampleForm">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+{# ─── 기본 정보 ─── #}
+<div class="card info-card shadow-sm mb-3">
+    <div class="card-header"><strong>기본 정보</strong></div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="info-label req">모델명</div>
+                <input type="text" name="model_name" class="form-control form-control-sm" required
+                       placeholder="ARENA-200S" value="{{ sample.model_name if sample else '' }}">
+                {% if sample %}
+                <small class="text-muted" style="font-size:.72rem;">시료번호 <b>{{ sample.sample_no }}</b> — 모델명을 바꿔도 번호는 유지됩니다</small>
+                {% endif %}
+            </div>
+            <div class="col-md-2">
+                <div class="info-label">품번</div>
+                <input type="text" name="item_cd" class="form-control form-control-sm"
+                       value="{{ sample.item_cd or '' if sample else '' }}">
+            </div>
+            <div class="col-md-2">
+                <div class="info-label">용도</div>
+                <select name="purpose" class="form-select form-select-sm">
+                    {% for p in purpose_choices %}
+                    <option value="{{ p }}" {{ 'selected' if sample and sample.purpose == p }}>{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <div class="info-label">상태</div>
+                <select name="status" class="form-select form-select-sm">
+                    {% for s in status_choices %}
+                    <option value="{{ s }}" {{ 'selected' if (sample and sample.status == s) or (not sample and s == '보관중') }}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <div class="info-label">제작일</div>
+                <input type="date" name="mfg_date" class="form-control form-control-sm"
+                       value="{{ sample.mfg_date.strftime('%Y-%m-%d') if sample and sample.mfg_date else '' }}">
+            </div>
+
+            <div class="col-md-3">
+                <div class="info-label">제작자</div>
+                <input type="text" name="made_by" class="form-control form-control-sm"
+                       value="{{ sample.made_by or '' if sample else '' }}">
+            </div>
+            <div class="col-md-4">
+                <div class="info-label">보관위치</div>
+                <input type="text" name="location" class="form-control form-control-sm"
+                       placeholder="시료보관실 A-3" value="{{ sample.location or '' if sample else '' }}">
+            </div>
+            <div class="col-md-5">
+                <div class="info-label">연결 현장 (선택)</div>
+                <select name="project_id" class="form-select form-select-sm">
+                    <option value="">-- 없음 --</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {{ 'selected' if sample and sample.project_id == p.id }}>
+                        {{ p.project_no }} · {{ p.temp_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <div class="info-label">시료 사진</div>
+                <input type="file" name="photo" class="form-control form-control-sm" accept="image/*">
+                {% if sample and sample.photo_path %}
+                <small class="text-muted" style="font-size:.72rem;">현재 사진 등록됨 — 새 파일을 올리면 교체됩니다</small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ─── 스펙 ─── #}
+<div class="card info-card shadow-sm mb-3">
+    <div class="card-header"><strong>시료 스펙</strong></div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <div class="info-label">LED 칩</div>
+                <input type="text" name="led_chip" class="form-control form-control-sm" value="{{ sample.led_chip or '' if sample else '' }}">
+            </div>
+            <div class="col-md-3">
+                <div class="info-label">PCB 사양</div>
+                <input type="text" name="pcb_spec" class="form-control form-control-sm" value="{{ sample.pcb_spec or '' if sample else '' }}">
+            </div>
+            <div class="col-md-2">
+                <div class="info-label">색온도</div>
+                <input type="text" name="cct" class="form-control form-control-sm" placeholder="5700K" value="{{ sample.cct or '' if sample else '' }}">
+            </div>
+            <div class="col-md-2">
+                <div class="info-label">렌즈 각도</div>
+                <input type="text" name="lens_angle" class="form-control form-control-sm" value="{{ sample.lens_angle or '' if sample else '' }}">
+            </div>
+            <div class="col-md-2">
+                <div class="info-label">IP 등급</div>
+                <input type="text" name="ip_grade" class="form-control form-control-sm" placeholder="IP66" value="{{ sample.ip_grade or '' if sample else '' }}">
+            </div>
+
+            <div class="col-md-3">
+                <div class="info-label">SMPS 모델</div>
+                <input type="text" name="smps_model" class="form-control form-control-sm" value="{{ sample.smps_model or '' if sample else '' }}">
+            </div>
+            <div class="col-md-2">
+                <div class="info-label">입력전원</div>
+                <input type="text" name="input_voltage" class="form-control form-control-sm" placeholder="AC220V 60Hz" value="{{ sample.input_voltage or '' if sample else '' }}">
+            </div>
+            <div class="col-md-2">
+                <div class="info-label">소비전력 (W)</div>
+                <input type="number" step="0.1" name="watt" class="form-control form-control-sm" value="{{ sample.watt if sample and sample.watt is not none else '' }}">
+            </div>
+            <div class="col-md-2">
+                <div class="info-label">광속 (lm)</div>
+                <input type="number" step="1" name="lumen" class="form-control form-control-sm" value="{{ sample.lumen if sample and sample.lumen is not none else '' }}">
+            </div>
+            <div class="col-md-3">
+                <div class="info-label">본체 재질</div>
+                <input type="text" name="body_material" class="form-control form-control-sm" value="{{ sample.body_material or '' if sample else '' }}">
+            </div>
+            <div class="col-md-2">
+                <div class="info-label">중량 (kg)</div>
+                <input type="number" step="0.1" name="weight" class="form-control form-control-sm" value="{{ sample.weight if sample and sample.weight is not none else '' }}">
+            </div>
+        </div>
+
+        <hr class="my-3">
+
+        <div class="info-label mb-2">추가 스펙 항목 (자유 입력)</div>
+        <div id="specRows">
+            {% for k, v in (sample.spec_json or {}).items() if sample %}
+            <div class="spec-row">
+                <input type="text" name="spec_key" class="form-control form-control-sm" style="max-width:220px;" value="{{ k }}">
+                <input type="text" name="spec_val" class="form-control form-control-sm" value="{{ v }}">
+                <button type="button" class="btn btn-sm btn-outline-danger action-btn btn-del-spec">삭제</button>
+            </div>
+            {% endfor %}
+        </div>
+        <button type="button" id="addSpec" class="btn btn-sm btn-outline-secondary action-btn mt-1">+ 항목 추가</button>
+    </div>
+</div>
+
+{# ─── 메모 ─── #}
+<div class="card info-card shadow-sm mb-3">
+    <div class="card-header"><strong>메모</strong></div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="info-label">공개 메모 <span class="badge bg-info text-dark">QR 스캔 시 노출</span></div>
+                <textarea name="public_note" class="form-control form-control-sm" rows="3">{{ sample.public_note or '' if sample else '' }}</textarea>
+            </div>
+            <div class="col-md-6">
+                <div class="info-label">내부 메모 <span class="badge bg-dark">사내 전용 · 외부 비공개</span></div>
+                <textarea name="internal_note" class="form-control form-control-sm" rows="3">{{ sample.internal_note or '' if sample else '' }}</textarea>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex gap-2 justify-content-end mb-4">
+    <a href="{{ url_for('sample.sample_detail', sample_id=sample.id) if sample else url_for('sample.sample_list') }}"
+       class="btn btn-sm btn-outline-secondary action-btn">취소</a>
+    <button type="submit" class="btn btn-sm btn-primary action-btn">{{ '수정 저장' if sample else '시료 등록' }}</button>
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const rows = document.getElementById('specRows');
+  document.getElementById('addSpec').addEventListener('click', function () {
+    const div = document.createElement('div');
+    div.className = 'spec-row';
+    div.innerHTML = '<input type="text" name="spec_key" class="form-control form-control-sm" style="max-width:220px;" placeholder="항목명">'
+      + '<input type="text" name="spec_val" class="form-control form-control-sm" placeholder="값">'
+      + '<button type="button" class="btn btn-sm btn-outline-danger action-btn btn-del-spec">삭제</button>';
+    rows.appendChild(div);
+  });
+  rows.addEventListener('click', function (e) {
+    if (e.target.classList.contains('btn-del-spec')) {
+      e.target.closest('.spec-row').remove();
+    }
+  });
+})();
+</script>
+{% endblock %}

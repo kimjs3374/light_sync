@@ -1674,3 +1674,103 @@ SET delivered_done_at = COALESCE(confirmed_date, scheduled_date)::timestamp
 WHERE COALESCE(status,'') IN ('done','완료')
   AND delivered_done_at IS NULL
   AND COALESCE(confirmed_date, scheduled_date) IS NOT NULL;
+
+-- ============================================================
+-- 2026-08-12  시료관리 (생산부) — 시료 마스터 + 시험이력 + QR 추적
+--   시료 1개체 = samples 1행. 시료번호는 모델별 채번(ARENA-200S-001).
+--   QR 라벨을 실물에 부착 → /s/<qr_token> 공개 페이지로 시험이력 열람.
+--   공개 페이지는 로그인 불필요이므로 internal_note / 불합격 / A/S분석은
+--   애플리케이션 레벨(SampleTest.is_public)에서 제외한다.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS light_sync.samples (
+    id              SERIAL PRIMARY KEY,
+    sample_no       VARCHAR(60)  NOT NULL UNIQUE,          -- ARENA-200S-001
+    model_code      VARCHAR(40)  NOT NULL,                 -- 채번 접두 (모델별)
+    seq             INTEGER      NOT NULL DEFAULT 1,       -- 모델별 순번
+    qr_token        VARCHAR(64)  NOT NULL UNIQUE,          -- 공개 URL 토큰
+
+    model_name      VARCHAR(200) NOT NULL,
+    catalog_id      INTEGER REFERENCES light_sync.product_catalog(id),
+    item_cd         VARCHAR(50),
+
+    purpose         VARCHAR(30)  NOT NULL DEFAULT '사내시험',
+    status          VARCHAR(20)  NOT NULL DEFAULT '보관중',
+
+    mfg_date        DATE,
+    made_by         VARCHAR(50),
+    location        VARCHAR(200),
+
+    project_id       INTEGER REFERENCES light_sync.projects(id),
+    warranty_case_id INTEGER REFERENCES light_sync.warranty_cases(id),
+
+    led_chip        VARCHAR(200),
+    pcb_spec        VARCHAR(200),
+    cct             VARCHAR(50),
+    lens_angle      VARCHAR(100),
+    smps_model      VARCHAR(200),
+    watt            DOUBLE PRECISION,
+    lumen           DOUBLE PRECISION,
+    input_voltage   VARCHAR(50),
+    ip_grade        VARCHAR(30),
+    body_material   VARCHAR(100),
+    weight          DOUBLE PRECISION,
+    spec_json       JSONB,
+
+    photo_path      VARCHAR(500),
+    public_note     TEXT,                                  -- QR 공개 페이지 노출
+    internal_note   TEXT,                                  -- 사내 전용 (공개 금지)
+
+    scan_count      INTEGER NOT NULL DEFAULT 0,
+    last_scanned_at TIMESTAMP,
+
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by      VARCHAR(50),
+    created_at      TIMESTAMP DEFAULT NOW(),
+    updated_at      TIMESTAMP DEFAULT NOW(),
+
+    CONSTRAINT uq_sample_model_seq UNIQUE (model_code, seq)
+);
+
+CREATE TABLE IF NOT EXISTS light_sync.sample_tests (
+    id               SERIAL PRIMARY KEY,
+    sample_id        INTEGER NOT NULL REFERENCES light_sync.samples(id) ON DELETE CASCADE,
+
+    test_category    VARCHAR(30) NOT NULL DEFAULT '공인시험',  -- 공인시험/사내검사/조달·수요기관검사/A/S분석
+    test_type        VARCHAR(50),
+    agency           VARCHAR(200),
+
+    request_date     DATE,
+    report_no        VARCHAR(100),
+    issued_date      DATE,
+    valid_until      DATE,
+
+    result           VARCHAR(20),                          -- 합격/불합격/판정보류/참고(수치만)
+    measured_json    JSONB,
+
+    file_path        VARCHAR(500),
+    file_name        VARCHAR(300),
+    certification_id INTEGER REFERENCES light_sync.certifications(id),
+
+    tester           VARCHAR(50),
+    note             TEXT,
+    created_by       VARCHAR(50),
+    created_at       TIMESTAMP DEFAULT NOW(),
+    updated_at       TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS light_sync.sample_logs (
+    id          SERIAL PRIMARY KEY,
+    sample_id   INTEGER NOT NULL REFERENCES light_sync.samples(id) ON DELETE CASCADE,
+    action      VARCHAR(30) NOT NULL,                      -- 등록/수정/상태변경/시험등록/QR스캔/폐기
+    content     TEXT,
+    user_name   VARCHAR(50),
+    origin      VARCHAR(20) NOT NULL DEFAULT 'web',        -- web / qr / mobile
+    ip_address  VARCHAR(100),
+    created_at  TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_samples_model_code   ON light_sync.samples      (model_code);
+CREATE INDEX IF NOT EXISTS idx_samples_status       ON light_sync.samples      (status);
+CREATE INDEX IF NOT EXISTS idx_sample_tests_sample  ON light_sync.sample_tests (sample_id);
+CREATE INDEX IF NOT EXISTS idx_sample_tests_valid   ON light_sync.sample_tests (valid_until);
+CREATE INDEX IF NOT EXISTS idx_sample_logs_sample   ON light_sync.sample_logs  (sample_id, created_at DESC);

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>{{ sample.sample_no }} QR 라벨</title>
+<style>
+  /* ── 인쇄 규격 (mm) ─────────────────────────────
+     용지(대지) {{ spec.pw }} × {{ spec.ph }}  /  라벨(인쇄면) {{ spec.lw }} × {{ spec.lh }}
+     라벨은 대지 안에 좌 {{ spec.off_x }}mm · 상 {{ spec.off_y }}mm 위치로 고정한다.
+     ───────────────────────────────────────────── */
+  @page { size: {{ spec.pw }}mm {{ spec.ph }}mm; margin: 0; }
+
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body {
+    font-family:"Malgun Gothic","맑은 고딕",sans-serif; color:#000;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  body { background:#f1f5f9; line-height:1.2; }
+
+  /* 대지 — 인쇄 시 페이지 그 자체가 된다 */
+  .page {
+    position:relative;
+    width:{{ spec.pw }}mm; height:{{ spec.ph }}mm;
+    background:#fff; overflow:hidden;
+  }
+  /* 라벨 — 대지 안의 실제 인쇄면 */
+  .label {
+    position:absolute;
+    left:{{ spec.off_x }}mm; top:{{ spec.off_y }}mm;
+    width:{{ spec.lw }}mm; height:{{ spec.lh }}mm;
+    display:flex; align-items:center; gap:1.2mm;
+    padding:1.2mm; overflow:hidden;
+  }
+  .label .qr { width:{{ spec.qr }}mm; height:{{ spec.qr }}mm; flex:none; }
+  .label .qr img { width:100%; height:100%; image-rendering:pixelated; display:block; }
+  .label .txt { flex:1; min-width:0; line-height:1.25; overflow:hidden; }
+  .label .no    { font-weight:800; font-size:{{ spec.fonts.no }}pt; letter-spacing:-.2px;
+                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .label .model { font-size:{{ spec.fonts.model }}pt;
+                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .label .sub   { font-size:{{ spec.fonts.sub }}pt; color:#222;
+                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .label .brand { font-size:{{ spec.fonts.brand }}pt; color:#444; margin-top:.3mm;
+                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* ── 화면 전용 ── */
+  .bar { background:#fff; border-bottom:1px solid #cbd5e1; padding:12px 14px; }
+  .bar form { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; font-size:13px; }
+  .bar label { display:flex; flex-direction:column; gap:3px; font-size:11px; color:#475569; }
+  .bar input, .bar select { font-size:13px; padding:4px 6px; border:1px solid #94a3b8; border-radius:4px; }
+  .bar input[type=number] { width:76px; }
+  .bar button { font-size:13px; padding:6px 14px; cursor:pointer; border:1px solid #94a3b8;
+                background:#fff; border-radius:5px; }
+  .bar button.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+  .guide { font-size:12px; color:#475569; line-height:1.9; padding:10px 14px;
+           background:#fffbeb; border-bottom:1px solid #fde68a; }
+  .guide b { color:#0f172a; }
+  .guide code { background:#fff; border:1px solid #e2e8f0; border-radius:3px; padding:0 4px; }
+  .stage { padding:26px 14px 40px; text-align:center; }
+  .stage .page { display:inline-block; box-shadow:0 2px 10px rgba(0,0,0,.15); outline:1px dashed #94a3b8; }
+  .stage .label { outline:1px solid #cbd5e1; }
+  .cap { font-size:11px; color:#64748b; margin-top:10px; }
+
+  @media print {
+    body { background:#fff; }
+    .no-print { display:none !important; }
+    .stage { padding:0; text-align:left; }
+    .stage .page { display:block; box-shadow:none; outline:none; }
+    .stage .label { outline:none; }
+    /* 대지를 벗어나는 잔여 높이가 있으면 Chrome이 빈 2페이지를 만든다 → 가둔다 */
+    html, body { width:{{ spec.pw }}mm; height:{{ spec.ph }}mm; overflow:hidden; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar no-print">
+  <form method="GET">
+    <label>규격 프리셋
+      <select name="roll" onchange="this.form.pw.value='';this.form.ph.value='';this.form.lw.value='';this.form.lh.value='';this.form.submit()">
+        {% for key, p in roll_presets.items() %}
+          <option value="{{ key }}" {{ 'selected' if key == roll }}>{{ p.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>용지 가로(mm)<input type="number" step="0.1" name="pw" value="{{ spec.pw }}"></label>
+    <label>용지 세로(mm)<input type="number" step="0.1" name="ph" value="{{ spec.ph }}"></label>
+    <label>라벨 가로(mm)<input type="number" step="0.1" name="lw" value="{{ spec.lw }}"></label>
+    <label>라벨 세로(mm)<input type="number" step="0.1" name="lh" value="{{ spec.lh }}"></label>
+    <label>좌우 보정(mm)<input type="number" step="0.5" name="adj_x" value="{{ spec.adj_x }}"></label>
+    <label>상하 보정(mm)<input type="number" step="0.5" name="adj_y" value="{{ spec.adj_y }}"></label>
+    <label>매수<input type="number" min="1" max="50" name="copies" value="1" id="copies" style="width:60px"></label>
+    <button type="submit">규격 적용</button>
+    <button type="button" class="primary" id="btnPdf">📄 PDF로 인쇄 (권장)</button>
+    <button type="button" onclick="window.print()">브라우저 인쇄</button>
+  </form>
+</div>
+
+<div class="guide no-print">
+  <b>브라우저 인쇄는 Chrome이 인쇄영역에 맞춰 제멋대로 축소합니다. PDF로 뽑으세요.</b>
+  PDF는 용지 크기가 파일 안에 박혀 있어서 축소되지 않습니다.<br>
+  ① <b>[PDF로 인쇄]</b> 클릭 → 새 탭에 PDF가 열립니다 &nbsp;
+  ② PDF 화면에서 <b>인쇄(Ctrl+P)</b> &nbsp;
+  ③ <b>대상</b> = TSC TE210 &nbsp;
+  ④ <b>페이지 크기 조정</b> = <u>실제 크기</u> (영문 <code>Actual size</code>) — "맞추기 / Fit"이면 또 작아집니다<br>
+  ⑤ 용지 크기가 <code>{{ spec.pw }} × {{ spec.ph }} mm</code>로 잡히는지 확인
+  (목록에 없으면 Windows <b>제어판 → 프린터 → TE210 속성 → 용지 편집</b>에서 먼저 등록)<br>
+  그래도 위치가 치우치면 위 <b>좌우/상하 보정</b>에 ±mm를 넣고 [규격 적용] 후 다시 뽑으세요.
+</div>
+
+<div class="stage">
+  <div class="page">
+    <div class="label">
+      <div class="qr"><img src="{{ url_for('sample.sample_qr', sample_id=sample.id) }}" alt="QR"></div>
+      <div class="txt">
+        <div class="no">{{ sample.sample_no }}</div>
+        <div class="model">{{ sample.model_name }}</div>
+        <div class="sub">{{ sample.purpose }}{% if sample.mfg_date %} · {{ sample.mfg_date.strftime('%Y-%m-%d') }}{% endif %}</div>
+        <div class="brand">(주)매그나텍 시료 · 스캔하면 시험이력</div>
+      </div>
+    </div>
+  </div>
+  <div class="cap no-print">
+    바깥 점선 = 용지 {{ spec.pw }}×{{ spec.ph }}mm · 안쪽 실선 = 라벨 {{ spec.lw }}×{{ spec.lh }}mm
+    (좌 {{ spec.off_x }}mm · 상 {{ spec.off_y }}mm) — 점선/실선은 인쇄되지 않습니다<br>
+    ※ 이 화면은 미리보기입니다. 실제 출력은 [PDF로 인쇄]를 쓰세요.
+  </div>
+</div>
+
+<script>
+document.getElementById('btnPdf').addEventListener('click', function () {
+  var f = document.forms[0];
+  var q = new URLSearchParams({
+    roll: f.roll.value, pw: f.pw.value, ph: f.ph.value,
+    lw: f.lw.value, lh: f.lh.value,
+    adj_x: f.adj_x.value, adj_y: f.adj_y.value,
+    copies: document.getElementById('copies').value || 1
+  });
+  window.open('{{ url_for("sample.sample_label_pdf", sample_id=sample.id) }}?' + q.toString(), '_blank');
+});
+</script>
+
+</body>
+</html>

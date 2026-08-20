@@ -63,6 +63,7 @@ from routes.vehicle_log import vehicle_log_bp
 from routes.approval import approval_bp
 from routes.hr import hr_bp
 from routes.tools import tools_bp
+from routes.sample import sample_bp
 from routes.document import document_bp
 from routes.app_api import app_api_bp
 from routes.incoming_overview import incoming_overview_bp
@@ -341,6 +342,7 @@ app.register_blueprint(vehicle_log_bp)
 app.register_blueprint(approval_bp)
 app.register_blueprint(hr_bp)
 app.register_blueprint(tools_bp)
+app.register_blueprint(sample_bp)
 app.register_blueprint(document_bp)
 app.register_blueprint(app_api_bp)
 app.register_blueprint(mail_bp)

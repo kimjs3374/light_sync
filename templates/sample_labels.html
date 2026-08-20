@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>시료 QR 라벨 — A4 라벨지</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:"Malgun Gothic","맑은 고딕",sans-serif; background:#f1f5f9; color:#000; }
+
+  .sheet {
+    width:210mm; min-height:297mm; background:#fff; margin:12px auto;
+    padding-top:{{ sheet.top }}mm; padding-left:{{ sheet.left }}mm;
+    display:grid;
+    grid-template-columns:repeat({{ sheet.cols }}, {{ sheet.w }}mm);
+    grid-auto-rows:{{ sheet.h }}mm;
+    box-shadow:0 1px 6px rgba(0,0,0,.12);
+  }
+  .cell { padding:1.5mm; display:flex; align-items:center; gap:1.5mm; overflow:hidden; }
+  .cell.empty { visibility:hidden; }
+  .cell .qr { width:{{ sheet.h - 5 }}mm; height:{{ sheet.h - 5 }}mm; flex:none; }
+  .cell .qr img { width:100%; height:100%; image-rendering:pixelated; display:block; }
+  .cell .txt { flex:1; min-width:0; line-height:1.25; }
+  .cell .no   { font-weight:800; font-size:8pt; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cell .model{ font-size:7pt; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cell .sub  { font-size:6pt; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cell .brand{ font-size:5.5pt; color:#555; }
+
+  .toolbar { padding:12px; text-align:center; background:#fff; border-bottom:1px solid #cbd5e1; }
+  .toolbar form { display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:13px; }
+  .toolbar select, .toolbar input { font-size:13px; padding:4px 6px; border:1px solid #94a3b8; border-radius:4px; }
+  .toolbar button { font-size:13px; padding:5px 14px; cursor:pointer; border:1px solid #94a3b8; background:#fff; border-radius:5px; }
+  .toolbar button.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+  .hint { font-size:12px; color:#475569; margin-top:6px; line-height:1.6; }
+
+  @media print {
+    body { background:#fff; }
+    .no-print { display:none !important; }
+    .sheet { margin:0; box-shadow:none; page-break-after:always; }
+    .sheet:last-child { page-break-after:auto; }
+    @page { size:A4; margin:0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar no-print">
+  <form method="GET">
+    <input type="hidden" name="ids" value="{{ ids }}">
+    <label>라벨지
+      <select name="sheet" onchange="this.form.submit()">
+        {% for key, s in sheets.items() %}
+          <option value="{{ key }}" {{ 'selected' if key == sheet_key }}>{{ s.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>시작칸 건너뛰기 <input type="number" name="offset" value="{{ offset }}" min="0" max="{{ per_page_cells - 1 }}" style="width:64px"></label>
+    <label>장당 매수 <input type="number" name="copies" value="{{ copies }}" min="1" max="20" style="width:56px"></label>
+    <button type="submit">적용</button>
+    <button type="button" class="primary" onclick="window.print()">🖨 인쇄</button>
+  </form>
+  <div class="hint">
+    라벨 <b>{{ total_labels }}장</b> · {{ pages|length }}페이지 &nbsp;|&nbsp;
+    인쇄 대화상자에서 <b>배율 100%</b>, <b>여백 없음</b>으로 설정해야 라벨지 칸에 정확히 맞습니다.
+    이미 쓴 라벨지는 "시작칸 건너뛰기"로 남은 칸부터 인쇄하세요.
+  </div>
+</div>
+
+{% for page in pages %}
+<div class="sheet">
+  {% for cell in page %}
+    {% if cell %}
+      <div class="cell">
+        <div class="qr"><img src="{{ url_for('sample.sample_qr', sample_id=cell.id) }}" alt="QR"></div>
+        <div class="txt">
+          <div class="no">{{ cell.sample_no }}</div>
+          <div class="model">{{ cell.model_name }}</div>
+          <div class="sub">{{ cell.purpose }}{% if cell.mfg_date %} · {{ cell.mfg_date }}{% endif %}</div>
+          <div class="brand">(주)매그나텍 시료</div>
+        </div>
+      </div>
+    {% else %}
+      <div class="cell empty"></div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endfor %}
+
+</body>
+</html>

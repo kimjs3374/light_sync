@@ -27,6 +27,9 @@ import VehicleLogs from './pages/VehicleLogs';
 import Photos from './pages/Photos';
 import Drawings from './pages/Drawings';
 import Tools from './pages/Tools';
+import Samples from './pages/Samples';
+import SampleDetail from './pages/SampleDetail';
+import SampleCreate from './pages/SampleCreate';
 import ReceivingPhotos from './pages/ReceivingPhotos';
 import WarrantyCreate from './pages/WarrantyCreate';
 import ProcessingOrderDetail from './pages/ProcessingOrderDetail';
@@ -155,6 +158,11 @@ export default function App() {
         <Route path="/approvals/new" element={<P><ApprovalCreate /></P>} />
         <Route path="/approvals/:id" element={<P><ApprovalDetail /></P>} />
         <Route path="/tools" element={<P><Tools /></P>} />
+        {/* 시료관리 (생산부) — create/edit 가 :id 보다 먼저 와야 한다 */}
+        <Route path="/samples" element={<P><Samples /></P>} />
+        <Route path="/samples/create" element={<P><SampleCreate /></P>} />
+        <Route path="/samples/:id/edit" element={<P><SampleCreate /></P>} />
+        <Route path="/samples/:id" element={<P><SampleDetail /></P>} />
 
         {/* 워크보드/대화방 아카이브 */}
         <Route path="/archive" element={<P><ArchiveBoards /></P>} />

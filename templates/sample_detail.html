@@ -1,0 +1,428 @@
+{% extends "base.html" %}
+{% block title %}{{ sample.sample_no }} 시료{% endblock %}
+
+{% block content %}
+<style>
+  .info-card { border:none; border-radius:12px; overflow:hidden; }
+  .info-card .card-header { background:linear-gradient(135deg,#f8fafc 0%,#f1f5f9 100%);
+                            border-bottom:2px solid #e2e8f0; padding:12px 20px;
+                            display:flex; align-items:center; gap:8px; }
+  .info-label { font-size:.75rem; color:#94a3b8; font-weight:600; margin-bottom:2px;
+                text-transform:uppercase; letter-spacing:.3px; }
+  .info-value { font-size:.92rem; font-weight:500; color:#0f172a; word-break:break-all; }
+  .qr-card .card-header { background:#0f172a; color:#fff; padding:10px 20px; }
+  .items-table th { font-size:.78rem; color:#64748b; font-weight:600; border-bottom:2px solid #e2e8f0; white-space:nowrap; }
+  .items-table td { vertical-align:middle; font-size:.85rem; white-space:nowrap;
+                    overflow:hidden; text-overflow:ellipsis; }
+  .badge-status-lg { font-size:.82rem; padding:5px 12px; border-radius:8px; font-weight:600; white-space:nowrap; }
+  .action-btn { border-radius:8px; font-weight:600; font-size:.82rem; }
+  .qr-img { width:160px; height:160px; image-rendering:pixelated; border:1px solid var(--mg-border); border-radius:8px; }
+  .url-copy { font-family:var(--mg-mono); font-size:.7rem; word-break:break-all; color:var(--mg-muted); }
+  .log-item { padding:8px 0; border-bottom:1px solid #f1f5f9; font-size:.82rem; }
+  .log-item:last-child { border-bottom:none; }
+  .log-item .meta { font-size:.72rem; color:#94a3b8; margin-top:2px; }
+  .note-box { background:#f8fafc; border-left:3px solid #cbd5e1; padding:10px 14px;
+              font-size:.85rem; white-space:pre-wrap; border-radius:0 8px 8px 0; }
+  @media (max-width: 1199.98px) { .main-content .table { min-width:0 !important; table-layout:auto !important; } }
+</style>
+
+{% set STATUS_HERO = {
+  '제작중':'background:#f1f5f9;color:#64748b;', '보관중':'background:#dcfce7;color:#166534;',
+  '시험중':'background:#dbeafe;color:#1e40af;', '반출':'background:#fef3c7;color:#92400e;',
+  '반납완료':'background:#e0f2fe;color:#075985;', '폐기':'background:#f1f5f9;color:#334155;'
+} %}
+{% set RESULT_STYLE = {
+  '합격':'bg-success','불합격':'bg-danger','판정보류':'bg-warning text-dark','참고(수치만)':'bg-secondary'
+} %}
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Sample Detail</div>
+            <h2 style="font-family:var(--mg-mono);">{{ sample.sample_no }}
+                <span class="badge-status-lg" style="{{ STATUS_HERO.get(sample.status,'background:#f1f5f9;color:#64748b;') }}">{{ sample.status }}</span>
+            </h2>
+            <div class="hero-sub">
+                {{ sample.model_name }} | {{ sample.purpose }}
+                {% if sample.mfg_date %} | 제작 {{ sample.mfg_date.strftime('%Y-%m-%d') }}{% endif %}
+                {% if sample.location %} | {{ sample.location }}{% endif %}
+                 | 시험 {{ sample.tests|length }}건
+            </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap" style="white-space:nowrap;">
+            <a href="{{ url_for('sample.sample_list') }}" class="btn btn-outline-light btn-sm action-btn">목록</a>
+            <a href="{{ url_for('sample.sample_label_pdf', sample_id=sample.id) }}" target="_blank"
+               class="btn btn-outline-light btn-sm action-btn">QR 라벨 PDF</a>
+            <a href="{{ url_for('sample.sample_label', sample_id=sample.id) }}" target="_blank"
+               class="btn btn-outline-light btn-sm action-btn">라벨 규격 조정</a>
+            {% if can_write %}
+            <a href="{{ url_for('sample.sample_edit', sample_id=sample.id) }}" class="btn btn-hi btn-sm action-btn">수정</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    {# ─── 좌측: 스펙 ─── #}
+    <div class="col-lg-8">
+        <div class="card info-card shadow-sm">
+            <div class="card-header"><strong>시료 정보 · 스펙</strong></div>
+            <div class="card-body">
+                <div class="row g-3">
+                    {% for k, v in sample.spec_pairs %}
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">{{ k }}</div>
+                        <div class="info-value">{{ v }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <hr class="my-3">
+
+                <div class="row g-3">
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">제작일</div>
+                        <div class="info-value">{{ sample.mfg_date.strftime('%Y-%m-%d') if sample.mfg_date else '-' }}</div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">제작자</div>
+                        <div class="info-value">{{ sample.made_by or '-' }}</div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">보관위치</div>
+                        <div class="info-value">{{ sample.location or '-' }}</div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">용도</div>
+                        <div class="info-value">{{ sample.purpose }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-label">연결 현장</div>
+                        <div class="info-value">{{ (sample.project.project_no ~ ' · ' ~ sample.project.temp_name) if sample.project else '-' }}</div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">등록자</div>
+                        <div class="info-value">{{ sample.created_by or '-' }}</div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="info-label">QR 스캔</div>
+                        <div class="info-value">{{ sample.scan_count or 0 }}회
+                            {% if sample.last_scanned_at %}
+                            <small class="text-muted">({{ sample.last_scanned_at.strftime('%m-%d %H:%M') }})</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                {% if sample.public_note or sample.internal_note %}
+                <hr class="my-3">
+                <div class="row g-3">
+                    {% if sample.public_note %}
+                    <div class="col-md-6">
+                        <div class="info-label">공개 메모 <span class="badge bg-info text-dark">QR 노출</span></div>
+                        <div class="note-box mt-1">{{ sample.public_note }}</div>
+                    </div>
+                    {% endif %}
+                    {% if sample.internal_note %}
+                    <div class="col-md-6">
+                        <div class="info-label">내부 메모 <span class="badge bg-dark">사내 전용</span></div>
+                        <div class="note-box mt-1" style="border-left-color:#0f172a;">{{ sample.internal_note }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# ─── 우측: QR ─── #}
+    <div class="col-lg-4">
+        <div class="card info-card qr-card shadow-sm">
+            <div class="card-header"><strong>QR 라벨</strong></div>
+            <div class="card-body text-center">
+                <img class="qr-img" src="{{ url_for('sample.sample_qr', sample_id=sample.id) }}" alt="QR">
+                <div class="url-copy mt-2" id="pubUrl">{{ public_url }}</div>
+                <div class="d-flex gap-2 justify-content-center mt-2 flex-wrap">
+                    <button class="btn btn-sm btn-outline-secondary action-btn" onclick="copyUrl()">주소 복사</button>
+                    <a href="{{ public_url }}" target="_blank" class="btn btn-sm btn-outline-secondary action-btn">공개 페이지</a>
+                </div>
+                <hr class="my-3">
+                <div class="info-label mb-2">라벨프린터 규격</div>
+                <div class="d-flex gap-1 justify-content-center flex-wrap">
+                    {% for key, p in roll_presets.items() %}
+                    <a href="{{ url_for('sample.sample_label_pdf', sample_id=sample.id, roll=key) }}" target="_blank"
+                       class="btn btn-sm btn-outline-dark py-0 px-2" style="font-size:.72rem;">{{ p.label }}</a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        {% if sample.photo_path %}
+        <div class="card info-card shadow-sm mt-3">
+            <div class="card-header"><strong>시료 사진</strong></div>
+            <div class="card-body text-center">
+                <a href="{{ url_for('sample.sample_photo', sample_id=sample.id) }}" target="_blank">
+                    <img src="{{ url_for('sample.sample_photo', sample_id=sample.id) }}" alt="시료 사진"
+                         style="max-width:100%;border-radius:8px;border:1px solid var(--mg-border);">
+                </a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# ─── 시험 이력 ─── #}
+<div class="card info-card shadow-sm mb-4">
+    <div class="card-header">
+        <strong>시험 이력</strong>
+        <span class="badge bg-secondary">{{ sample.tests|length }}건</span>
+        {% if can_write %}
+        <button class="btn btn-sm btn-primary action-btn ms-auto" data-bs-toggle="modal" data-bs-target="#testModal">
+            + 시험 기록 등록
+        </button>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover items-table mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:110px;">구분</th>
+                        <th style="width:130px;">시험종류</th>
+                        <th style="width:170px;">시험기관</th>
+                        <th style="width:130px;">성적서번호</th>
+                        <th class="text-center" style="width:92px;">발급일</th>
+                        <th class="text-center" style="width:120px;">유효기간</th>
+                        <th class="text-center" style="width:80px;">판정</th>
+                        <th>측정값</th>
+                        <th class="text-center" style="width:120px;">성적서</th>
+                        {% if can_write %}<th class="text-center" style="width:52px;"></th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for t in sample.tests %}
+                    <tr>
+                        <td><span class="badge bg-light text-dark border">{{ t.test_category }}</span></td>
+                        <td title="{{ t.test_type or '' }}">{{ t.test_type or '-' }}</td>
+                        <td title="{{ t.agency or '' }}">{{ t.agency or '-' }}</td>
+                        <td style="font-family:var(--mg-mono);font-size:.76rem;" title="{{ t.report_no or '' }}">{{ t.report_no or '-' }}</td>
+                        <td class="text-center">{{ t.issued_date.strftime('%Y-%m-%d') if t.issued_date else '-' }}</td>
+                        <td class="text-center">
+                            {% if t.valid_until %}
+                                {{ t.valid_until.strftime('%Y-%m-%d') }}
+                                {% if t.expiry_status == 'expired' %}<span class="badge bg-danger">만료</span>
+                                {% elif t.expiry_status == 'critical' %}<span class="badge bg-danger">임박</span>
+                                {% elif t.expiry_status == 'warning' %}<span class="badge bg-warning text-dark">30일</span>{% endif %}
+                            {% else %}-{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if t.result %}<span class="badge {{ RESULT_STYLE.get(t.result,'bg-secondary') }}">{{ t.result }}</span>{% else %}-{% endif %}
+                        </td>
+                        <td style="max-width:0;" title="{% for l, v in t.measured_pairs %}{{ l }} {{ v }} {% endfor %}">
+                            {% for l, v in t.measured_pairs %}<span class="text-muted" style="font-size:.76rem;">{{ l }}</span> <b style="font-size:.78rem;">{{ v }}</b>{% if not loop.last %} · {% endif %}{% else %}-{% endfor %}
+                        </td>
+                        <td class="text-center">
+                            {% if t.file_path %}
+                            <a href="{{ url_for('sample.test_file', test_id=t.id) }}" target="_blank"
+                               class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:.72rem;">성적서</a>
+                            {% else %}<span class="text-muted">-</span>{% endif %}
+                            {% if not t.is_public %}
+                            <span class="badge bg-dark" title="QR 공개 페이지에 노출되지 않습니다">비공개</span>
+                            {% endif %}
+                        </td>
+                        {% if can_write %}
+                        <td class="text-center">
+                            <form method="POST" action="{{ url_for('sample.test_delete', test_id=t.id) }}"
+                                  onsubmit="return confirm('이 시험 기록을 삭제할까요?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button class="btn btn-sm btn-outline-danger py-0 px-2" style="font-size:.72rem;">삭제</button>
+                            </form>
+                        </td>
+                        {% endif %}
+                    </tr>
+                {% else %}
+                    <tr><td colspan="{{ 10 if can_write else 9 }}" class="text-center text-muted py-5">등록된 시험 기록이 없습니다.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ─── 상태 변경 + 이력 ─── #}
+<div class="row g-3 mb-4">
+    {% if can_write %}
+    <div class="col-lg-5">
+        <div class="card info-card shadow-sm h-100">
+            <div class="card-header"><strong>상태 변경</strong></div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('sample.sample_status', sample_id=sample.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="d-flex gap-1 mb-2 flex-wrap">
+                        {% for s in status_choices %}
+                        <button type="submit" name="status" value="{{ s }}"
+                                class="btn btn-sm action-btn {{ 'btn-dark' if sample.status == s else 'btn-outline-secondary' }}">{{ s }}</button>
+                        {% endfor %}
+                    </div>
+                    <input type="text" name="note" class="form-control form-control-sm"
+                           placeholder="사유·비고 (선택) — 반출 시 인수자 등">
+                </form>
+                <hr class="my-3">
+                <form method="POST" action="{{ url_for('sample.sample_delete', sample_id=sample.id) }}"
+                      onsubmit="return confirm('{{ sample.sample_no }} 시료를 폐기 처리할까요? 목록에서 제외되며 QR 스캔도 막힙니다.')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-sm btn-outline-danger action-btn w-100">시료 폐기 처리</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="{{ 'col-lg-7' if can_write else 'col-12' }}">
+        <div class="card info-card shadow-sm h-100">
+            <div class="card-header">
+                <strong>이력</strong><span class="badge bg-secondary">{{ sample.logs|length }}</span>
+            </div>
+            <div class="card-body" style="max-height:420px;overflow-y:auto;">
+                {% for lg in sample.logs %}
+                <div class="log-item">
+                    <span class="badge {{ 'bg-info text-dark' if lg.origin == 'qr' else 'bg-light text-dark border' }}">{{ lg.action }}</span>
+                    {{ lg.content or '' }}
+                    <div class="meta">
+                        {{ lg.user_name }} · {{ lg.created_at.strftime('%Y-%m-%d %H:%M') if lg.created_at else '' }}
+                        {%- if lg.ip_address %} · {{ lg.ip_address }}{% endif %}
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">이력이 없습니다.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ─── 시험 기록 등록 모달 ─── #}
+{% if can_write %}
+<div class="modal fade" id="testModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('sample.test_create', sample_id=sample.id) }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header py-2">
+          <h6 class="modal-title">시험 기록 등록 — {{ sample.sample_no }}</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <div class="info-label">시험 구분</div>
+              <select name="test_category" class="form-select form-select-sm">
+                {% for c in category_choices %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <div class="info-label">시험 종류</div>
+              <select name="test_type" class="form-select form-select-sm">
+                <option value="">-- 선택 --</option>
+                {% for t in type_choices %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-5">
+              <div class="info-label">시험기관</div>
+              <input type="text" name="agency" class="form-control form-control-sm" list="agencyList"
+                     placeholder="한국산업기술시험원(KTL)">
+              <datalist id="agencyList">
+                {% for a in agency_suggestions %}<option value="{{ a }}">{% endfor %}
+              </datalist>
+            </div>
+
+            <div class="col-md-3">
+              <div class="info-label">의뢰·접수일</div>
+              <input type="date" name="request_date" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <div class="info-label">성적서 번호</div>
+              <input type="text" name="report_no" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <div class="info-label">발급일</div>
+              <input type="date" name="issued_date" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <div class="info-label">유효기간</div>
+              <input type="date" name="valid_until" class="form-control form-control-sm">
+            </div>
+
+            <div class="col-md-3">
+              <div class="info-label">판정</div>
+              <select name="result" class="form-select form-select-sm">
+                <option value="">-- 선택 --</option>
+                {% for r in result_choices %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <div class="info-label">담당·측정자</div>
+              <input type="text" name="tester" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-6">
+              <div class="info-label">연결 인증서 (선택)</div>
+              <select name="certification_id" class="form-select form-select-sm">
+                <option value="">-- 없음 --</option>
+                {% for c in certs %}<option value="{{ c.id }}">{{ c.cert_type }} · {{ c.cert_name }}</option>{% endfor %}
+              </select>
+            </div>
+
+            <div class="col-12"><hr class="my-1"></div>
+            <div class="col-12">
+              <div class="info-label mb-2">측정값</div>
+              <div class="row g-2">
+                {% for key, label, unit in measure_fields %}
+                <div class="col-md-3">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text" style="font-size:.75rem;min-width:80px;">{{ label }}</span>
+                    <input type="text" name="measure_{{ key }}" class="form-control">
+                    {% if unit %}<span class="input-group-text" style="font-size:.72rem;">{{ unit }}</span>{% endif %}
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="col-12"><hr class="my-1"></div>
+            <div class="col-md-6">
+              <div class="info-label">성적서 파일 (PDF·이미지)</div>
+              <input type="file" name="report_file" class="form-control form-control-sm" accept=".pdf,image/*">
+            </div>
+            <div class="col-md-6">
+              <div class="info-label">비고</div>
+              <textarea name="note" class="form-control form-control-sm" rows="2"></textarea>
+            </div>
+
+            <div class="col-12">
+              <div class="alert alert-secondary py-2 mb-0" style="font-size:.8rem;">
+                <b>A/S분석</b> 구분과 <b>불합격·판정보류</b> 기록은 QR 공개 페이지에 노출되지 않습니다. (사내 열람 전용)
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary action-btn" data-bs-dismiss="modal">취소</button>
+          <button type="submit" class="btn btn-sm btn-primary action-btn">등록</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyUrl() {
+  const txt = document.getElementById('pubUrl').textContent.trim();
+  navigator.clipboard.writeText(txt).then(function () {
+    alert('QR 주소를 복사했습니다.\n' + txt);
+  });
+}
+</script>
+{% endblock %}
