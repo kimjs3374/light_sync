@@ -98,8 +98,10 @@ def _resolve_label_spec(args):
     off_x = min(max(off_x, 0), max(pw - lw, 0))
     off_y = min(max(off_y, 0), max(ph - lh, 0))
 
-    # QR 은 라벨 높이에 맞추되, 옆 글자 자리가 남도록 가로의 48%까지만
-    qr = round(min(lh - 4, lw * 0.48), 2)
+    # QR 은 라벨 높이에 맞추되, 옆 글자 자리가 남도록 가로의 40%까지만.
+    # 48%로 잡던 시절엔 70mm 라벨에서도 글자 폭이 33mm밖에 안 남아
+    # 모델명·용도가 통째로 잘렸다. 30mm면 짧은 URL QR은 충분히 읽힌다.
+    qr = round(min(lh - 3, lw * 0.40, 30), 2)
     qr = max(qr, 8)
 
     # 라벨 폭에 따라 글자 크기 단계 조정 (mm → pt 대략 환산)
@@ -712,6 +714,57 @@ def sample_labels():
                                sheets=LABEL_SHEETS, per_page_cells=per_page_cells,
                                offset=start_offset, copies=copies, ids=raw_ids,
                                total_labels=len([c for c in cells if c]))
+
+
+# ── A4 스펙시트 인쇄 : 시료 스펙 + 큰 QR ────────────────
+# 라벨(실물 부착용)과 목적이 다르다. 이쪽은 A4 한 장에 스펙·시험이력을
+# 크게 찍어 회의·검사 때 보는 용도라, 시료 1건 = A4 1페이지로 낸다.
+def _render_sample_sheets(samples):
+    # 기본은 가로(297×210). 세로 184mm 폭으로는 시험이력 8개 열이 죄다 두 줄로
+    # 접힌다 — 가로면 폭이 271mm라 한 줄로 떨어져 훨씬 읽힌다.
+    orient = 'portrait' if request.args.get('orient') == 'portrait' else 'landscape'
+    items = [{'sample': s} for s in samples]
+    # 세로↔가로 전환 링크 — 현재 쿼리(ids 등)를 그대로 물고 방향만 바꾼다
+    args = request.args.to_dict(flat=True)
+    args['orient'] = 'portrait' if orient == 'landscape' else 'landscape'
+    toggle_url = url_for(request.endpoint, **(request.view_args or {}), **args)
+
+    return render_template('sample_sheet.html', items=items, orient=orient,
+                           toggle_url=toggle_url,
+                           printed_at=datetime.datetime.now(),
+                           printed_by=_user_name())
+
+
+@sample_bp.route('/samples/<int:sample_id>/sheet')
+@menu_required('sample')
+def sample_sheet(sample_id):
+    with get_db() as db:
+        sample = (db.query(Sample)
+                  .options(joinedload(Sample.tests))
+                  .filter(Sample.id == sample_id).first())
+        if not sample:
+            abort(404)
+        return _render_sample_sheets([sample])
+
+
+@sample_bp.route('/samples/sheets')
+@menu_required('sample')
+def sample_sheets():
+    """선택한 시료들을 A4 스펙시트로 — 1건당 1페이지."""
+    raw_ids = (request.args.get('ids') or '').strip()
+    id_list = [i for i in (safe_int(v, 0) for v in raw_ids.split(',') if v.strip()) if i]
+
+    with get_db() as db:
+        query = (db.query(Sample)
+                 .options(joinedload(Sample.tests))
+                 .filter(Sample.is_active.is_(True)))
+        if id_list:
+            query = query.filter(Sample.id.in_(id_list))
+        samples = query.order_by(Sample.model_code, Sample.seq).all()
+        if id_list:  # 선택 순서 유지
+            order = {sid: idx for idx, sid in enumerate(id_list)}
+            samples.sort(key=lambda s: order.get(s.id, 9999))
+        return _render_sample_sheets(samples)
 
 
 # =========================================================

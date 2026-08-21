@@ -33,15 +33,14 @@
   }
   .label .qr { width:{{ spec.qr }}mm; height:{{ spec.qr }}mm; flex:none; }
   .label .qr img { width:100%; height:100%; image-rendering:pixelated; display:block; }
-  .label .txt { flex:1; min-width:0; line-height:1.25; overflow:hidden; }
+  /* 라벨은 잘라내기보다 접는다 — PDF 출력과 같은 규칙 (sample_label_pdf.py) */
+  .label .txt { flex:1; min-width:0; line-height:1.2; overflow:hidden;
+                word-break:break-all; overflow-wrap:anywhere; }
   .label .no    { font-weight:800; font-size:{{ spec.fonts.no }}pt; letter-spacing:-.2px;
-                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .label .model { font-size:{{ spec.fonts.model }}pt;
-                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .label .sub   { font-size:{{ spec.fonts.sub }}pt; color:#222;
-                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .label .brand { font-size:{{ spec.fonts.brand }}pt; color:#444; margin-top:.3mm;
-                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+                  white-space:nowrap; }
+  .label .model { font-size:{{ spec.fonts.model }}pt; }
+  .label .sub   { font-size:{{ spec.fonts.sub }}pt; color:#222; }
+  .label .brand { font-size:{{ spec.fonts.brand }}pt; color:#444; margin-top:.3mm; }
 
   /* ── 화면 전용 ── */
   .bar { background:#fff; border-bottom:1px solid #cbd5e1; padding:12px 14px; }

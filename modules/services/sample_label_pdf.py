@@ -47,12 +47,40 @@ def _register_fonts():
     return 'Helvetica', 'Helvetica-Bold'
 
 
-def _fit(c, text, font, size, max_w):
-    """max_w(pt)를 넘으면 잘라내고 말줄임. 라벨은 줄바꿈 금지."""
+def _wrap(c, text, font, size, max_w):
+    """폭에 맞춰 여러 줄로 접는다 — 라벨은 잘라내기보다 접는 게 낫다.
+
+    공백 기준으로 먼저 나누고, 한 낱말이 폭보다 길면(한글 붙임말·긴 모델명)
+    글자 단위로 쪼갠다. 잘라내기는 마지막 수단으로 호출부에서만 한다.
+    """
     text = (text or '').strip()
     if not text:
-        return ''
-    if c.stringWidth(text, font, size) <= max_w:
+        return []
+    lines, cur = [], ''
+    for word in text.split(' '):
+        trial = (cur + ' ' + word).strip()
+        if c.stringWidth(trial, font, size) <= max_w:
+            cur = trial
+            continue
+        if cur:
+            lines.append(cur)
+            cur = ''
+        while c.stringWidth(word, font, size) > max_w:
+            cut = 1
+            while cut < len(word) and c.stringWidth(word[:cut + 1], font, size) <= max_w:
+                cut += 1
+            lines.append(word[:cut])
+            word = word[cut:]
+        cur = word
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def _ellipsize(c, text, font, size, max_w):
+    """마지막 수단 — 최소 크기로도 안 들어갈 때만 말줄임."""
+    text = (text or '').strip()
+    if not text or c.stringWidth(text, font, size) <= max_w:
         return text
     while len(text) > 1 and c.stringWidth(text + '…', font, size) > max_w:
         text = text[:-1]
@@ -60,10 +88,9 @@ def _fit(c, text, font, size, max_w):
 
 
 def _shrink_to_fit(c, text, font, size, max_w, floor=4.5):
-    """시료번호처럼 잘리면 안 되는 줄 — 폭에 맞을 때까지 글자를 줄인다.
+    """한 줄로 유지해야 하는 값(시료번호) — 폭에 맞을 때까지 글자만 줄인다.
 
-    라벨이 작아도 번호만은 온전히 찍혀야 한다(스캔 실패 시 사람이 읽어야 함).
-    floor 까지 줄여도 안 들어가면 그때만 말줄임한다.
+    번호가 두 줄로 접히면 라벨에서 눈에 안 들어온다. 접는 대신 줄인다.
     """
     text = (text or '').strip()
     if not text:
@@ -71,6 +98,53 @@ def _shrink_to_fit(c, text, font, size, max_w, floor=4.5):
     while size > floor and c.stringWidth(text, font, size) > max_w:
         size -= 0.25
     return round(size, 2)
+
+
+def _layout_text(c, fields, max_w, max_h):
+    """글자 블록 배치 확정 — 다 들어갈 때까지 통째로 줄여본다.
+
+    fields : (텍스트, 폰트, 기준크기pt, 최대줄수, 회색농도, 생략가능) 리스트
+    반환   : ([(줄, 폰트, 크기, 회색, 줄높이)], 전체 높이)
+
+    ① 100%~50%까지 2.5%씩 줄이며 전부 들어가는 배율을 찾는다
+    ② 그래도 안 되면 생략가능 줄(브랜드 문구)을 버리고 다시 ①
+    ③ 최후에만 말줄임 — 시료번호·모델명이 잘리는 일은 없어야 한다
+    """
+    def attempt(subset, scale):
+        drawn, total = [], 0.0
+        for text, font, base, max_lines, gray, _drop in subset:
+            size = round(base * scale, 2)
+            lines = _wrap(c, text, font, size, max_w)
+            if not lines:
+                continue
+            if len(lines) > max_lines:
+                return None
+            lead = size * 1.3
+            for ln in lines:
+                drawn.append((ln, font, size, gray, lead))
+                total += lead
+        return (drawn, total) if total <= max_h else None
+
+    keep = [f for f in fields if not f[5]]
+    for subset in (fields, keep):
+        for step in range(0, 21):              # 100% → 50%
+            got = attempt(subset, 1 - step * 0.025)
+            if got:
+                return got
+
+    # 최소 크기로도 안 되면 — 줄수를 자르고 말줄임
+    drawn, total = [], 0.0
+    for text, font, base, max_lines, gray, _drop in keep:
+        size = round(base * 0.5, 2)
+        lead = size * 1.3
+        for idx, ln in enumerate(_wrap(c, text, font, size, max_w)[:max_lines]):
+            if total + lead > max_h:
+                return drawn, total
+            if idx == max_lines - 1:
+                ln = _ellipsize(c, ln, font, size, max_w)
+            drawn.append((ln, font, size, gray, lead))
+            total += lead
+    return drawn, total
 
 
 def build_label_pdf(labels, spec, public_url_of):
@@ -113,25 +187,26 @@ def build_label_pdf(labels, spec, public_url_of):
             continue
 
         f = spec['fonts']
-        # 시료번호는 잘림 금지 — 폭에 맞춰 글자만 줄인다
+        # (텍스트, 폰트, 기준크기pt, 최대줄수, 회색농도 0=검정, 자리 없으면 생략)
+        # 시료번호는 접지 않고 폭에 맞춰 크기만 줄인다 (한 줄 고정)
         no_size = _shrink_to_fit(c, item.get('sample_no'), fn_bold, f['no'], tw)
-        # (텍스트, 폰트, 크기pt, 회색농도 0=검정)
-        lines = [
-            (item.get('sample_no') or '', fn_bold, no_size, 0),
-            (item.get('model_name') or '', fn, f['model'], 0),
-            (item.get('sub') or '', fn, f['sub'], 0.15),
-            ('(주)매그나텍 시료 · 스캔하면 시험이력', fn, f['brand'], 0.35),
+        fields = [
+            (item.get('sample_no') or '', fn_bold, no_size, 1, 0, False),
+            (item.get('model_name') or '', fn, f['model'], 2, 0, False),
+            (item.get('sub') or '', fn, f['sub'], 2, 0.15, False),
+            ('(주)매그나텍 시료 · 스캔하면 시험이력', fn, f['brand'], 2, 0.35, True),
         ]
-        leading = [size * 1.45 for _, _, size, _ in lines]
-        block_h = sum(leading)
-        # 세로 중앙 정렬 — 첫 줄 baseline
-        cursor = base_y + (lh + block_h) / 2 - leading[0]
+        lines, block_h = _layout_text(c, fields, tw, lh - 2 * pad)
+        if not lines:
+            c.showPage()
+            continue
 
-        for (text, font, size, gray), lead in zip(lines, leading):
-            if text:
-                c.setFont(font, size)
-                c.setFillGray(gray)
-                c.drawString(tx, cursor + size * 0.15, _fit(c, text, font, size, tw))
+        # 세로 중앙 정렬 — 첫 줄 baseline
+        cursor = base_y + (lh + block_h) / 2 - lines[0][4]
+        for text, font, size, gray, lead in lines:
+            c.setFont(font, size)
+            c.setFillGray(gray)
+            c.drawString(tx, cursor + size * 0.15, text)
             cursor -= lead
 
         c.showPage()

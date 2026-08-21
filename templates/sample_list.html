@@ -35,9 +35,10 @@
             <div class="hero-sub">시료 스펙과 시험 이력을 관리하고, QR 라벨로 실물에서 바로 조회합니다</div>
         </div>
         <div class="d-flex flex-wrap gap-2" style="white-space:nowrap;">
-            <button type="button" id="btnLabelPdf" class="btn btn-outline-light btn-sm" disabled>
-                라벨프린터 PDF (<span id="selCount">0</span>)
+            <button type="button" id="btnSheets" class="btn btn-outline-light btn-sm" disabled>
+                A4 스펙시트 (<span id="selCount">0</span>)
             </button>
+            <button type="button" id="btnLabelPdf" class="btn btn-outline-light btn-sm" disabled>라벨프린터 PDF</button>
             <button type="button" id="btnLabels" class="btn btn-outline-light btn-sm" disabled>A4 라벨지</button>
             {% if can_write %}
             <a href="{{ url_for('sample.sample_create') }}" class="btn btn-hi btn-sm">+ 시료 등록</a>
@@ -124,6 +125,8 @@
                 </td>
                 <td class="text-center">{{ s.scan_count or 0 }}</td>
                 <td class="text-center">
+                    <a href="{{ url_for('sample.sample_sheet', sample_id=s.id) }}" target="_blank"
+                       class="btn btn-sm btn-outline-primary py-0 px-1" style="font-size:.7rem;">A4</a>
                     <a href="{{ url_for('sample.sample_label_pdf', sample_id=s.id) }}" target="_blank"
                        class="btn btn-sm btn-outline-dark py-0 px-1" style="font-size:.7rem;">라벨</a>
                     <a href="{{ url_for('sample.sample_public', token=s.qr_token) }}" target="_blank"
@@ -146,9 +149,11 @@
   const chkAll = document.getElementById('chkAll');
   const btnSheet = document.getElementById('btnLabels');
   const btnPdf = document.getElementById('btnLabelPdf');
+  const btnSpec = document.getElementById('btnSheets');
   const counter = document.getElementById('selCount');
   const sheetUrl = "{{ url_for('sample.sample_labels') }}";
   const pdfUrl = "{{ url_for('sample.sample_labels_pdf') }}";
+  const specUrl = "{{ url_for('sample.sample_sheets') }}";
 
   function selected() {
     return Array.from(document.querySelectorAll('.chk-sample:checked')).map(el => el.value);
@@ -158,6 +163,7 @@
     counter.textContent = n;
     btnSheet.disabled = n === 0;
     btnPdf.disabled = n === 0;
+    btnSpec.disabled = n === 0;
   }
   document.querySelectorAll('.chk-sample').forEach(el => el.addEventListener('change', refresh));
   if (chkAll) {
@@ -173,6 +179,10 @@
   btnPdf.addEventListener('click', function () {
     const ids = selected();
     if (ids.length) window.open(pdfUrl + '?ids=' + ids.join(','), '_blank');
+  });
+  btnSpec.addEventListener('click', function () {
+    const ids = selected();
+    if (ids.length) window.open(specUrl + '?ids=' + ids.join(','), '_blank');
   });
   refresh();
 })();

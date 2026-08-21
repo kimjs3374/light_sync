@@ -15,15 +15,23 @@
     grid-auto-rows:{{ sheet.h }}mm;
     box-shadow:0 1px 6px rgba(0,0,0,.12);
   }
+  /* QR 이 칸 폭의 40%를 넘으면 옆 글자가 통째로 잘린다 — 높이·폭 둘 다로 가둔다 */
+  {% set qr_mm = [sheet.h - 5, sheet.w * 0.40]|min %}
+  {% set f_no = 8 if sheet.w >= 90 else (7.5 if sheet.w >= 65 else 6.5) %}
+  {% set f_model = f_no - 1 %}
+  {% set f_sub = f_no - 1.8 %}
+  {% set f_brand = f_no - 2.3 %}
   .cell { padding:1.5mm; display:flex; align-items:center; gap:1.5mm; overflow:hidden; }
   .cell.empty { visibility:hidden; }
-  .cell .qr { width:{{ sheet.h - 5 }}mm; height:{{ sheet.h - 5 }}mm; flex:none; }
+  .cell .qr { width:{{ qr_mm }}mm; height:{{ qr_mm }}mm; flex:none; }
   .cell .qr img { width:100%; height:100%; image-rendering:pixelated; display:block; }
-  .cell .txt { flex:1; min-width:0; line-height:1.25; }
-  .cell .no   { font-weight:800; font-size:8pt; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .cell .model{ font-size:7pt; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .cell .sub  { font-size:6pt; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .cell .brand{ font-size:5.5pt; color:#555; }
+  /* 라벨은 잘라내기보다 접는다 — 모델명·용도가 사라지면 라벨 구실을 못 한다 */
+  .cell .txt { flex:1; min-width:0; line-height:1.2; max-height:{{ sheet.h - 3 }}mm; overflow:hidden;
+               word-break:break-all; overflow-wrap:anywhere; }
+  .cell .no   { font-weight:800; font-size:{{ f_no }}pt; white-space:nowrap; }
+  .cell .model{ font-size:{{ f_model }}pt; }
+  .cell .sub  { font-size:{{ f_sub }}pt; color:#333; }
+  .cell .brand{ font-size:{{ f_brand }}pt; color:#555; }
 
   .toolbar { padding:12px; text-align:center; background:#fff; border-bottom:1px solid #cbd5e1; }
   .toolbar form { display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:13px; }
@@ -84,6 +92,25 @@
   {% endfor %}
 </div>
 {% endfor %}
+
+<script>
+// 칸 크기가 고정이라 이름이 길면 아래가 잘린다 → 칸마다 글자를 줄여 맞춘다.
+// (PDF 라벨의 자동 축소와 같은 규칙 — 잘라내기보다 줄이고 접는다)
+(function () {
+  document.querySelectorAll('.cell .txt').forEach(function (box) {
+    var scale = 1;
+    while (box.scrollHeight > box.clientHeight + 1 && scale > 0.55) {
+      scale -= 0.05;
+      box.querySelectorAll('div').forEach(function (line) {
+        if (!line.dataset.base) {
+          line.dataset.base = parseFloat(getComputedStyle(line).fontSize);
+        }
+        line.style.fontSize = (line.dataset.base * scale) + 'px';
+      });
+    }
+  });
+})();
+</script>
 
 </body>
 </html>
