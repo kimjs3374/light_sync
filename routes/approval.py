@@ -17,7 +17,7 @@ from modules.activity import log_activity
 from modules.storage_adapter import upload_bytes, download_bytes, delete_object
 from modules.models import (
     ApprovalDocument, ApprovalFormTemplate, ApprovalStep,
-    ApprovalReference, ApprovalAttachment, ApprovalComment, User,
+    ApprovalReference, ApprovalAttachment, ApprovalComment, User, REF_TYPE,
 )
 from modules.services import approval_service as svc
 from modules.services.overtime_excel import export_overtime_excel, make_filename
@@ -67,7 +67,11 @@ def _holiday_list():
 
 
 def _can_view(doc):
-    """기안자/결재자/참조자/admin만 열람 가능"""
+    """기안자/결재자/참조·수신자/admin만 열람 가능.
+
+    참조·수신자는 상신된 뒤(작성중 제외)부터 열람 가능 — 기안자가 아직
+    다듬고 있는 작성중 문서는 노출하지 않는다.
+    """
     uid = _me()
     if session.get('role') == 'admin':
         return True
@@ -75,9 +79,22 @@ def _can_view(doc):
         return True
     if any(s.approver_id == uid for s in doc.steps):
         return True
-    if any(r.user_id == uid for r in doc.references):
+    if doc.status != 'draft' and any(r.user_id == uid for r in doc.references):
         return True
     return False
+
+
+def _ref_cond(uid):
+    """참조·수신자로 걸린 문서 (작성중 제외)"""
+    return and_(ApprovalDocument.status != 'draft',
+                ApprovalDocument.references.any(ApprovalReference.user_id == uid))
+
+
+def _involved_cond(uid):
+    """내가 관여한 문서 — 기안 / 결재선 / 참조·수신"""
+    return or_(ApprovalDocument.drafter_id == uid,
+               ApprovalDocument.steps.any(ApprovalStep.approver_id == uid),
+               _ref_cond(uid))
 
 
 # ────────────────────────────────────────────────────────
@@ -96,10 +113,7 @@ def approval_list():
         base = db.query(ApprovalDocument)
         if tab == 'all':
             # 권한 내 모든 문서: 내가 기안 OR 결재선 포함 OR 참조/수신
-            docs = (base.filter(or_(
-                        ApprovalDocument.drafter_id == uid,
-                        ApprovalDocument.steps.any(ApprovalStep.approver_id == uid),
-                        ApprovalDocument.references.any(ApprovalReference.user_id == uid)))
+            docs = (base.filter(_involved_cond(uid))
                     .order_by(ApprovalDocument.created_at.desc()).all())
         elif tab == 'inbox':
             # 내가 현재 결재할 차례인 진행중 문서
@@ -113,45 +127,63 @@ def approval_list():
             docs = (base.filter(ApprovalDocument.drafter_id == uid)
                     .order_by(ApprovalDocument.created_at.desc()).all())
         elif tab == 'referenced':
-            docs = (base.join(ApprovalReference)
-                    .filter(ApprovalReference.user_id == uid)
+            docs = (base.filter(_ref_cond(uid))
                     .order_by(ApprovalDocument.submitted_at.desc().nullslast())
                     .all())
         elif tab == 'progress':
-            # 내가 결재선에 있고 아직 내 차례가 안 온/지난 진행중 문서
-            docs = (base.join(ApprovalStep)
-                    .filter(ApprovalDocument.status == 'pending',
-                            ApprovalStep.approver_id == uid)
+            # 결재선에 있거나 참조·수신으로 걸린 진행중 문서 (내 차례 전/후 포함)
+            docs = (base.filter(
+                        ApprovalDocument.status == 'pending',
+                        or_(ApprovalDocument.steps.any(ApprovalStep.approver_id == uid),
+                            ApprovalDocument.references.any(ApprovalReference.user_id == uid)))
                     .order_by(ApprovalDocument.submitted_at.desc())
-                    .distinct().all())
+                    .all())
         else:  # done
-            docs = (base.join(ApprovalStep)
-                    .filter(ApprovalDocument.status.in_(['approved', 'rejected']),
-                            or_(ApprovalStep.approver_id == uid,
-                                ApprovalDocument.drafter_id == uid))
+            docs = (base.filter(
+                        ApprovalDocument.status.in_(['approved', 'rejected']),
+                        or_(ApprovalDocument.drafter_id == uid,
+                            ApprovalDocument.steps.any(ApprovalStep.approver_id == uid),
+                            ApprovalDocument.references.any(ApprovalReference.user_id == uid)))
                     .order_by(ApprovalDocument.completed_at.desc().nullslast())
-                    .distinct().all())
+                    .all())
 
         # 통계 카운트
         inbox_count = (db.query(ApprovalDocument).join(ApprovalStep)
                        .filter(ApprovalDocument.status == 'pending',
                                ApprovalStep.approver_id == uid,
                                ApprovalStep.status == 'current').count())
-        progress_count = (db.query(ApprovalDocument).join(ApprovalStep)
+        progress_count = (db.query(ApprovalDocument)
                           .filter(ApprovalDocument.status == 'pending',
-                                  ApprovalStep.approver_id == uid).distinct().count())
+                                  or_(ApprovalDocument.steps.any(ApprovalStep.approver_id == uid),
+                                      ApprovalDocument.references.any(
+                                          ApprovalReference.user_id == uid))).count())
         drafted_count = (db.query(ApprovalDocument)
                          .filter(ApprovalDocument.drafter_id == uid).count())
-        done_count = (db.query(ApprovalDocument).join(ApprovalStep)
+        done_count = (db.query(ApprovalDocument)
                       .filter(ApprovalDocument.status.in_(['approved', 'rejected']),
-                              or_(ApprovalStep.approver_id == uid,
-                                  ApprovalDocument.drafter_id == uid)).distinct().count())
+                              or_(ApprovalDocument.drafter_id == uid,
+                                  ApprovalDocument.steps.any(ApprovalStep.approver_id == uid),
+                                  ApprovalDocument.references.any(
+                                      ApprovalReference.user_id == uid))).count())
+        referenced_count = db.query(ApprovalDocument).filter(_ref_cond(uid)).count()
         stats = {'inbox': inbox_count, 'progress': progress_count,
-                 'drafted': drafted_count, 'done': done_count}
+                 'drafted': drafted_count, 'done': done_count,
+                 'referenced': referenced_count}
+        # 목록에서 "왜 이 문서가 보이는지" — 내가 참조/수신으로 걸린 문서 표시용
+        ref_labels = {}
+        if docs:
+            for did, rtype in (db.query(ApprovalReference.document_id,
+                                        ApprovalReference.ref_type)
+                               .filter(ApprovalReference.user_id == uid,
+                                       ApprovalReference.document_id.in_(
+                                           [d.id for d in docs])).all()):
+                ref_labels[did] = REF_TYPE.get(rtype, '참조')
+
         forms = svc.get_active_forms(db)
         return render_template('approval_list.html',
                                docs=docs, tab=tab, forms=forms,
-                               inbox_count=inbox_count, stats=stats)
+                               inbox_count=inbox_count, stats=stats,
+                               ref_labels=ref_labels, my_uid=uid)
 
 
 # ────────────────────────────────────────────────────────

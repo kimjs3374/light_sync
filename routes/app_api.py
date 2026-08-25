@@ -7644,6 +7644,9 @@ def _ea_doc_brief(doc, uid):
         'date': (doc.submitted_at or doc.created_at).strftime('%Y-%m-%d') if (doc.submitted_at or doc.created_at) else '',
         'step_count': len(doc.steps),
         'approved_steps': sum(1 for s in doc.steps if s.status == 'approved'),
+        # 내가 참조/수신으로 걸린 문서면 라벨 — 목록에서 왜 보이는지 표시용
+        'my_ref': ('' if doc.drafter_id == uid else
+                   next((r.ref_label for r in doc.references if r.user_id == uid), '')),
     }
 
 
@@ -7653,18 +7656,20 @@ def app_approvals():
     """결재 목록 — tab: inbox/drafted/done"""
     from modules.models import ApprovalDocument, ApprovalStep, ApprovalReference
     from modules.services import approval_service as svc
-    from sqlalchemy import or_
+    from sqlalchemy import or_, and_
     uid = request._app_user_id
     tab = request.args.get('tab', 'all')
+    # 참조·수신자는 상신된 뒤(작성중 제외)부터 열람 — PC 화면과 동일 기준
+    ref_cond = and_(ApprovalDocument.status != 'draft',
+                    ApprovalDocument.references.any(ApprovalReference.user_id == uid))
+    step_cond = ApprovalDocument.steps.any(ApprovalStep.approver_id == uid)
     with get_db() as db:
         svc.seed_form_templates(db); db.commit()
         base = db.query(ApprovalDocument)
         if tab == 'all':
             # 권한 내 모든 문서: 내가 기안 OR 결재선 포함 OR 참조/수신
-            docs = (base.filter(or_(
-                        ApprovalDocument.drafter_id == uid,
-                        ApprovalDocument.steps.any(ApprovalStep.approver_id == uid),
-                        ApprovalDocument.references.any(ApprovalReference.user_id == uid)))
+            docs = (base.filter(or_(ApprovalDocument.drafter_id == uid,
+                                    step_cond, ref_cond))
                     .order_by(ApprovalDocument.created_at.desc()).all())
         elif tab == 'inbox':
             docs = (base.join(ApprovalStep)
@@ -7673,22 +7678,21 @@ def app_approvals():
                             ApprovalStep.status == 'current')
                     .order_by(ApprovalDocument.submitted_at.desc()).all())
         elif tab == 'progress':
-            # 내가 결재선에 있는 진행중 문서 (내 차례 전/후 포함)
+            # 결재선에 있거나 참조·수신으로 걸린 진행중 문서 (내 차례 전/후 포함)
             docs = (base.filter(ApprovalDocument.status == 'pending',
-                                ApprovalDocument.steps.any(ApprovalStep.approver_id == uid))
+                                or_(step_cond, ref_cond))
                     .order_by(ApprovalDocument.submitted_at.desc()).all())
         elif tab == 'drafted':
             docs = (base.filter(ApprovalDocument.drafter_id == uid)
                     .order_by(ApprovalDocument.created_at.desc()).all())
         elif tab == 'referenced':
-            docs = (base.join(ApprovalReference)
-                    .filter(ApprovalReference.user_id == uid)
+            docs = (base.filter(ref_cond)
                     .order_by(ApprovalDocument.submitted_at.desc().nullslast()).all())
         else:  # done
-            docs = (base.join(ApprovalStep)
-                    .filter(ApprovalDocument.status.in_(['approved', 'rejected']),
-                            ApprovalStep.approver_id == uid)
-                    .order_by(ApprovalDocument.completed_at.desc().nullslast()).distinct().all())
+            docs = (base.filter(ApprovalDocument.status.in_(['approved', 'rejected']),
+                                or_(ApprovalDocument.drafter_id == uid,
+                                    step_cond, ref_cond))
+                    .order_by(ApprovalDocument.completed_at.desc().nullslast()).all())
         inbox_count = (db.query(ApprovalDocument).join(ApprovalStep)
                        .filter(ApprovalDocument.status == 'pending',
                                ApprovalStep.approver_id == uid,
@@ -7751,11 +7755,18 @@ def app_approval_detail(doc_id):
         doc = db.query(ApprovalDocument).get(doc_id)
         if not doc:
             return jsonify(ok=False, error='문서를 찾을 수 없습니다'), 404
-        # 열람권한
+        # 열람권한 — 참조·수신자는 상신된 뒤부터(작성중 제외)
         allowed = (doc.drafter_id == uid or any(s.approver_id == uid for s in doc.steps)
-                   or any(r.user_id == uid for r in doc.references))
+                   or (doc.status != 'draft'
+                       and any(r.user_id == uid for r in doc.references)))
         if not allowed:
             return jsonify(ok=False, error='열람 권한이 없습니다'), 403
+        # 참조·수신자 열람 표시 (PC 상세와 동일)
+        for r in doc.references:
+            if r.user_id == uid and not r.is_read:
+                r.is_read = True
+                r.read_at = datetime.datetime.now()
+        db.commit()
         form = db.query(ApprovalFormTemplate).filter_by(form_key=doc.form_key).first()
         my_step = next((s for s in doc.steps if s.approver_id == uid and s.status == 'current'), None)
         fields = []

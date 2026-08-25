@@ -604,10 +604,11 @@ def approve_step(db, doc, step, comment=None):
         if next_step:  # 임원 결재가 남은 경우에만 별도 '효력발생' 알림
             _notify_effect_active(db, doc, step)
 
-    # 부서장(첫 결재단계) 승인 → 수신자에게 카카오워크 알림
-    if step.step_order == first_order and any(
+    # 부서장(첫 결재단계) 승인 → 수신자에게 카카오워크 알림.
+    # 이 단계가 마지막이면 아래 _notify_completed 가 참조·수신자까지 챙기므로 생략(중복 방지).
+    if next_step and step.step_order == first_order and any(
             r.ref_type == 'receiver' for r in doc.references):
-        _notify_receivers_dept_approved(db, doc, step, final=(next_step is None))
+        _notify_receivers_dept_approved(db, doc, step)
 
     if next_step:
         next_step.status = 'current'
@@ -965,7 +966,11 @@ def _notify_effect_active(db, doc, step):
 
 
 def _notify_completed(db, doc, approved, rejecter=None):
-    """기안자·참조자에게 ERP 알림 + 기안자에게 Mattermost DM."""
+    """기안자·참조/수신자에게 ERP 알림 + DM(Mattermost·카카오워크).
+
+    반려는 기안자만 DM으로 알린다(참조·수신자는 인앱 알림). 최종 승인은
+    수신 담당자가 후속 처리를 해야 하므로 참조·수신자에게도 DM을 보낸다.
+    """
     try:
         from modules.notification_engine import notify
         event = 'approval.approved' if approved else 'approval.rejected'
@@ -994,13 +999,32 @@ def _notify_completed(db, doc, approved, rejecter=None):
         kakao_txt = f"⛔ 결재반려 — {doc.form_name}\n{doc.title} — {who}님이 반려했습니다.\n{link}"
     _send_mm_dm(db, doc.drafter_id, msg)
     _send_kakao_text_to_user(db, doc.drafter_id, kakao_txt)
+    if approved:
+        # 참조·수신자에게도 결재완료 DM (기안자·중복 제외)
+        seen = {doc.drafter_id}
+        for r in doc.references:
+            if not r.user_id or r.user_id in seen:
+                continue
+            seen.add(r.user_id)
+            icon = '📥' if r.ref_type == 'receiver' else '📎'
+            label = r.ref_label
+            _send_mm_dm(db, r.user_id,
+                        f"{icon} **결재완료({label})** — {doc.form_name}\n"
+                        f"**{doc.title}** 최종 승인되었습니다\n"
+                        f"기안 : {doc.drafter_name}\n→ [문서보기]({link})")
+            _send_kakao_text_to_user(
+                db, r.user_id,
+                f"{icon} 결재완료({label}) — {doc.form_name}\n"
+                f"{doc.title} 최종 승인되었습니다.\n"
+                f"기안 : {doc.drafter_name}\n{link}")
 
 
-def _notify_receivers_dept_approved(db, doc, step, final=False):
+def _notify_receivers_dept_approved(db, doc, step):
     """부서장(첫 결재단계) 승인 → 수신자(receiver)에게 카카오워크 알림.
 
     수신 담당자가 문서를 확인하도록 부서장 결재가 끝난 시점에 카카오워크 DM 발송.
     참조(reference)자와 기안자는 대상에서 제외.
+    (최종 승인까지 끝난 경우는 _notify_completed 가 참조·수신자를 함께 처리한다.)
     """
     seen = set()
     refs = []
@@ -1014,7 +1038,7 @@ def _notify_receivers_dept_approved(db, doc, step, final=False):
     if not refs:
         return
     link = _doc_link(doc)
-    tail = "최종 승인되었습니다" if final else "부서장 결재가 완료되었습니다 (임원 결재 진행 중)"
+    tail = "부서장 결재가 완료되었습니다 (임원 결재 진행 중)"
     for r in refs:
         _send_kakao_text_to_user(
             db, r.user_id,

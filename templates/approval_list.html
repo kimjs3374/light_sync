@@ -117,7 +117,7 @@
         </td>
         <td class="text-muted" style="font-family:var(--mg-mono,monospace);font-size:.76rem">{{ d.doc_no or '임시저장' }}</td>
         <td><span class="badge bg-light text-dark border">{{ d.form_name }}</span></td>
-        <td class="ea-title fw-semibold">{{ d.title }}</td>
+        <td class="ea-title fw-semibold">{{ d.title }}{% if (ref_labels|default({})).get(d.id) and d.drafter_id != my_uid %} <span class="badge bg-info-subtle text-info-emphasis border" style="white-space:nowrap;font-weight:600">{{ ref_labels[d.id] }}</span>{% endif %}</td>
         <td>{{ d.drafter_name }} {{ d.drafter_position or '' }}</td>
         <td>
           {% if d.status == 'draft' %}<span class="badge bg-secondary">작성중</span>

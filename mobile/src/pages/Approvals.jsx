@@ -6,6 +6,7 @@ const TABS = [
   { key: 'all', label: '전체' },
   { key: 'inbox', label: '결재대기' },
   { key: 'progress', label: '진행중' },
+  { key: 'referenced', label: '참조/수신' },
   { key: 'done', label: '완료' },
 ];
 
@@ -68,6 +69,7 @@ export default function Approvals() {
                     {d.drafter_name} {d.drafter_position} · {d.date}
                     {d.status === 'pending' && ` · ${d.approved_steps}/${d.step_count} 결재`}
                     {d.my_turn && <span style={s.turnTag}>내 차례</span>}
+                    {!d.my_turn && d.my_ref && <span style={s.refTag}>{d.my_ref}</span>}
                   </div>
                 </div>
               </div>
@@ -87,4 +89,5 @@ const s = {
   tabOn: { color: 'var(--accent)', borderBottomColor: 'var(--accent)', fontWeight: 700 },
   badge: { fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, whiteSpace: 'nowrap' },
   turnTag: { marginLeft: 6, background: 'var(--danger, #dc2626)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4 },
+  refTag: { marginLeft: 6, background: 'var(--accent)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4 },
 };
