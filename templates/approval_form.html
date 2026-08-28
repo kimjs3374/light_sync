@@ -171,13 +171,20 @@
             <button type="button" class="btn btn-sm btn-outline-primary ms-auto" onclick="exAddRow()">+ 항목추가</button>
           </div>
           <div class="table-responsive">
-            <table class="table table-sm mb-1 align-middle" style="min-width:520px">
+            <table class="table table-sm mb-1 align-middle" style="min-width:860px">
               <thead class="table-light">
-                <tr><th>지출항목</th><th style="width:140px">금액(원)</th><th>사용처/거래처</th><th style="width:38px"></th></tr>
+                <tr>
+                  <th>지출항목</th>
+                  <th style="width:130px">금액(원)</th>
+                  <th>사용처/거래처</th>
+                  <th style="width:110px">은행</th>
+                  <th style="width:190px">계좌번호</th>
+                  <th style="width:38px"></th>
+                </tr>
               </thead>
               <tbody id="exBody"></tbody>
               <tfoot>
-                <tr><th class="text-end">합계</th><th class="text-end"><span id="exTotal">0</span></th><th colspan="2"></th></tr>
+                <tr><th class="text-end">합계</th><th class="text-end"><span id="exTotal">0</span></th><th colspan="4"></th></tr>
               </tfoot>
             </table>
           </div>
@@ -513,6 +520,8 @@
           '<td><input class="form-control form-control-sm" name="li_item" value="' + exEsc(r.item) + '"></td>' +
           '<td><input type="number" class="form-control form-control-sm text-end" name="li_amount" value="' + exEsc(r.amount) + '" oninput="exCalc()"></td>' +
           '<td><input class="form-control form-control-sm" name="li_payee" value="' + exEsc(r.payee) + '"></td>' +
+          '<td><input class="form-control form-control-sm" name="li_bank" value="' + exEsc(r.bank) + '" placeholder="국민"></td>' +
+          '<td><input class="form-control form-control-sm" name="li_account_no" value="' + exEsc(r.account_no) + '" placeholder="123456-78-901234"></td>' +
           '<td class="text-center"><button type="button" class="btn btn-sm btn-light text-danger" onclick="exDel(this)">✕</button></td>';
         body.appendChild(tr);
       });
@@ -522,8 +531,13 @@
       const items = document.querySelectorAll('#exBody input[name="li_item"]');
       const amts = document.querySelectorAll('#exBody input[name="li_amount"]');
       const pys = document.querySelectorAll('#exBody input[name="li_payee"]');
+      const bks = document.querySelectorAll('#exBody input[name="li_bank"]');
+      const accs = document.querySelectorAll('#exBody input[name="li_account_no"]');
       EX_ITEMS = [];
-      items.forEach((it, i) => EX_ITEMS.push({ item: it.value, amount: amts[i].value, payee: pys[i].value }));
+      items.forEach((it, i) => EX_ITEMS.push({
+        item: it.value, amount: amts[i].value, payee: pys[i].value,
+        bank: bks[i] ? bks[i].value : '', account_no: accs[i] ? accs[i].value : '',
+      }));
     }
     function exAddRow() { exSync(); EX_ITEMS.push({}); exRender(); }
     function exDel(btn) {

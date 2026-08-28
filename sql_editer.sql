@@ -1774,3 +1774,16 @@ CREATE INDEX IF NOT EXISTS idx_samples_status       ON light_sync.samples      (
 CREATE INDEX IF NOT EXISTS idx_sample_tests_sample  ON light_sync.sample_tests (sample_id);
 CREATE INDEX IF NOT EXISTS idx_sample_tests_valid   ON light_sync.sample_tests (valid_until);
 CREATE INDEX IF NOT EXISTS idx_sample_logs_sample   ON light_sync.sample_logs  (sample_id, created_at DESC);
+
+-- 2026-08-28 전자결재 지출결의서 지출명세에 은행/계좌번호 컬럼 추가
+-- (스키마 정의는 approval_form_templates.field_schema JSONB 안에 있음)
+-- 되돌리기: 아래 UPDATE 의 columns 배열에서 bank / account_no 원소를 제거
+UPDATE light_sync.approval_form_templates
+   SET field_schema = jsonb_set(
+         field_schema,
+         '{1,columns}',
+         (field_schema -> 1 -> 'columns')
+           || '[{"key":"bank","label":"은행"},{"key":"account_no","label":"계좌번호"}]'::jsonb
+       )
+ WHERE form_key = 'expense'
+   AND NOT (field_schema -> 1 -> 'columns' @> '[{"key":"bank"}]'::jsonb);

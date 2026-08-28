@@ -90,6 +90,8 @@ DEFAULT_FORMS = [
                  {'key': 'item', 'label': '지출항목'},
                  {'key': 'amount', 'label': '금액', 'type': 'number'},
                  {'key': 'payee', 'label': '사용처/거래처'},
+                 {'key': 'bank', 'label': '은행'},
+                 {'key': 'account_no', 'label': '계좌번호'},
              ]},
             {'key': 'payment_method', 'label': '결제수단', 'type': 'select', 'required': False,
              'options': ['법인카드', '계좌이체', '현금', '개인카드(환급)']},

@@ -70,7 +70,14 @@ export default function ApprovalDetail() {
               <div>
                 {(f.rows || []).map((r, ri) => (
                   <div key={ri} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                    <span>{r.item || '-'}{r.payee ? ` · ${r.payee}` : ''}</span>
+                    <span>
+                      {r.item || '-'}{r.payee ? ` · ${r.payee}` : ''}
+                      {(r.bank || r.account_no) && (
+                        <div style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 2 }}>
+                          {[r.bank, r.account_no].filter(Boolean).join(' ')}
+                        </div>
+                      )}
+                    </span>
                     <b>{r.amount ? Number(String(r.amount).replace(/[^0-9-]/g, '')).toLocaleString() : '-'}</b>
                   </div>
                 ))}
