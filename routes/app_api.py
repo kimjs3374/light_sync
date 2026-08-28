@@ -1687,7 +1687,14 @@ def app_tools():
 @app_api_bp.route('/procurement-summary')
 @app_auth_required
 def app_procurement_summary():
-    """납품집계 — G2B 조달내역 연/월별 집계"""
+    """납품집계 — G2B 조달내역 연/월별 집계
+
+    필터는 웹 납품집계와 같은 summary_base_filters() 를 쓴다.
+    예전에는 날짜 NULL 만 걸러서 금액 0 행이 건수에 섞였고,
+    같은 화면을 웹과 모바일에서 열면 건수가 달랐다.
+    """
+    from modules.services.procurement_summary import summary_base_filters
+
     with get_db() as db:
         rows = db.query(
             extract('year', G2bProcurement.cntrct_dlvr_req_date).label('year'),
@@ -1695,7 +1702,8 @@ def app_procurement_summary():
             func.count(G2bProcurement.id).label('count'),
             func.sum(G2bProcurement.prdct_amt).label('total_amount'),
         ).filter(
-            G2bProcurement.cntrct_dlvr_req_date.isnot(None)
+            G2bProcurement.cntrct_dlvr_req_date.isnot(None),
+            *summary_base_filters(),
         ).group_by('year', 'month').order_by(
             desc('year'), desc('month')
         ).all()

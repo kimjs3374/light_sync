@@ -1,0 +1,215 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<style>
+.dtl-tbl { width:100%; border-collapse:collapse; font-size:0.82rem; min-width:1240px; }
+.dtl-tbl th, .dtl-tbl td { padding:3px 6px; border:1px solid #dee2e6; white-space:nowrap; }
+.dtl-tbl th { background:#f0f0f0; font-weight:600; text-align:center;
+              border-bottom:2px solid #999; }
+.dtl-tbl td.num { text-align:right; }
+.dtl-tbl td.mid { text-align:center; }
+.dtl-tbl td.code { font-family:ui-monospace,Menlo,Consolas,monospace; }
+.dtl-tbl .qty-val { color:#1e40af; }
+.dtl-tbl .amt-val { color:#166534; }
+.dtl-tbl .none { color:#b91c1c; }
+.dtl-tbl tbody tr:hover { background:#f8fafc; }
+.dtl-tbl .sum-row { background:#e2e8f0; font-weight:700; }
+.dtl-tbl .sum-row td { background:#e2e8f0; }
+/* 세로 스크롤은 페이지 하나만. 표 안에 또 만들면 한 화면에 스크롤이 둘이 된다.
+   가로만 좁은 화면에서 열리게 둔다. */
+.table-scroll { overflow-x:auto; }
+.btn-sm, .badge { white-space:nowrap; }
+
+@media print {
+    .no-print { display:none !important; }
+    .print-title { display:block !important; }
+    .table-scroll { overflow:visible; }
+    /* 폰트 폭은 환경마다 다르다 — 칸 폭 하드코딩 금지, 브라우저가 나누게 둔다 */
+    .dtl-tbl { table-layout:auto; min-width:0; width:100%; font-size:0.72rem; }
+    .dtl-tbl th, .dtl-tbl td { border:1px solid #000 !important; color:#000 !important; padding:2px 4px; }
+    .dtl-tbl th { background:#e5e5e5 !important;
+                  -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .dtl-tbl .sum-row td { background:#e5e5e5 !important; }
+    /* 짧고 접히면 안 되는 값만 nowrap, 긴 이름은 접히게 */
+    .dtl-tbl td.mid, .dtl-tbl td.num, .dtl-tbl td.code { white-space:nowrap; width:1%; }
+    .dtl-tbl td.wrap { white-space:normal; overflow-wrap:anywhere; }
+    .qty-val, .amt-val, .none { color:#000 !important; }
+}
+@page { size: A4 landscape; margin: 10mm; }
+</style>
+
+<div class="print-title mb-1">
+    <h6 class="fw-bold mb-0">납품집계 세부 ({{ filters.years }})
+        {% if filters.category %}— {{ filters.category }}{% endif %}
+        {% if filters.model %}— {{ filters.model }}{% endif %}
+        {% if filters.month %}— {{ filters.month }}월{% endif %}
+        <small class="text-muted fw-normal">{{ current_date }}</small>
+    </h6>
+</div>
+
+{# === 타이틀 + 버튼 === #}
+<div class="page-hero mg-fade no-print">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Delivery Summary · Detail</div>
+            <h2>납품집계 세부
+                {% if filters.category %}<span class="badge bg-primary fw-normal" style="font-size:0.8rem;">{{ filters.category }}</span>{% endif %}
+                {% if filters.model %}<span class="badge bg-dark fw-normal" style="font-size:0.8rem;">{{ filters.model }}</span>{% endif %}
+                {% if filters.month %}<span class="badge bg-secondary fw-normal" style="font-size:0.8rem;">{{ filters.month }}월</span>{% endif %}
+            </h2>
+            <div class="hero-sub">품목별 계약일자·완료일자와 수량·금액을 건별로 확인합니다</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('procurement.procurement_summary', years=filters.years, category=filters.category, q=filters.q) }}"
+               class="btn btn-outline-secondary btn-sm">← 집계로</a>
+            <a href="{{ url_for('procurement.procurement_summary_detail_excel', years=filters.years, category=filters.category, q=filters.q, model=filters.model, month=filters.month) }}"
+               class="btn btn-success btn-sm">엑셀 다운로드</a>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">인쇄</button>
+        </div>
+    </div>
+</div>
+
+{# === 검색/필터 === #}
+<div class="card border-0 shadow-sm mb-2 no-print mg-fade" style="animation-delay:.05s;">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-end" id="dtlForm">
+            <input type="hidden" name="q" value="{{ filters.q }}">
+            <div class="col-md-2 col-6">
+                <select name="category" class="form-select form-select-sm" id="catSel">
+                    <option value="">전체 품목</option>
+                    {% for c in filter_options.categories %}
+                    <option value="{{ c }}" {% if filters.category == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 col-6">
+                <select name="model" class="form-select form-select-sm">
+                    <option value="">전체 모델</option>
+                    {% for m in filter_options.models %}
+                    <option value="{{ m.code }}" {% if filters.model == m.code %}selected{% endif %}>
+                        {{ m.code }}{% if not filters.category %} · {{ m.item }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-1 col-4">
+                <select name="month" class="form-select form-select-sm">
+                    <option value="">전체 월</option>
+                    {% for m in range(1, 13) %}
+                    <option value="{{ m }}" {% if filters.month == m %}selected{% endif %}>{{ m }}월</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-auto col-12">
+                <div class="d-flex flex-wrap align-items-center gap-1">
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input" type="checkbox" id="yrAll"
+                               {% if selected_years|length == filter_options.years|length %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="yrAll" style="font-size:0.82rem;">전체</label>
+                    </div>
+                    {% for y in filter_options.years %}
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input yr-chk" type="checkbox" name="years" value="{{ y }}" id="yr{{ y }}"
+                               {% if y in selected_years %}checked{% endif %}>
+                        <label class="form-check-label" for="yr{{ y }}" style="font-size:0.82rem;">{{ y }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="col-auto d-flex align-items-center gap-2">
+                <button type="submit" class="btn btn-primary btn-sm">검색</button>
+                <a href="{{ url_for('procurement.procurement_summary_detail') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# === 세부 테이블 === #}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-1 d-flex flex-wrap align-items-center gap-2">
+        <strong class="small">품목 세부내역</strong>
+        <span class="badge bg-primary">{{ detail['items']|length }}건</span>
+        <span class="small text-muted">수량 <strong class="text-primary">{{ "{:,}".format(detail['total_qty']) }}</strong> EA</span>
+        {% if not hide_financial %}
+        <span class="small text-muted">금액 <strong class="text-success">{{ "{:,}".format(detail['total_amt']) }}</strong> 원</span>
+        {% endif %}
+        <span class="small text-muted">완료 <strong>{{ detail['done_count'] }}</strong>/{{ detail['items']|length }}건</span>
+    </div>
+    <div class="card-body p-0">
+        {% if detail['items'] %}
+        <div class="table-scroll">
+            <table class="dtl-tbl">
+                <thead>
+                    <tr>
+                        <th style="min-width:96px;">계약일자</th>
+                        <th style="min-width:96px;">완료일자</th>
+                        <th style="min-width:150px;">품목</th>
+                        <th style="min-width:140px;">모델명</th>
+                        <th style="min-width:70px;">수량</th>
+                        {% if not hide_financial %}<th style="min-width:110px;">금액</th>{% endif %}
+                        <th style="min-width:340px;">계약명</th>
+                        <th style="min-width:180px;">수요기관</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for it in detail['items'] %}
+                    <tr>
+                        <td class="mid">{{ it.contract_date.strftime('%Y-%m-%d') if it.contract_date else '-' }}</td>
+                        <td class="mid">
+                            {% if it.done_date %}{{ it.done_date.strftime('%Y-%m-%d') }}
+                            {% else %}<span class="none">미발행</span>{% endif %}
+                        </td>
+                        <td class="wrap">{{ it.item_name }}</td>
+                        <td class="code" title="{{ it.model_raw }}">{{ it.model_code }}</td>
+                        <td class="num"><span class="qty-val">{{ "{:,}".format(it.qty) }}</span></td>
+                        {% if not hide_financial %}
+                        <td class="num"><span class="amt-val">{{ "{:,}".format(it.amt) }}</span></td>
+                        {% endif %}
+                        <td class="wrap">{{ it.contract_name }}</td>
+                        <td class="wrap">{{ it.demand_org }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="sum-row">
+                        <td class="mid" colspan="4">합계</td>
+                        <td class="num">{{ "{:,}".format(detail['total_qty']) }}</td>
+                        {% if not hide_financial %}<td class="num">{{ "{:,}".format(detail['total_amt']) }}</td>{% endif %}
+                        <td colspan="2"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <p class="mt-2 mb-0">조회 결과가 없습니다.</p>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-footer bg-white text-muted py-1" style="font-size:0.72rem;">
+        계약일자 = G2B 최초계약납품요구일자 · 완료일자 = 매칭된 매출 세금계산서 최종 발행일
+    </div>
+</div>
+
+<script>
+(function () {
+    // 연도 전체 토글 — 집계 화면과 같은 동작
+    const all = document.getElementById('yrAll');
+    const chks = Array.from(document.querySelectorAll('.yr-chk'));
+    if (all) {
+        all.addEventListener('change', () => chks.forEach(c => { c.checked = all.checked; }));
+        chks.forEach(c => c.addEventListener('change', () => {
+            all.checked = chks.every(x => x.checked);
+        }));
+    }
+    // 품목을 바꾸면 모델 목록이 그 품목 것으로 좁혀져야 한다 -> 모델 선택 비우고 재조회
+    const cat = document.getElementById('catSel');
+    if (cat) {
+        cat.addEventListener('change', () => {
+            const sel = document.querySelector('select[name="model"]');
+            if (sel) sel.value = '';
+            document.getElementById('dtlForm').submit();
+        });
+    }
+})();
+</script>
+
+{% endblock %}

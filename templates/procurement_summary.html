@@ -9,9 +9,15 @@
 .pivot-tbl .sum-row { background:#e2e8f0; font-weight:700; }
 .pivot-tbl .sum-col { background:#f8fafc; font-weight:600; }
 .pivot-tbl .zero { color:#ccc; }
+.pivot-tbl a.drill { color:inherit; text-decoration:none; display:block; }
+.pivot-tbl a.drill:hover { text-decoration:underline; }
+.pivot-tbl td:has(a.drill):hover { background:#eff6ff; cursor:pointer; }
+@media print { .pivot-tbl a.drill { text-decoration:none !important; color:#000 !important; } }
 .pivot-tbl .qty-val { color:#1e40af; }
 .pivot-tbl .amt-val { color:#64748b; font-size:0.78rem; }
-.table-scroll { overflow-x:auto; max-height:65vh; overflow-y:auto; }
+/* 세로 스크롤은 페이지 하나만. 표 안에 또 만들면 한 화면에 스크롤이 둘이 된다.
+   가로만 좁은 화면에서 열리게 둔다. */
+.table-scroll { overflow-x:auto; }
 
 @media print {
     @page { size:A4 landscape; margin:8mm; }
@@ -23,7 +29,7 @@
     .pivot-tbl { font-size:8px !important; }
     .pivot-tbl th, .pivot-tbl td { padding:2px 3px !important; }
     .print-title { display:block !important; }
-    .table-scroll { max-height:none; overflow:visible; }
+    .table-scroll { overflow:visible; }
 }
 @media screen { .print-title { display:none; } }
 </style>
@@ -46,6 +52,8 @@
         <div class="d-flex flex-wrap gap-2">
             <a href="{{ url_for('procurement.procurement_summary_excel', years=filters.years, category=filters.category, q=filters.q) }}"
                class="btn btn-success btn-sm">엑셀 다운로드</a>
+            <a href="{{ url_for('procurement.procurement_summary_detail', years=filters.years, category=filters.category, q=filters.q) }}"
+               class="btn btn-primary btn-sm">세부조회</a>
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">인쇄</button>
         </div>
     </div>
@@ -133,14 +141,26 @@
                     {% for mdl in pivot.models %}
                     {# 합계행 (년도 여러개면 소계 역할) #}
                     <tr {% if mdl.sub_rows %}class="fw-bold" style="background:#f8fafc;"{% endif %}>
-                        <td title="{{ mdl.name }}">{{ mdl.name }}{% if mdl.sub_rows %} <span class="text-muted fw-normal" style="font-size:0.75rem;">(합계)</span>{% endif %}</td>
+                        <td title="{{ mdl.name }}">
+                            <a class="drill" href="{{ url_for('procurement.procurement_summary_detail',
+                                   years=filters.years,
+                                   category=(filters.category if filters.view == 'model' else mdl.name),
+                                   q=filters.q,
+                                   model=(mdl.name if filters.view == 'model' else '')) }}">{{ mdl.name }}</a>{% if mdl.sub_rows %} <span class="text-muted fw-normal" style="font-size:0.75rem;">(합계)</span>{% endif %}</td>
                         {% for m in range(1, 13) %}
                         {% set qty = mdl.months[m].qty %}
                         {% set amt = mdl.months[m].amt %}
                         <td {% if qty == 0 %}class="zero"{% endif %}>
                             {% if qty > 0 %}
-                            <span class="qty-val">{{ qty }}</span><br>
-                            {% if not hide_financial %}<span class="amt-val">{{ "{:,.0f}".format(amt / 10000) }}만</span>{% endif %}
+                            <a class="drill" href="{{ url_for('procurement.procurement_summary_detail',
+                                   years=filters.years,
+                                   category=(filters.category if filters.view == 'model' else mdl.name),
+                                   q=filters.q,
+                                   model=(mdl.name if filters.view == 'model' else ''),
+                                   month=m) }}">
+                                <span class="qty-val">{{ qty }}</span><br>
+                                {% if not hide_financial %}<span class="amt-val">{{ "{:,.0f}".format(amt / 10000) }}만</span>{% endif %}
+                            </a>
                             {% else %}-{% endif %}
                         </td>
                         {% endfor %}

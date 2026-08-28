@@ -15,6 +15,7 @@ from modules.history_board import append_history_log
 from modules.services.g2b_procurement_sync import sync_daily, sync_bulk, auto_create_contracts
 from modules.services.procurement_summary import (
     get_filter_options, get_summary_pivot, build_chart_data, generate_excel,
+    get_summary_detail, generate_detail_excel, get_detail_filter_options,
 )
 
 procurement_bp = Blueprint('procurement', __name__)
@@ -1022,6 +1023,77 @@ def procurement_summary_excel():
         return redirect(url_for('procurement.procurement_summary'))
 
     year_str = '_'.join(str(y) for y in years)
+    filename = f'{title}_{year_str}.xlsx'
+    encoded = quote(filename)
+
+    resp = make_response(buf.read())
+    resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    resp.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{encoded}"
+    return resp
+
+
+def _detail_args():
+    """세부조회 공통 파라미터 (화면/엑셀이 같은 조건을 봐야 한다)"""
+    return {
+        'years': _parse_years(),
+        'category': (request.args.get('category') or '').strip() or None,
+        'q': (request.args.get('q') or '').strip() or None,
+        'model': (request.args.get('model') or '').strip() or None,
+        'month': safe_int(request.args.get('month')) or None,
+    }
+
+
+@procurement_bp.route('/procurement/summary/detail')
+@login_required
+def procurement_summary_detail():
+    """납품집계 세부조회 — 피벗 셀 뒤의 품목 원장"""
+    args = _detail_args()
+
+    with get_db() as db:
+        detail = get_summary_detail(db, **args)
+        filter_options = get_detail_filter_options(db, category=args['category'])
+
+    return render_template(
+        'procurement_summary_detail.html',
+        detail=detail,
+        filter_options=filter_options,
+        filters={
+            'years': ','.join(str(y) for y in args['years']),
+            'category': args['category'] or '',
+            'q': args['q'] or '',
+            'model': args['model'] or '',
+            'month': args['month'] or '',
+        },
+        selected_years=args['years'],
+        current_date=datetime.date.today().strftime('%Y-%m-%d'),
+    )
+
+
+@procurement_bp.route('/procurement/summary/detail/excel')
+@login_required
+def procurement_summary_detail_excel():
+    """세부조회 엑셀 다운로드"""
+    args = _detail_args()
+
+    with get_db() as db:
+        detail = get_summary_detail(db, **args)
+
+    label = args['model'] or args['category'] or ''
+    title = f'납품집계_세부_{label}' if label else '납품집계_세부'
+    try:
+        # 화면(app.py 컨텍스트 프로세서)과 같은 규칙 — admin/임원진은 항상 금액 표시.
+        # 세션 값만 보면 화면엔 금액이 있는데 엑셀에만 빠지는 일이 생긴다.
+        hide_financial = bool(session.get('hide_financial'))
+        if session.get('role') == 'admin' or session.get('user_group') == '임원진':
+            hide_financial = False
+        buf = generate_detail_excel(
+            detail, args['years'], title=title, hide_financial=hide_financial,
+        )
+    except ImportError:
+        flash('openpyxl 모듈이 설치되지 않았습니다.', 'danger')
+        return redirect(url_for('procurement.procurement_summary_detail', **request.args))
+
+    year_str = '_'.join(str(y) for y in args['years'])
     filename = f'{title}_{year_str}.xlsx'
     encoded = quote(filename)
 

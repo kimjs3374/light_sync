@@ -308,20 +308,23 @@ def register(mcp: FastMCP):
         """
         from modules.models.entities import G2bProcurement, Project
         from modules.models.contract_entities import Contract
+        from modules.services.procurement_summary import summary_base_filters
         from sqlalchemy import func, extract
         import datetime
         session = get_session()
         try:
+            # outerjoin — 현장 미연결 조달건도 "미연결" 한 줄로 집계한다.
+            # inner join 이던 시절엔 107건이 통째로 빠져 웹 납품집계와 총액이 달랐다.
             q = session.query(
                 Project.id.label("project_id"),
                 Project.temp_name.label("project_name"),
                 func.sum(G2bProcurement.prdct_amt).label("total_amount"),
                 func.count(G2bProcurement.id).label("count"),
-            ).join(
+            ).select_from(G2bProcurement).outerjoin(
                 Contract, Contract.g2b_contract_no == G2bProcurement.cntrct_dlvr_req_no
-            ).join(
+            ).outerjoin(
                 Project, Project.id == Contract.project_id
-            )
+            ).filter(*summary_base_filters())
             if year:
                 q = q.filter(extract("year", G2bProcurement.cntrct_dlvr_req_date) == year)
             if month:
