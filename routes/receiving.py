@@ -18,7 +18,7 @@ from sqlalchemy import case, desc, func, extract
 from sqlalchemy.orm import joinedload
 from modules.auth_decorators import login_required, menu_required
 from modules.pagination import make_pagination
-from modules.utils import safe_int
+from modules.utils import safe_int, parse_money
 from modules.db_context import get_db
 from modules.models import (
     Vendor, PurchaseOrder, PurchaseOrderItem, MaterialOrder,
@@ -449,7 +449,7 @@ def receiving_create():
                 item_cd = (item_cds[i] if i < len(item_cds) else '').strip()
                 spec = (item_specs[i] if i < len(item_specs) else '').strip()
                 qty = float(item_qtys[i]) if i < len(item_qtys) and item_qtys[i] else 0
-                price = float(item_prices[i]) if i < len(item_prices) and item_prices[i] else 0
+                price = parse_money(item_prices[i]) if i < len(item_prices) else 0
                 unit = (item_units[i] if i < len(item_units) else '').strip()
                 item_note = (item_notes[i] if i < len(item_notes) else '').strip()
                 linked_po_item_id = safe_int(po_item_ids[i] if i < len(po_item_ids) else '', 0) or None
@@ -703,7 +703,7 @@ def receiving_edit(rcv_id):
                 item_cd = (item_cds[i] if i < len(item_cds) else '').strip()
                 spec = (item_specs[i] if i < len(item_specs) else '').strip()
                 qty = float(item_qtys[i]) if i < len(item_qtys) and item_qtys[i] else 0
-                price = float(item_prices[i]) if i < len(item_prices) and item_prices[i] else 0
+                price = parse_money(item_prices[i]) if i < len(item_prices) else 0
                 unit = (item_units[i] if i < len(item_units) else '').strip()
                 item_note = (item_notes[i] if i < len(item_notes) else '').strip()
                 linked_po_item_id = safe_int(po_item_ids[i] if i < len(po_item_ids) else '', 0) or None
@@ -844,7 +844,7 @@ def receiving_link_po(rcv_id):
                 continue
 
             try:
-                unit_price = float(link_prices[idx]) if idx < len(link_prices) and link_prices[idx] else float(target_pi.unit_price or 0)
+                unit_price = parse_money(link_prices[idx]) if idx < len(link_prices) and link_prices[idx] else float(target_pi.unit_price or 0)
             except (ValueError, TypeError):
                 unit_price = float(target_pi.unit_price or 0)
 

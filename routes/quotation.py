@@ -17,7 +17,7 @@ from flask import (
 from sqlalchemy import desc, func, or_
 from modules.auth_decorators import login_required, menu_required
 from modules.pagination import make_pagination
-from modules.utils import safe_int
+from modules.utils import safe_int, parse_money
 from modules.db_context import get_db
 from modules.models import (
     Quotation, QuotationItem, QuoteTemplate, QuoteTemplateItem,
@@ -78,7 +78,7 @@ def _parse_items_from_form(form):
             continue
         spec = (item_specs[i] if i < len(item_specs) else '').strip()
         qty = float(item_qtys[i]) if i < len(item_qtys) and item_qtys[i] else 0
-        price = float(item_prices[i]) if i < len(item_prices) and item_prices[i] else 0
+        price = parse_money(item_prices[i]) if i < len(item_prices) else 0
         unit = (item_units[i] if i < len(item_units) else '').strip() or '개'
         note = (item_notes[i] if i < len(item_notes) else '').strip()
         item_id = safe_int(item_ids[i] if i < len(item_ids) else '', 0) or None
@@ -577,7 +577,7 @@ def api_template_create():
                 if not item_name:
                     continue
                 qty = float(item.get('quantity') or 0)
-                price = float(item.get('unit_price') or 0)
+                price = parse_money(item.get('unit_price'))
                 spec = (item.get('item_spec') or '').strip()
                 unit = (item.get('unit') or 'EA').strip()
                 note = (item.get('note') or '').strip()
@@ -638,7 +638,7 @@ def api_create_quote_item():
 
     spec = (data.get('item_spec') or '').strip()
     unit = (data.get('unit') or 'EA').strip()
-    price = float(data.get('last_unit_price') or 0)
+    price = parse_money(data.get('last_unit_price'))
 
     try:
         with get_db() as db:

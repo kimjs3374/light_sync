@@ -120,7 +120,7 @@
                                 <input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="{{ pi._prefill_qty|int }}" step="1" min="0">
                                 <small class="text-muted">발주 {{ pi.quantity|int }}{{ pi.unit or '' }} / 잔 {{ pi._remaining|int }}</small>
                             </td>
-                            <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="{{ pi.unit_price|int }}" step="any" min="0"></td>
+                            <td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end price-input money-input" inputmode="numeric" value="{{ pi.unit_price|int }}"></td>
                             <td class="amount-cell text-end fw-bold">{{ (pi._prefill_qty * (pi.unit_price or 0))|int|e }}</td>
                             <td><input type="text" name="item_note[]" class="form-control form-control-sm" value=""></td>
                             <td></td>
@@ -142,7 +142,7 @@
                                 <input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="{{ fi._remaining|int }}" step="1" min="0" max="{{ fi._remaining|int }}">
                                 <small class="text-muted">잔 {{ fi._remaining|int }}{{ fi.unit or '' }}</small>
                             </td>
-                            <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="{{ fi.unit_price|int }}" step="any" min="0"></td>
+                            <td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end price-input money-input" inputmode="numeric" value="{{ fi.unit_price|int }}"></td>
                             <td class="amount-cell text-end fw-bold">{{ (fi._remaining * (fi.unit_price or 0))|int|e }}</td>
                             <td><input type="text" name="item_note[]" class="form-control form-control-sm" value="">
                                 {% if fi.processing_note %}<small class="text-muted d-block">{{ fi.processing_note }}</small>{% endif %}
@@ -158,7 +158,7 @@
                             <td><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" autocomplete="off" required></td>
                             <td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" placeholder="규격" autocomplete="off"></td>
                             <td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="0" step="any" min="0"></td>
-                            <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="0" step="any"></td>
+                            <td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end price-input money-input" inputmode="numeric" value="0"></td>
                             <td class="amount-cell text-end fw-bold">0</td>
                             <td><input type="text" name="item_note[]" class="form-control form-control-sm"></td>
                             <td><button type="button" class="btn btn-outline-danger btn-xs remove-item">X</button></td>
@@ -221,7 +221,7 @@
         var total = 0;
         document.querySelectorAll('#itemsBody tr').forEach(function(row) {
             var qty = parseFloat(row.querySelector('.qty-input')?.value || 0);
-            var price = parseFloat(row.querySelector('.price-input')?.value || 0);
+            var price = window.Money.val(row.querySelector('.price-input'));
             var amt = Math.round(qty * price);
             var cell = row.querySelector('.amount-cell');
             if (cell) { cell.textContent = amt.toLocaleString(); }
@@ -306,7 +306,7 @@
                 '<td><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" required></td>' +
                 '<td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" placeholder="규격"></td>' +
                 '<td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="0" step="any" min="0"></td>' +
-                '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="0" step="any"></td>' +
+                '<td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end price-input money-input" inputmode="numeric" value="0"></td>' +
                 '<td class="amount-cell text-end fw-bold">0</td>' +
                 '<td><input type="text" name="item_note[]" class="form-control form-control-sm"></td>' +
                 '<td><button type="button" class="btn btn-outline-danger btn-xs remove-item">X</button></td>';
@@ -317,7 +317,7 @@
                 '<td><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" autocomplete="off" required></td>' +
                 '<td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" placeholder="규격" autocomplete="off"></td>' +
                 '<td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="0" step="any" min="0"></td>' +
-                '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="0" step="any"></td>' +
+                '<td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end price-input money-input" inputmode="numeric" value="0"></td>' +
                 '<td class="amount-cell text-end fw-bold">0</td>' +
                 '<td><input type="text" name="item_note[]" class="form-control form-control-sm"></td>' +
                 '<td><button type="button" class="btn btn-outline-danger btn-xs remove-item">X</button></td>';

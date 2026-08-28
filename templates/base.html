@@ -8,6 +8,9 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,700;9..40,800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/magnatech.css') }}" rel="stylesheet">
+    {# 금액 입력 공용 모듈 — 페이지별 스크립트(content 블록)보다 반드시 먼저 로드.
+       뒤에 두면 window.Money 가 undefined 라 견적/발주/입고의 행 렌더링이 통째로 죽는다. #}
+    <script src="{{ url_for('static', filename='js/money-input.js') }}"></script>
     {% block head %}{% endblock %}
     <style>
     /* ── 알림 드롭다운 + 토스트 ── */

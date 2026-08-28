@@ -550,7 +550,7 @@
         var input = document.createElement('input');
         input.type = 'text';
         input.value = oldVal;
-        input.className = 'form-control form-control-sm text-end';
+        input.className = 'form-control form-control-sm text-end money-input';
         input.style.cssText = 'width:80px;padding:1px 4px;font-size:.8rem;';
         td.textContent = '';
         td.appendChild(input);
@@ -558,15 +558,15 @@
         input.select();
 
         function save() {
-            var newVal = input.value.trim().replace(/,/g, '');
-            if (!newVal || newVal === oldVal) {
+            var newVal = String(window.Money.val(input));
+            if (!newVal || newVal === '0' || newVal === String(window.Money.val({value: oldVal}))) {
                 td.textContent = parseInt(oldVal).toLocaleString();
                 return;
             }
             fetch('/api/receiving-history/' + historyId + '/update-item', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({index: parseInt(itemIdx), unit_price: parseFloat(newVal), _old_unit_price: parseFloat(oldVal)})
+                body: JSON.stringify({index: parseInt(itemIdx), unit_price: parseInt(newVal, 10), _old_unit_price: window.Money.val({value: oldVal})})
             })
             .then(function(r) { return r.json(); })
             .then(function(d) {

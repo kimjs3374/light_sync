@@ -375,7 +375,7 @@
                                     <td><input type="text" name="item_spec[]" class="form-control form-control-sm" value="{{ item.item_spec or '' }}"></td>
                                     <td><input type="number" name="quantity[]" class="form-control form-control-sm text-end" value="{{ item.quantity }}" min="0" step="any"></td>
                                     <td><input type="text" name="unit[]" class="form-control form-control-sm" value="{{ item.unit or '' }}"></td>
-                                    <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end" value="{{ item.unit_price }}" min="0" step="any"></td>
+                                    <td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end money-input" inputmode="numeric" value="{{ item.unit_price }}"></td>
                                     <td><input type="date" name="delivery_date[]" class="form-control form-control-sm" value="{{ item.delivery_date.strftime('%Y-%m-%d') if item.delivery_date else '' }}"></td>
                                     <td><input type="text" name="processing_note[]" class="form-control form-control-sm" value="{{ item.processing_note or '' }}"></td>
                                     <input type="hidden" name="item_note[]" value="{{ item.note or '' }}">
@@ -402,7 +402,7 @@
             + '<td><input type="text" name="item_spec[]" class="form-control form-control-sm"></td>'
             + '<td><input type="number" name="quantity[]" class="form-control form-control-sm text-end" min="0" step="any"></td>'
             + '<td><input type="text" name="unit[]" class="form-control form-control-sm"></td>'
-            + '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end" min="0" step="any"></td>'
+            + '<td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end money-input" inputmode="numeric"></td>'
             + '<td><input type="date" name="delivery_date[]" class="form-control form-control-sm"></td>'
             + '<td><input type="text" name="processing_note[]" class="form-control form-control-sm"></td>'
             + '<input type="hidden" name="item_note[]" value="">'

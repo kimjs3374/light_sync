@@ -10,6 +10,11 @@
     var acTimer = null;
     var container = document.getElementById('itemsContainer');
 
+    // 금액 입력(천단위 콤마·정수) 은 static/js/money-input.js 공용 모듈이 담당한다.
+    // 여기서는 값 읽기만 Money.val() 로 한다 — el.value 는 '1,234' 라 parseFloat 이 깨진다.
+    var moneyVal = function (el) { return window.Money.val(el); };
+    var moneyFmt = function (v) { return window.Money.fmt(v); };
+
     var dateInput = document.querySelector('input[name="quote_date"]');
     if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().split('T')[0];
 
@@ -41,7 +46,7 @@
                 '</div>' +
                 '<div class="qi-field qi-f-price">' +
                     '<label>단가</label>' +
-                    '<input type="number" name="unit_price[]" class="form-control form-control-sm text-end calc-field" value="' + (data.unit_price || '') + '" min="0" step="any" inputmode="decimal">' +
+                    '<input type="text" name="unit_price[]" class="form-control form-control-sm text-end calc-field money-input" value="' + moneyFmt(data.unit_price) + '" inputmode="numeric" autocomplete="off" placeholder="0">' +
                 '</div>' +
                 '<div class="qi-field qi-f-note">' +
                     '<label>비고</label>' +
@@ -126,7 +131,7 @@
         card.querySelector('input[name="item_spec[]"]').value = item.dataset.spec;
         card.querySelector('input[name="unit[]"]').value = item.dataset.unit || 'EA';
         var price = parseFloat(item.dataset.price) || 0;
-        if (price > 0) card.querySelector('input[name="unit_price[]"]').value = price;
+        if (price > 0) card.querySelector('input[name="unit_price[]"]').value = moneyFmt(price);
         dd.classList.remove('show');
         recalcAll();
         card.querySelector('input[name="quantity[]"]').focus();
@@ -238,7 +243,7 @@
         var supply = 0;
         container.querySelectorAll('.qi-card').forEach(function(card) {
             var qty = parseFloat(card.querySelector('input[name="quantity[]"]').value) || 0;
-            var price = parseFloat(card.querySelector('input[name="unit_price[]"]').value) || 0;
+            var price = moneyVal(card.querySelector('input[name="unit_price[]"]'));
             supply += qty * price;
         });
         var scTotal = 0;
@@ -254,7 +259,7 @@
         var supply = 0;
         container.querySelectorAll('.qi-card').forEach(function(card) {
             var qty = parseFloat(card.querySelector('input[name="quantity[]"]').value) || 0;
-            var price = parseFloat(card.querySelector('input[name="unit_price[]"]').value) || 0;
+            var price = moneyVal(card.querySelector('input[name="unit_price[]"]'));
             var amount = qty * price;
             supply += amount;
         });
@@ -359,7 +364,7 @@
                 item_spec: card.querySelector('input[name="item_spec[]"]').value.trim(),
                 unit: card.querySelector('input[name="unit[]"]').value.trim() || 'EA',
                 quantity: parseFloat(card.querySelector('input[name="quantity[]"]').value) || 0,
-                unit_price: parseFloat(card.querySelector('input[name="unit_price[]"]').value) || 0,
+                unit_price: moneyVal(card.querySelector('input[name="unit_price[]"]')),
                 note: card.querySelector('input[name="item_note[]"]').value.trim(),
             });
         });
@@ -402,7 +407,7 @@
                 item_name: name,
                 item_spec: document.getElementById('qiSpec').value.trim(),
                 unit: document.getElementById('qiUnit').value.trim() || 'EA',
-                last_unit_price: parseFloat(document.getElementById('qiPrice').value) || 0,
+                last_unit_price: moneyVal(document.getElementById('qiPrice')),
             }),
         })
         .then(function(r) { return r.json(); })

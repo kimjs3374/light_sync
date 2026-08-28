@@ -102,7 +102,7 @@
                                 <input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="{{ pi._current_qty|int }}" step="1" min="0" max="{{ (pi._remaining + pi._current_qty)|int }}">
                                 <small class="text-muted">발주 {{ pi.quantity|int }}{{ pi.unit or '' }} / 잔 {{ (pi._remaining + pi._current_qty)|int }}</small>
                             </td>
-                            <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="{{ pi._current_price|int }}" step="any" min="0"></td>
+                            <td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end price-input money-input" inputmode="numeric" value="{{ pi._current_price|int }}"></td>
                             <td class="amount-cell text-end fw-bold">{{ (pi._current_qty * pi._current_price)|int }}</td>
                             <td><input type="text" name="item_note[]" class="form-control form-control-sm" value="{{ pi._current_note }}"></td>
                             <td></td>
@@ -120,7 +120,7 @@
                             <td><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" value="{{ ri.item_name }}" required></td>
                             <td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" value="{{ ri.item_spec or '' }}"></td>
                             <td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="{{ ri.received_qty|int }}" step="1" min="0"></td>
-                            <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="{{ ri.unit_price|int }}" step="any"></td>
+                            <td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end price-input money-input" inputmode="numeric" value="{{ ri.unit_price|int }}"></td>
                             <td class="amount-cell text-end fw-bold">{{ (ri.amount or 0)|int }}</td>
                             <td><input type="text" name="item_note[]" class="form-control form-control-sm" value="{{ ri.note or '' }}"></td>
                             <td><button type="button" class="btn btn-outline-danger btn-xs remove-item">X</button></td>
@@ -139,7 +139,7 @@
                             <td><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" value="{{ ri.item_name }}" autocomplete="off" required></td>
                             <td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" value="{{ ri.item_spec or '' }}" autocomplete="off"></td>
                             <td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="{{ ri.received_qty|int }}" step="1" min="0"></td>
-                            <td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="{{ ri.unit_price|int }}" step="any"></td>
+                            <td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end price-input money-input" inputmode="numeric" value="{{ ri.unit_price|int }}"></td>
                             <td class="amount-cell text-end fw-bold">{{ (ri.amount or 0)|int }}</td>
                             <td><input type="text" name="item_note[]" class="form-control form-control-sm" value="{{ ri.note or '' }}"></td>
                             <td><button type="button" class="btn btn-outline-danger btn-xs remove-item">X</button></td>
@@ -190,7 +190,7 @@
         var total = 0;
         document.querySelectorAll('#itemsBody tr').forEach(function(row) {
             var qty = parseFloat(row.querySelector('.qty-input')?.value || 0);
-            var price = parseFloat(row.querySelector('.price-input')?.value || 0);
+            var price = window.Money.val(row.querySelector('.price-input'));
             var amt = Math.round(qty * price);
             var cell = row.querySelector('.amount-cell');
             if (cell) { cell.textContent = amt.toLocaleString(); }
@@ -271,7 +271,7 @@
                 '<td><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" required></td>' +
                 '<td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" placeholder="규격"></td>' +
                 '<td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="0" step="1" min="0"></td>' +
-                '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="0" step="any"></td>' +
+                '<td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end price-input money-input" inputmode="numeric" value="0"></td>' +
                 '<td class="amount-cell text-end fw-bold">0</td>' +
                 '<td><input type="text" name="item_note[]" class="form-control form-control-sm"></td>' +
                 '<td><button type="button" class="btn btn-outline-danger btn-xs remove-item">X</button></td>';
@@ -282,7 +282,7 @@
                 '<td><input type="text" name="item_name[]" class="form-control form-control-sm item-name-input" placeholder="품명" autocomplete="off" required></td>' +
                 '<td><input type="text" name="item_spec[]" class="form-control form-control-sm item-spec-input" placeholder="규격" autocomplete="off"></td>' +
                 '<td><input type="number" name="received_qty[]" class="form-control form-control-sm text-end qty-input" value="0" step="1" min="0"></td>' +
-                '<td><input type="number" name="unit_price[]" class="form-control form-control-sm text-end price-input" value="0" step="any"></td>' +
+                '<td><input type="text" name="unit_price[]" class="form-control form-control-sm text-end price-input money-input" inputmode="numeric" value="0"></td>' +
                 '<td class="amount-cell text-end fw-bold">0</td>' +
                 '<td><input type="text" name="item_note[]" class="form-control form-control-sm"></td>' +
                 '<td><button type="button" class="btn btn-outline-danger btn-xs remove-item">X</button></td>';

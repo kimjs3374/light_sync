@@ -359,7 +359,7 @@
                         '<td class="text-end text-muted">' + it.already + '</td>' +
                         '<td class="text-end fw-bold text-primary">' + it.remaining + '</td>' +
                         '<td><input type="number" name="link_qty[]" value="' + it.remaining + '" min="0" step="1" class="form-control form-control-sm" data-remaining="' + it.remaining + '" style="width:90px;"></td>' +
-                        '<td class="text-end"><input type="number" name="link_unit_price[]" value="' + it.unit_price + '" min="0" step="1" class="form-control form-control-sm" style="width:100px;display:inline-block;"></td>' +
+                        '<td class="text-end"><input type="text" name="link_unit_price[]" value="' + window.Money.fmt(it.unit_price) + '" inputmode="numeric" class="form-control form-control-sm money-input" style="width:100px;display:inline-block;"></td>' +
                     '</tr>';
                 });
                 itemsBody.innerHTML = html;
