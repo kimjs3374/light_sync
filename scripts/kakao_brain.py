@@ -28,6 +28,7 @@ import uuid
 import base64
 import json
 import subprocess
+import shutil
 
 APP_ROOT = "/web/light_sync"
 sys.path.insert(0, APP_ROOT)
@@ -44,6 +45,27 @@ MCP_CONFIG = os.path.join(APP_ROOT, "scripts", "mcp-erp-only.json")
 MCP_PREFIX = "mcp__light-sync-erp__"
 CLAUDE_MODEL = os.environ.get("KAKAO_CLAUDE_MODEL", "sonnet")
 CLAUDE_TIMEOUT = int(os.environ.get("KAKAO_CLAUDE_TIMEOUT", "150"))
+
+# claude 실행파일 절대경로. 비대화형 SSH 는 PATH 에 ~/.local/bin 이 없어서
+# "claude" 만 쓰면 네이티브 설치본(자동업데이트)을 못 찾는다 → 후보 경로를 직접 탐색.
+def _resolve_claude_bin():
+    env = os.environ.get("CLAUDE_BIN")
+    if env and os.path.exists(env):
+        return env
+    found = shutil.which("claude")
+    if found:
+        return found
+    home = os.path.expanduser("~")
+    for p in (os.path.join(home, ".local/bin/claude"),
+              "/usr/local/bin/claude",
+              os.path.join(home, ".npm-global/bin/claude"),
+              "/usr/bin/claude"):
+        if os.path.exists(p):
+            return p
+    return "claude"  # 최후: PATH 에 맡김(에러 메시지로 드러남)
+
+
+CLAUDE_BIN = _resolve_claude_bin()
 IGNORE_CHANNEL_GATE = os.environ.get("KAKAO_IGNORE_CHANNEL_GATE", "0").strip() in ("1", "true", "True")
 
 # ── 대화 맥락(세션 재사용) 설정 ──
@@ -209,7 +231,7 @@ def ask_claude(question: str, resume_sid=None, new_sid=None, image_path=None, er
             f"후보가 여러 건이면 목록을 보여주고 선택을 받는다.\n"
             f"- 차량 계기판이 아니면: 일반 이미지로 내용을 읽어(OCR 포함) 답한다.\n\n"
             f"사용자 메시지: {q}")
-    cmd = ["claude", "-p", prompt,
+    cmd = [CLAUDE_BIN, "-p", prompt,
            "--model", CLAUDE_MODEL,
            "--mcp-config", MCP_CONFIG,
            "--dangerously-skip-permissions",
