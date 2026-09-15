@@ -425,6 +425,8 @@
     <script src="{{ url_for('static', filename='js/notification-panel.js') }}"></script>
     <script>window.__activeMenuKey = {{ (g.active_menu_key or '')|tojson }};</script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
+    {% include 'components/mail_migration_modal.html' %}
+    <script src="{{ url_for('static', filename='js/mail-migration-notice.js') }}?v=20260915"></script>
 {% include 'components/catalog_autocomplete.html' %}
 {% include 'components/vendor_autocomplete.html' %}
 {% block scripts %}{% endblock %}
