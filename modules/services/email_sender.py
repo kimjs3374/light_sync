@@ -41,6 +41,44 @@ def _get_smtp_config():
     }
 
 
+def _save_to_sent(msg, account=None, account_email=None):
+    """발송한 메일 사본을 해당 계정 IMAP 보낸편지함에 저장한다.
+
+    ERP에서 나가는 발주/가공발주 메일은 smtplib 로만 발송해 왔기 때문에
+    메일함에는 사본이 남지 않았다(2026-09-15). 발송은 이미 끝난 뒤이므로
+    여기서 무슨 일이 생겨도 발송 결과를 실패로 바꾸지 않는다.
+
+    Returns: 저장한 폴더명, 저장하지 못했으면 None
+    """
+    acct = account or (_get_shared_mail_account(account_email) if account_email else None)
+    if not acct:
+        logger.info("보낸편지함 저장 건너뜀 — 메일계정 없음 (%s)", account_email)
+        return None
+    if not acct.get('imap_host'):
+        logger.info("보낸편지함 저장 건너뜀 — IMAP 미설정 (%s)", acct.get('email'))
+        return None
+    try:
+        from modules.services.mail_client import MailClient
+        client = MailClient(
+            imap_host=acct['imap_host'],
+            imap_port=acct['imap_port'],
+            smtp_host=acct['smtp_host'],
+            smtp_port=acct['smtp_port'],
+            username=acct['username'],
+            password=acct['password'],
+            use_ssl=acct.get('use_ssl', True),
+            verify_cert=(acct.get('account_type') == 'external'),
+        )
+        with client:
+            folder = client.append_to_sent(msg.as_bytes())
+        if folder:
+            logger.info("보낸편지함 저장 완료: %s → %s", acct['email'], folder)
+        return folder
+    except Exception as e:
+        logger.warning("보낸편지함 저장 실패 (%s): %s", acct.get('email'), e)
+        return None
+
+
 def send_purchase_order_email(to_email, subject, body_text, pdf_bytes=None, pdf_filename=None):
     """
     발주서 이메일을 발송한다.
@@ -105,6 +143,7 @@ def send_purchase_order_email(to_email, subject, body_text, pdf_bytes=None, pdf_
             server.sendmail(config['user'], [to_email], msg.as_string())
 
         logger.info("이메일 발송 성공: To=%s, Subject=%s", to_email, subject)
+        _save_to_sent(msg, account_email=config['user'])
         return {'success': True, 'message': '이메일 발송 완료'}
 
     except smtplib.SMTPException as e:
@@ -125,7 +164,8 @@ def _get_user_mail_account(user_id):
         from sqlalchemy import text
         with get_db() as db:
             row = db.execute(text(
-                "SELECT email, smtp_host, smtp_port, username, password_encrypted "
+                "SELECT email, smtp_host, smtp_port, username, password_encrypted, "
+                "       imap_host, imap_port, use_ssl, account_type "
                 "FROM light_sync.mail_accounts WHERE user_id = :uid AND is_active = true "
                 "ORDER BY is_default DESC LIMIT 1"
             ), {"uid": user_id}).fetchone()
@@ -136,6 +176,10 @@ def _get_user_mail_account(user_id):
                     'smtp_port': row[2],
                     'username': row[3],
                     'password': decrypt_password(row[4]),
+                    'imap_host': row[5],
+                    'imap_port': row[6],
+                    'use_ssl': row[7],
+                    'account_type': row[8],
                 }
     except Exception as e:
         logger.warning("사용자 메일계정 조회 실패 (user_id=%s): %s", user_id, e)
@@ -152,7 +196,8 @@ def _get_shared_mail_account(email):
         from sqlalchemy import text
         with get_db() as db:
             row = db.execute(text(
-                "SELECT email, smtp_host, smtp_port, username, password_encrypted, display_name "
+                "SELECT email, smtp_host, smtp_port, username, password_encrypted, display_name, "
+                "       imap_host, imap_port, use_ssl, account_type "
                 "FROM light_sync.mail_accounts "
                 "WHERE email = :email AND is_active = true "
                 "ORDER BY is_shared DESC LIMIT 1"
@@ -165,6 +210,10 @@ def _get_shared_mail_account(email):
                     'username': row[3],
                     'password': decrypt_password(row[4]),
                     'display_name': row[5],
+                    'imap_host': row[6],
+                    'imap_port': row[7],
+                    'use_ssl': row[8],
+                    'account_type': row[9],
                 }
     except Exception as e:
         logger.warning("공용 메일계정 조회 실패 (email=%s): %s", email, e)
@@ -269,6 +318,7 @@ def send_email_with_attachments(to_email, subject, body_text, attachments=None,
 
         logger.info("이메일 발송 성공: From=%s(%s), To=%s, Subject=%s, 첨부=%d건",
                      envelope_from, smtp_user, to_email, subject, len(attachments))
+        _save_to_sent(msg, account=acct, account_email=envelope_from)
         return {'success': True, 'message': f'이메일 발송 완료 ({envelope_from})'}
 
     except smtplib.SMTPException as e:

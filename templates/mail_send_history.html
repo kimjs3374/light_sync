@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    .stat-card-v { border: none; border-radius: 12px; transition: transform .15s; }
+    .stat-card-v:hover { transform: translateY(-2px); }
+    .stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
+    .stat-label { font-size: .78rem; color: #64748b; margin-top: 2px; }
+    .filter-bar { background: #f8fafc; border-radius: 10px; padding: 10px 14px; }
+    .mh-table th { font-size: .72rem; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; white-space: nowrap; text-transform: uppercase; letter-spacing: .03em; background: #f8fafc; position: sticky; top: 0; z-index: 1; }
+    .mh-table td { vertical-align: middle; font-size: .82rem; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mh-table tbody tr { cursor: pointer; transition: background .12s, box-shadow .12s; }
+    .mh-table tbody tr:hover { background: #eef2ff; box-shadow: inset 3px 0 0 #2563eb; }
+    .mh-date { font-family: var(--mg-mono); font-size: .76rem; color: #64748b; }
+    .mh-badge { font-size: .7rem; padding: 3px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
+    .mh-sender { font-size: .76rem; color: #334155; }
+    .mh-attach { font-size: .72rem; color: #94a3b8; }
+    #historyBody { white-space: pre-wrap; font-size: .82rem; background: #f8fafc; border-radius: 8px; padding: 12px; max-height: 45vh; overflow-y: auto; }
+</style>
+
+<div class="page-hero mg-fade">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+            <div class="hero-eyebrow">Sent Log</div>
+            <h2>메일발송이력</h2>
+            <div class="hero-sub">발주서·가공발주 등 ERP가 자동으로 보낸 메일의 발송 기록입니다</div>
+        </div>
+    </div>
+</div>
+
+{# ─── 통계 카드 ─── #}
+<div class="row g-3 mb-4 mg-fade" style="animation-delay:.05s">
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-v shadow-sm text-center py-3">
+            <div class="stat-num" style="color:#0f172a;">{{ "{:,}".format(stats.total) }}</div>
+            <div class="stat-label">전체 발송</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-v shadow-sm text-center py-3" style="border-left:3px solid #22c55e;">
+            <div class="stat-num" style="color:#22c55e;">{{ "{:,}".format(stats.success) }}</div>
+            <div class="stat-label">성공</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-v shadow-sm text-center py-3" style="border-left:3px solid #ef4444;">
+            <div class="stat-num" style="color:#ef4444;">{{ "{:,}".format(stats.fail) }}</div>
+            <div class="stat-label">실패</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card-v shadow-sm text-center py-3" style="border-left:3px solid #3b82f6;">
+            <div class="stat-num" style="color:#3b82f6;">{{ "{:,}".format(stats.found) }}</div>
+            <div class="stat-label">검색 결과</div>
+        </div>
+    </div>
+</div>
+
+{# ─── 검색/필터 ─── #}
+<div class="filter-bar mb-3">
+    <form method="GET" class="row g-2 align-items-end">
+        <div class="col-md-3 col-12">
+            <input type="text" name="q" class="form-control form-control-sm" placeholder="수신자, 제목, 발주번호" value="{{ filters.q }}">
+        </div>
+        <div class="col-md-2 col-6">
+            <select name="sender" class="form-select form-select-sm">
+                <option value="">발신계정 전체</option>
+                {% for s in senders %}
+                <option value="{{ s }}" {{ 'selected' if filters.sender == s }}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2 col-6">
+            <select name="status" class="form-select form-select-sm">
+                <option value="">발송결과 전체</option>
+                <option value="success" {{ 'selected' if filters.status == 'success' }}>성공</option>
+                <option value="fail" {{ 'selected' if filters.status == 'fail' }}>실패</option>
+            </select>
+        </div>
+        <div class="col-md-2 col-6">
+            <input type="date" name="from" class="form-control form-control-sm" value="{{ filters.from }}">
+        </div>
+        <div class="col-md-2 col-6">
+            <input type="date" name="to" class="form-control form-control-sm" value="{{ filters.to }}">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm">검색</button>
+            <a href="{{ url_for('mail.mail_send_history') }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+        </div>
+    </form>
+</div>
+
+{# ─── 이력 테이블 ─── #}
+<div class="card border-0 shadow-sm" style="border-radius:12px;overflow:hidden;">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle no-stack-table mh-table" style="font-size:0.82rem;table-layout:fixed;min-width:900px;">
+                <colgroup>
+                    <col style="width:130px">
+                    <col style="width:150px">
+                    <col style="width:190px">
+                    <col>
+                    <col style="width:150px">
+                    <col style="width:70px">
+                </colgroup>
+                <thead class="table-light" style="white-space:nowrap">
+                    <tr>
+                        <th class="ps-3">발송일시</th>
+                        <th>보낸계정</th>
+                        <th>받는사람</th>
+                        <th>제목</th>
+                        <th>첨부</th>
+                        <th>결과</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in history %}
+                    <tr onclick="MailHistory.show({{ h.id }})">
+                        <td class="ps-3"><span class="mh-date">{{ h.send_date.strftime('%y-%m-%d %H:%M') if h.send_date else '-' }}</span></td>
+                        <td><span class="mh-sender">{{ h.sender or '-' }}</span></td>
+                        <td title="{{ h.receiver }}">{{ h.receiver or '-' }}</td>
+                        <td title="{{ h.subject }}"><strong style="color:#0f172a;">{{ h.subject or '(제목 없음)' }}</strong></td>
+                        <td title="{{ h.attachment }}"><span class="mh-attach">{% if h.attachment %}📎 {{ h.attachment }}{% else %}-{% endif %}</span></td>
+                        <td>
+                            {% if h.is_success %}
+                            <span class="mh-badge" style="background:#dcfce7;color:#166534;">성공</span>
+                            {% else %}
+                            <span class="mh-badge" style="background:#fee2e2;color:#991b1b;">실패</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted py-4">발송이력이 없습니다.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ─── 페이지네이션 ─── #}
+{% if pagination.total_pages > 1 %}
+<nav class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center mb-0">
+        {% if pagination.show_first %}
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(1) }}">1</a></li>
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+        {% for p in pagination.page_range %}
+        <li class="page-item {{ 'active' if p == pagination.page }}"><a class="page-link" href="?{{ pagination_query(p) }}">{{ p }}</a></li>
+        {% endfor %}
+        {% if pagination.show_last %}
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        <li class="page-item"><a class="page-link" href="?{{ pagination_query(pagination.total_pages) }}">{{ pagination.total_pages }}</a></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{# ─── 상세 모달 ─── #}
+<div class="modal fade" id="historyModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="border-radius:12px;overflow:hidden;">
+            <div class="modal-header" style="background:#f8fafc;">
+                <h6 class="modal-title fw-bold">메일 발송 상세</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <table class="table table-sm mb-3" style="font-size:.82rem;table-layout:fixed;">
+                    <colgroup><col style="width:90px"><col></colgroup>
+                    <tbody>
+                        <tr><th class="text-muted">발송일시</th><td id="historyDate"></td></tr>
+                        <tr><th class="text-muted">보낸계정</th><td id="historySender"></td></tr>
+                        <tr><th class="text-muted">받는사람</th><td id="historyReceiver"></td></tr>
+                        <tr><th class="text-muted">제목</th><td id="historySubject" class="fw-bold"></td></tr>
+                        <tr id="historyAttachRow"><th class="text-muted">첨부</th><td id="historyAttach"></td></tr>
+                        <tr><th class="text-muted">결과</th><td id="historyResult"></td></tr>
+                        <tr id="historyErrorRow"><th class="text-muted">오류</th><td id="historyError" class="text-danger"></td></tr>
+                    </tbody>
+                </table>
+                <div class="text-muted mb-1" style="font-size:.72rem;font-weight:700;">본문</div>
+                <div id="historyBody"></div>
+            </div>
+            <div class="modal-footer" style="background:#f8fafc;">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MailHistory = {
+    async show(id) {
+        const res = await fetch(`/mail/api/send-history/${id}`).then(r => r.json()).catch(() => null);
+        if (!res || res.error) { alert(res?.error || '조회 실패'); return; }
+
+        const set = (elId, val) => { document.getElementById(elId).textContent = val || '-'; };
+        set('historyDate', res.send_date);
+        set('historySender', res.sender);
+        set('historyReceiver', res.receiver);
+        set('historySubject', res.subject || '(제목 없음)');
+        set('historyBody', res.content || '(본문 없음)');
+
+        document.getElementById('historyAttachRow').style.display = res.attachment ? '' : 'none';
+        set('historyAttach', '📎 ' + res.attachment);
+
+        document.getElementById('historyResult').innerHTML = res.is_success
+            ? '<span class="mh-badge" style="background:#dcfce7;color:#166534;">성공</span>'
+            : '<span class="mh-badge" style="background:#fee2e2;color:#991b1b;">실패</span>';
+        document.getElementById('historyErrorRow').style.display = res.error_message ? '' : 'none';
+        set('historyError', res.error_message);
+
+        new bootstrap.Modal(document.getElementById('historyModal')).show();
+    }
+};
+</script>
+{% endblock %}

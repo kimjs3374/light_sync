@@ -21,6 +21,7 @@ MENU_REGISTRY = OrderedDict([
     ("mail_shared",    {"label": "공용메일",  "group": "이메일", "endpoint": "mail.mail_shared"}),
     ("mail_personal",  {"label": "개인메일",  "group": "이메일", "endpoint": "mail.mail_personal"}),
     ("mail_external",  {"label": "외부메일",  "group": "이메일", "endpoint": "mail.mail_external"}),
+    ("mail_send_history", {"label": "메일발송이력", "group": "관리부", "endpoint": "mail.mail_send_history"}),
     # --- 영업부 ---
     ("project",        {"label": "설계관리",   "group": "영업부", "endpoint": "project.project_list"}),
     ("contract",       {"label": "계약관리",   "group": "영업부", "endpoint": "project.contract_list"}),

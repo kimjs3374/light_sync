@@ -21,7 +21,9 @@ from modules.models.mail_entities import (
     MailPin, MailTemplate, MailSharedRead,
 )
 from modules import storage_adapter
+from modules.models.procurement_entities import EmailHistory
 from modules.models.auth_entities import User
+from modules.pagination import make_pagination
 from modules.services.mail_client import MailClient, decrypt_password, encrypt_password
 
 logger = logging.getLogger(__name__)
@@ -327,6 +329,107 @@ def mail_sent_complete():
     return render_template('mail_sent_complete.html',
                            sent=session.get('mail_sent_result'),
                            mail_mode=mode)
+
+
+@mail_bp.route('/mail/send-history')
+@login_required
+@menu_required('mail_send_history')
+def mail_send_history():
+    """ERP 업무메일 발송이력 — 발주서·가공발주 등 시스템이 보낸 메일.
+
+    웹메일 화면에서 쓴 메일은 각 계정 보낸편지함에 남지만, ERP가 자동으로
+    보내는 메일은 email_history 테이블에만 쌓인다. 그 기록을 보는 화면.
+    """
+    from sqlalchemy import or_
+
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    f_sender = request.args.get('sender', '').strip()
+    f_status = request.args.get('status', '').strip()   # '' | success | fail
+    f_q = request.args.get('q', '').strip()
+    f_from = request.args.get('from', '').strip()
+    f_to = request.args.get('to', '').strip()
+
+    with get_db() as db:
+        query = db.query(EmailHistory)
+        if f_sender:
+            query = query.filter(EmailHistory.sender == f_sender)
+        if f_status == 'success':
+            query = query.filter(EmailHistory.is_success.is_(True))
+        elif f_status == 'fail':
+            query = query.filter(EmailHistory.is_success.isnot(True))
+        if f_q:
+            like = f'%{f_q}%'
+            query = query.filter(or_(
+                EmailHistory.receiver.ilike(like),
+                EmailHistory.subject.ilike(like),
+                EmailHistory.po_ref.ilike(like),
+            ))
+        if f_from:
+            try:
+                query = query.filter(EmailHistory.send_date >= datetime.strptime(f_from, '%Y-%m-%d'))
+            except ValueError:
+                pass
+        if f_to:
+            try:
+                query = query.filter(EmailHistory.send_date < datetime.strptime(f_to, '%Y-%m-%d') + timedelta(days=1))
+            except ValueError:
+                pass
+
+        total = query.count()
+        pagination = make_pagination(page, per_page, total)
+        rows = (query.order_by(EmailHistory.send_date.desc())
+                .offset((pagination['page'] - 1) * per_page).limit(per_page).all())
+
+        # 표에 필요한 값만 미리 꺼내 둔다 (세션 닫힌 뒤 접근 방지)
+        history = [{
+            'id': r.id,
+            'send_date': r.send_date,
+            'sender': r.sender or '',
+            'receiver': r.receiver or '',
+            'subject': r.subject or '',
+            'attachment': r.attachment or '',
+            'is_success': bool(r.is_success),
+            'error_message': r.error_message or '',
+            'po_ref': r.po_ref or '',
+        } for r in rows]
+
+        senders = [x[0] for x in db.query(EmailHistory.sender).distinct()
+                   .order_by(EmailHistory.sender).all() if x[0]]
+        all_total = db.query(EmailHistory).count()
+        fail_total = db.query(EmailHistory).filter(EmailHistory.is_success.isnot(True)).count()
+
+    return render_template('mail_send_history.html',
+                           history=history,
+                           senders=senders,
+                           pagination=pagination,
+                           stats={'total': all_total, 'fail': fail_total,
+                                  'success': all_total - fail_total, 'found': total},
+                           filters={'sender': f_sender, 'status': f_status, 'q': f_q,
+                                    'from': f_from, 'to': f_to})
+
+
+@mail_bp.route('/mail/api/send-history/<int:hid>')
+@login_required
+@menu_required('mail_send_history')
+def api_send_history_detail(hid):
+    """발송이력 본문 상세."""
+    with get_db() as db:
+        r = db.query(EmailHistory).get(hid)
+        if not r:
+            return jsonify({'error': '이력을 찾을 수 없습니다.'}), 404
+        return jsonify({
+            'id': r.id,
+            'send_date': r.send_date.strftime('%Y-%m-%d %H:%M:%S') if r.send_date else '',
+            'sender': r.sender or '',
+            'receiver': r.receiver or '',
+            'subject': r.subject or '',
+            'content': r.content or '',
+            'attachment': r.attachment or '',
+            'is_success': bool(r.is_success),
+            'error_message': r.error_message or '',
+            'po_ref': r.po_ref or '',
+        })
 
 
 @mail_bp.route('/mail/settings')

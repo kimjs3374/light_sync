@@ -683,20 +683,32 @@ class MailClient:
                 server.sendmail(from_addr, recipients, msg.as_string())
 
         # 보낸편지함에 저장
-        try:
-            sent_folders = ['Sent', 'INBOX.Sent', 'Sent Items', 'Sent Messages']
-            folders = self._imap.list_folders()
-            sent_folder = None
-            for flags, delimiter, name in folders:
-                if name in sent_folders or b'\\Sent' in flags:
-                    sent_folder = name
-                    break
-            if sent_folder:
-                self._imap.append(sent_folder, msg.as_bytes())
-        except Exception as e:
-            logger.warning("보낸편지함 저장 실패: %s", e)
+        self.append_to_sent(msg.as_bytes())
 
         return {'success': True, 'message': '메일 발송 완료'}
+
+    def append_to_sent(self, msg_bytes):
+        """발송한 메일 사본을 보낸편지함에 저장.
+
+        메일은 이미 나간 뒤 호출되므로 실패해도 예외를 올리지 않는다.
+        반환: 저장한 폴더명, 실패 시 None
+        """
+        try:
+            sent_names = ['Sent', 'INBOX.Sent', 'Sent Items', 'Sent Messages']
+            sent_folder = None
+            for flags, delimiter, name in self._imap.list_folders():
+                if name in sent_names or b'\\Sent' in flags:
+                    sent_folder = name
+                    break
+            if not sent_folder:
+                logger.warning("보낸편지함 폴더를 찾지 못했습니다 (%s)", self.username)
+                return None
+            # 보낸 사본은 읽은 상태로 — 안읽음 뱃지에 잡히지 않게
+            self._imap.append(sent_folder, msg_bytes, flags=[b'\\Seen'])
+            return sent_folder
+        except Exception as e:
+            logger.warning("보낸편지함 저장 실패 (%s): %s", self.username, e)
+            return None
 
     def save_draft(self, from_addr, to, subject, html_body, cc=None, bcc=None,
                    attachments=None, from_name=None, replace_uid=None):
