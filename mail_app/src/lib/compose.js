@@ -1,0 +1,133 @@
+/**
+ * 작성창 초기 상태 만들기.
+ *
+ * 인용 형식은 기존 ERP 작성 화면(templates/mail_compose.html)과 똑같이 맞춘다.
+ * 같은 사람이 두 화면을 오가며 쓰는데 답장 모양이 다르면 받는 쪽이 헷갈린다.
+ */
+
+const esc = (s) => String(s || '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const addr = (a) => (a && a.email ? a.email : '');
+const addrList = (list) => (list || []).map(addr).filter(Boolean);
+
+/** 원본 본문 — HTML 이 있으면 그대로(서버에서 이미 세정됨), 없으면 평문을 감싼다 */
+const sourceBody = (d) =>
+  d.html_body || `<pre style="font-family:inherit;white-space:pre-wrap;">${esc(d.text_body)}</pre>`;
+
+const quoteReply = (d) => `<br><br>
+<div style="border-left:2px solid #cbd5e1;padding-left:10px;color:#64748b;">
+<p style="font-size:.78rem;">${esc(d.date)} ${esc(d.from?.name)} &lt;${esc(d.from?.email)}&gt;</p>
+${sourceBody(d)}
+</div>`;
+
+const quoteForward = (d) => `<br><br>
+<div style="border-top:1px solid #e2e8f0;padding-top:10px;color:#64748b;">
+<p style="font-size:.78rem;">---------- 전달된 메일 ----------<br>From: ${esc(d.from?.name)} &lt;${esc(d.from?.email)}&gt;<br>Date: ${esc(d.date)}<br>Subject: ${esc(d.subject)}</p>
+${sourceBody(d)}
+</div>`;
+
+const stripPrefix = (s, re) => (re.test(s || '') ? s : '');
+
+/**
+ * @param mode  new | self | reply | replyAll | forward | resend
+ * @param ctx   { detail, folder, accountId, myEmail, signature }
+ */
+export function buildComposer(mode, ctx = {}) {
+  const { detail: d, folder, accountId, myEmail, signature } = ctx;
+  const sig = signature ? `<br><br>${signature}` : '';
+  /**
+   * 연 직후 상태를 그대로 복사해 둔다.
+   * "쓴 게 있나"는 '비었나'가 아니라 '처음과 달라졌나'로 판단해야 한다 —
+   * 서명은 새 메일에도 들어 있고, 답장은 받는사람·제목이 이미 채워져 있다.
+   */
+  const withInitial = (o) => ({
+    ...o,
+    initial: {
+      to: [...o.to], cc: [...o.cc], bcc: [...o.bcc],
+      subject: o.subject, bodyHtml: o.bodyHtml,
+    },
+  });
+
+  const base = {
+    mode, accountId,
+    to: [], cc: [], bcc: [],
+    showBcc: false,     // 참조는 늘 펼쳐 둔다 — 숨은참조만 필요할 때 연다
+    subject: '',
+    bodyHtml: sig,
+    files: [],
+    // 대용량 첨부 — 붙이는 즉시 올라가고, 발송 때 링크로 바뀐다
+    largeFiles: [],
+    // 전달할 때 원본 첨부를 서버가 IMAP 에서 직접 붙이도록 넘기는 정보
+    forward: null,
+    sending: false,
+    saving: false,
+    error: '',
+    // 임시저장 흔적 — 다시 저장하면 갈아끼우고, 발송하면 지운다
+    draftUid: null,
+    draftFolder: '',
+    savedAt: null,
+  };
+
+  if (mode === 'self' && myEmail) return withInitial({ ...base, to: [myEmail] });
+  if (!d) return withInitial(base);
+
+  const subj = d.subject || '';
+
+  if (mode === 'reply' || mode === 'replyAll') {
+    const me = (myEmail || '').toLowerCase();
+    const to = addrList([d.from]);
+    // 전체답장은 원본 수신자·참조를 모두 데려오되 내 주소와 중복은 뺀다
+    const cc = mode === 'replyAll'
+      ? [...new Set([...addrList(d.to), ...addrList(d.cc)])]
+        .filter((e) => e.toLowerCase() !== me && !to.some((t) => t.toLowerCase() === e.toLowerCase()))
+      : [];
+    return withInitial({
+      ...base,
+      to, cc,
+      subject: stripPrefix(subj, /^re:/i) || `Re: ${subj}`,
+      bodyHtml: sig + quoteReply(d),
+    });
+  }
+
+  if (mode === 'forward') {
+    return withInitial({
+      ...base,
+      subject: stripPrefix(subj, /^fwd:/i) || `Fwd: ${subj}`,
+      bodyHtml: sig + quoteForward(d),
+      forward: (d.attachments || []).length
+        ? {
+          uid: d.uid, folder, accountId,
+          parts: d.attachments.map((a) => a.part_id),
+          names: d.attachments.map((a) => a.filename),
+        }
+        : null,
+    });
+  }
+
+  if (mode === 'resend') {
+    return withInitial({
+      ...base,
+      to: addrList(d.to), cc: addrList(d.cc),
+      subject: subj,
+      bodyHtml: sourceBody(d),
+      // 다시 보내기도 원본 첨부를 그대로 달고 간다 (전달과 같은 방식).
+      // 없으면 첨부만 빠진 메일이 조용히 나간다.
+      forward: (d.attachments || []).length
+        ? {
+          uid: d.uid, folder, accountId,
+          parts: d.attachments.map((a) => a.part_id),
+          names: d.attachments.map((a) => a.filename),
+        }
+        : null,
+    });
+  }
+
+  return withInitial(base);
+}
+
+export const composerTitle = (c) => {
+  if (c.subject) return c.subject;
+  return { reply: '답장', replyAll: '전체답장', forward: '전달', resend: '다시 보내기', self: '내게 쓰기' }[c.mode]
+    || '새 메일';
+};
