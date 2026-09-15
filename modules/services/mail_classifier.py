@@ -104,3 +104,45 @@ def apply_actions(client, uid: int, folder: str, actions: list) -> list:
             results.append(f"[{action['rule_name']}] 실패: {e}")
             logger.exception("자동분류 액션 실패: rule=%s uid=%s", action['rule_name'], uid)
     return results
+
+# ---------------------------------------------------------------------------
+# 수신차단 / 수신허용 (스팸)
+# ---------------------------------------------------------------------------
+
+def normalize_block_value(value: str) -> str:
+    """차단·허용 목록에 넣을 값 다듬기.
+
+    'KIM@X.co.kr' → 'kim@x.co.kr', '@X.co.kr' → 'x.co.kr', 'X.co.kr' → 'x.co.kr'.
+    도메인을 '@' 붙은 채로도, 안 붙은 채로도 적기 때문에 한 모양으로 맞춰 둔다 —
+    안 맞추면 같은 도메인이 두 줄로 쌓이고 한 줄만 먹는다.
+    """
+    v = (value or '').strip().lower()
+    if v.startswith('@'):
+        v = v[1:]
+    return v
+
+
+def spam_verdict(entries, from_email: str):
+    """보낸사람에 대한 판정. 'allow' | 'block' | None.
+
+    **허용이 차단을 이긴다.** 도메인 단위로 막아 두고 그 안의 거래처 한 곳만
+    받는 것이 실제로 제일 흔한 쓰임인데, 차단이 이기면 그게 불가능해진다.
+    """
+    addr = (from_email or '').strip().lower()
+    if not addr:
+        return None
+    domain = addr.split('@')[-1]
+
+    def hit(value):
+        v = normalize_block_value(value)
+        if not v:
+            return False
+        if '@' in v:
+            return addr == v
+        return domain == v or domain.endswith('.' + v)
+
+    if any(hit(e.get('value')) for e in entries if e.get('kind') == 'allow'):
+        return 'allow'
+    if any(hit(e.get('value')) for e in entries if e.get('kind') == 'block'):
+        return 'block'
+    return None

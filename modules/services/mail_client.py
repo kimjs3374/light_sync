@@ -288,6 +288,32 @@ class MailClient:
     def delete_folder(self, name):
         self._imap.delete_folder(name)
 
+    def rename_folder(self, old_name, new_name):
+        self._imap.rename_folder(old_name, new_name)
+
+    def folder_delimiter(self):
+        """이 서버가 폴더 계층을 무엇으로 나누는지 ('.' 또는 '/').
+
+        메일함을 만들 때 부모 밑에 넣으려면 이 글자로 이어 붙여야 한다.
+        서버마다 다르므로 LIST 응답에서 직접 읽는다 — 박아 두면 다른 서버에서
+        'INBOX.업무' 가 통째로 한 폴더 이름이 된다.
+        """
+        try:
+            for _flags, delimiter, _name in self._imap.list_folders():
+                if delimiter:
+                    return delimiter.decode() if isinstance(delimiter, bytes) else str(delimiter)
+        except Exception:
+            pass
+        return '.'
+
+    def folder_message_count(self, name):
+        """그 메일함에 몇 통 들어 있는지 — 지우기 전에 사람에게 보여 준다."""
+        try:
+            status = self._imap.folder_status(name, ['MESSAGES'])
+            return int(status.get(b'MESSAGES', 0) or 0)
+        except Exception:
+            return 0
+
     # === 메일 목록 ===
 
     def fetch_messages(self, folder='INBOX', page=1, per_page=30, search_criteria='ALL'):
@@ -575,6 +601,21 @@ class MailClient:
             'is_read': b'\\Seen' in flags,
             'is_flagged': b'\\Flagged' in flags,
         }
+
+    def fetch_raw(self, uid, folder='INBOX'):
+        """메일 원문(RFC822 바이트) 그대로.
+
+        **읽음 상태를 건드리지 않는다** — readonly + BODY.PEEK.
+        원문을 열어 봤다고 안읽음 표시해 둔 것이 풀리면 안 된다
+        (fetch_message 는 반대로 열면서 Seen 플래그를 단다).
+        """
+        self._imap.select_folder(folder, readonly=True)
+        raw = self._imap.fetch([uid], ['BODY.PEEK[]'])
+        item = raw.get(uid) or {}
+        for key, value in item.items():
+            if isinstance(value, bytes) and b'BODY' in key:
+                return value
+        return None
 
     def fetch_attachment(self, uid, part_id, folder='INBOX'):
         """첨부파일 다운로드. Returns: (filename, content_type, bytes)"""

@@ -1,5 +1,6 @@
 """백그라운드 스케줄러 — 출장 상태 자동 업데이트, G2B 일일 동기화 등"""
 import logging
+import os
 import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -192,6 +193,202 @@ def _process_auto_reply_forward(app):
                 db.commit()
     except Exception as e:
         logger.error(f"[scheduler] 자동회신/전달 처리 오류: {e}")
+
+
+# ---------------------------------------------------------------------------
+# 자동분류 — 새로 온 메일에 규칙 걸기
+# ---------------------------------------------------------------------------
+# 예전엔 규칙이 **화면에서 [지금 적용]을 눌러야만** 돌았다. 만들어 둔 규칙이
+# 저절로 걸리지 않으니, 설정에는 있는데 아무 일도 안 일어나는 기능이었다.
+#
+# 자동회신·자동전달보다 **뒤에** 돈다. 분류가 먼저 돌면 메일을 다른 폴더로
+# 옮겨 버려서, 같은 uid 로 회신·전달을 하려던 쪽이 메일을 잃는다.
+# ---------------------------------------------------------------------------
+
+AUTOMATION_STAMP = os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), 'logs', 'mail_automation.last')
+
+
+def _stamp_automation_run():
+    """마지막 자동 처리 시각을 남긴다 — 화면이 '자동 처리가 도는 중인지' 를 이걸로 판단한다."""
+    try:
+        os.makedirs(os.path.dirname(AUTOMATION_STAMP), exist_ok=True)
+        with open(AUTOMATION_STAMP, 'w', encoding='utf-8') as f:
+            f.write(datetime.datetime.now().isoformat(timespec='seconds'))
+    except Exception as e:
+        logger.warning("[scheduler] 자동 처리 시각 기록 실패: %s", e)
+
+
+def _process_auto_rules(app, dry_run=False):
+    """활성 규칙이 있는 계정의 받은편지함 새 메일(UNSEEN)에 자동분류를 건다."""
+    import json as _json
+    from modules.db_context import get_db
+    from modules.models.mail_entities import MailAccount, MailRule
+    from modules.services.mail_client import MailClient, decrypt_password, _decode_header_value
+    from modules.services.mail_classifier import classify_mail, apply_actions
+
+    moved = 0
+    with app.app_context():
+        with get_db() as db:
+            rules = db.query(MailRule).filter_by(is_active=True).order_by(
+                MailRule.priority, MailRule.id).all()
+            by_account = {}
+            for r in rules:
+                by_account.setdefault(r.account_id, []).append({
+                    'id': r.id, 'name': r.name, 'conditions_json': r.conditions_json,
+                    'condition_logic': r.condition_logic, 'action_type': r.action_type,
+                    'action_value': r.action_value, 'stop_processing': r.stop_processing,
+                    'is_active': True,
+                })
+
+            for aid, rule_data in by_account.items():
+                account = db.query(MailAccount).filter_by(id=aid, is_active=True).first()
+                if not account:
+                    continue
+                try:
+                    pw = decrypt_password(account.password_encrypted)
+                    client = MailClient(
+                        account.imap_host, account.imap_port,
+                        account.smtp_host, account.smtp_port,
+                        account.username, pw, account.use_ssl,
+                    )
+                    with client:
+                        client._imap.select_folder('INBOX', readonly=False)
+                        unseen = client._imap.search('UNSEEN')
+                        if not unseen:
+                            continue
+                        # 한 번에 30건까지 — 밀린 메일함에서 한 번에 다 돌리지 않는다
+                        for uid in list(unseen)[-30:]:
+                            raw = client._imap.fetch(
+                                [uid], ['ENVELOPE', 'BODY.PEEK[HEADER.FIELDS (CONTENT-TYPE TO)]'])
+                            item = raw.get(uid)
+                            if not item:
+                                continue
+                            env = item.get(b'ENVELOPE')
+                            if not env:
+                                continue
+                            from_email, from_name = '', ''
+                            if env.from_ and env.from_[0]:
+                                f = env.from_[0]
+                                mbox = f.mailbox.decode() if f.mailbox else ''
+                                host = f.host.decode() if f.host else ''
+                                from_email = f"{mbox}@{host}" if mbox and host else ''
+                                from_name = _decode_header_value(
+                                    f.name.decode('utf-8', 'replace') if f.name else '')
+                            header = b''
+                            for k, v in item.items():
+                                if b'HEADER' in k and isinstance(v, bytes):
+                                    header = v
+                                    break
+                            header_text = header.decode('utf-8', 'replace')
+                            mail_data = {
+                                'from_email': from_email,
+                                'from_name': from_name,
+                                'to_email': account.email,
+                                # '=?utf-8?b?…?=' 를 풀어서 비교한다 — 안 풀면
+                                # 한글 제목 조건이 한 번도 안 맞는다
+                                'subject': _decode_header_value(
+                                    (env.subject or b'').decode('utf-8', 'replace')) if env.subject else '',
+                                'has_attachment': 'multipart/mixed' in header_text.lower(),
+                            }
+                            actions = classify_mail(rule_data, mail_data)
+                            if not actions:
+                                continue
+                            if dry_run:
+                                logger.info("[automation][dry-run] %s uid=%s → %s",
+                                            account.email, uid,
+                                            ', '.join(a['rule_name'] for a in actions))
+                                moved += 1
+                                continue
+                            results = apply_actions(client, uid, 'INBOX', actions)
+                            moved += len(results)
+                            for line in results:
+                                logger.info("[automation] %s %s", account.email, line)
+                except Exception as e:
+                    logger.error("[automation] 자동분류 오류 (account=%s): %s", aid, e)
+    return moved
+
+
+def _process_blocklist(app, dry_run=False):
+    """새 메일(UNSEEN) 중 차단 주소에서 온 것을 스팸함으로 옮긴다.
+
+    **자동회신·자동전달보다 먼저 돈다.** 나중에 돌면 차단해 둔 주소에
+    부재중 자동회신이 나가고, 전달 주소로도 그대로 실려 간다.
+    """
+    from modules.db_context import get_db
+    from modules.models.mail_entities import MailAccount, MailBlocklist
+    from modules.services.mail_client import MailClient, decrypt_password
+    from modules.services.mail_classifier import spam_verdict
+
+    moved = 0
+    with app.app_context():
+        with get_db() as db:
+            rows = db.query(MailBlocklist).all()
+            by_account = {}
+            for r in rows:
+                by_account.setdefault(r.account_id, []).append({'kind': r.kind, 'value': r.value})
+
+            for aid, entries in by_account.items():
+                if not any(e['kind'] == 'block' for e in entries):
+                    continue
+                account = db.query(MailAccount).filter_by(id=aid, is_active=True).first()
+                if not account:
+                    continue
+                try:
+                    pw = decrypt_password(account.password_encrypted)
+                    client = MailClient(
+                        account.imap_host, account.imap_port,
+                        account.smtp_host, account.smtp_port,
+                        account.username, pw, account.use_ssl,
+                    )
+                    with client:
+                        junk = 'Junk'
+                        for f in client.list_folders():
+                            nm = f['name'] if isinstance(f, dict) else f
+                            if 'junk' in nm.lower() or 'spam' in nm.lower():
+                                junk = nm
+                                break
+                        client._imap.select_folder('INBOX', readonly=False)
+                        unseen = client._imap.search('UNSEEN')
+                        for uid in list(unseen)[-50:]:
+                            raw = client._imap.fetch([uid], ['ENVELOPE'])
+                            env = raw.get(uid, {}).get(b'ENVELOPE')
+                            if not env or not env.from_ or not env.from_[0]:
+                                continue
+                            f0 = env.from_[0]
+                            addr = (f'{(f0.mailbox or b"").decode(errors="replace")}'
+                                    f'@{(f0.host or b"").decode(errors="replace")}')
+                            if spam_verdict(entries, addr) != 'block':
+                                continue
+                            if dry_run:
+                                logger.info("[automation][dry-run] 차단: %s uid=%s from=%s",
+                                            account.email, uid, addr)
+                            else:
+                                client.move_messages([uid], junk, src_folder='INBOX')
+                                logger.info("[automation] 차단 → %s: %s (%s)", junk, addr, account.email)
+                            moved += 1
+                except Exception as e:
+                    logger.error("[automation] 수신차단 오류 (account=%s): %s", aid, e)
+    return moved
+
+
+def run_mail_automation(app, dry_run=False):
+    """자동회신·자동전달·자동분류를 한 번 돌린다 (crontab 진입점).
+
+    순서가 뜻이 있다:
+      ① 수신차단 — 차단해 둔 주소에 자동회신이 나가면 안 된다
+      ② 자동회신·자동전달
+      ③ 자동분류 — 먼저 돌면 메일을 다른 폴더로 옮겨 ②가 그 메일을 못 찾는다
+    """
+    blocked = _process_blocklist(app, dry_run=dry_run)
+    if not dry_run:
+        _process_auto_reply_forward(app)
+    else:
+        logger.info("[automation][dry-run] 자동회신·자동전달은 건너뜁니다(메일이 나갑니다)")
+    moved = _process_auto_rules(app, dry_run=dry_run)
+    if not dry_run:
+        _stamp_automation_run()
+    return {'blocked': blocked, 'classified': moved}
 
 
 def _load_scheduled_attachments(sched):

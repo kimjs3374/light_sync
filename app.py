@@ -1098,6 +1098,44 @@ def send_scheduled_mails_cli():
         click.echo(f"예약발송 — 성공 {sent}건, 실패 {failed}건")
 
 
+@app.cli.command('process-mail-automation')
+@click.option('--dry-run', is_flag=True, help='보내거나 옮기지 않고 무엇을 할지만 출력')
+def process_mail_automation_cli(dry_run):
+    """수신차단 · 자동회신 · 자동전달 · 자동분류를 한 번 돌린다 (crontab용).
+
+    send-scheduled-mails 와 같은 이유로 crontab 이다 —
+    `.env` 가 FLASK_DEBUG=true 라 init_scheduler() 가 아예 호출되지 않고,
+    켜더라도 gunicorn 워커 8개가 각자 돌려 같은 자동회신을 8번 보낸다.
+
+    **이게 돌지 않으면 설정 화면의 자동회신·자동전달·자동분류는 저장만 되고
+    아무 일도 하지 않는다.** 메일 화면(설정 창)은 마지막 실행 시각을 보고
+    "자동 처리가 돌고 있는지" 를 사람에게 알려 준다.
+    """
+    from modules.scheduler import run_mail_automation
+
+    r = run_mail_automation(app, dry_run=dry_run)
+    if dry_run:
+        click.echo(f"[dry-run] 차단 대상 {r['blocked']}건 · 자동분류 대상 {r['classified']}건 "
+                   f"(실제로는 아무것도 하지 않음)")
+    elif r['blocked'] or r['classified']:
+        click.echo(f"수신차단 {r['blocked']}건 · 자동분류 {r['classified']}건 처리")
+
+
+@app.cli.command('watch-mail')
+def watch_mail_cli():
+    """새 메일이 오는 즉시 자동처리 (IMAP IDLE 상주).
+
+    systemd 서비스(light_sync_mailwatch)가 이 명령을 붙들고 돈다.
+    crontab 의 process-mail-automation 은 **안전망**으로 남긴다 —
+    이 감시자가 죽거나 IDLE 신호를 놓쳐도 몇 분 안에 훑고 지나간다.
+    둘 다 run_mail_automation() 한 곳을 지나므로 겹쳐도 결과가 달라지지 않는다.
+    """
+    from modules.services.mail_watcher import watch_forever
+
+    click.echo('메일 감시 시작 (IMAP IDLE)')
+    watch_forever(app)
+
+
 @app.cli.command('check-mail-volume')
 @click.option('--dry-run', is_flag=True, help='알림 발송 없이 통계만 출력')
 @click.option('--force', is_flag=True, help='임계 미만/쿨다운 중이어도 알림 발송')
