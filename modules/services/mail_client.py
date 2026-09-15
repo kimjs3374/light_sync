@@ -94,6 +94,22 @@ def _parse_address(addr_str):
     return {'name': name, 'email': addr}
 
 
+def _envelope_date(env, fetch_data):
+    """메일 표시용 날짜 (ISO 문자열).
+
+    ENVELOPE 의 date 를 우선 쓰고, 비어 있으면 IMAP INTERNALDATE 로 대체한다.
+    ERP 가 보낸 메일처럼 Date 헤더가 없는 건이 실제로 있어
+    (받은편지함 20통 중 4~5통) 목록 날짜칸이 비어 보이던 것을 막는다.
+    """
+    d = getattr(env, 'date', None)
+    if d is None:
+        d = fetch_data.get(b'INTERNALDATE')
+    try:
+        return d.isoformat() if d else ''
+    except Exception:
+        return ''
+
+
 def _parse_address_list(addr_str):
     """콤마 구분 주소 리스트 파싱."""
     if not addr_str:
@@ -296,7 +312,7 @@ class MailClient:
 
         # ENVELOPE + FLAGS만 가져오기 (BODYSTRUCTURE 제거 = 속도 대폭 개선)
         # To 헤더도 가져와서 ENVELOPE에 to가 없는 메일 대비
-        raw = self._imap.fetch(page_uids, ['ENVELOPE', 'FLAGS', 'BODY.PEEK[HEADER.FIELDS (CONTENT-TYPE TO)]'])
+        raw = self._imap.fetch(page_uids, ['ENVELOPE', 'FLAGS', 'INTERNALDATE', 'BODY.PEEK[HEADER.FIELDS (CONTENT-TYPE TO)]'])
         messages = []
         for uid in page_uids:
             if uid not in raw:
@@ -325,7 +341,9 @@ class MailClient:
                 'subject': _decode_header_value(env.subject.decode('utf-8', errors='replace') if isinstance(env.subject, bytes) else (env.subject or '')),
                 'from': self._parse_envelope_addr(env.from_),
                 'to': to_list,
-                'date': env.date.isoformat() if env.date else '',
+                # ENVELOPE 의 Date 가 비는 메일이 있다 (Date 헤더 없음/파싱 실패).
+                # 그러면 목록 날짜칸이 통째로 비어 보이므로 INTERNALDATE 로 메운다.
+                'date': _envelope_date(env, data),
                 'flags': [str(f) for f in flags],
                 'is_read': b'\\Seen' in flags,
                 'is_flagged': b'\\Flagged' in flags,
@@ -348,7 +366,7 @@ class MailClient:
         if not sorted_uids:
             return {'messages': [], 'total': 0, 'page': 1, 'pages': 1}
 
-        raw = self._imap.fetch(sorted_uids, ['ENVELOPE', 'FLAGS', 'BODY.PEEK[HEADER.FIELDS (CONTENT-TYPE TO)]'])
+        raw = self._imap.fetch(sorted_uids, ['ENVELOPE', 'FLAGS', 'INTERNALDATE', 'BODY.PEEK[HEADER.FIELDS (CONTENT-TYPE TO)]'])
         messages = []
         for uid in sorted_uids:
             if uid not in raw:
@@ -371,7 +389,9 @@ class MailClient:
                 'subject': _decode_header_value(env.subject.decode('utf-8', errors='replace') if isinstance(env.subject, bytes) else (env.subject or '')),
                 'from': self._parse_envelope_addr(env.from_),
                 'to': to_list,
-                'date': env.date.isoformat() if env.date else '',
+                # ENVELOPE 의 Date 가 비는 메일이 있다 (Date 헤더 없음/파싱 실패).
+                # 그러면 목록 날짜칸이 통째로 비어 보이므로 INTERNALDATE 로 메운다.
+                'date': _envelope_date(env, data),
                 'flags': [str(f) for f in flags],
                 'is_read': b'\\Seen' in flags,
                 'is_flagged': b'\\Flagged' in flags,
