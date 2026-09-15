@@ -9,6 +9,8 @@
 - `.claude/chatbot_mcp_design.md` — 챗봇 MCP 응답 설계 (시나리오 + 호출체인 + 응답템플릿)
 - `.claude/archive_matching_spec.md` — 워크보드 아카이브 ↔ 조달계약 매칭 명세서 (4단계 로직 + 수동 6건)
 - `MCP_ERROR.md` — MCP API 주의사항 + 추가 이력 (호출 시 반드시 참고)
+- `.claude/deploy.md` — 배포 반영 규칙 (static 즉시 / 파이썬·템플릿은 restart)
+- `.claude/mail_send_paths.md` — 메일 발송 두 경로 (웹메일 IMAP / email_sender SMTP)
 - `.claude/webmail.md` — 메일 SPA(/webmail) 구조 + 대용량 첨부 + 주기작업 + 네트워크 경로
 - `.claude/mcp_guide.md` — MCP 서버 사용 가이드 (114개 Tool + 5개 Resource + 실행방법)
 
