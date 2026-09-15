@@ -67,6 +67,8 @@ export function buildComposer(mode, ctx = {}) {
     draftUid: null,
     draftFolder: '',
     savedAt: null,
+    draftVersion: 0,    // 몇 번째 임시저장인지 (화면에 v3 처럼 보인다)
+    savedSig: '',       // 저장한 순간의 내용 지문 — 지금과 다르면 "변경됨"
   };
 
   if (mode === 'self' && myEmail) return withInitial({ ...base, to: [myEmail] });
@@ -131,3 +133,23 @@ export const composerTitle = (c) => {
   return { reply: '답장', replyAll: '전체답장', forward: '전달', resend: '다시 보내기', self: '내게 쓰기' }[c.mode]
     || '새 메일';
 };
+
+
+/**
+ * 작성 중인 내용의 지문.
+ *
+ * 임시저장한 뒤로 손을 댔는지 가리는 데 쓴다. 저장한 순간의 지문을 들고 있다가
+ * 지금 것과 다르면 "변경됨"이다.
+ *
+ * 첨부는 파일 자체가 아니라 이름·크기만 본다 — 같은 파일을 두 번 붙이는 일은
+ * 드물고, 파일을 통째로 읽으면 글자 한 자 고칠 때마다 디스크를 긁는다.
+ */
+export function draftSignature(w) {
+  if (!w) return '';
+  return JSON.stringify([
+    w.to, w.cc, w.bcc, w.subject, w.bodyHtml,
+    w.files.map((f) => [f.name, f.size]),
+    w.largeFiles.filter((l) => l.status === 'done').map((l) => l.fileId),
+    (w.kept || []).map((a) => a.index),
+  ]);
+}

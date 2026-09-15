@@ -21,7 +21,9 @@
   --surface: #fff;
   --primary: #2563eb;
   --danger: #dc2626;
-  --warning: #f59e0b;
+  --warning: #f59e0b;  /* 뱃지·표시용 — 글자에 쓰기엔 흐리다 */
+  --ok: #15803d;       /* 글자용 초록 — 4.9:1, AA 통과 */
+  --warn: #b45309;     /* 글자용 주황 — 4.8:1, AA 통과 */
   --radius: .65rem;
   --shadow: 0 2px 12px rgba(15, 23, 42, .06);
   --shadow-lift: 0 1px 2px rgba(15, 23, 42, .06), 0 4px 16px rgba(15, 23, 42, .05);
@@ -585,13 +587,17 @@ body.is-splitting iframe { pointer-events: none; }
   flex: 0 0 auto; display: flex; flex-direction: column; gap: 9px;
   padding: 13px 20px 11px; border-bottom: 1px solid var(--hairline);
 }
-.compose-head-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.compose-head-title { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+/* 닫기(✕)와 그 아래 임시저장 상태 — 오른쪽 끝에 세로로 쌓는다 */
+.compose-close-col {
+  flex: 0 0 auto; display: flex; flex-direction: column;
+  align-items: flex-end; gap: 5px;
+}
 .compose-head-title .compose-heading { flex: 1 1 auto; }
 .compose-heading {
   flex: 0 0 auto; margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.02em;
 }
 .compose-head-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.draft-mark { margin-left: 6px; }
 
 .compose-close {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
@@ -803,7 +809,20 @@ body.is-splitting iframe { pointer-events: none; }
 .act.on { background: var(--primary-soft); color: var(--primary); font-weight: 700; }
 .act:disabled { opacity: .5; cursor: default; }
 .act-wrap { position: relative; }
-.draft-mark { font-size: 11px; color: var(--faint); font-family: var(--mono); white-space: nowrap; }
+/* ── 임시저장 상태 (닫기 버튼 아래) ──────────────────────────────────── */
+.draft-status {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+  font-size: 11px; line-height: 1.45; white-space: nowrap; text-align: right;
+}
+.ds-state { display: flex; align-items: center; gap: 5px; font-weight: 700; }
+.ds-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+.ds-meta { color: var(--subtle); font-family: var(--mono); font-size: 10.5px; }
+
+.draft-status.is-none   .ds-state { color: var(--subtle); font-weight: 400; }
+.draft-status.is-none   .ds-dot   { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
+.draft-status.is-saving .ds-state { color: var(--subtle); }
+.draft-status.is-saved  .ds-state { color: var(--ok); }
+.draft-status.is-dirty  .ds-state { color: var(--warn); }
 
 /* ── 작은 메뉴 ───────────────────────────────────────────────────────── */
 /* 버튼 왼쪽 끝에 맞춰 오른쪽으로 펼친다.

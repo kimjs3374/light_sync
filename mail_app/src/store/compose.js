@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
-import { buildComposer } from '../lib/compose';
+import { buildComposer, draftSignature } from '../lib/compose';
 import { useMail } from './mail';
 
 let seq = 0;
@@ -381,6 +381,7 @@ export const useCompose = create((set, get) => ({
         forward: null,
         sending: false, saving: false, error: '',
         draftUid: null, draftFolder: '', savedAt: null,
+        draftVersion: 0, savedSig: '',
         initial: {
           to: split(d.to), cc: split(d.cc), bcc: split(d.bcc),
           subject: d.subject || '', bodyHtml: d.body || '',
@@ -676,6 +677,9 @@ export const useCompose = create((set, get) => ({
     get().update({ saving: true, error: '' });
     try {
       const fd = get()._formData(w);
+      // 지문은 **보내기 직전의 내용**으로 뜬다 — 저장이 오가는 동안 손을 대면
+      // 그건 아직 저장 안 된 변경이다. 응답 시점에 뜨면 그걸 놓친다.
+      const sig = draftSignature(w);
       if (w.draftUid) fd.append('replace_uid', String(w.draftUid));
       const res = await api.json('/mail/api/draft', { method: 'POST', body: fd });
       if (res.error) {
@@ -687,6 +691,8 @@ export const useCompose = create((set, get) => ({
         draftUid: res.uid || null,
         draftFolder: res.folder || '',
         savedAt: new Date(),
+        draftVersion: (w.draftVersion || 0) + 1,
+        savedSig: sig,
       });
       // 임시보관함을 보고 있었다면 방금 저장분이 바로 보여야 한다
       const m = useMail.getState();

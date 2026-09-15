@@ -79,10 +79,6 @@ export default function ComposeToolbar({ account }) {
   const me = (account?.email || '').toLowerCase();
   const selfOn = !!me && w.to.some((t) => t.toLowerCase() === me);
 
-  const draftSaved = w.savedAt
-    ? `${pad(w.savedAt.getHours())}:${pad(w.savedAt.getMinutes())} 저장됨`
-    : '';
-
   return (
     <div className="compose-head-actions">
       {editing ? (
@@ -142,7 +138,6 @@ export default function ComposeToolbar({ account }) {
         내게쓰기
       </button>
 
-      {draftSaved && <span className="draft-mark">{draftSaved}</span>}
     </div>
   );
 }
