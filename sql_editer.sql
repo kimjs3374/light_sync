@@ -1814,3 +1814,72 @@ CREATE POLICY "mail_temp_update" ON storage.objects
     FOR UPDATE TO authenticated
     USING (bucket_id = 'company-files' AND name LIKE 'mail-temp/%')
     WITH CHECK (bucket_id = 'company-files' AND name LIKE 'mail-temp/%');
+
+-- ============================================================
+-- 2026-09-15 : 메일 주소록에 전화번호 + 수정시각
+-- ------------------------------------------------------------
+-- 다음·네이버·구글이 내주는 vCard 에는 TEL 이 들어 있는데 받을 칸이 없어
+-- 메모에 섞어 넣고 있었다(scripts/import_synology_contacts.py 옛 판).
+-- 메모는 사람이 적는 자리다 — 전화는 제 칸을 준다.
+-- 되돌리기: ALTER TABLE light_sync.mail_contacts DROP COLUMN phone, DROP COLUMN updated_at;
+-- ============================================================
+ALTER TABLE light_sync.mail_contacts ADD COLUMN IF NOT EXISTS phone VARCHAR(60);
+ALTER TABLE light_sync.mail_contacts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
+
+-- 공유 주소록(user_id IS NULL)은 회사 공용이라 한 주소에 한 줄이어야 한다.
+-- 가져오기를 두 번 눌러도 안 겹치는 마지막 방벽이다.
+-- 부분 인덱스로 두는 이유: UNIQUE 는 NULL 을 서로 다른 값으로 보므로
+-- (user_id, email) 로 묶으면 공유 행끼리는 아무 제약이 안 걸린다.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mail_contacts_shared_email
+    ON light_sync.mail_contacts (lower(email)) WHERE user_id IS NULL;
+
+-- 개인 주소록에는 같은 제약을 걸지 않았다.
+-- 실제 데이터에 같은 주소를 다른 이름으로 들고 있는 줄이 있다
+-- (sw6042958@hanmail.net = '신화시스템(전기공사업체)' 이자 '김은호(광주 남구청 감독)').
+-- 인덱스를 만들려면 그 중 하나를 지워야 하는데, 사람이 적어 둔 것을
+-- 제약 하나 걸자고 지우지 않는다. 중복은 저장·가져오기 때가 막는다
+-- (routes/mail.py 의 _find_contact).
+
+-- ============================================================
+-- 2026-09-15 : 메일 수신차단 / 수신허용 목록 (스팸)
+-- ------------------------------------------------------------
+-- 스팸 판정을 자동분류 규칙으로 흉내 내면, 차단 주소 하나 늘 때마다
+-- 규칙이 한 줄씩 늘어 목록이 못 읽게 된다. 차단은 "주소 목록" 이라는
+-- 제 모양이 있으므로 따로 둔다.
+--  kind: block(차단) | allow(허용). 허용이 차단을 이긴다.
+--  value: 메일주소(kim@x.co.kr) 또는 도메인(@x.co.kr / x.co.kr)
+-- 되돌리기: DROP TABLE light_sync.mail_blocklist;
+-- ============================================================
+CREATE TABLE IF NOT EXISTS light_sync.mail_blocklist (
+    id          SERIAL PRIMARY KEY,
+    account_id  INTEGER NOT NULL REFERENCES light_sync.mail_accounts(id) ON DELETE CASCADE,
+    kind        VARCHAR(10) NOT NULL DEFAULT 'block',
+    value       VARCHAR(255) NOT NULL,
+    memo        TEXT,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 같은 계정에 같은 주소를 두 번 넣지 않는다 (차단/허용은 따로 셈한다)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mail_blocklist
+    ON light_sync.mail_blocklist (account_id, kind, lower(value));
+CREATE INDEX IF NOT EXISTS idx_mail_blocklist_account
+    ON light_sync.mail_blocklist (account_id);
+
+-- ============================================================
+-- 2026-09-15 : 메일함 순서 · 그룹
+-- ------------------------------------------------------------
+-- 사이드바 메일함 순서를 사람이 정하고, 여러 개를 그룹으로 묶는다.
+-- IMAP 에는 순서라는 개념이 없다(LIST 는 서버 마음대로 준다). 그래서 우리가 든다.
+-- 계정마다 따로다 — 브라우저에 두면 자리를 옮길 때마다 다시 정리해야 한다.
+-- 되돌리기: DROP TABLE light_sync.mail_folder_prefs;
+-- ============================================================
+CREATE TABLE IF NOT EXISTS light_sync.mail_folder_prefs (
+    id          SERIAL PRIMARY KEY,
+    account_id  INTEGER NOT NULL REFERENCES light_sync.mail_accounts(id) ON DELETE CASCADE,
+    folder      VARCHAR(255) NOT NULL,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    group_name  VARCHAR(60),
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mail_folder_prefs
+    ON light_sync.mail_folder_prefs (account_id, folder);

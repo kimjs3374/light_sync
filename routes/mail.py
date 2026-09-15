@@ -13,6 +13,8 @@ import uuid
 from datetime import datetime, timedelta
 from urllib.parse import quote as urlquote
 
+from sqlalchemy import func
+
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
     session, flash, jsonify, Response, current_app, g,
@@ -24,13 +26,16 @@ from modules.db_context import get_db
 from modules.models.mail_entities import (
     MailAccount, MailSharedAccess, MailContact, MailReadReceipt, MailLargeFile,
     MailLabel, MailRule, MailAutoReply, MailAutoForward, MailScheduled,
-    MailPin, MailTemplate, MailSharedRead,
+    MailPin, MailTemplate, MailSharedRead, MailBlocklist, MailFolderPref,
 )
 from modules import storage_adapter
 from modules.models.procurement_entities import EmailHistory
 from modules.models.auth_entities import User
 from modules.pagination import make_pagination
-from modules.services.mail_client import MailClient, decrypt_password, encrypt_password
+from modules.services.mail_client import (
+    MailClient, decrypt_password, encrypt_password, _decode_header_value,
+)
+from modules.services.vcard import parse_contacts_file, build_vcf
 
 logger = logging.getLogger(__name__)
 mail_bp = Blueprint('mail', __name__)
@@ -85,6 +90,30 @@ _FOLDER_CACHE_TTL = 300  # 5분
 # ---------------------------------------------------------------------------
 # 헬퍼: 현재 사용자의 메일 클라이언트 얻기
 # ---------------------------------------------------------------------------
+def _account_allowed(db, account_id):
+    """설정류 API(자동회신·자동전달·자동분류)의 계정 접근 확인.
+
+    이 API 들은 메일을 열지 않으므로 _get_mail_client 를 부를 이유가 없었고,
+    그 바람에 **account_id 를 그냥 믿고 있었다** — 남의 계정 번호만 넣으면
+    자동전달 주소를 바꿔 남의 메일을 받아볼 수 있었다(2026-09-15 막음).
+    잣대는 _get_mail_client 와 같다: 내 계정이거나, 내가 권한을 받은 공용계정.
+    """
+    user_id = session.get('user_id')
+    if not user_id or not account_id:
+        return False
+    account = db.query(MailAccount).filter_by(id=account_id).first()
+    if not account:
+        return False
+    if account.user_id == user_id:
+        return True
+    if account.is_shared:
+        if session.get('role') == 'admin':
+            return True
+        return bool(db.query(MailSharedAccess).filter_by(
+            mail_account_id=account.id, user_id=user_id).first())
+    return False   # 남의 개인 계정은 관리자도 여기서는 못 만진다
+
+
 def _get_mail_client(db, account_id=None):
     """현재 세션 사용자의 MailClient 인스턴스 생성.
     account_id가 주어지면 해당 계정, 없으면 개인 계정.
@@ -894,6 +923,432 @@ def api_folders():
         return jsonify({'folders': folders, 'labels': labels_data})
 
 
+# ---------------------------------------------------------------------------
+# 메일함 관리 (만들기 · 이름 바꾸기 · 지우기)
+# ---------------------------------------------------------------------------
+# IMAP 폴더를 직접 건드린다 — 메일 프로그램(아웃룩·휴대폰)에도 그대로 보인다.
+# 그래서 두 가지를 반드시 막는다:
+#   ① 시스템 메일함(받은편지함·보낸편지함·임시보관함·휴지통·스팸)은 손대지 않는다.
+#      이름을 바꾸는 순간 우리 화면도, 발송 사본 저장도 그 폴더를 못 찾는다.
+#   ② 비어 있지 않은 메일함은 **한 번 더 확인받는다.** IMAP DELETE 는 안에 든
+#      메일을 같이 지우고, 휴지통으로 가지도 않는다.
+# ---------------------------------------------------------------------------
+
+# 한글 이름도 함께 막는다 — 서버에 '임시보관함' 같은 한글 폴더가 실제로 있을 수 있고,
+# 우리가 만들어 내는 '내게쓴메일함' 과 이름이 겹치는 폴더도 손대면 화면이 어긋난다.
+# (화면 쪽 잣대는 mail_app/src/lib/folders.js 의 SYS_EXACT — 같은 이름을 쓴다)
+_SYSTEM_FOLDERS = (
+    'inbox', 'sent', 'drafts', 'draft', 'trash', 'junk', 'spam', 'archive', 'archived',
+    '받은편지함', '보낸편지함', '임시보관함', '휴지통', '스팸', '보관함',
+    '내게쓴메일함', '내게쓴편지함',
+)
+
+
+def _is_system_folder(name):
+    # 띄어쓰기는 지우고 본다 — 실제로 '임시 보관함'(공백 포함) 폴더가 있었다.
+    # 공백 하나 때문에 기본 메일함 보호가 새면 그 자리에서만 지워진다.
+    n = (name or '').strip().lower().replace(' ', '')
+    base = n.split('.')[-1].split('/')[-1]
+    return n in _SYSTEM_FOLDERS or base in _SYSTEM_FOLDERS
+
+
+def _clear_folder_cache(account_id):
+    """메일함이 바뀌면 캐시를 버린다 — 안 버리면 최대 5분 동안 옛 목록이 보인다."""
+    for key in [k for k in _FOLDER_CACHE if k[0] == account_id]:
+        _FOLDER_CACHE.pop(key, None)
+
+
+def _check_folder_name(name):
+    """새 메일함 이름 검사. 계층은 parent 로 받으므로 구분자는 이름에 못 들어간다."""
+    name = (name or '').strip()
+    if not name:
+        return None, '메일함 이름을 입력하세요.'
+    if len(name) > 60:
+        return None, '메일함 이름이 너무 깁니다 (60자까지).'
+    if any(ch in name for ch in './\"%*'):
+        return None, '이름에 쓸 수 없는 글자가 있습니다 ( . / \\ " % * ).'
+    return name, None
+
+
+@mail_bp.route('/mail/api/folders', methods=['POST'])
+@login_required
+def api_folder_create():
+    """메일함 만들기. parent 를 주면 그 아래에 만든다."""
+    data = request.get_json(silent=True) or {}
+    account_id = data.get('account_id')
+    name, err = _check_folder_name(data.get('name'))
+    if err:
+        return jsonify({'error': err}), 400
+    parent = (data.get('parent') or '').strip()
+
+    with get_db() as db:
+        client, account, err = _get_mail_client(db, account_id)
+        if err or not client:
+            return jsonify({'error': err or '메일 계정 미설정'}), 400
+        try:
+            with client:
+                delimiter = client.folder_delimiter()
+                full = f'{parent}{delimiter}{name}' if parent else name
+                existing = {f['name'] if isinstance(f, dict) else f for f in client.list_folders()}
+                if full in existing:
+                    return jsonify({'error': f'이미 있는 메일함입니다: {full}'}), 400
+                client.create_folder(full)
+        except Exception as e:
+            logger.warning("메일함 생성 실패 (%s): %s", name, e)
+            return jsonify({'error': f'만들지 못했습니다: {e}'}), 500
+
+        _clear_folder_cache(account_id)
+        logger.info("메일함 생성: user=%s account=%s %s", session['user_id'], account_id, full)
+        return jsonify({'success': True, 'name': full})
+
+
+@mail_bp.route('/mail/api/folders/rename', methods=['POST'])
+@login_required
+def api_folder_rename():
+    """메일함 이름 바꾸기. 같은 부모 아래에서 마지막 마디만 바꾼다."""
+    data = request.get_json(silent=True) or {}
+    account_id = data.get('account_id')
+    old = (data.get('name') or '').strip()
+    new_name, err = _check_folder_name(data.get('new_name'))
+    if err:
+        return jsonify({'error': err}), 400
+    if not old:
+        return jsonify({'error': '바꿀 메일함을 고르세요.'}), 400
+    if _is_system_folder(old):
+        return jsonify({'error': '기본 메일함의 이름은 바꿀 수 없습니다.'}), 400
+
+    with get_db() as db:
+        client, account, err = _get_mail_client(db, account_id)
+        if err or not client:
+            return jsonify({'error': err or '메일 계정 미설정'}), 400
+        try:
+            with client:
+                delimiter = client.folder_delimiter()
+                parts = old.split(delimiter)
+                target = delimiter.join(parts[:-1] + [new_name]) if len(parts) > 1 else new_name
+                if target == old:
+                    return jsonify({'success': True, 'name': old})
+                client.rename_folder(old, target)
+        except Exception as e:
+            logger.warning("메일함 이름변경 실패 (%s → %s): %s", old, new_name, e)
+            return jsonify({'error': f'이름을 바꾸지 못했습니다: {e}'}), 500
+
+        _clear_folder_cache(account_id)
+        logger.info("메일함 이름변경: user=%s %s → %s", session['user_id'], old, target)
+        return jsonify({'success': True, 'name': target})
+
+
+@mail_bp.route('/mail/api/folders', methods=['DELETE'])
+@login_required
+def api_folder_delete():
+    """메일함 지우기. 비어 있지 않으면 force 없이는 지우지 않는다."""
+    data = request.get_json(silent=True) or {}
+    account_id = data.get('account_id')
+    name = (data.get('name') or '').strip()
+    force = bool(data.get('force'))
+    if not name:
+        return jsonify({'error': '지울 메일함을 고르세요.'}), 400
+    if _is_system_folder(name):
+        return jsonify({'error': '기본 메일함은 지울 수 없습니다.'}), 400
+
+    with get_db() as db:
+        client, account, err = _get_mail_client(db, account_id)
+        if err or not client:
+            return jsonify({'error': err or '메일 계정 미설정'}), 400
+        try:
+            with client:
+                delimiter = client.folder_delimiter()
+                all_names = [f['name'] if isinstance(f, dict) else f for f in client.list_folders()]
+                # 하위 메일함까지 한 묶음으로 본다.
+                # 부모만 지우면 IMAP 은 **껍데기(\NoSelect)를 남긴다** — 화면에는
+                # 그대로 보이는데 열리지 않아, 지웠는데 안 지워진 것처럼 된다.
+                children = [n for n in all_names if n.startswith(name + delimiter)]
+                targets = sorted(children, key=lambda n: n.count(delimiter), reverse=True) + [name]
+
+                total = sum(client.folder_message_count(n) for n in targets)
+                if (total or children) and not force:
+                    # 몇 통이, 몇 개 메일함이 함께 사라지는지 알려 주고 한 번 더 받는다
+                    return jsonify({'error': 'not_empty', 'count': total,
+                                    'children': len(children)}), 409
+                removed, missing = 0, 0
+                for n in targets:
+                    try:
+                        client.delete_folder(n)
+                        removed += 1
+                    except Exception as e:
+                        # 부모는 하위가 있는 동안 껍데기로만 남아 있다가 하위를 지우면
+                        # 같이 사라진다 — 그때 "없는 메일함" 오류가 난다. 이건 실패가 아니다.
+                        if 'NONEXISTENT' in str(e) or "doesn't exist" in str(e):
+                            missing += 1
+                            continue
+                        raise
+                if not removed and not missing:
+                    raise RuntimeError('지운 메일함이 없습니다')
+        except Exception as e:
+            logger.warning("메일함 삭제 실패 (%s): %s", name, e)
+            return jsonify({'error': f'지우지 못했습니다: {e}'}), 500
+
+        _clear_folder_cache(account_id)
+        logger.info("메일함 삭제: user=%s account=%s %s (하위 %s개, %s통)",
+                    session['user_id'], account_id, name, len(children), total)
+        return jsonify({'success': True, 'removed': removed, 'messages': total})
+
+
+# ---------------------------------------------------------------------------
+# 메일함 순서 · 그룹
+# ---------------------------------------------------------------------------
+@mail_bp.route('/mail/api/folder-prefs')
+@login_required
+def api_folder_prefs_get():
+    """이 계정의 메일함 순서·그룹."""
+    account_id = request.args.get('account', type=int)
+    with get_db() as db:
+        if not _account_allowed(db, account_id):
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
+        rows = db.query(MailFolderPref).filter_by(account_id=account_id).order_by(
+            MailFolderPref.sort_order, MailFolderPref.id).all()
+        return jsonify({'items': [
+            {'folder': r.folder, 'sort_order': r.sort_order, 'group_name': r.group_name or ''}
+            for r in rows
+        ]})
+
+
+@mail_bp.route('/mail/api/folder-prefs', methods=['POST'])
+@login_required
+def api_folder_prefs_save():
+    """메일함 순서·그룹 저장 (화면이 정렬한 목록을 통째로 보낸다).
+
+    한 줄씩 저장하지 않는다 — 끌어다 놓으면 여러 줄의 순서가 한꺼번에 바뀌므로,
+    한 줄씩 보내면 중간에 끊겼을 때 순서가 뒤엉킨다.
+    """
+    data = request.get_json(silent=True) or {}
+    account_id = data.get('account_id')
+    items = data.get('items') or []
+
+    with get_db() as db:
+        if not _account_allowed(db, account_id):
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
+
+        existing = {r.folder: r for r in
+                    db.query(MailFolderPref).filter_by(account_id=account_id).all()}
+        seen = set()
+        for i, item in enumerate(items):
+            folder = (item.get('folder') or '').strip()
+            if not folder:
+                continue
+            group = (item.get('group_name') or '').strip()[:60]
+            row = existing.get(folder)
+            if not row:
+                row = MailFolderPref(account_id=account_id, folder=folder)
+                db.add(row)
+            row.sort_order = i
+            row.group_name = group or None
+            seen.add(folder)
+
+        # 화면에서 사라진 메일함(지웠거나 이름이 바뀐 것)의 줄은 치운다
+        for folder, row in existing.items():
+            if folder not in seen:
+                db.delete(row)
+
+        db.commit()
+        return jsonify({'success': True, 'count': len(seen)})
+
+
+# ---------------------------------------------------------------------------
+# 스팸 — 수신차단 / 수신허용
+# ---------------------------------------------------------------------------
+# 메일서버(mailcow) 쪽 스팸 필터와는 **별개**다. 여기 있는 것은 "이 주소는
+# 스팸함으로" 라는 우리 쪽 목록이다. 판정은 modules/services/mail_classifier.py
+# 한 곳에서 한다 — 화면과 자동 처리가 같은 잣대를 써야 한다.
+# ---------------------------------------------------------------------------
+
+def _junk_folder(client):
+    """이 계정의 스팸함 이름 (Junk / Spam / INBOX.Junk … 서버마다 다르다)."""
+    try:
+        for f in client.list_folders():
+            name = f['name'] if isinstance(f, dict) else f
+            low = name.lower()
+            if 'junk' in low or 'spam' in low:
+                return name
+    except Exception:
+        pass
+    return 'Junk'
+
+
+def _blocklist_entries(db, account_id):
+    rows = db.query(MailBlocklist).filter_by(account_id=account_id).order_by(
+        MailBlocklist.kind, MailBlocklist.value).all()
+    return [{'id': r.id, 'kind': r.kind, 'value': r.value, 'memo': r.memo or '',
+             'created_at': r.created_at.strftime('%Y-%m-%d') if r.created_at else ''} for r in rows]
+
+
+@mail_bp.route('/mail/api/spam/list')
+@login_required
+def api_spam_list():
+    """수신차단 · 수신허용 목록."""
+    account_id = request.args.get('account', type=int)
+    with get_db() as db:
+        if not _account_allowed(db, account_id):
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
+        return jsonify({'items': _blocklist_entries(db, account_id)})
+
+
+@mail_bp.route('/mail/api/spam/list', methods=['POST'])
+@login_required
+def api_spam_add():
+    """차단·허용 주소 추가. 주소(kim@x.co.kr) 또는 도메인(@x.co.kr) 둘 다 받는다."""
+    from modules.services.mail_classifier import normalize_block_value
+
+    data = request.get_json(silent=True) or {}
+    account_id = data.get('account_id')
+    kind = 'allow' if data.get('kind') == 'allow' else 'block'
+    value = normalize_block_value(data.get('value'))
+    if not value or ' ' in value or '.' not in value:
+        return jsonify({'error': '메일주소나 도메인을 정확히 입력하세요. (예: kim@x.co.kr, @x.co.kr)'}), 400
+
+    with get_db() as db:
+        if not _account_allowed(db, account_id):
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
+        row = db.query(MailBlocklist).filter(
+            MailBlocklist.account_id == account_id,
+            MailBlocklist.kind == kind,
+            func.lower(MailBlocklist.value) == value,
+        ).first()
+        if not row:
+            row = MailBlocklist(account_id=account_id, kind=kind, value=value)
+            db.add(row)
+        row.memo = (data.get('memo') or '').strip()
+        db.commit()
+        return jsonify({'success': True, 'id': row.id, 'value': value, 'kind': kind})
+
+
+@mail_bp.route('/mail/api/spam/list/<int:entry_id>', methods=['DELETE'])
+@login_required
+def api_spam_delete(entry_id):
+    with get_db() as db:
+        row = db.query(MailBlocklist).filter_by(id=entry_id).first()
+        if not row or not _account_allowed(db, row.account_id):
+            return jsonify({'error': '찾을 수 없습니다.'}), 404
+        db.delete(row)
+        db.commit()
+        return jsonify({'success': True})
+
+
+@mail_bp.route('/mail/api/spam/apply', methods=['POST'])
+@login_required
+def api_spam_apply():
+    """받은편지함을 훑어 차단 주소에서 온 메일을 스팸함으로 옮긴다."""
+    from modules.services.mail_classifier import spam_verdict
+
+    data = request.get_json(silent=True) or {}
+    account_id = data.get('account_id')
+    # only: 방금 차단한 그 주소만 — 목록 전체를 훑지 않아 **바로** 끝난다.
+    # 500통을 다시 읽는 동안 기다리게 하면 "차단했는데 그대로 있다" 로 보인다.
+    only = (data.get('only') or '').strip().lower()
+
+    with get_db() as db:
+        entries = _blocklist_entries(db, account_id) if _account_allowed(db, account_id) else None
+        if entries is None:
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
+        if not any(e['kind'] == 'block' for e in entries):
+            return jsonify({'success': True, 'moved': 0, 'checked': 0,
+                            'message': '차단 주소가 없습니다.'})
+
+        client, account, err = _get_mail_client(db, account_id)
+        if err or not client:
+            return jsonify({'error': err or '메일 계정 미설정'}), 400
+        try:
+            with client:
+                junk = _junk_folder(client)
+                imap = client._imap
+                imap.select_folder('INBOX', readonly=False)
+                if only:
+                    # IMAP 이 찾아 준다 — 우리가 한 통씩 열어 볼 이유가 없다.
+                    # 도메인만 차단한 경우엔 주소 조각으로 찾는다(FROM 은 부분일치다).
+                    uids = imap.search(['FROM', only])
+                else:
+                    uids = imap.search('ALL')
+                moved, checked = 0, 0
+                # 최근 500통까지만 본다 — 메일함이 크면 한 번에 다 훑을 수 없다
+                for uid in list(uids)[-500:]:
+                    raw = imap.fetch([uid], ['ENVELOPE'])
+                    env = raw.get(uid, {}).get(b'ENVELOPE')
+                    if not env or not env.from_ or not env.from_[0]:
+                        continue
+                    f = env.from_[0]
+                    mbox = (f.mailbox or b'').decode(errors='replace')
+                    host = (f.host or b'').decode(errors='replace')
+                    checked += 1
+                    if spam_verdict(entries, f'{mbox}@{host}') == 'block':
+                        client.move_messages([uid], junk, src_folder='INBOX')
+                        moved += 1
+        except Exception as e:
+            logger.warning("스팸 적용 실패: %s", e)
+            return jsonify({'error': f'적용하지 못했습니다: {e}'}), 500
+
+        _clear_folder_cache(account_id)
+        logger.info("스팸 적용: user=%s account=%s %s통 → %s", session['user_id'], account_id, moved, junk)
+        return jsonify({'success': True, 'moved': moved, 'checked': checked, 'folder': junk})
+
+
+@mail_bp.route('/mail/api/spam/empty', methods=['POST'])
+@login_required
+def api_spam_empty():
+    """스팸함 비우기 — 되돌릴 수 없다(휴지통을 거치지 않는다)."""
+    data = request.get_json(silent=True) or {}
+    account_id = data.get('account_id')
+
+    with get_db() as db:
+        client, account, err = _get_mail_client(db, account_id)
+        if err or not client:
+            return jsonify({'error': err or '메일 계정 미설정'}), 400
+        try:
+            with client:
+                junk = _junk_folder(client)
+                imap = client._imap
+                imap.select_folder(junk, readonly=False)
+                uids = imap.search('ALL')
+                if not uids:
+                    return jsonify({'success': True, 'deleted': 0, 'folder': junk})
+                imap.add_flags(uids, [b'\\Deleted'])
+                imap.expunge()
+        except Exception as e:
+            logger.warning("스팸함 비우기 실패: %s", e)
+            return jsonify({'error': f'비우지 못했습니다: {e}'}), 500
+
+        _clear_folder_cache(account_id)
+        logger.info("스팸함 비우기: user=%s account=%s %s통", session['user_id'], account_id, len(uids))
+        return jsonify({'success': True, 'deleted': len(uids), 'folder': junk})
+
+
+# ---------------------------------------------------------------------------
+# 자동 처리(자동회신·자동전달·자동분류)가 실제로 돌고 있는지
+# ---------------------------------------------------------------------------
+@mail_bp.route('/mail/api/automation-status')
+@login_required
+def api_automation_status():
+    """마지막 자동 처리 시각.
+
+    설정만 저장되고 **아무 일도 안 일어나는** 상태를 화면이 알 수 있어야 한다.
+    crontab 의 `flask process-mail-automation` 이 돌 때마다 시각을 남긴다.
+    """
+    from modules.scheduler import AUTOMATION_STAMP
+
+    last, stale = None, True
+    try:
+        with open(AUTOMATION_STAMP, encoding='utf-8') as f:
+            last = f.read().strip()
+        if last:
+            delta = datetime.now() - datetime.fromisoformat(last)
+            stale = delta.total_seconds() > 3600   # 1시간 넘게 안 돌았으면 안 도는 것으로 본다
+    except FileNotFoundError:
+        last = None
+    except Exception as e:
+        logger.warning("자동 처리 시각 확인 실패: %s", e)
+
+    return jsonify({'last_run': last, 'stale': stale})
+
+
 @mail_bp.route('/mail/api/accounts')
 @login_required
 def api_accounts():
@@ -1134,11 +1589,14 @@ def api_contacts_suggest():
                 'type': 'internal',
             })
 
-        # 공유 + 개인 주소록
+        # 회사 공용 + 내 주소록. 범위를 자르는 잣대는 목록 API 와 같은 것을 쓴다
+        # (or_(is_shared, user_id==me) 로 두면 남이 공유로 표시한 개인 줄까지 새어 나온다)
         from sqlalchemy import or_
         contact_q = db.query(MailContact).filter(
-            or_(MailContact.is_shared == True,
-                MailContact.user_id == session['user_id'])
+            or_(
+                (MailContact.user_id.is_(None)) & (MailContact.is_shared == True),
+                MailContact.user_id == session['user_id'],
+            )
         )
         if not show_all:
             contact_q = contact_q.filter(
@@ -1150,7 +1608,8 @@ def api_contacts_suggest():
                 'name': c.name,
                 'email': c.email,
                 'company': c.company,
-                'type': 'shared' if c.is_shared else 'external',
+                'phone': c.phone or '',
+                'type': 'shared' if c.user_id is None else 'personal',
             })
 
     return jsonify(results)
@@ -1499,6 +1958,8 @@ def api_rules_list():
     """자동분류 규칙 목록. shared=true면 공용메일 공유 규칙."""
     account_id = request.args.get('account', type=int)
     with get_db() as db:
+        if not _account_allowed(db, account_id):
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
         rules = db.query(MailRule).filter_by(account_id=account_id).order_by(MailRule.priority, MailRule.id).all()
         return jsonify([{
             'id': r.id, 'name': r.name, 'priority': r.priority,
@@ -1518,9 +1979,11 @@ def api_rule_save():
         rule_id = data.get('id')
         if rule_id:
             rule = db.query(MailRule).filter_by(id=rule_id).first()
-            if not rule:
+            if not rule or not _account_allowed(db, rule.account_id):
                 return jsonify({'error': '규칙을 찾을 수 없습니다.'}), 404
         else:
+            if not _account_allowed(db, data.get('account_id')):
+                return jsonify({'error': '접근 권한이 없습니다.'}), 403
             rule = MailRule(account_id=data.get('account_id'))
             db.add(rule)
         rule.name = data.get('name', '')
@@ -1540,7 +2003,10 @@ def api_rule_save():
 def api_rule_delete(rule_id):
     """자동분류 규칙 삭제."""
     with get_db() as db:
-        db.query(MailRule).filter_by(id=rule_id).delete()
+        rule = db.query(MailRule).filter_by(id=rule_id).first()
+        if not rule or not _account_allowed(db, rule.account_id):
+            return jsonify({'error': '규칙을 찾을 수 없습니다.'}), 404
+        db.delete(rule)
         db.commit()
         return jsonify({'success': True})
 
@@ -1605,11 +2071,16 @@ def api_rules_apply():
                         if env.from_ and len(env.from_) > 0:
                             f = env.from_[0]
                             from_addr = f'{(f.mailbox or b"").decode(errors="replace")}@{(f.host or b"").decode(errors="replace")}'
-                            from_name = (f.name or b'').decode(errors='replace')
+                            from_name = _decode_header_value((f.name or b'').decode(errors='replace'))
 
+                        # 제목·보낸사람 이름은 **반드시 풀어서** 비교한다.
+                        # IMAP 이 주는 값은 '=?utf-8?b?…?=' 라, 그대로 두면
+                        # "제목에 '공고' 포함" 같은 한글 조건이 한 번도 안 맞는다.
                         subject = ''
                         if env.subject:
-                            subject = env.subject.decode('utf-8', errors='replace') if isinstance(env.subject, bytes) else (env.subject or '')
+                            raw_subject = (env.subject.decode('utf-8', errors='replace')
+                                           if isinstance(env.subject, bytes) else (env.subject or ''))
+                            subject = _decode_header_value(raw_subject)
 
                         # To 주소: ENVELOPE + 헤더에서 파싱 (포워딩된 메일 대응)
                         to_addrs = []
@@ -1656,6 +2127,8 @@ def api_rules_apply():
 def api_auto_reply_get():
     account_id = request.args.get('account', type=int)
     with get_db() as db:
+        if not _account_allowed(db, account_id):
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
         ar = db.query(MailAutoReply).filter_by(account_id=account_id).first()
         if not ar:
             return jsonify({'is_active': False, 'subject': '부재중 자동회신', 'body': '', 'start_date': '', 'end_date': '', 'reply_once': True})
@@ -1673,6 +2146,8 @@ def api_auto_reply_save():
     data = request.get_json()
     account_id = data.get('account_id')
     with get_db() as db:
+        if not _account_allowed(db, account_id):
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
         ar = db.query(MailAutoReply).filter_by(account_id=account_id).first()
         if not ar:
             ar = MailAutoReply(account_id=account_id)
@@ -1697,6 +2172,8 @@ def api_auto_reply_save():
 def api_auto_forward_get():
     account_id = request.args.get('account', type=int)
     with get_db() as db:
+        if not _account_allowed(db, account_id):
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
         rows = db.query(MailAutoForward).filter_by(account_id=account_id).all()
         return jsonify([{
             'id': r.id, 'forward_to': r.forward_to, 'is_active': r.is_active, 'keep_copy': r.keep_copy,
@@ -1711,8 +2188,14 @@ def api_auto_forward_save():
     with get_db() as db:
         fwd_id = data.get('id')
         if fwd_id:
+            # 고칠 때는 **그 줄이 달린 계정**을 본다. account_id 만 믿으면
+            # 내 계정 번호를 적어 남의 전달규칙을 고칠 수 있다.
             fwd = db.query(MailAutoForward).filter_by(id=fwd_id).first()
+            if not fwd or not _account_allowed(db, fwd.account_id):
+                return jsonify({'error': '전달 규칙을 찾을 수 없습니다.'}), 404
         else:
+            if not _account_allowed(db, account_id):
+                return jsonify({'error': '접근 권한이 없습니다.'}), 403
             fwd = MailAutoForward(account_id=account_id)
             db.add(fwd)
         fwd.forward_to = data.get('forward_to', '')
@@ -1726,7 +2209,10 @@ def api_auto_forward_save():
 @login_required
 def api_auto_forward_delete(fwd_id):
     with get_db() as db:
-        db.query(MailAutoForward).filter_by(id=fwd_id).delete()
+        fwd = db.query(MailAutoForward).filter_by(id=fwd_id).first()
+        if not fwd or not _account_allowed(db, fwd.account_id):
+            return jsonify({'error': '전달 규칙을 찾을 수 없습니다.'}), 404
+        db.delete(fwd)
         db.commit()
         return jsonify({'success': True})
 
@@ -2396,6 +2882,46 @@ def api_move_bulk():
 
 
 # ---------------------------------------------------------------------------
+# 원문 보기
+# ---------------------------------------------------------------------------
+@mail_bp.route('/mail/api/messages/<int:uid>/raw')
+@login_required
+def api_message_raw(uid):
+    """메일 원문(헤더 포함) 그대로.
+
+    받는 쪽이 왜 스팸으로 봤는지, 보낸 서버가 어디였는지는 **헤더에만** 있다.
+    ?download=1 이면 .eml 파일로 내려준다 — 다른 메일 프로그램에서 그대로 열린다.
+    읽음 상태는 건드리지 않는다.
+    """
+    folder = request.args.get('folder', 'INBOX')
+    account_id = request.args.get('account', type=int)
+    download = request.args.get('download') == '1'
+
+    with get_db() as db:
+        client, account, err = _get_mail_client(db, account_id)
+        if err or not client:
+            return jsonify({'error': err or '메일 계정 미설정'}), 400
+        try:
+            with client:
+                raw = client.fetch_raw(uid, folder)
+        except Exception as e:
+            logger.warning("원문 조회 실패 (uid=%s): %s", uid, e)
+            return jsonify({'error': f'원문을 읽지 못했습니다: {e}'}), 500
+
+    if raw is None:
+        return jsonify({'error': '메일을 찾을 수 없습니다.'}), 404
+
+    headers = {}
+    if download:
+        filename = f'mail_{uid}.eml'
+        headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{urlquote(filename)}"
+    # 원문은 어떤 문자셋이 섞여 있을지 모른다 — 그대로 바이트로 내보내고
+    # 화면이 utf-8 로 최선껏 읽는다(못 읽는 글자는 대체 문자로 둔다)
+    return Response(raw, mimetype='message/rfc822' if download else 'text/plain; charset=utf-8',
+                    headers=headers)
+
+
+# ---------------------------------------------------------------------------
 # 메일 인쇄 API
 # ---------------------------------------------------------------------------
 @mail_bp.route('/mail/print/<int:uid>')
@@ -2418,72 +2944,136 @@ def mail_print(uid):
 # ---------------------------------------------------------------------------
 # 주소록 API
 # ---------------------------------------------------------------------------
+#
+# 주소록은 세 칸으로 갈라져 있다. 화면(mail_app)도 같은 이름으로 나눈다.
+#
+#   internal  사내 직원   users 테이블에서 만들어 준다. 저장하는 것이 아니라
+#                        사람이 들어오고 나가면 저절로 따라온다 — 고칠 수 없다.
+#   shared    회사 공용   user_id IS NULL AND is_shared. 누구나 보고 고친다.
+#   personal  내 주소록   user_id = 나. 남에게 보이지 않는다.
+#
+# 남의 개인 주소록은 어떤 경로로도 읽히거나 고쳐지지 않는다 — 조회·저장·삭제·
+# 내보내기가 모두 user_id 로 먼저 자른다.
+# ---------------------------------------------------------------------------
+
+_CONTACT_EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+
+
+def _mail_domain():
+    return os.environ.get('MAILCOW_DOMAIN', 'mgnt.kr')
+
+
+def _contact_json(c, kind):
+    """주소록 한 줄. editable 은 화면이 수정·삭제 버튼을 그릴지 정하는 잣대다."""
+    return {
+        'id': c.id,
+        'name': c.name or '',
+        'email': c.email or '',
+        'company': c.company or '',
+        'phone': getattr(c, 'phone', '') or '',
+        'memo': c.memo or '',
+        'type': kind,
+        'editable': True,
+    }
+
+
+def _internal_contacts(db, q=''):
+    """사내 직원 — 저장된 주소록이 아니라 계정 목록에서 만들어 낸다."""
+    domain = _mail_domain()
+    user_q = db.query(User).filter(User.is_active == True)
+    if q:
+        user_q = user_q.filter(User.full_name.ilike(f'%{q}%') | User.username.ilike(f'%{q}%'))
+    out = []
+    for u in user_q.order_by(User.full_name).all():
+        out.append({
+            'id': None,
+            'name': u.full_name,
+            'email': f'{u.username}@{domain}',
+            'company': '(주)매그나텍',
+            'phone': '',
+            'memo': ' '.join(x for x in [u.user_group, u.position] if x),
+            'type': 'internal',
+            'editable': False,        # 사람이 바뀌면 따라오는 자리 — 여기서 고치지 않는다
+        })
+    return out
+
+
+def _book_filter(query, book, user_id):
+    """조회 범위를 한 곳에서만 자른다 — 남의 개인 주소록이 새어 나가지 않게."""
+    if book == 'shared':
+        return query.filter(MailContact.user_id.is_(None), MailContact.is_shared == True)
+    return query.filter(MailContact.user_id == user_id)
+
+
+def _find_contact(db, email, book, user_id):
+    """같은 칸에 같은 주소가 이미 있는지. 중복은 새 줄을 만들지 않고 여기서 만난다."""
+    q = db.query(MailContact).filter(func.lower(MailContact.email) == (email or '').strip().lower())
+    return _book_filter(q, book, user_id).first()
+
+
+def _load_contact(db, contact_id, user_id):
+    """수정·삭제 대상 찾기. 내 것이거나 회사 공용인 것만 잡힌다."""
+    c = db.query(MailContact).filter(MailContact.id == contact_id).first()
+    if not c:
+        return None, None
+    if c.user_id == user_id:
+        return c, 'personal'
+    if c.user_id is None and c.is_shared:
+        return c, 'shared'
+    return None, None                 # 남의 개인 주소록
+
+
 @mail_bp.route('/mail/api/contacts', methods=['GET'])
 @login_required
 def api_contacts_list():
-    """주소록 목록 (사내 직원 + 공유 + 개인). 페이징+검색 지원."""
+    """주소록 목록. book = personal | shared | internal | all, 검색·페이징."""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
-    q = (request.args.get('q', '') or '').strip().lower()
+    q = (request.args.get('q', '') or '').strip()
+    # type= 은 옛 화면(static/js/mail.js)이 쓰던 이름이라 둘 다 받는다
+    book = (request.args.get('book') or request.args.get('type') or 'all').strip().lower()
+    if book not in ('personal', 'shared', 'internal', 'all'):
+        book = 'all'
 
     with get_db() as db:
-        import os
-        _mail_domain = os.environ.get('MAILCOW_DOMAIN', 'mgnt.kr')
-        all_items = []
+        uid = session['user_id']
+        ql = q.lower()
 
-        # 사내 직원
-        users = db.query(User).filter(User.is_active == True).order_by(User.full_name).all()
-        for u in users:
-            all_items.append({
-                'id': None,
-                'name': u.full_name,
-                'email': f'{u.username}@{_mail_domain}',
-                'company': '(주)매그나텍',
-                'memo': f'{u.user_group or ""} {u.position or ""}'.strip(),
-                'type': 'internal',
-            })
+        def matches(item):
+            if not ql:
+                return True
+            return (ql in item['name'].lower() or ql in item['email'].lower()
+                    or ql in item['company'].lower() or ql in item['memo'].lower())
 
-        # 공유 연락처
-        shared_contacts = db.query(MailContact).filter_by(
-            is_shared=True
-        ).order_by(MailContact.name).all()
-        for c in shared_contacts:
-            all_items.append({
-                'id': c.id,
-                'name': c.name,
-                'email': c.email,
-                'company': c.company or '',
-                'memo': c.memo or '',
-                'type': 'shared',
-            })
+        internal = [c for c in _internal_contacts(db, q) if matches(c)]
 
-        # 개인 외부 연락처
-        contacts = db.query(MailContact).filter_by(
-            user_id=session['user_id'], is_shared=False
-        ).order_by(MailContact.name).all()
-        for c in contacts:
-            all_items.append({
-                'id': c.id,
-                'name': c.name,
-                'email': c.email,
-                'company': c.company or '',
-                'memo': c.memo or '',
-                'type': 'external',
-            })
+        def rows(kind):
+            qq = _book_filter(db.query(MailContact), kind, uid)
+            if q:
+                like = f'%{q}%'
+                qq = qq.filter(MailContact.name.ilike(like) | MailContact.email.ilike(like)
+                               | MailContact.company.ilike(like) | MailContact.memo.ilike(like))
+            return [_contact_json(c, kind) for c in qq.order_by(MailContact.name).all()]
 
-        # 검색 필터
-        if q:
-            all_items = [c for c in all_items
-                         if q in c['name'].lower() or q in c['email'].lower()
-                         or q in c['company'].lower()]
+        shared = rows('shared')
+        personal = rows('personal')
+
+        # 탭 숫자는 지금 검색어 안에서 센다 — 탭을 옮겼을 때 보이는 건수와 어긋나면 안 된다
+        counts = {
+            'internal': len(internal), 'shared': len(shared),
+            'personal': len(personal), 'all': len(internal) + len(shared) + len(personal),
+        }
+        all_items = {'internal': internal, 'shared': shared, 'personal': personal,
+                     'all': personal + shared + internal}[book]
 
         total = len(all_items)
-        start = (page - 1) * per_page
-        items = all_items[start:start + per_page]
-
+        per_page = max(1, min(per_page, 500))
+        start = max(0, (page - 1) * per_page)
         return jsonify({
-            'items': items,
+            'items': all_items[start:start + per_page],
             'total': total,
+            'counts': counts,
+            'book': book,
             'page': page,
             'per_page': per_page,
             'total_pages': (total + per_page - 1) // per_page,
@@ -2493,36 +3083,210 @@ def api_contacts_list():
 @mail_bp.route('/mail/api/contacts', methods=['POST'])
 @login_required
 def api_contacts_save():
-    """외부 연락처 추가/수정."""
-    data = request.get_json()
+    """연락처 추가·수정.
+
+    book 으로 어느 주소록에 넣을지 고른다(personal | shared).
+    같은 칸에 같은 주소가 이미 있으면 새로 만들지 않고 그 줄을 고친다 —
+    "저장했는데 두 줄이 됐다" 가 제일 흔한 주소록 불만이다.
+    """
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    email = (data.get('email') or '').strip()
+    book = 'shared' if (data.get('book') == 'shared' or data.get('is_shared')) else 'personal'
+
+    if not email:
+        return jsonify({'error': '메일주소를 입력하세요.'}), 400
+    if not _CONTACT_EMAIL_RE.match(email):
+        return jsonify({'error': f'메일주소 형식이 아닙니다: {email}'}), 400
+    if not name:
+        name = email.split('@')[0]          # 이름은 비워 둬도 목록에서 읽히게 채운다
+
     with get_db() as db:
+        uid = session['user_id']
         contact_id = data.get('id')
+        moved_book = None
+
         if contact_id:
-            c = db.query(MailContact).filter_by(id=contact_id, user_id=session['user_id']).first()
+            c, cur_book = _load_contact(db, contact_id, uid)
             if not c:
                 return jsonify({'error': '연락처를 찾을 수 없습니다.'}), 404
+            if cur_book != book:
+                # 개인 ↔ 공용 옮기기. 옮겨 간 칸에 같은 주소가 있으면 거기 합친다
+                dup = _find_contact(db, email, book, uid)
+                if dup and dup.id != c.id:
+                    db.delete(c)
+                    c = dup
+                moved_book = book
         else:
-            c = MailContact(user_id=session['user_id'])
-            db.add(c)
+            c = _find_contact(db, email, book, uid)
+            if not c:
+                c = MailContact()
+                db.add(c)
 
-        c.name = data['name']
-        c.email = data['email']
-        c.company = data.get('company', '')
-        c.memo = data.get('memo', '')
+        c.user_id = None if book == 'shared' else uid
+        c.is_shared = (book == 'shared')
+        c.name = name[:100]
+        c.email = email[:255]
+        c.company = (data.get('company') or '').strip()[:200]
+        c.phone = (data.get('phone') or '').strip()[:60]
+        c.memo = (data.get('memo') or '').strip()
         db.commit()
-        return jsonify({'success': True, 'id': c.id})
+
+        if book == 'shared':
+            # 공용 주소록은 남이 쓰던 것도 바뀐다 — 누가 고쳤는지 로그에 남긴다
+            logger.info("공용 주소록 저장: user=%s %s <%s>", uid, c.name, c.email)
+
+        return jsonify({'success': True, 'id': c.id, 'book': book, 'moved': moved_book})
 
 
 @mail_bp.route('/mail/api/contacts/<int:contact_id>', methods=['DELETE'])
 @login_required
 def api_contacts_delete(contact_id):
-    """외부 연락처 삭제."""
+    """연락처 삭제. 내 주소록과 회사 공용만 — 남의 개인 주소록은 잡히지 않는다."""
     with get_db() as db:
-        c = db.query(MailContact).filter_by(id=contact_id, user_id=session['user_id']).first()
-        if c:
-            db.delete(c)
+        uid = session['user_id']
+        c, book = _load_contact(db, contact_id, uid)
+        if not c:
+            return jsonify({'error': '연락처를 찾을 수 없습니다.'}), 404
+        if book == 'shared':
+            logger.info("공용 주소록 삭제: user=%s %s <%s>", uid, c.name, c.email)
+        db.delete(c)
+        db.commit()
+        return jsonify({'success': True, 'book': book})
+
+
+@mail_bp.route('/mail/api/contacts/import', methods=['POST'])
+@login_required
+def api_contacts_import():
+    """쓰던 주소록 파일(.vcf/.csv) 그대로 가져오기.
+
+    다음·네이버·구글·아웃룩이 내주는 파일을 그대로 받는다.
+    dry_run=1 이면 저장하지 않고 무엇이 들어올지만 돌려준다 — 남의 주소록
+    수백 건이 말없이 쏟아지는 것보다 먼저 보여주고 확인받는 편이 낫다.
+
+    이미 있는 주소는 새 줄을 만들지 않는다:
+      - 이름이 메일 앞부분 그대로면(보낼 때 자동수집된 흔적) 제대로 된 이름으로 바꾼다
+      - 회사·전화·메모는 **비어 있을 때만** 채운다 (사람이 적어 둔 것을 덮지 않는다)
+    """
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify({'error': '주소록 파일을 선택하세요.'}), 400
+
+    raw = f.read()
+    if len(raw) > 5 * 1024 * 1024:
+        return jsonify({'error': '파일이 너무 큽니다 (5MB 까지).'}), 400
+
+    book = 'shared' if request.form.get('book') == 'shared' else 'personal'
+    dry_run = request.form.get('dry_run') in ('1', 'true', 'True')
+
+    try:
+        parsed, stats = parse_contacts_file(raw, f.filename)
+    except Exception as e:
+        logger.warning("주소록 파일 파싱 실패 (%s): %s", f.filename, e)
+        return jsonify({'error': '주소록 파일을 읽지 못했습니다. vCard(.vcf) 또는 CSV 파일인지 확인해 주세요.'}), 400
+
+    if not parsed:
+        return jsonify({'error': '파일에서 메일주소를 찾지 못했습니다.', 'stats': stats}), 400
+
+    with get_db() as db:
+        uid = session['user_id']
+        existing = {}
+        for c in _book_filter(db.query(MailContact), book, uid).all():
+            existing[(c.email or '').lower()] = c
+
+        added, updated, skipped, preview = 0, 0, 0, []
+        for item in parsed:
+            cur = existing.get(item['email'].lower())
+            if cur is None:
+                added += 1
+                state = 'add'
+                if not dry_run:
+                    c = MailContact(
+                        user_id=None if book == 'shared' else uid,
+                        is_shared=(book == 'shared'),
+                        name=item['name'][:100], email=item['email'][:255],
+                        company=item['company'][:200], phone=item['phone'][:60],
+                        memo=item['memo'],
+                    )
+                    db.add(c)
+                    existing[item['email'].lower()] = c
+            else:
+                changes = {}
+                local = (cur.email or '').split('@')[0]
+                if item['name'] and cur.name in ('', local) and cur.name != item['name']:
+                    changes['name'] = item['name'][:100]
+                for key, limit in (('company', 200), ('phone', 60), ('memo', None)):
+                    if item[key] and not (getattr(cur, key, '') or '').strip():
+                        changes[key] = item[key][:limit] if limit else item[key]
+                if changes:
+                    updated += 1
+                    state = 'update'
+                    if not dry_run:
+                        for k, v in changes.items():
+                            setattr(cur, k, v)
+                else:
+                    skipped += 1
+                    state = 'skip'
+
+            if len(preview) < 20:
+                preview.append({**item, 'state': state})
+
+        if not dry_run:
             db.commit()
-        return jsonify({'success': True})
+            logger.info("주소록 가져오기: user=%s book=%s 추가=%s 갱신=%s 건너뜀=%s (%s)",
+                        uid, book, added, updated, skipped, f.filename)
+
+        return jsonify({
+            'success': True, 'dry_run': dry_run, 'book': book, 'filename': f.filename,
+            'stats': stats, 'added': added, 'updated': updated, 'skipped': skipped,
+            'preview': preview,
+        })
+
+
+@mail_bp.route('/mail/api/contacts/export')
+@login_required
+def api_contacts_export():
+    """주소록 내보내기 — vCard(.vcf) 또는 CSV. book 으로 어느 칸을 내보낼지 고른다."""
+    book = (request.args.get('book') or 'personal').strip().lower()
+    fmt = (request.args.get('format') or 'vcf').strip().lower()
+    if book not in ('personal', 'shared', 'internal', 'all'):
+        book = 'personal'
+
+    with get_db() as db:
+        uid = session['user_id']
+        items = []
+        if book in ('personal', 'all'):
+            items += [_contact_json(c, 'personal') for c in
+                      _book_filter(db.query(MailContact), 'personal', uid).order_by(MailContact.name).all()]
+        if book in ('shared', 'all'):
+            items += [_contact_json(c, 'shared') for c in
+                      _book_filter(db.query(MailContact), 'shared', uid).order_by(MailContact.name).all()]
+        if book in ('internal', 'all'):
+            items += _internal_contacts(db)
+
+    label = {'personal': '내주소록', 'shared': '회사공용주소록',
+             'internal': '사내직원', 'all': '전체주소록'}[book]
+    stamp = datetime.now().strftime('%Y%m%d')
+
+    if fmt == 'csv':
+        import csv as _csv
+        from io import StringIO
+        buf = StringIO()
+        w = _csv.writer(buf)
+        w.writerow(['이름', '이메일', '회사', '전화', '메모'])
+        for c in items:
+            w.writerow([c['name'], c['email'], c['company'], c['phone'], c['memo']])
+        # 엑셀이 한글을 깨지 않게 BOM 을 붙인다
+        body = '\ufeff' + buf.getvalue()
+        mimetype, ext = 'text/csv; charset=utf-8', 'csv'
+    else:
+        body = build_vcf(items)
+        mimetype, ext = 'text/vcard; charset=utf-8', 'vcf'
+
+    filename = f'{label}_{stamp}.{ext}'
+    return Response(body, mimetype=mimetype, headers={
+        'Content-Disposition': f"attachment; filename*=UTF-8''{urlquote(filename)}",
+    })
 
 
 # ---------------------------------------------------------------------------

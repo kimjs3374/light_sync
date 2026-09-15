@@ -233,8 +233,46 @@ class MailNotifyState(Base):
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
+class MailFolderPref(Base):
+    """메일함 순서 · 그룹.
+
+    IMAP 에는 순서가 없다(LIST 는 서버 마음대로 준다). 사람이 정한 순서와
+    묶음은 우리가 든다. 계정마다 따로다 — 브라우저에 두면 자리를 옮길 때마다
+    다시 정리해야 한다.
+    """
+    __tablename__ = 'mail_folder_prefs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('mail_accounts.id', ondelete='CASCADE'), nullable=False)
+    folder = Column(String(255), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    group_name = Column(String(60))
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+
+class MailBlocklist(Base):
+    """수신차단 / 수신허용 목록 (스팸).
+
+    kind='block' 이면 이 주소에서 온 메일을 스팸함으로 옮긴다.
+    kind='allow' 는 그 판정을 **먼저 이긴다** — 거래처가 도메인 단위 차단에
+    걸려 스팸함으로 들어가는 사고를 막는 유일한 수단이다.
+    value 는 주소(kim@x.co.kr) 또는 도메인(@x.co.kr).
+    """
+    __tablename__ = 'mail_blocklist'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('mail_accounts.id', ondelete='CASCADE'), nullable=False)
+    kind = Column(String(10), nullable=False, default='block')
+    value = Column(String(255), nullable=False)
+    memo = Column(Text)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+
 class MailContact(Base):
-    """외부 주소록"""
+    """외부 주소록.
+
+    user_id 가 비어 있고 is_shared 면 회사 공용 주소록이다(가져온 것·공유한 것).
+    """
     __tablename__ = 'mail_contacts'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -242,6 +280,8 @@ class MailContact(Base):
     name = Column(String(100), nullable=False)
     email = Column(String(255), nullable=False)
     company = Column(String(200))
+    phone = Column(String(60))
     memo = Column(Text)
     is_shared = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)

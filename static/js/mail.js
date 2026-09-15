@@ -1796,17 +1796,21 @@ const MailSettings = {
 
         const items = res.items || [];
         if (!items.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3 text-muted">연락처가 없습니다</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">연락처가 없습니다</td></tr>';
             this._renderContactPager(res);
             return;
         }
+        // 뱃지 이름은 새 메일 화면(mail.mgnt.kr)과 같은 말을 쓴다 — 사내 / 회사공용 / 내 주소록.
+        // 고칠 수 있는지는 서버가 내려주는 editable 로 판단한다 (사내 직원은 users 에서
+        // 만들어 주는 줄이라 고칠 대상이 없다).
         tbody.innerHTML = items.map(c => `<tr>
-            <td>${esc(c.name)} ${c.type === 'internal' ? '<span class="badge bg-info" style="font-size:.65rem;">사내</span>' : c.type === 'shared' ? '<span class="badge bg-success" style="font-size:.65rem;">공유</span>' : ''}</td>
-            <td>${esc(c.email)}</td>
-            <td>${esc(c.company || '')}</td>
+            <td style="white-space:nowrap;">${esc(c.name)} ${c.type === 'internal' ? '<span class="badge bg-info" style="font-size:.65rem;white-space:nowrap;">사내</span>' : c.type === 'shared' ? '<span class="badge bg-success" style="font-size:.65rem;white-space:nowrap;">회사공용</span>' : ''}</td>
+            <td style="white-space:nowrap;">${esc(c.email)}</td>
+            <td style="white-space:nowrap;">${esc(c.company || '')}</td>
+            <td style="white-space:nowrap;">${esc(c.phone || '')}</td>
             <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.memo || '')}</td>
-            <td>${c.type === 'external' ? `
-                <button class="btn btn-sm btn-outline-primary" onclick="MailSettings.editContact(${c.id},'${esc(c.name)}','${esc(c.email)}','${esc(c.company||'')}','${esc(c.memo||'')}')">수정</button>
+            <td style="white-space:nowrap;">${c.editable ? `
+                <button class="btn btn-sm btn-outline-primary" onclick="MailSettings.editContact(${c.id},'${esc(c.name)}','${esc(c.email)}','${esc(c.company||'')}','${esc(c.memo||'')}','${esc(c.phone||'')}','${c.type}')">수정</button>
                 <button class="btn btn-sm btn-outline-danger" onclick="MailSettings.deleteContact(${c.id})">삭제</button>
             ` : ''}</td>
         </tr>`).join('');
@@ -1839,7 +1843,7 @@ const MailSettings = {
         el.innerHTML = `<span class="text-muted">총 ${total}건</span><div class="d-flex gap-1 align-items-center">${pages}</div>`;
     },
 
-    _openContactModal({ id = '', name = '', email = '', company = '', memo = '', title = '연락처 추가' } = {}) {
+    _openContactModal({ id = '', name = '', email = '', company = '', memo = '', phone = '', book = 'personal', title = '연락처 추가' } = {}) {
         const modalEl = document.getElementById('contactEditModal');
         if (!modalEl) { alert('모달을 찾을 수 없습니다.'); return; }
         document.getElementById('contactEditModalTitle').textContent = title;
@@ -1848,6 +1852,10 @@ const MailSettings = {
         document.getElementById('contactEditEmail').value = email || '';
         document.getElementById('contactEditCompany').value = company || '';
         document.getElementById('contactEditMemo').value = memo || '';
+        const phoneEl = document.getElementById('contactEditPhone');
+        if (phoneEl) phoneEl.value = phone || '';
+        const sharedEl = document.getElementById('contactEditShared');
+        if (sharedEl) sharedEl.checked = (book === 'shared');
         const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
         modal.show();
         setTimeout(() => document.getElementById('contactEditName')?.focus(), 200);
@@ -1857,8 +1865,8 @@ const MailSettings = {
         this._openContactModal({ title: '연락처 추가' });
     },
 
-    editContact(id, name, email, company, memo) {
-        this._openContactModal({ id, name, email, company, memo, title: '연락처 수정' });
+    editContact(id, name, email, company, memo, phone, book) {
+        this._openContactModal({ id, name, email, company, memo, phone, book, title: '연락처 수정' });
     },
 
     async saveContactFromModal() {
@@ -1870,7 +1878,11 @@ const MailSettings = {
         if (!name) { alert('이름을 입력하세요.'); return; }
         if (!email) { alert('이메일을 입력하세요.'); return; }
 
-        const body = { name, email, company, memo };
+        const body = {
+            name, email, company, memo,
+            phone: document.getElementById('contactEditPhone')?.value.trim() || '',
+            book: document.getElementById('contactEditShared')?.checked ? 'shared' : 'personal',
+        };
         if (id) body.id = parseInt(id);
         const r = await fetchJson('/mail/api/contacts', { method: 'POST', body });
         if (r && (r.success || r.id)) {
