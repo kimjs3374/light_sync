@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMail } from '../store/mail';
+import { showsUnread } from '../lib/folders';
 import { api } from '../api/client';
 import { useCompose } from '../store/compose';
 import { Star, Paperclip, External, Users, Mail } from './Icons';
@@ -8,6 +9,14 @@ import { Star, Paperclip, External, Users, Mail } from './Icons';
 function useFolderUnread() {
   const { folders, folder } = useMail();
   return folders.find((f) => f.name === folder)?.unread || 0;
+}
+
+/** 목록에 적을 이름 — 보내는 사람 이름이 없으면 어떤 갈래인지라도 적는다 */
+function accountName(a) {
+  if (a.display_name) return a.display_name;
+  if (a.is_shared) return '공용 메일';
+  if (a.account_type === 'external') return '외부 메일';
+  return api.user?.full_name || '내 메일';
 }
 
 function AccountPicker({ open, onClose }) {
@@ -48,13 +57,11 @@ function AccountPicker({ open, onClose }) {
             {a.account_type === 'external' ? <External size={13} />
               : a.is_shared ? <Users size={13} /> : <Mail size={13} />}
           </span>
+          {/* 이름을 먼저 읽는다 — 주소만 늘어놓으면 purchase@ · sales@ 처럼
+              생김새가 비슷한 것들 사이에서 어느 게 어느 부서인지 매번 헤아려야 한다 */}
           <span className="picker-text">
+            <span className="picker-name">{accountName(a)}</span>
             <span className="picker-email">{a.email}</span>
-            {(a.display_name || a.is_shared) && (
-              <span className="picker-sub">
-                {a.display_name || (a.is_shared ? '공용계정' : '')}
-              </span>
-            )}
           </span>
           {a.id === accountId && <span className="picker-check">✓</span>}
         </button>
@@ -82,34 +89,41 @@ export default function AccountCard() {
     s.setQuickFilter(s.quickFilter === key ? 'all' : key);
   };
 
+  // 보낸편지함·임시보관함에는 안읽음이 없다 — 목록 점(MessageList)·사이드바 뱃지와
+  // 같은 잣대로 필터도 감춘다. 셋 중 하나만 남으면 "여긴 왜 다르냐"가 된다.
   const FILTERS = [
-    { key: 'unread', label: '안읽음', icon: <span className="fi-dot" />, badge: unread || null },
+    ...(showsUnread(s.folder)
+      ? [{ key: 'unread', label: '안읽음', icon: <span className="fi-dot" />, badge: unread || null }]
+      : []),
     { key: 'flagged', label: '중요', icon: <Star size={12} /> },
     { key: 'attach', label: '첨부', icon: <Paperclip size={12} /> },
   ];
 
   return (
     <div className="account-card">
-      <div className="card-identity">
-        <div className="identity-name" title="이 계정으로 보낼 때 표시되는 이름">
-          {senderName || '사용자'}
-        </div>
+      {/* 이름과 주소를 **한 칸에 같이** 보여주고, 그 칸째로 누르면 계정이 바뀐다.
+          주소만 있으면 지금 어느 계정인지 읽는 데 한 박자 걸리고,
+          이름만 있으면 공용계정을 여럿 쓸 때 어느 주소로 나가는지 알 수 없다. */}
+      <div className="card-identity" data-tour="account">
         <div className="picker-wrap">
           <button
-            className={`identity-email${pickerOpen ? ' open' : ''}`}
+            className={`identity-field${pickerOpen ? ' open' : ''}`}
             onClick={() => setPickerOpen((v) => !v)}
-            title="메일 계정 전환"
+            title={s.accounts.length > 1 ? '눌러서 다른 메일주소로 바꾸기' : '내 메일주소'}
             aria-haspopup="listbox"
             aria-expanded={pickerOpen}
           >
-            <span className="email-text">{account?.email || '계정 없음'}</span>
+            <span className="identity-text">
+              <span className="identity-name">{senderName || '사용자'}</span>
+              <span className="identity-email">{account?.email || '계정 없음'}</span>
+            </span>
             {s.accounts.length > 1 && <span className="email-caret" aria-hidden="true">▾</span>}
           </button>
           <AccountPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
         </div>
       </div>
 
-      <div className="card-filters">
+      <div className="card-filters" data-tour="filters">
         {FILTERS.map((f) => (
           <button
             key={f.key}
@@ -123,7 +137,7 @@ export default function AccountCard() {
         ))}
       </div>
 
-      <div className="compose-actions">
+      <div className="compose-actions" data-tour="compose">
         <button className="btn-compose" onClick={() => useCompose.getState().open('new')}>
           메일 쓰기
         </button>

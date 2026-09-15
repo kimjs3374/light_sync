@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useMail, visibleMessages } from '../store/mail';
 import { folderLabel, findTrash, findJunk, splitFolders } from '../lib/folders';
-import { Refresh, Search as SearchIcon } from './Icons';
+import { Refresh, Search as SearchIcon, Gear } from './Icons';
+import { useSettings } from '../store/settings';
 import AdvancedSearch from './AdvancedSearch';
 
 
@@ -95,7 +96,7 @@ export default function Toolbar() {
         {/* 검색·새로고침은 자기가 다루는 목록 위에 있어야 한다 —
             읽기창 쪽 끝으로 밀어두면 무엇에 대한 검색인지 읽히지 않는다 */}
         <div className="list-tools">
-          <div className="search-wrap">
+          <div className="search-wrap" data-tour="search">
             <form
               className="search"
               onSubmit={(e) => { e.preventDefault(); s.search(q); }}
@@ -128,7 +129,7 @@ export default function Toolbar() {
         {/* 밀도만 오른쪽 끝 — 검색·새로고침과 달리 목록을 다루는 게 아니라
             화면 보기 설정이라 자리를 따로 둔다 */}
         <select
-          className="pane-select density-select"
+          className="pane-select density-select" data-tour="density"
           value={s.prefs.density}
           onChange={(e) => s.setPref('density', e.target.value)}
           title="목록 밀도"
@@ -137,6 +138,16 @@ export default function Toolbar() {
           <option value="cozy">보통</option>
           <option value="compact">좁게</option>
         </select>
+
+        {/* 설정은 보기 설정(밀도) 바로 옆에 둔다 — 화면을 손보러 온 손이
+            거기까지 와 있다. 깊은 설정(계정·템플릿)은 그 안에서 ERP 로 보낸다. */}
+        <button className="icon-btn gear-btn" title="화면 안내 — 버튼이 무엇을 하는지 짚어 줍니다"
+          onClick={() => useSettings.getState().startTour()}>?</button>
+
+        <button className="icon-btn gear-btn" title="환경설정" data-tour="settings"
+          onClick={() => useSettings.getState().openSettings()}>
+          <Gear />
+        </button>
       </div>
 
       {/* 상세검색이 걸려 있으면 무엇으로 걸렀는지 적어둔다 —

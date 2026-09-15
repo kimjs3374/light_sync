@@ -6,7 +6,16 @@ import { mailApi } from '../api/client';
  * splitPct: 목록이 차지하는 가로 비율(%). 읽기창은 늘 오른쪽에 붙는다.
  */
 const PREF_KEY = 'webmail_prefs';
-const DEFAULT_PREFS = { density: 'cozy', splitPct: 44 };
+/**
+ * layout — 목록에서 메일을 눌렀을 때 어떻게 보여줄지.
+ *   full    기본(전체보기): 읽기창이 화면을 다 쓴다. 목록은 닫으면 돌아온다
+ *   split-v 좌우분할: 목록 왼쪽 · 읽기창 오른쪽 (예전 기본값)
+ *   split-h 상하분할: 목록 위 · 읽기창 아래 (제목이 긴 메일함에서 읽기 좋다)
+ */
+const DEFAULT_PREFS = { density: 'cozy', splitPct: 44, perPage: 50, layout: 'split-v' };
+export const LAYOUTS = ['full', 'split-v', 'split-h'];
+export const LAYOUT_LABEL = { full: '기본(전체보기)', 'split-v': '좌우분할', 'split-h': '상하분할' };
+export const PER_PAGE_CHOICES = [25, 50, 100];
 export const SPLIT_MIN = 26;
 export const SPLIT_MAX = 72;
 
@@ -17,6 +26,9 @@ const loadPrefs = () => {
     return {
       ...DEFAULT_PREFS,
       ...saved,
+      perPage: PER_PAGE_CHOICES.includes(Number(saved.perPage))
+        ? Number(saved.perPage) : DEFAULT_PREFS.perPage,
+      layout: LAYOUTS.includes(saved.layout) ? saved.layout : DEFAULT_PREFS.layout,
       splitPct: Number.isFinite(pct) ? Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, pct)) : DEFAULT_PREFS.splitPct,
     };
   } catch {
@@ -52,6 +64,14 @@ export const useMail = create((set, get) => ({
    *                (내게 보낸 메일은 보낸편지함에도 남지만, 받은 쪽 한 벌만 보면 된다)
    */
   specialView: null,
+
+  /* 사람이 정한 메일함 순서·그룹 (서버에 있다 — 자리를 옮겨도 따라온다) */
+  folderPrefs: [],
+
+  /* 읽기창을 화면 꽉 채워 보는 중인가.
+     브라우저에 저장하지 않는다 — 켜 둔 채로 새로고침하면 목록도 툴바도 없는
+     빈 읽기창만 남아 "메일함이 사라졌다" 가 된다. 메일을 닫으면 저절로 풀린다. */
+  readerFull: false,
   /** 내게쓴메일함 안읽음 수 */
   selfUnread: 0,
 
@@ -106,7 +126,7 @@ export const useMail = create((set, get) => ({
   async switchAccount(accountId) {
     localStorage.setItem('webmail_account', String(accountId));
     set({
-      accountId, folder: 'INBOX', page: 1, openUid: null, detail: null,
+      accountId, folder: 'INBOX', page: 1, openUid: null, detail: null, readerFull: false,
       checked: new Set(), quickFilter: 'all', searchQuery: '', searchDetail: null, specialView: null,
     });
     await get().loadFolders();
@@ -119,6 +139,11 @@ export const useMail = create((set, get) => ({
     try {
       const res = await mailApi.folders(accountId, { refresh });
       set({ folders: res.folders || [], labels: res.labels || [] });
+      // 순서·그룹은 따로 읽는다 — 실패해도 메일함은 보여야 하므로 조용히 넘어간다
+      try {
+        const pref = await mailApi.folderPrefs(accountId);
+        set({ folderPrefs: pref.items || [] });
+      } catch { /* 순서가 없으면 이름순으로 보인다 */ }
     } catch (e) {
       // 폴더는 실패해도 목록은 볼 수 있어야 한다
       console.error('폴더 조회 실패', e);
@@ -180,7 +205,7 @@ export const useMail = create((set, get) => ({
   /** 예약함·내게쓴메일함처럼 실제 IMAP 폴더가 아닌 화면 열기 */
   openSpecial(name) {
     set({
-      specialView: name, openUid: null, detail: null,
+      specialView: name, openUid: null, detail: null, readerFull: false,
       checked: new Set(), cursor: 0, searchQuery: '', searchDetail: null, quickFilter: 'all',
     });
     if (name === 'selfbox') {
@@ -202,7 +227,7 @@ export const useMail = create((set, get) => ({
   selectFolder(name, { unreadOnly = false } = {}) {
     set({
       specialView: null,
-      folder: name, page: 1, openUid: null, detail: null,
+      folder: name, page: 1, openUid: null, detail: null, readerFull: false,
       checked: new Set(), cursor: 0, searchQuery: '', searchDetail: null,
       quickFilter: unreadOnly ? 'unread' : 'all',
     });
@@ -236,7 +261,7 @@ export const useMail = create((set, get) => ({
       }
 
       const res = await mailApi.messages({
-        account: accountId, folder, page, perPage: 50,
+        account: accountId, folder, page, perPage: get().prefs.perPage,
         unreadOnly: criteria === 'UNSEEN',
         searchCriteria: criteria && criteria !== 'UNSEEN' ? criteria : undefined,
       });
@@ -356,7 +381,10 @@ export const useMail = create((set, get) => ({
     if (wasUnread) get().refreshInboxUnread();
   },
 
-  close() { set({ openUid: null, detail: null }); },
+  close() { set({ openUid: null, detail: null, readerFull: false }); },
+
+  /** 읽기창을 화면 꽉 채우기 / 원래대로 (목록·툴바·메일함 칸을 잠시 접는다) */
+  toggleReaderFull() { set({ readerFull: !get().readerFull }); },
 
   /** 목록 커서 이동. 읽기창이 늘 떠 있으므로 옮기면서 바로 연다. */
   moveCursor(delta) {
@@ -404,6 +432,26 @@ export const useMail = create((set, get) => ({
         : f)),
     }));
     get().refreshInboxUnread();
+  },
+
+  /**
+   * 한 통의 읽음·안읽음 (읽기창에서 쓴다).
+   *
+   * 안읽음으로 돌리면 **읽기창을 닫는다.** 열어 둔 채로 두면 다음에 다시 열 때
+   * 서버가 또 읽음을 달아(fetch_message 가 \Seen 을 단다) 방금 한 일이 사라진다.
+   */
+  async setReadOne(uid, read) {
+    const { accountId, folder } = get();
+    set((s) => ({
+      messages: s.messages.map((m) => (m.uid === uid ? { ...m, is_read: read } : m)),
+      folders: s.folders.map((f) => (f.name === folder
+        ? { ...f, unread: Math.max(0, (f.unread || 0) + (read ? -1 : 1)) }
+        : f)),
+    }));
+    await mailApi.setFlags({
+      account: accountId, folder, uids: [uid], flag: '\\Seen', action: read ? 'add' : 'remove',
+    });
+    if (!read) get().close();
   },
 
   async toggleStar(uid, on) {

@@ -502,7 +502,50 @@ export const useCompose = create((set, get) => ({
     if (!isTouched(a)) return true;
     // 임시저장해 둔 그대로면 사라지는 게 아니다 — 임시보관함에 남아 있다
     if (a.savedAt && draftSignature(a) === a.savedSig) return true;
+
+    /**
+     * 쓰던 게 있어도 **묻지 않고 임시보관함에 넣고 보낸다.**
+     * 메일함을 누른 사람은 그 메일함을 보려는 것이지 "예/아니오" 를 고르려는 게 아니다.
+     * 확인창이 뜨면 한 번 눌러서는 안 옮겨진다 — 자동저장이 이미 있는 화면에서
+     * 굳이 물을 이유가 없다. 저장은 뒤에서 마저 끝내고, 됐는지는 띠로 알린다.
+     *
+     * 못 넣는 경우에만 예전처럼 묻는다:
+     *  - 예약 메일 수정: 임시저장이 아니라 예약본 고치기다
+     *  - 저장·발송 중: 겹쳐 쏘지 않는다
+     *  - 대용량 첨부: 나가면서 temp 를 지우므로(_cleanupLarge) 저장본이 깨진다
+     *  - 첨부가 큼: 첨부는 저장할 때마다 다시 올라간다. 나가는 길에 붙들 수 없다
+     */
+    const stashable = a.mode !== 'editScheduled'
+      && !a.saving && !a.sending
+      && !(a.largeFiles || []).length
+      && attachBytes(a) <= AUTOSAVE_MAX_ATTACH;
+    if (stashable) {
+      get()._stashDraft(a);
+      return true;
+    }
     return window.confirm('쓰던 메일이 사라집니다. 그래도 나갈까요?');
+  },
+
+  /**
+   * 나가면서 임시보관함에 넣기.
+   *
+   * 작성창(active)은 곧 비워지므로 **지금 내용을 인자로 들고 간다** —
+   * saveDraft() 처럼 get().active 를 보면 저장할 대상이 이미 없다.
+   */
+  async _stashDraft(w) {
+    cancelAutosave();
+    try {
+      const fd = get()._formData(w);
+      if (w.draftUid) fd.append('replace_uid', String(w.draftUid));
+      const res = await api.json('/mail/api/draft', { method: 'POST', body: fd });
+      if (res.error) throw new Error(res.error);
+      set({ notice: '쓰던 메일을 임시보관함에 넣었습니다.' });
+      const m = useMail.getState();
+      if (/draft/i.test(m.folder)) m.loadMessages();   // 임시보관함을 보고 있었다면 바로 보인다
+    } catch (e) {
+      // 조용히 날아가는 것이 제일 나쁘다 — 실패는 반드시 알린다
+      set({ notice: `임시보관함에 넣지 못했습니다: ${e.message || '알 수 없는 오류'}` });
+    }
   },
 
   close({ force = false } = {}) {
@@ -515,6 +558,10 @@ export const useCompose = create((set, get) => ({
 
   /** 결과 화면 닫기 */
   clearDone() { set({ done: null }); },
+
+  /** 화면 아래 띠로 잠깐 알리는 말 (나가면서 임시저장 등) */
+  notice: '',
+  clearNotice() { set({ notice: '' }); },
 
   /** 예약 시각 변경 — 본문·첨부는 그대로 두고 시각만 바꾼다 */
   async reschedule(whenLocal) {

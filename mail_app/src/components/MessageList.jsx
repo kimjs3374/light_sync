@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMail, visibleMessages } from '../store/mail';
+import { showsUnread } from '../lib/folders';
 import { formatListDate, senderName, senderEmail, splitSubject } from '../lib/format';
 import { Paperclip, Star } from './Icons';
+import SenderMenu from './SenderMenu';
 
 function Pagination() {
   const { page, pages, goPage, searchQuery } = useMail();
@@ -31,6 +33,20 @@ export default function MessageList() {
   const s = useMail();
   const messages = visibleMessages(s);
   const cursorRef = useRef(null);
+  // 보낸사람 이름을 누르면 뜨는 메뉴 — 한 번에 하나만 뜬다
+  const [senderMenu, setSenderMenu] = useState(null);
+
+  /**
+   * 보낸편지함·임시보관함에서는 안읽음을 표시하지 않는다.
+   *
+   * 목록의 점은 IMAP \Seen 플래그 하나를 그대로 그린 것이다. 받은 메일에서는
+   * "내가 안 열어봤다"는 뜻이지만, 내가 보낸 사본에는 읽고말고가 없다.
+   * 우리가 보낸 것은 \Seen 을 붙여 저장하지만(mail_client.append_to_sent) 휴대폰·
+   * 아웃룩 등 다른 클라이언트가 넣은 사본에는 그 플래그가 없어, 같은 목록에서
+   * 어떤 줄만 점이 찍혀 "왜 표기가 다르냐"로 읽혔다.
+   * 사이드바 뱃지가 쓰는 잣대(showsUnread)를 목록도 똑같이 쓴다.
+   */
+  const marksUnread = showsUnread(s.folder);
 
   // 키보드로 커서를 옮기면 그 줄이 보이도록 따라 스크롤한다
   useEffect(() => {
@@ -65,7 +81,7 @@ export default function MessageList() {
   }
 
   return (
-    <div className={`msg-list density-${s.prefs.density}`}>
+    <div className={`msg-list density-${s.prefs.density}`} data-tour="list">
       {messages.map((m, i) => {
         const checked = s.checked.has(m.uid);
         const open = s.openUid === m.uid;
@@ -75,7 +91,7 @@ export default function MessageList() {
           <div
             key={m.uid}
             ref={atCursor ? cursorRef : null}
-            className={`msg-row${m.is_read ? '' : ' unread'}${open ? ' open' : ''}`
+            className={`msg-row${m.is_read || !marksUnread ? '' : ' unread'}${open ? ' open' : ''}`
               + `${checked ? ' checked' : ''}${atCursor ? ' cursor' : ''}`}
             onClick={() => s.open(m.uid)}
           >
@@ -94,7 +110,22 @@ export default function MessageList() {
             {/* 안읽음은 굵기 대신 점으로 — 줄 전체를 굵히면 목록이 무거워진다 */}
             <span className="col-dot" aria-hidden="true" />
 
-            <div className="col-from" title={senderEmail(m.from)}>{senderName(m.from)}</div>
+            {/* 이름을 누르면 그 사람에 대해 할 수 있는 일이 열린다.
+                줄을 누르는 것(메일 열기)과 겹치지 않게 전파를 끊는다 */}
+            <button
+              className="col-from"
+              title={`${senderEmail(m.from)} — 누르면 메뉴`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSenderMenu({
+                  rect: e.currentTarget.getBoundingClientRect(),
+                  name: senderName(m.from),
+                  email: senderEmail(m.from),
+                });
+              }}
+            >
+              {senderName(m.from)}
+            </button>
 
             <div className="col-subject">
               {tag && <span className="subject-tag" title={tag}>{tag}</span>}
@@ -107,6 +138,15 @@ export default function MessageList() {
         );
       })}
       <Pagination />
+
+      {senderMenu && senderMenu.email && (
+        <SenderMenu
+          anchor={senderMenu.rect}
+          name={senderMenu.name}
+          email={senderMenu.email}
+          onClose={() => setSenderMenu(null)}
+        />
+      )}
     </div>
   );
 }

@@ -109,9 +109,12 @@ export function buildComposer(mode, ctx = {}) {
   }
 
   if (mode === 'resend') {
+    // 내용만 가져온다 — 제목·본문·첨부는 그대로, 받는사람·참조는 비운다.
+    // 썼던 메일을 다른 사람에게 다시 쓰는 쓰임이라, 주소가 남아 있으면
+    // 지우는 것을 잊고 엉뚱한 사람에게 나간다.
     return withInitial({
       ...base,
-      to: addrList(d.to), cc: addrList(d.cc),
+      to: [], cc: [],
       subject: subj,
       bodyHtml: sourceBody(d),
       // 다시 보내기도 원본 첨부를 그대로 달고 간다 (전달과 같은 방식).

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useCompose } from '../store/compose';
 import { api } from '../api/client';
+import { useContacts } from '../store/contacts';
 import TimePicker, { Popover } from './TimePicker';
 import DraftStatus from './DraftStatus';
 
@@ -120,6 +121,9 @@ export default function ComposeToolbar({ account }) {
           </button>
         </>
       )}
+
+      {/* 주소록에서 골라 받는사람·참조·숨은참조에 담는다 */}
+      <button className="act" onClick={() => useContacts.setState({ picking: true })}>주소록</button>
 
       <button className="act" onClick={() => c.update({ previewing: true })}>미리보기</button>
 

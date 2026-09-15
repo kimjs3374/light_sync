@@ -57,6 +57,46 @@ export const Mail = ({ size = 16 }) => (
   </svg>
 );
 
+export const Expand = ({ size = 15 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-label="화면 꽉 채우기">
+    <path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7" />
+  </svg>
+);
+
+export const Collapse = ({ size = 15 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-label="원래 크기로">
+    <path d="M20 4l-6 6M14 4.5V10h5.5M4 20l6-6M10 19.5V14H4.5" />
+  </svg>
+);
+
+export const Gear = ({ size = 15 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-label="환경설정">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
+export const Sun = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-label="밝게">
+    <circle cx="12" cy="12" r="4.2" />
+    <path d="M12 2.5v2.2M12 19.3v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6" />
+  </svg>
+);
+
+export const Moon = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-label="어둡게">
+    <path d="M20 13.5A8 8 0 0 1 10.5 4a8 8 0 1 0 9.5 9.5z" />
+  </svg>
+);
+
+/* 자동 — 반은 해, 반은 달. 고른 것이 '자동'이라는 걸 한눈에 */
+export const Auto = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-label="자동">
+    <circle cx="12" cy="12" r="8" />
+    <path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 export const External = ({ size = 12 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-label="외부메일">
     <circle cx="12" cy="12" r="8.5" />

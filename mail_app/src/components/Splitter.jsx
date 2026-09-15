@@ -13,6 +13,8 @@ const clamp = (v) => Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, v));
 export default function Splitter() {
   const setPref = useMail((s) => s.setPref);
   const splitPct = useMail((s) => s.prefs.splitPct);
+  // 상하분할에서는 같은 --split 값이 '높이' 가 된다 — 끌 때 보는 축도 같이 바뀐다
+  const horizontal = useMail((s) => s.prefs.layout === 'split-h');
   const ref = useRef(null);
   const dragging = useRef(false);
   const latest = useRef(splitPct);
@@ -36,7 +38,9 @@ export default function Splitter() {
     const body = ref.current?.parentElement;
     if (!body) return;
     const rect = body.getBoundingClientRect();
-    apply(clamp(((e.clientX - rect.left) / rect.width) * 100));
+    apply(clamp(horizontal
+      ? ((e.clientY - rect.top) / rect.height) * 100
+      : ((e.clientX - rect.left) / rect.width) * 100));
   };
 
   const endDrag = (e) => {
@@ -50,8 +54,10 @@ export default function Splitter() {
   /** 키보드로도 옮길 수 있어야 한다 — 마우스가 없거나 미세조정할 때 */
   const onKeyDown = (e) => {
     const step = e.shiftKey ? 5 : 1;
-    if (e.key === 'ArrowLeft') { e.preventDefault(); setPref('splitPct', clamp(latest.current - step)); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); setPref('splitPct', clamp(latest.current + step)); }
+    const less = horizontal ? 'ArrowUp' : 'ArrowLeft';
+    const more = horizontal ? 'ArrowDown' : 'ArrowRight';
+    if (e.key === less) { e.preventDefault(); setPref('splitPct', clamp(latest.current - step)); }
+    else if (e.key === more) { e.preventDefault(); setPref('splitPct', clamp(latest.current + step)); }
     else if (e.key === 'Home') { e.preventDefault(); setPref('splitPct', 44); }
   };
 
@@ -63,7 +69,7 @@ export default function Splitter() {
       ref={ref}
       className="splitter"
       role="separator"
-      aria-orientation="vertical"
+      aria-orientation={horizontal ? 'horizontal' : 'vertical'}
       aria-label="목록과 읽기창 경계"
       aria-valuenow={Math.round(splitPct)}
       aria-valuemin={SPLIT_MIN}
@@ -75,7 +81,7 @@ export default function Splitter() {
       onPointerCancel={endDrag}
       onKeyDown={onKeyDown}
       onDoubleClick={() => setPref('splitPct', 44)}
-      title="끌어서 너비 조절 (두 번 클릭하면 기본값)"
+      title={horizontal ? '끌어서 높이 조절 (두 번 클릭하면 기본값)' : '끌어서 너비 조절 (두 번 클릭하면 기본값)'}
     >
       <span className="splitter-grip" aria-hidden="true" />
     </div>

@@ -77,6 +77,13 @@ class ApiClient {
     return data;
   }
 
+  /** HTML·원문처럼 JSON 이 아닌 응답 (인쇄 화면, 메일 원문) */
+  async text(url) {
+    const res = await this._fetch(url);
+    if (!res.ok) throw new Error(`불러오지 못했습니다 (${res.status})`);
+    return res.text();
+  }
+
   get(url) { return this.json(url); }
   post(url, body) { return this.json(url, { method: 'POST', body }); }
   del(url, body) { return this.json(url, { method: 'DELETE', body }); }
@@ -141,6 +148,37 @@ export const mailApi = {
     api.del('/mail/api/messages', { uids, folder, account_id: account }),
 
   inboxUnread: (account) => api.get(`/mail/api/inbox-unread?${qs({ account })}`),
+
+  // 메일함 관리 — IMAP 폴더를 직접 만들고 고치고 지운다(아웃룩·휴대폰에도 그대로 보인다)
+  createFolder: ({ account, name, parent }) =>
+    api.post('/mail/api/folders', { account_id: account, name, parent }),
+  renameFolder: ({ account, name, newName }) =>
+    api.post('/mail/api/folders/rename', { account_id: account, name, new_name: newName }),
+  deleteFolder: ({ account, name, force }) =>
+    api.del('/mail/api/folders', { account_id: account, name, force }),
+
+  // 메일함 순서·그룹 — IMAP 에는 순서가 없어 우리가 든다
+  folderPrefs: (account) => api.get(`/mail/api/folder-prefs?${qs({ account })}`),
+  saveFolderPrefs: ({ account, items }) =>
+    api.post('/mail/api/folder-prefs', { account_id: account, items }),
+
+  // 스팸 — 수신차단/수신허용 목록. 메일서버(mailcow)의 스팸필터와는 별개다
+  spamList: (account) => api.get(`/mail/api/spam/list?${qs({ account })}`),
+  spamAdd: ({ account, kind, value, memo }) =>
+    api.post('/mail/api/spam/list', { account_id: account, kind, value, memo }),
+  spamDelete: (id) => api.del(`/mail/api/spam/list/${id}`),
+  // only 를 주면 그 주소만 훑는다 — 방금 차단한 주소는 즉시 치워져야 한다
+  spamApply: (account, only) => api.post('/mail/api/spam/apply', { account_id: account, only }),
+  spamEmpty: (account) => api.post('/mail/api/spam/empty', { account_id: account }),
+
+  // 자동회신·자동전달·자동분류가 실제로 돌고 있는지
+  automationStatus: () => api.get('/mail/api/automation-status'),
+
+  // 인쇄 화면(서버가 그려 준다)과 원문 — Bearer 로 받아서 쓴다.
+  // 주소만 새 창에 띄우면 세션 쿠키가 없을 때 로그인 화면이 대신 뜬다.
+  printUrl: ({ account, folder, uid }) => `/mail/print/${uid}?${qs({ account, folder })}`,
+  rawUrl: ({ account, folder, uid, download }) =>
+    `/mail/api/messages/${uid}/raw?${qs({ account, folder, download: download ? 1 : undefined })}`,
 
   attachmentUrl: ({ account, folder, uid, partId }) =>
     `/mail/api/attachment/${uid}/${partId}?${qs({ account, folder })}`,

@@ -8,9 +8,17 @@ import Splitter from './components/Splitter';
 import ComposePage from './components/ComposePage';
 import ComposeDone from './components/ComposeDone';
 import ScheduledList from './components/ScheduledList';
+import ContactsPage from './components/ContactsPage';
+import ContactEditModal from './components/ContactEditModal';
+import SettingsModal from './components/SettingsModal';
+import TourGuide from './components/TourGuide';
 import StaleBanner from './components/StaleBanner';
 import { useCompose } from './store/compose';
+import { useContacts } from './store/contacts';
+import { useSettings } from './store/settings';
 import { erpUrl } from './lib/erp';
+import { tourSeen } from './lib/tour';
+import { startRouting } from './lib/route';
 
 /**
  * 키보드 이동 — 목록에 커서를 두고 ↑↓/jk 로 옮긴다.
@@ -40,13 +48,37 @@ function useKeyboard() {
         case 'c': e.preventDefault(); useCompose.getState().open('new'); break;
         case 'r': if (st.openUid) { e.preventDefault(); useCompose.getState().open('reply'); } break;
         case 'f': if (st.openUid) { e.preventDefault(); useCompose.getState().open('forward'); } break;
-        case 'Escape': if (st.openUid) st.close(); break;
+        // 전체화면이면 먼저 그것부터 푼다 — 한 번에 메일까지 닫히면
+        // "넓게 보려다 읽던 메일을 잃는" 꼴이 된다
+        case 'Escape':
+          if (st.readerFull) st.toggleReaderFull();
+          else if (st.openUid) st.close();
+          break;
         default: break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+}
+
+/**
+ * 화면 아래 잠깐 뜨는 띠.
+ * 확인창과 달리 손을 붙들지 않는다 — 한 일을 알리되 가던 길을 막지 않는다.
+ */
+function Notice({ text }) {
+  useEffect(() => {
+    if (!text) return undefined;
+    const t = setTimeout(() => useCompose.getState().clearNotice(), 4000);
+    return () => clearTimeout(t);
+  }, [text]);
+  if (!text) return null;
+  return (
+    <div className="notice-toast" role="status">
+      <span>{text}</span>
+      <button onClick={() => useCompose.getState().clearNotice()} aria-label="닫기">✕</button>
+    </div>
+  );
 }
 
 export default function App() {
@@ -61,6 +93,9 @@ export default function App() {
     (async () => {
       try {
         await useMail.getState().init();
+        // 뒤로/앞으로가기는 메일함이 올라온 뒤에 연결한다 —
+        // 주소에 적힌 메일함으로 맞추려면 폴더 목록이 먼저 있어야 한다
+        startRouting();
       } catch (e) {
         setFatal(e.message || '메일을 불러오지 못했습니다');
       } finally {
@@ -70,8 +105,27 @@ export default function App() {
   }, []);
 
   useKeyboard();
+
+  /* 처음 온 사람에게는 화면 안내를 한 번 띄운다.
+     예전 ERP 메일과 생김새가 많이 달라, 아무 말 없이 띄워 두면
+     "되던 게 안 된다" 가 된다. 본 사람에게는 다시 뜨지 않는다. */
+  useEffect(() => {
+    if (!ready || fatal) return;
+    if (!tourSeen()) useSettings.getState().startTour();
+  }, [ready, fatal]);
   const composing = useCompose((st) => st.active);
   const composeDone = useCompose((st) => st.done);
+  // 연락처 편집창은 화면 위에 뜬다 — 메일을 읽다가 보낸사람을 저장해도
+  // 읽던 자리를 잃지 않아야 한다
+  const editingContact = useContacts((st) => !!st.editing);
+  // 나가면서 임시보관함에 넣었을 때처럼, 묻지 않고 한 일은 띠로 알린다
+  const notice = useCompose((st) => st.notice);
+  const settingsOpen = useSettings((st) => st.open);
+  const tourOpen = useSettings((st) => st.tour);
+  // 읽기창이 목록 자리까지 넓어지는 경우 두 가지:
+  //  ① 최대화 버튼을 눌렀을 때
+  //  ② 보기 방식이 '기본(전체보기)' 일 때 — 그때는 누르면 늘 전체다
+  const fullRead = (s.readerFull || s.prefs.layout === 'full') && !!s.openUid;
 
   // 새 메일이 오면 뱃지가 따라오도록 주기적으로 안읽음만 확인한다 (IMAP 왕복 1회)
   useEffect(() => {
@@ -106,13 +160,19 @@ export default function App() {
             <ComposeDone done={composeDone} />
           ) : s.specialView === 'scheduled' ? (
             <ScheduledList />
+          ) : s.specialView === 'contacts' ? (
+            <ContactsPage />
           ) : (
             <>
+              {/* 최대화해도 툴바(메일함 이름·검색)는 그대로 둔다 —
+                  읽기창이 화면 맨 위까지 올라오면 지금 어느 메일함을 보고 있는지가
+                  화면에서 사라진다. 넓어지는 방향은 옆(목록 자리)뿐이다. */}
               <Toolbar />
               {/* 읽기창은 늘 오른쪽에 있다 — 메일을 열고 닫아도 목록 너비가
                   흔들리지 않아야 경계선을 맞춰 둔 의미가 있다. */}
               <div
-                className={`content-body${s.openUid ? ' has-mail' : ''}`}
+                className={`content-body layout-${s.prefs.layout}`
+                  + `${s.openUid ? ' has-mail' : ''}${fullRead ? ' full-read' : ''}`}
                 style={{ '--split': `${s.prefs.splitPct}%` }}
               >
                 <MessageList />
@@ -123,6 +183,10 @@ export default function App() {
           )}
         </section>
       </div>
+      {editingContact && <ContactEditModal />}
+      {settingsOpen && <SettingsModal />}
+      {tourOpen && <TourGuide onClose={() => useSettings.getState().endTour()} />}
+      <Notice text={notice} />
     </div>
   );
 }

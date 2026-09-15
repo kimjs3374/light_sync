@@ -1,12 +1,14 @@
 import { useRef, useState } from 'react';
 import { useCompose } from '../store/compose';
 import { useMail } from '../store/mail';
+import { useContacts } from '../store/contacts';
 import { formatSize, formatSpeed, formatRemain } from '../lib/format';
 import { Paperclip, Close } from './Icons';
 import AddressInput from './AddressInput';
 import Editor from './Editor';
 import ComposeToolbar from './ComposeToolbar';
 import PreviewModal from './PreviewModal';
+import ContactPicker from './ContactPicker';
 
 const MODE_TITLE = {
   new: '메일 쓰기', self: '내게 쓰기', reply: '답장',
@@ -17,6 +19,7 @@ const MODE_TITLE = {
 export default function ComposePage({ win }) {
   const c = useCompose();
   const accounts = useMail((s) => s.accounts);
+  const picking = useContacts((st) => st.picking);
   const bodyRef = useRef(null);
   const fileRef = useRef(null);
   const [dragDepth, setDragDepth] = useState(0);
@@ -152,6 +155,7 @@ export default function ComposePage({ win }) {
 
       {dragDepth > 0 && <div className="compose-dropzone">여기에 놓으면 첨부됩니다</div>}
       {win.previewing && <PreviewModal account={account} />}
+      {picking && <ContactPicker onClose={() => useContacts.setState({ picking: false })} />}
     </div>
   );
 }
