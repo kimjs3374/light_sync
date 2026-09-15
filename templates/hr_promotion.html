@@ -30,7 +30,7 @@
       <h2>연차사용촉진</h2>
       <div class="hero-sub">입사일 기준 연차연도 · 1차 촉구(6/3개월 전) → 직원 지정 → 미지정 시 2차 회사지정</div>
     </div>
-    <a href="{{ url_for('hr.hr_list') }}" class="btn btn-sm"><i class="bi bi-arrow-left"></i> 연차관리</a>
+    <a href="{{ url_for('hr.hr_list') }}" class="btn btn-sm">연차관리</a>
   </div>
 </div>
 
@@ -40,7 +40,7 @@
 <form method="post" action="{{ url_for('hr.hr_promotion_send') }}" class="mb-2">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button class="btn btn-sm btn-primary" onclick="return confirm('현재 촉구 대상 전원에게 발송 기록하시겠습니까?')">
-    <i class="bi bi-send"></i> 전체 촉구 발송
+    전체 촉구 발송
   </button>
 </form>
 <div class="table-responsive mg-fade">
@@ -66,7 +66,7 @@
             <input type="hidden" name="user_id" value="{{ c.user.id }}">
             <input type="hidden" name="stage" value="{{ c.stage }}">
             <input type="hidden" name="emp_type" value="{{ c.emp_type }}">
-            <button class="btn btn-sm btn-outline-primary"><i class="bi bi-send"></i> 촉구</button>
+            <button class="btn btn-sm btn-outline-primary">촉구</button>
           </form>
         </td>
       </tr>
@@ -101,7 +101,7 @@
             <input type="hidden" name="emp_type" value="{{ c.emp_type }}">
             <input type="text" name="dates" class="form-control form-control-sm lp-dates"
                    placeholder="2026-07-10, 2026-07-11" required>
-            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-calendar-check"></i> 회사지정 통보</button>
+            <button class="btn btn-sm btn-outline-danger">회사지정 통보</button>
           </form>
         </td>
       </tr>
@@ -114,13 +114,24 @@
 {% endif %}
 
 {# ── 3) 촉구/지정 이력 ── #}
-<div class="lp-sec-title mg-fade">촉구·지정 이력 <span class="text-muted fw-normal">({{ records|length }})</span></div>
+<div class="lp-sec-title mg-fade d-flex align-items-center gap-2">
+  <span>촉구·지정 이력 <span class="text-muted fw-normal">({{ records|length }})</span></span>
+  {% if n_off %}
+  <span class="lp-badge" style="background:#fffbeb;color:#b45309">서면 ≠ 실제 {{ n_off }}건</span>
+  <form method="post" action="{{ url_for('hr.hr_promotion_sync_actual') }}" class="d-inline"
+        onsubmit="return confirm('{{ n_off }}건의 서면 지정 사용일을 실제 사용일과 동일하게 맞춥니다.\n\n※ 직원이 사전에 지정한 날짜(직원 지정)는 그대로 보존됩니다.')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-outline-warning btn-xs" style="white-space:nowrap">전체 맞추기</button>
+  </form>
+  {% endif %}
+</div>
 {% if records %}
 <div class="table-responsive mg-fade">
   <table class="table lp-table mb-0">
     <thead><tr>
       <th>직원</th><th>연차연도</th><th>단계</th><th>발송일</th><th class="text-end">잔여</th>
-      <th>직원 지정</th><th>회사 지정</th><th>상태</th><th>서면</th>
+      <th>직원 지정</th><th>서면 지정일</th><th>실제 사용일</th><th>대사</th>
+      <th>상태</th><th>서면</th><th>관리</th>
     </tr></thead>
     <tbody>
       {% for p in records %}
@@ -134,9 +145,33 @@
           <form method="post" action="{{ url_for('hr.hr_promotion_desig_delete', promo_id=p.id) }}" class="d-inline"
                 onsubmit="return confirm('직원이 지정한 사용일을 삭제하시겠습니까?\n삭제 후 직원이 다시 지정할 수 있습니다.')">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-outline-danger py-0 px-1 ms-1" title="직원 지정 삭제"><i class="bi bi-x-lg"></i></button>
+            <button class="btn btn-outline-danger btn-xs ms-1" style="white-space:nowrap"
+                    title="직원이 지정한 사용일 삭제 — 직원이 다시 지정 가능">지정 삭제</button>
           </form>{% else %}<span class="text-muted">미지정</span>{% endif %}</td>
-        <td>{% if p.admin_dates %}<span title="{{ p.admin_dates|join(', ') }}">{{ p.admin_dates|length }}일</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td>{% if p.admin_dates %}<span title="{{ fmt_entries(p.admin_dates) }}">{{ sum_days(p.admin_dates)|trim }}일</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td>{% if p.diff.actual %}<span title="{{ fmt_entries(p.diff.actual) }}">{{ sum_days(p.diff.actual)|trim }}일</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td>
+          {% if p.diff.unresolved %}
+            <span class="lp-badge" style="background:#fef2f2;color:#dc2626"
+                  title="종료일이 없는 다일 연차라 어느 날짜인지 원본에 정보가 없습니다. 연차관리에서 사용일을 정정해야 서면에 날짜를 찍을 수 있습니다.&#10;{% for e in p.diff.unresolved %}{{ e.date }} {{ e.days }}일{% if not loop.last %} / {% endif %}{% endfor %}">날짜불명 {{ p.diff.unresolved|length }}</span>
+          {% endif %}
+          {% if p.diff.in_sync %}
+            <span class="lp-badge" style="background:#f0fdf4;color:#16a34a">일치</span>
+          {% else %}
+            <span class="lp-badge" style="background:#fffbeb;color:#b45309"
+                  title="누락(실제로 썼는데 서면에 없음): {{ p.diff.missing|join(', ') or '-' }}&#10;초과(서면에만 있음): {{ p.diff.extra|join(', ') or '-' }}&#10;구분(연차/반차) 불일치: {{ p.diff.changed|join(', ') or '-' }}">
+              불일치
+              {%- if p.diff.missing %} +{{ p.diff.missing|length }}{% endif -%}
+              {%- if p.diff.extra %} −{{ p.diff.extra|length }}{% endif -%}
+              {%- if p.diff.changed %} ~{{ p.diff.changed|length }}{% endif -%}
+            </span>
+            <form method="post" action="{{ url_for('hr.hr_promotion_sync_actual', promo_id=p.id) }}" class="d-inline"
+                  onsubmit="return confirm('{{ p.user.full_name if p.user else p.user_id }} {{ stage_label.get(p.stage, p.stage) }}의 서면 지정 사용일을 실제 사용일과 동일하게 맞춥니다.\n\n추가 {{ p.diff.missing|length }}건 · 제거 {{ p.diff.extra|length }}건 · 구분정정 {{ p.diff.changed|length }}건\n\n※ 직원이 사전에 지정한 날짜는 그대로 보존됩니다.')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-outline-warning btn-xs ms-1" style="white-space:nowrap">맞추기</button>
+            </form>
+          {% endif %}
+        </td>
         <td>
           {% set st = p.status %}
           {% if st == 'designated' %}<span class="lp-badge" style="background:#eff6ff;color:#2563eb">직원지정</span>
@@ -145,14 +180,19 @@
           {% else %}<span class="lp-badge" style="background:#f1f5f9;color:#64748b">발송</span>{% endif %}
         </td>
         <td class="text-nowrap">
-          <a href="{{ url_for('hr.hr_promotion_doc_edit', promo_id=p.id) }}" class="btn btn-sm btn-outline-primary" title="서면 사용일 편집">
-            <i class="bi bi-pencil-square"></i></a>
-          <a href="{{ url_for('hr.hr_promotion_print', promo_id=p.id) }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="서면 출력">
-            <i class="bi bi-printer"></i></a>
+          <a href="{{ url_for('hr.hr_promotion_doc_edit', promo_id=p.id) }}"
+             class="btn btn-outline-primary btn-xs" style="white-space:nowrap"
+             title="서면 통보서에 들어갈 사용일 편집">편집</a>
+          <a href="{{ url_for('hr.hr_promotion_print', promo_id=p.id) }}" target="_blank"
+             class="btn btn-outline-secondary btn-xs" style="white-space:nowrap"
+             title="노동부 서식 서면 통보서 출력(새 탭)">출력</a>
+        </td>
+        <td class="text-nowrap">
           <form method="post" action="{{ url_for('hr.hr_promotion_delete', promo_id=p.id) }}" class="d-inline"
                 onsubmit="return confirm('이 촉구 기록을 회수(삭제)하시겠습니까?\n※ 이미 발송된 메일 자체는 회수되지 않습니다.')">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-outline-danger" title="촉구 회수"><i class="bi bi-arrow-counterclockwise"></i></button>
+            <button class="btn btn-outline-danger btn-xs" style="white-space:nowrap"
+                    title="촉구 기록 삭제 — 재발송 가능 상태로 복원">촉구 회수</button>
           </form>
         </td>
       </tr>

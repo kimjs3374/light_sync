@@ -161,6 +161,34 @@ def record_second(db, user, emp_type, admin_dates, by, as_of=None):
     return p
 
 
+def promo_asof(promo, as_of=None):
+    """촉진 레코드가 속한 **연차연도 안**으로 clamp된 기준일.
+
+    leave_summary/leave_year_range는 as_of가 속한 연차연도를 잡는다.
+    촉진 문서는 항상 그 레코드의 연차연도(year_start~year_end)를 봐야 하므로,
+    오늘이 그 범위 밖(=이미 끝난 직전 연차연도)이면 year_end로 고정한다.
+    이 clamp를 빠뜨리면 다음 연차연도(=올해) 사용분이 서면에 섞여 들어간다.
+    """
+    as_of = as_of or datetime.date.today()
+    if not promo or not promo.year_start or not promo.year_end:
+        return as_of
+    if as_of < promo.year_start:
+        return promo.year_start
+    if as_of > promo.year_end:
+        return promo.year_end
+    return as_of
+
+
+def promo_summary(db, promo, user, as_of=None):
+    """촉진 레코드의 연차연도 기준 leave_summary. 실패 시 None."""
+    if not user:
+        return None
+    try:
+        return hr_service.leave_summary(db, user, promo_asof(promo, as_of))
+    except Exception:
+        return None
+
+
 def live_leave(db, promo, user, as_of=None):
     """촉진 레코드의 '실시간' 잔여/사용/부여 + 전자결재 승인 연차 일자.
 
@@ -173,9 +201,7 @@ def live_leave(db, promo, user, as_of=None):
            'granted': promo.granted_days, 'approved': []}
     if not user or not promo.year_start or not promo.year_end:
         return res
-    as_of = as_of or datetime.date.today()
-    if not (promo.year_start <= as_of <= promo.year_end):
-        as_of = promo.year_end   # 지난/올해 연차연도 스냅샷
+    as_of = promo_asof(promo, as_of)
     try:
         s = hr_service.leave_summary(db, user, as_of)
     except Exception:
@@ -213,6 +239,26 @@ def entries_total(entries):
     return round(sum(x['days'] for x in entries), 1)
 
 
+def in_leave_year(promo, date_str):
+    """date_str('YYYY-MM-DD')이 촉진 레코드의 연차연도 안인가."""
+    if not promo or not promo.year_start or not promo.year_end:
+        return True
+    d = str(date_str or '')[:10]
+    return (promo.year_start.strftime('%Y-%m-%d') <= d
+            <= promo.year_end.strftime('%Y-%m-%d'))
+
+
+def filter_in_leave_year(promo, entries):
+    """연차연도 밖 entries 제거. 반환 (남은 entries, 제외 건수).
+
+    entries는 [{date,..}] / ['YYYY-MM-DD'] 두 형태 모두 허용.
+    """
+    def _d(e):
+        return e.get('date') if isinstance(e, dict) else e
+    keep = [e for e in (entries or []) if in_leave_year(promo, _d(e))]
+    return keep, len(entries or []) - len(keep)
+
+
 def employee_designate(db, promo_id, entries, user_id=None):
     """직원 셀프 — 사용시기 지정. entries: [{date,type}] 또는 ['YYYY-MM-DD']."""
     p = db.get(LeavePromotion, promo_id)
@@ -246,11 +292,14 @@ def clear_employee_designation(db, promo_id, user_id=None):
     return p
 
 
-def set_doc_dates(db, promo_id, entries, by, as_of=None):
+def set_doc_dates(db, promo_id, entries, by, as_of=None, set_status=True):
     """서면 증빙용 회사 확정/임의지정 사용일 저장(admin_dates).
 
-    실제 사용일 반영·회사 임의지정 모두 이 경로. 직원 미지정(sent) 상태였다면
+    회사 임의지정(관리자 수기 입력)이 기본 경로 — 직원 미지정(sent) 상태였다면
     회사지정(2차) 성립으로 status 전환, 그 외(직원지정 등)는 status 유지.
+
+    set_status=False 는 '실제 사용일 반영' 전용. 실제로 쓴 날을 서면에 옮겨
+    적는 것뿐이므로 회사가 임의지정했다는 뜻이 되면 안 된다(status 불변).
     """
     p = db.get(LeavePromotion, promo_id)
     if not p:
@@ -258,23 +307,138 @@ def set_doc_dates(db, promo_id, entries, by, as_of=None):
     p.admin_dates = normalize_entries(entries)
     p.admin_by = by
     p.admin_at = datetime.datetime.now()
-    if p.status == 'sent':
+    if set_status and p.status == 'sent':
         p.status = 'admin_designated'
     db.flush()
     return p
 
 
-def actual_usage_entries(summ):
-    """leave_summary.detail → 서면 채우기용 [{date,type,days}] (연차/반차 자동판정)."""
-    out = []
-    for d in (summ.get('detail') if summ else []) or []:
-        ds = str(d.get('start') or '')[:10]
-        if not ds:
-            continue
-        days = float(d.get('days') or 0)
-        out.append({'date': ds, 'type': '반차' if days == 0.5 else '연차',
-                    'days': days if days else 1.0})
+def _d(s):
+    try:
+        return datetime.datetime.strptime(str(s).strip()[:10], '%Y-%m-%d').date()
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def _expand_detail_row(row):
+    """leave_summary.detail 1행 → 일자별 [{date,type,days}].
+
+    detail은 결재문서/수동등록 1건이 1행이라 다일 연차(7/28~7/31, 4일)가
+    시작일 하나로 뭉쳐 있다. 서면에는 날짜가 모두 찍혀야 하므로 전개한다.
+
+    종료일이 없는데 days>1 인 행(관리자 수동등록분)은 어느 날짜인지 원본에
+    정보가 없다 → 날짜를 지어내지 않고 unresolved 로 표시해 올려보낸다.
+    """
+    s = _d(row.get('start'))
+    if not s:
+        return []
+    e = _d(row.get('end')) or s
+    if e < s:
+        e = s
+    days = float(row.get('days') or 0)
+    span = (e - s).days + 1
+    if span == 1:
+        if days > 1:   # 종료일 미기재 다일 연차 — 전개 불가
+            return [{'date': s.strftime('%Y-%m-%d'), 'type': '연차',
+                     'days': days, 'unresolved': True}]
+        return [{'date': s.strftime('%Y-%m-%d'),
+                 'type': '반차' if days == 0.5 else '연차',
+                 'days': days or 1.0}]
+    out = [{'date': (s + datetime.timedelta(days=i)).strftime('%Y-%m-%d'),
+            'type': '연차', 'days': 1.0} for i in range(span)]
+    # 마지막 날만 반차인 경우(예: 3일 구간 2.5일) 보정
+    if days and abs(span - days - 0.5) < 0.001:
+        out[-1] = {'date': out[-1]['date'], 'type': '반차', 'days': 0.5}
     return out
+
+
+def actual_usage_entries(summ, since=None, until=None):
+    """leave_summary.detail → 서면 채우기용 [{date,type,days}] (일자별 전개).
+
+    since/until(date)로 기간을 자른다. until은 반드시 해당 촉진의 연차연도
+    종료일을 넘겨야 한다 — 상한이 없으면 다음 연차연도 사용분이 섞인다.
+    """
+    lo = since.strftime('%Y-%m-%d') if since else None
+    hi = until.strftime('%Y-%m-%d') if until else None
+    out, seen = [], set()
+    for row in (summ.get('detail') if summ else []) or []:
+        for e in _expand_detail_row(row):
+            ds = e['date']
+            if (lo and ds < lo) or (hi and ds > hi) or ds in seen:
+                continue
+            seen.add(ds)
+            out.append(e)
+    return sorted(out, key=lambda x: x['date'])
+
+
+# ── 지정 사용일 ↔ 실제 사용일 대사 ──────────────────────────
+def actual_for_promo(db, promo, user, as_of=None):
+    """이 **회차**의 실제 사용일 = 통보일(notified_at) ~ 연차연도 종료일.
+
+    회차별로 통보일이 다르므로 1차/2차가 같은 연차연도에 있으면 2차 통보 이후
+    사용분은 양쪽에 모두 들어간다(2차 이후 사용분도 1차 촉구의 결과이므로).
+    """
+    summ = promo_summary(db, promo, user, as_of)
+    if not summ:
+        return []
+    since = promo.notified_at.date() if promo.notified_at else promo.year_start
+    return actual_usage_entries(summ, since=since, until=promo.year_end)
+
+
+def _date_type_map(entries):
+    out = {}
+    for e in (entries or []):
+        if isinstance(e, dict):
+            d, t = e.get('date'), ('반차' if e.get('type') == '반차' else '연차')
+        else:
+            d, t = str(e), '연차'
+        if d:
+            out[str(d)[:10]] = t
+    return out
+
+
+def doc_dates_diff(db, promo, user, as_of=None):
+    """서면 인쇄용 지정 사용일(admin_dates) vs 이 회차 실제 사용일 대사.
+
+    반환: {'actual','designated','missing','extra','changed','matched',
+           'in_sync','has_actual'}
+      missing : 실제로 썼는데 서면에 없는 날
+      extra   : 서면에 있는데 실제로는 안 쓴 날
+      changed : 날짜는 같으나 연차/반차 구분이 다른 날
+    """
+    actual = actual_for_promo(db, promo, user, as_of)
+    designated = normalize_entries(promo.admin_dates)
+    # 종료일 미기재 다일 연차 — 날짜를 특정할 수 없어 대사 대상에서 뺀다
+    unresolved = [e for e in actual if e.get('unresolved')]
+    am, dm = _date_type_map(actual), _date_type_map(designated)
+    for e in unresolved:
+        am.pop(e['date'], None)
+    missing = sorted(set(am) - set(dm))
+    extra = sorted(set(dm) - set(am))
+    changed = sorted(d for d in (set(am) & set(dm)) if am[d] != dm[d])
+    return {
+        'actual': actual, 'designated': designated, 'unresolved': unresolved,
+        'missing': missing, 'extra': extra, 'changed': changed,
+        'matched': sorted(d for d in (set(am) & set(dm)) if am[d] == dm[d]),
+        'in_sync': not (missing or extra or changed),
+        'has_actual': bool(actual),
+    }
+
+
+def sync_doc_dates_to_actual(db, promo, user, by, as_of=None):
+    """서면 인쇄용 지정 사용일을 이 회차 실제 사용일과 일치시킨다.
+
+    직원이 사전에 낸 지정(employee_dates)은 근로기준법상 '근로자의 사용시기
+    지정' 증빙이라 건드리지 않는다. status도 바꾸지 않는다(set_status=False).
+    반환: (promo, diff_before) — 이미 일치하면 쓰기 없이 (promo, diff) 반환.
+    """
+    diff = doc_dates_diff(db, promo, user, as_of)
+    if diff['in_sync']:
+        return promo, diff
+    # 날짜 특정 불가분(unresolved)은 제외 — 서면에 지어낸 날짜를 넣지 않는다
+    entries = [e for e in diff['actual'] if not e.get('unresolved')]
+    set_doc_dates(db, promo.id, entries, by=by, set_status=False)
+    return promo, diff
 
 
 def mark_printed(db, promo_id):

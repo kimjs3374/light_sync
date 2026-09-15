@@ -221,11 +221,16 @@ def hr_promotion():
         records = lp.all_promotions(db)
         # 전자결재 승인분 포함 실시간 잔여 부착(스냅샷 remaining_days 대신 표시용)
         today = datetime.date.today()
+        n_off = 0
         for p in records:
             p.remaining_live = lp.live_leave(db, p, p.user, today)['remaining']
+            # 서면 지정 사용일 ↔ 실제 사용일 대사 (표시용, 비영속)
+            p.diff = lp.doc_dates_diff(db, p, p.user, today)
+            if not p.diff['in_sync']:
+                n_off += 1
         # user_id → 미지정(2차 필요) 표시용 맵
         return render_template('hr_promotion.html',
-                               cand=cand, records=records,
+                               cand=cand, records=records, n_off=n_off,
                                stage_label=lp.STAGE_LABEL,
                                emp_label=lp.EMP_TYPE_LABEL)
 
@@ -309,6 +314,18 @@ def hr_promotion_second():
         if not dates:
             flash('회사 지정 사용일을 1개 이상 입력하세요.', 'warning')
             return redirect(url_for('hr.hr_promotion'))
+        # 현재 연차연도 밖 날짜는 제외 (다른 연차연도 사용분 혼입 차단)
+        s = hr.leave_summary(db, u)
+        ys, ye = s['year_start'], s['year_end'] - datetime.timedelta(days=1)
+        keep = [d for d in dates
+                if ys.strftime('%Y-%m-%d') <= d <= ye.strftime('%Y-%m-%d')]
+        if len(keep) != len(dates):
+            flash(f'연차연도({ys} ~ {ye}) 밖 날짜 {len(dates) - len(keep)}건은 '
+                  f'제외했습니다.', 'warning')
+        dates = keep
+        if not dates:
+            flash('연차연도 안의 사용일이 없습니다.', 'warning')
+            return redirect(url_for('hr.hr_promotion'))
         lp.record_second(db, u, emp_type, dates, by=by)
         log_activity(db, 'hr', 'leave_promotion_second',
                      f'{u.full_name} 연차촉진 2차(회사지정 {len(dates)}일) 통보',
@@ -341,12 +358,61 @@ def hr_promotion_desig_delete(promo_id):
         return redirect(url_for('hr.hr_promotion'))
 
 
+@hr_bp.route('/promotion/sync-actual', methods=['POST'])
+@hr_bp.route('/promotion/<int:promo_id>/sync-actual', methods=['POST'])
+@admin_required
+def hr_promotion_sync_actual(promo_id=None):
+    """서면 인쇄용 지정 사용일을 **실제 사용일**과 일치시킨다. 단건 또는 전체.
+
+    회차별 통보일 이후 ~ 연차연도 종료일의 실제 사용분 기준.
+    직원 사전지정(employee_dates)과 status는 건드리지 않는다.
+    """
+    from modules.models import LeavePromotion
+    by = session.get('full_name', '') or 'admin'
+    with get_db() as db:
+        if promo_id:
+            targets = [db.get(LeavePromotion, promo_id)]
+            if not targets[0]:
+                abort(404)
+        else:
+            targets = lp.all_promotions(db)
+        synced, already, noact = 0, 0, 0
+        for p in targets:
+            u = db.get(User, p.user_id)
+            if not u:
+                continue
+            _, diff = lp.sync_doc_dates_to_actual(db, p, u, by=by)
+            if diff['in_sync']:
+                already += 1
+                continue
+            if not diff['has_actual'] and not diff['designated']:
+                noact += 1
+                continue
+            synced += 1
+            log_activity(
+                db, 'hr', 'leave_promotion_sync_actual',
+                f'{u.full_name} 연차촉진 {lp.STAGE_LABEL.get(p.stage, p.stage)} '
+                f'서면 사용일 실제기준 정정 '
+                f'(추가 {len(diff["missing"])} · 제거 {len(diff["extra"])} · '
+                f'구분정정 {len(diff["changed"])})',
+                ref_type='user', ref_id=p.user_id, ref_label=u.full_name)
+        db.commit()
+        if synced:
+            flash(f'{synced}건을 실제 사용일 기준으로 맞췄습니다.'
+                  + (f' (이미 일치 {already}건)' if already else ''), 'success')
+        else:
+            flash('정정할 대상이 없습니다. (모두 실제 사용일과 일치)', 'info')
+        return redirect(url_for('hr.hr_promotion'))
+
+
 @hr_bp.route('/promotion/<int:promo_id>/print')
 @menu_required('hr')
 def hr_promotion_print(promo_id):
     """연차사용촉진 서면 통보서 출력 (노동부 표준서식 근접).
 
-    출력 시점(오늘) 기준 실제 사용/잔여 연차를 조회해 문서에 반영.
+    **해당 촉진의 연차연도(p.year_start~p.year_end) 기준** 실제 사용/잔여를
+    조회해 반영한다. 오늘 기준으로 뽑으면 이미 끝난 직전 연차연도 문서에
+    다음(올해) 연차연도 사용분이 섞여 들어간다.
     """
     from modules.models import LeavePromotion
     with get_db() as db:
@@ -354,8 +420,9 @@ def hr_promotion_print(promo_id):
         if not p:
             abort(404)
         u = db.get(User, p.user_id)
-        # 출력일자 기준 실제 사용 연차 스냅샷
-        summ = hr.leave_summary(db, u) if u else None
+        # 해당 연차연도 기준 사용/잔여 스냅샷
+        summ = lp.promo_summary(db, p, u)
+        diff = lp.doc_dates_diff(db, p, u) if u else None
         lp.mark_printed(db, promo_id)
         db.commit()
         company = {
@@ -366,8 +433,16 @@ def hr_promotion_print(promo_id):
                                p=p, u=u, summ=summ, company=company,
                                today=datetime.date.today(),
                                stage_label=lp.STAGE_LABEL,
-                               # 회사 확정(admin_dates)이 있으면 지정통보서로 출력
-                               is_second=(bool(p.admin_dates) or p.stage == 'second'))
+                               diff=diff,
+                               # 근로자 최초 지정과 확정분이 다를 때만 각주
+                               orig_differs=(lp.normalize_entries(p.employee_dates)
+                                             != lp.normalize_entries(p.admin_dates)),
+                               # 문서 종류는 **회차·상태**로만 판정.
+                               # admin_dates 유무로 보면 실제 사용일을 서면에
+                               # 반영했다는 이유만으로 1차 통보서가 회사
+                               # 지정통보서로 뒤바뀐다.
+                               is_second=(p.stage == 'second'
+                                          or p.status == 'admin_designated'))
 
 
 @hr_bp.route('/promotion/<int:promo_id>/doc-edit', methods=['GET', 'POST'])
@@ -382,7 +457,7 @@ def hr_promotion_doc_edit(promo_id):
         if not p:
             abort(404)
         u = db.get(User, p.user_id)
-        summ = hr.leave_summary(db, u) if u else None
+        summ = lp.promo_summary(db, p, u)   # 해당 연차연도 기준
 
         if request.method == 'POST':
             raw = (request.form.get('dates') or '').strip()
@@ -391,6 +466,11 @@ def hr_promotion_doc_edit(promo_id):
             except ValueError:
                 entries = []
             entries = lp.normalize_entries(entries)
+            # 연차연도 밖 날짜는 저장 금지 (다른 연차연도 사용분 혼입 차단)
+            entries, dropped = lp.filter_in_leave_year(p, entries)
+            if dropped:
+                flash(f'연차연도({p.year_start} ~ {p.year_end}) 밖 날짜 '
+                      f'{dropped}건은 제외했습니다.', 'warning')
             lp.set_doc_dates(db, promo_id, entries,
                              by=session.get('full_name', '') or 'admin')
             log_activity(db, 'hr', 'leave_promotion_doc',
@@ -400,10 +480,10 @@ def hr_promotion_doc_edit(promo_id):
             flash(f'서면 사용일 {len(entries)}건이 저장되었습니다.', 'success')
             return redirect(url_for('hr.hr_promotion_print', promo_id=promo_id))
 
-        # 실제 사용내역은 촉진(통보)일 이후만 (촉진 결과로 사용한 분)
+        # 실제 사용내역 = 촉진(통보)일 이후 ~ **연차연도 종료일까지**.
+        # 상한(year_end)이 없으면 다음 연차연도(올해) 사용분이 섞여 들어온다.
         since = p.notified_at.date() if p.notified_at else None
-        actual = [e for e in lp.actual_usage_entries(summ)
-                  if not since or e['date'] >= since.strftime('%Y-%m-%d')]
+        actual = lp.actual_usage_entries(summ, since=since, until=p.year_end)
         # 프리필: 회사확정 > 직원지정 > 촉진일 이후 실제사용
         prefill = p.admin_dates or p.employee_dates or actual
         # 달력 국경일 (촉진일~연차연도 종료)
@@ -414,7 +494,6 @@ def hr_promotion_doc_edit(promo_id):
             yrs.add(p.year_start.year)
         if p.year_end:
             yrs.add(p.year_end.year)
-        yrs.add(datetime.date.today().year)
         holidays = holiday_service.holiday_map(sorted(yrs))
         return render_template('hr_promotion_doc_edit.html',
                                p=p, u=u, summ=summ, prefill=prefill, actual=actual,
@@ -456,10 +535,15 @@ def _build_promo_calendars(promos, today, holidays):
     for p in promos:
         if p.status == 'admin_designated':
             continue
-        start = today
-        end = p.year_end or today
+        # 달력은 **그 촉진의 연차연도 안**에서만 그린다.
+        # today로 시작하고 end<start 를 today로 밀면, 이미 끝난 연차연도의
+        # 촉진에 올해 날짜 달력이 붙어 다른 연차연도 사용분이 지정된다.
+        end = p.year_end
+        if not end:
+            continue
+        start = max(today, p.year_start) if p.year_start else today
         if end < start:
-            end = start
+            continue   # 연차연도 종료 — 더 지정할 수 없음
         # 직원 기존 지정 → date(str) → type 맵
         sel_map = {}
         for it in (p.employee_dates or []):
@@ -550,6 +634,10 @@ def hr_my_promotion_toggle(promo_id):
             return _redirect_promo_mobile()
         if not d:
             return _redirect_promo_mobile()
+        if not lp.in_leave_year(p, date_str):
+            flash(f'연차연도({p.year_start} ~ {p.year_end}) 안의 날짜만 '
+                  f'지정할 수 있습니다.', 'warning')
+            return _redirect_promo_mobile()
         # 현재 지정 맵
         cur_map = {}
         for it in (p.employee_dates or []):
@@ -627,6 +715,8 @@ def hr_my_promotion_set(promo_id):
         p = db.get(LeavePromotion, promo_id)
         if not p or p.user_id != uid or p.status == 'admin_designated':
             return _pixel()
+        if not lp.in_leave_year(p, date_str):
+            return _pixel()   # 연차연도 밖 → 저장 안 함
         cur_map = {}
         for it in (p.employee_dates or []):
             if isinstance(it, dict) and it.get('date'):

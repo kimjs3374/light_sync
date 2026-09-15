@@ -25,7 +25,7 @@
       <h2>서면 사용일 편집</h2>
       <div class="hero-sub">{{ u.full_name if u else p.user_id }} · {{ p.leave_year }}년도 — 회사 임의지정 또는 실제 사용일을 반영해 서면을 작성합니다.</div>
     </div>
-    <a href="{{ url_for('hr.hr_promotion') }}" class="btn btn-sm"><i class="bi bi-arrow-left"></i> 목록</a>
+    <a href="{{ url_for('hr.hr_promotion') }}" class="btn btn-sm">목록</a>
   </div>
 </div>
 
@@ -37,7 +37,8 @@
   </div>
 
   <div class="de-ref">직원 지정 사용일: <b>{{ fmt(p.employee_dates or []) or '없음' }}</b></div>
-  <div class="de-ref">촉진일 이후 실제 사용내역: <b>{{ fmt(actual) or '없음' }}</b></div>
+  <div class="de-ref">이 회차 실제 사용내역 <span class="text-muted">(통보일 ~ 연차연도 종료)</span>:
+    <b>{{ fmt(actual) or '없음' }}</b></div>
 
   <form method="post" action="{{ url_for('hr.hr_promotion_doc_edit', promo_id=p.id) }}"
         class="d-flex flex-column gap-2" onsubmit="return lpValidate(this, {{ p.id }})">
@@ -52,8 +53,8 @@
     <div class="lp-sel-list" id="sel-{{ p.id }}"></div>
     <div class="d-flex gap-2">
       <button type="button" class="btn btn-sm btn-outline-secondary" onclick="LeaveCalendar.fill({{ p.id }}, window.DE_ACTUAL)">
-        <i class="bi bi-arrow-down-circle"></i> 실제 사용일로 채우기</button>
-      <button class="btn btn-sm btn-primary"><i class="bi bi-printer"></i> 저장하고 서면 출력</button>
+        실제 사용일로 채우기</button>
+      <button class="btn btn-sm btn-primary">저장하고 서면 출력</button>
     </div>
   </form>
 </div>
