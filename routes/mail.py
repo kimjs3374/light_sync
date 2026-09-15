@@ -272,6 +272,7 @@ def mail_compose():
     resend_uid = request.args.get('resend', type=int)
     draft_uid = request.args.get('draft', type=int)
     account_id = request.args.get('account', type=int)
+    self_send = request.args.get('self', type=int)  # 내게쓰기로 열기
 
     reply_data = None
     with get_db() as db:
@@ -313,7 +314,19 @@ def mail_compose():
                                draft_uid=draft_uid,
                                current_account_id=account_id,
                                user_signature_html=user_signature_html,
+                               self_send=bool(self_send),
                                mail_mode=mode)
+
+
+@mail_bp.route('/mail/sent-complete')
+@login_required
+def mail_sent_complete():
+    """메일 발송 완료 화면 — alert 대신 결과 페이지로 안내."""
+    mode = request.args.get('mode', 'personal')
+    g.active_menu_key = 'mail_external' if mode == 'external' else ('mail_shared' if mode == 'shared' else 'mail_personal')
+    return render_template('mail_sent_complete.html',
+                           sent=session.get('mail_sent_result'),
+                           mail_mode=mode)
 
 
 @mail_bp.route('/mail/settings')
@@ -545,6 +558,23 @@ def api_send():
                         client.delete_messages([draft_replace_uid], folder=draft_folder)
                 except Exception as e:
                     logger.warning("발송 후 임시본 삭제 실패(uid=%s): %s", draft_replace_uid, e)
+
+            # 발송완료 페이지에서 보여줄 요약 (쿠키 크기 고려해 주소는 20건까지)
+            session['mail_sent_result'] = {
+                'from_email': account.email,
+                'from_name': account.display_name or '',
+                'account_id': account.id,
+                'to': to[:20],
+                'to_count': len(to),
+                'cc': cc[:20],
+                'cc_count': len(cc),
+                'bcc_count': len(bcc),
+                'subject': subject or '(제목 없음)',
+                'attachment_count': len(attachments),
+                'is_self': (len(to) == 1 and not cc and not bcc
+                            and to[0].strip().lower() == account.email.lower()),
+                'sent_at': datetime.now().strftime('%Y-%m-%d %H:%M'),
+            }
 
             return jsonify(result)
         except Exception as e:

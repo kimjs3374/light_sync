@@ -15,6 +15,7 @@
         {% endfor %}
     </div>
     {% endif %}
+    <input type="hidden" id="mailMode" value="{{ mail_mode or 'personal' }}">
     <div class="mail-wrap">
         <div class="mail-sidebar" id="folderSidebar"></div>
         <script>
@@ -48,7 +49,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/mail.js') }}?v=1779200000"></script>
+<script src="{{ url_for('static', filename='js/mail.js') }}?v=1789900000"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     Mail.accountId = {{ account_id }};

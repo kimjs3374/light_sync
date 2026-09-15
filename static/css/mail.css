@@ -30,6 +30,17 @@
     flex-direction: column;
     min-height: 100%;
 }
+.mail-compose-actions {
+    display: flex; gap: 6px; padding: 2px 10px 12px 14px;
+}
+.mail-compose-btn {
+    flex: 1; min-width: 0; border: none; border-radius: 18px;
+    padding: 8px 4px; font-size: .76rem; font-weight: 700; cursor: pointer;
+    white-space: nowrap; background: var(--mg-primary); color: #fff;
+    transition: filter .12s;
+}
+.mail-compose-btn:hover { filter: brightness(1.08); }
+.mail-compose-btn.self { background: #e2e8f0; color: #334155; }
 .mail-folder-item {
     display: flex;
     justify-content: space-between;
@@ -252,6 +263,15 @@
     text-align: right; padding-right: 12px;
 }
 .mail-compose-field { flex: 1; min-width: 0; }
+.mail-self-toggle {
+    display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+    margin-left: 10px; font-size: .72rem; color: var(--mg-muted);
+    cursor: pointer; white-space: nowrap; user-select: none;
+}
+.mail-self-toggle input { cursor: pointer; margin: 0; }
+.mail-self-toggle:has(input:checked) { color: var(--mg-primary); font-weight: 700; }
+.mail-tag-wrap.self-locked { background: #f1f5f9; }
+.mail-tag-wrap.self-locked .tag-remove { display: none; }
 .mail-compose-field .form-control,
 .mail-compose-field .form-select {
     border: none; border-radius: 0; box-shadow: none !important;
@@ -325,6 +345,8 @@
         border-bottom: 1px solid var(--mg-border);
         display: flex; overflow-x: auto; padding: 0;
     }
+    .mail-compose-actions { padding: 6px 8px; flex-shrink: 0; }
+    .mail-compose-btn { padding: 7px 10px; }
     .mail-folder-item { white-space: nowrap; margin: 0; border-radius: 0; padding: 10px 14px; }
     .mail-folder-item.active { border-bottom: 2px solid var(--mg-primary); background: transparent; }
     .mail-folder-section { display: none; }

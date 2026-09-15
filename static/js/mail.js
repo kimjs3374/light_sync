@@ -276,6 +276,12 @@ const Mail = {
 
         let html = '';
 
+        // 메일쓰기 / 내게쓰기 — 어느 메일 화면에서든 바로 작성
+        html += `<div class="mail-compose-actions">
+            <button type="button" class="mail-compose-btn" onclick="Mail.composeNew()">✏️ 메일쓰기</button>
+            <button type="button" class="mail-compose-btn self" onclick="Mail.composeSelf()">🙋 내게쓰기</button>
+        </div>`;
+
         // 시스템 폴더
         sysFolders.forEach(f => {
             const active = f.name === this.currentFolder ? 'active' : '';
@@ -331,6 +337,22 @@ const Mail = {
         // 캐시에 HTML 저장 (다음 페이지에서 즉시 복원)
         try { sessionStorage.setItem('mail_sidebar_html_' + this.accountId, sidebarHtml); } catch {}
         this._initFolderDrop();
+    },
+
+    // --- 메일쓰기 ---
+    _composeUrl(extra) {
+        const mode = document.getElementById('mailMode')?.value || 'personal';
+        let url = `/mail/compose?mode=${encodeURIComponent(mode)}`;
+        if (this.accountId) url += `&account=${this.accountId}`;
+        return url + (extra || '');
+    },
+
+    composeNew() { location.href = this._composeUrl(); },
+
+    composeSelf() {
+        // 이미 작성 화면이면 이동하지 않고 바로 내게쓰기로 전환 (작성 중인 내용 유지)
+        if (document.getElementById('selfSendCheck')) { MailCompose.toggleSelfSend(true); return; }
+        location.href = this._composeUrl('&self=1');
     },
 
     _activeLabel: null,
@@ -1075,6 +1097,10 @@ const MailCompose = {
         this.initTagInput('bccTagWrap', 'bccTagInput', 'bccInput', null);
         this.initDropZone();
         this.startAutoSave();
+        // 내게쓰기 버튼으로 들어온 경우 — 서버 플래그와 무관하게 URL 로도 판단
+        if (new URLSearchParams(window.location.search).get('self') === '1') {
+            this.toggleSelfSend(true);
+        }
     },
 
     // --- 태그 입력 (#7, #8) ---
@@ -1138,6 +1164,9 @@ const MailCompose = {
         email = email.trim();
         if (!email) return;
         const wrap = document.getElementById(wrapId);
+        if (!wrap) return;
+        // 내게쓰기 잠금 중에는 받는사람에 다른 주소가 끼어들지 않게 한다
+        if (wrapId === 'toTagWrap' && !this._selfLocking && wrap.classList.contains('self-locked')) return;
         // 중복 방지
         const existing = wrap.querySelectorAll('.mail-tag .tag-email');
         for (const el of existing) { if (el.textContent === email) return; }
@@ -1158,6 +1187,53 @@ const MailCompose = {
     _syncFromWrap(wrapId) {
         const map = { toTagWrap: 'toInput', ccTagWrap: 'ccInput', bccTagWrap: 'bccInput' };
         this._syncHidden(wrapId, map[wrapId]);
+    },
+
+    // --- 내게쓰기 ---
+    _savedToTags: null,   // 내게쓰기 켤 때 보관해 둔 원래 받는사람
+    _selfLocking: false,  // 내 주소를 넣는 동안만 addTag 잠금 해제
+
+    /** 현재 선택된 보낸사람 계정의 메일주소 */
+    _selfEmail() {
+        const sel = document.getElementById('fromAccount');
+        if (!sel) return '';
+        return sel.options[sel.selectedIndex]?.dataset?.email || '';
+    },
+
+    /**
+     * 내게쓰기 전환. force 를 주면 체크 상태를 그 값으로 맞춘 뒤 적용한다.
+     * 켜면 받는사람을 내 주소 하나로 고정하고, 끄면 원래 받는사람을 되돌린다.
+     */
+    toggleSelfSend(force) {
+        const chk = document.getElementById('selfSendCheck');
+        const wrap = document.getElementById('toTagWrap');
+        const input = document.getElementById('toTagInput');
+        if (!chk || !wrap || !input) return;
+        if (typeof force === 'boolean') chk.checked = force;
+
+        if (chk.checked) {
+            // 이미 켜진 상태에서 다시 호출되면(보낸사람 변경 등) 원본은 그대로 둔다
+            if (this._savedToTags === null) {
+                this._savedToTags = [...wrap.querySelectorAll('.mail-tag .tag-email')].map(el => el.textContent);
+            }
+            wrap.querySelectorAll('.mail-tag').forEach(t => t.remove());
+            const me = this._selfEmail();
+            this._selfLocking = true;
+            if (me) this.addTag('toTagWrap', me);
+            this._selfLocking = false;
+            input.value = '';
+            input.disabled = true;
+            input.placeholder = '';
+            wrap.classList.add('self-locked');
+        } else {
+            wrap.classList.remove('self-locked');   // 먼저 풀어야 원래 주소가 다시 들어간다
+            wrap.querySelectorAll('.mail-tag').forEach(t => t.remove());
+            (this._savedToTags || []).forEach(em => this.addTag('toTagWrap', em));
+            this._savedToTags = null;
+            input.disabled = false;
+            input.placeholder = '이메일 주소';
+        }
+        this._syncHidden('toTagWrap', 'toInput');
     },
 
     _insertSignature() {
@@ -1185,7 +1261,10 @@ const MailCompose = {
         document.getElementById('draftBtn')?.addEventListener('click', () => this.saveDraft());
         document.getElementById('fromAccount')?.addEventListener('change', (e) => {
             document.getElementById('accountId').value = e.target.value;
+            // 내게쓰기 중이면 바뀐 계정 주소로 다시 맞춘다
+            if (document.getElementById('selfSendCheck')?.checked) this.toggleSelfSend(true);
         });
+        document.getElementById('selfSendCheck')?.addEventListener('change', () => this.toggleSelfSend());
 
         // Tab 순서: 받는사람 → 참조 → 제목 → 본문
         const tabOrder = ['toTagInput', 'ccTagInput', 'subjectInput', 'mailBody'];
@@ -1334,6 +1413,7 @@ const MailCompose = {
         if (confirmFrom && fromSelect) {
             fromSelect.value = confirmFrom.value;
             document.getElementById('accountId').value = confirmFrom.value;
+            if (document.getElementById('selfSendCheck')?.checked) this.toggleSelfSend(true);
         }
         bootstrap.Modal.getInstance(document.getElementById('sendConfirmModal'))?.hide();
         this._doSend();
@@ -1458,7 +1538,11 @@ const MailCompose = {
                 return;
             }
             const res = await resp.json();
-            if (res.success) { sent = true; alert('메일이 발송되었습니다.'); location.href = mode === 'external' ? '/mail/external' : (mode === 'shared' ? '/mail/shared' : '/mail/personal'); }
+            if (res.success) {
+                sent = true;
+                // alert 대신 발송완료 페이지로 이동
+                location.href = '/mail/sent-complete?mode=' + encodeURIComponent(mode || 'personal');
+            }
             else alert(res.error || '발송 실패');
         } catch (e) { alert('발송 오류: ' + e.message); }
         finally {

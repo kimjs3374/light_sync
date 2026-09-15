@@ -79,7 +79,8 @@
                         <button class="btn btn-outline-secondary" id="searchBtn">🔍</button>
                     </div>
                     <button class="btn btn-sm btn-outline-secondary" id="refreshBtn">↻</button>
-                    <a href="#" id="newMailBtn" class="btn btn-sm btn-primary" onclick="event.preventDefault();location.href='/mail/compose?mode='+(document.getElementById('mailMode')?.value||'personal')+'&account='+Mail.accountId;">✏️ 새 메일</a>
+                    <button type="button" id="newMailBtn" class="btn btn-sm btn-primary" onclick="Mail.composeNew()">✏️ 메일쓰기</button>
+                    <button type="button" id="selfMailBtn" class="btn btn-sm btn-outline-primary" onclick="Mail.composeSelf()">🙋 내게쓰기</button>
                     {% if mail_mode == 'external' %}
                     <a href="{{ url_for('mail.mail_external_settings') }}" class="btn btn-sm btn-outline-secondary">⚙️</a>
                     {% else %}
@@ -100,7 +101,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/mail.js') }}?v=1779200000"></script>
+<script src="{{ url_for('static', filename='js/mail.js') }}?v=1789900000"></script>
 {% if has_account %}
 <script>
 document.addEventListener('DOMContentLoaded', () => Mail.init({{ current_account_id or 'null' }}));
