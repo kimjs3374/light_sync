@@ -158,7 +158,12 @@
                         data-date="{{ fo.fo_date.strftime('%Y-%m-%d') if fo.fo_date else '' }}">
                         <td class="ps-3"><a href="{{ url_for('processing_order.fo_detail', fo_id=fo.id) }}" class="fo-no-link">{{ fo.fo_no }}</a></td>
                         <td>{{ fo.fo_date.strftime('%Y-%m-%d') if fo.fo_date else '-' }}</td>
-                        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0"><strong>{{ fo.project.temp_name if fo.project else (fo.contract.contract_name if fo.contract else '-') }}</strong></td>
+                        <td style="max-width:0" title="{{ fo.project.temp_name if fo.project else (fo.contract.contract_name if fo.contract else '-') }}{% if fo.contract and fo.contract.item_group %} / {{ fo.contract.item_group }}{% endif %}{% if fo.project and fo.project.project_no %} ({{ fo.project.project_no }}){% endif %}">
+                            <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+                                <strong style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ fo.project.temp_name if fo.project else (fo.contract.contract_name if fo.contract else '-') }}</strong>
+                                {% if fo.contract and fo.contract.item_group %}<span class="badge-status" style="flex:0 0 auto;background:#dbeafe;color:#1e40af;white-space:nowrap;">{{ fo.contract.item_group }}</span>{% endif %}
+                            </div>
+                        </td>
                         <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0">{{ fo.vendor.name if fo.vendor else '-' }}</td>
                         <td>
                             {% if fo.processing_type == '사급가공' %}

@@ -946,15 +946,36 @@ def api_contract_search():
                 Project.temp_name.ilike(f'%{q}%'),
                 Contract.contract_name.ilike(f'%{q}%'),
                 Project.project_no.ilike(f'%{q}%'),
+                Contract.item_group.ilike(f'%{q}%'),
+                Contract.g2b_contract_no.ilike(f'%{q}%'),
             )
         ).options(joinedload(Contract.project)).order_by(desc(Contract.id)).limit(15).all()
+
+        def _fmt(d):
+            return d.strftime('%Y-%m-%d') if d else ''
+
+        def _label(c):
+            # 같은 현장명으로 계약이 여러 건 생기므로 상세품목/관리번호까지 붙여야 구분됨
+            parts = [c.project.temp_name if c.project else (c.contract_name or '')]
+            if c.item_group:
+                parts.append(f'[{c.item_group}]')
+            if c.project and c.project.project_no:
+                parts.append(f'({c.project.project_no})')
+            return ' '.join(p for p in parts if p)
+
         return jsonify([{
             'id': c.id,
             'project_id': c.project_id,
             'site_name': c.project.temp_name if c.project else '',
             'contract_name': c.contract_name,
             'item_group': c.item_group or '',
-            'label': f"{c.project.temp_name if c.project else ''} - {c.contract_name}",
+            'project_no': c.project.project_no if c.project else '',
+            'g2b_contract_no': c.g2b_contract_no or '',
+            'g2b_change_ord': c.g2b_change_ord or '00',
+            'contract_date': _fmt(c.contract_date),
+            'delivery_due_date': _fmt(c.delivery_due_date),
+            'payment_status': c.payment_status or '',
+            'label': _label(c),
         } for c in contracts])
 
 

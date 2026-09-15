@@ -39,6 +39,31 @@
         .po-section .card-body { padding: 12px; }
         #itemsTable { font-size: .82rem; }
     }
+    /* 연결 현장 자동완성 — 현장명이 같은 계약 구분용 2줄 표기 */
+    .vendor-ac-dropdown .ac-item.contract-ac-item {
+        white-space: normal; overflow: visible; text-overflow: clip;
+        padding: 8px 12px; border-bottom: 1px solid #f1f5f9;
+    }
+    .contract-ac-item .cac-line1 { display: flex; align-items: center; gap: 6px; }
+    .contract-ac-item .cac-site {
+        flex: 1 1 auto; min-width: 0; font-weight: 700;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .contract-ac-item .cac-badge {
+        flex: 0 0 auto; background: #dbeafe; color: #1e40af; font-size: .7rem;
+        font-weight: 700; padding: 1px 6px; border-radius: 4px; white-space: nowrap;
+    }
+    .contract-ac-item .cac-meta {
+        margin-top: 2px; font-size: .72rem; color: #64748b;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .contract-ac-item .cac-meta .cac-no { font-weight: 700; color: #475569; }
+    .vendor-ac-dropdown .ac-item.contract-ac-item:hover .cac-meta,
+    .vendor-ac-dropdown .ac-item.contract-ac-item.active .cac-meta { color: #dbeafe; }
+    .vendor-ac-dropdown .ac-item.contract-ac-item:hover .cac-no,
+    .vendor-ac-dropdown .ac-item.contract-ac-item.active .cac-no { color: #fff; }
+    .vendor-ac-dropdown .ac-item.contract-ac-item:hover .cac-badge,
+    .vendor-ac-dropdown .ac-item.contract-ac-item.active .cac-badge { background: #fff; color: #1e40af; }
 </style>
 
 <div class="page-hero mg-fade">
@@ -503,6 +528,32 @@
     dd.className = 'vendor-ac-dropdown';
     document.body.appendChild(dd);
 
+    function acEsc(s) {
+        return String(s === null || s === undefined ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    // 현장명이 똑같은 계약이 여러 건이라 관리번호·상세품목·납품요구번호로 구분한다
+    function acContractItem(c) {
+        var meta = [];
+        if (c.project_no) meta.push('<span class="cac-no">' + acEsc(c.project_no) + '</span>');
+        if (c.g2b_contract_no) {
+            meta.push('요구 ' + acEsc(c.g2b_contract_no)
+                + (c.g2b_change_ord && c.g2b_change_ord !== '00' ? ' 변경' + acEsc(c.g2b_change_ord) + '차' : ''));
+        }
+        if (c.delivery_due_date) meta.push('납기 ' + acEsc(c.delivery_due_date));
+        if (c.payment_status) meta.push(acEsc(c.payment_status));
+        if (c.contract_name && c.contract_name !== c.site_name) meta.push(acEsc(c.contract_name));
+        return '<div class="ac-item contract-ac-item" data-id="' + c.id + '"'
+            + ' data-project-id="' + (c.project_id || '') + '"'
+            + ' data-name="' + acEsc(c.label) + '">'
+            + '<div class="cac-line1"><span class="cac-site">' + acEsc(c.site_name || c.contract_name) + '</span>'
+            + (c.item_group ? '<span class="cac-badge">' + acEsc(c.item_group) + '</span>' : '')
+            + '</div>'
+            + (meta.length ? '<div class="cac-meta">' + meta.join(' · ') + '</div>' : '')
+            + '</div>';
+    }
+
     input.addEventListener('input', function() {
         clearTimeout(timer);
         hidden.value = '';
@@ -514,16 +565,11 @@
                 .then(function(r) { return r.json(); })
                 .then(function(contracts) {
                     if (!contracts.length) { dd.classList.remove('show'); return; }
-                    dd.innerHTML = contracts.map(function(c) {
-                        return '<div class="ac-item" data-id="' + c.id + '" data-name="' + (c.label||'').replace(/"/g,'&quot;') + '">'
-                            + '<strong>' + c.site_name + '</strong> '
-                            + '<span class="ac-sub">' + c.contract_name + ' (' + c.item_group + ')</span>'
-                            + '</div>';
-                    }).join('');
+                    dd.innerHTML = contracts.map(acContractItem).join('');
                     var rect = input.getBoundingClientRect();
                     dd.style.top = rect.bottom + 2 + 'px';
                     dd.style.left = rect.left + 'px';
-                    dd.style.width = Math.max(rect.width, 350) + 'px';
+                    dd.style.width = Math.max(rect.width, 430) + 'px';
                     dd.classList.add('show');
                 });
         }, 300);

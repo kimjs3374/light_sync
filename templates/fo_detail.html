@@ -88,7 +88,7 @@
                     </div>
                     <div class="col-md-3 col-6">
                         <div class="info-label">현장/계약</div>
-                        <div class="info-value">{{ fo.contract.contract_name if fo.contract else (fo.project.name if fo.project else '-') }}</div>
+                        <div class="info-value">{{ fo.contract.contract_name if fo.contract else (fo.project.temp_name if fo.project else '-') }}{% if fo.contract and fo.contract.item_group %} <span class="badge-status" style="background:#dbeafe;color:#1e40af;white-space:nowrap;">{{ fo.contract.item_group }}</span>{% endif %}{% if fo.project and fo.project.project_no %} <small class="text-muted">({{ fo.project.project_no }})</small>{% endif %}</div>
                     </div>
                     {% if fo.note %}
                     <div class="col-12">
