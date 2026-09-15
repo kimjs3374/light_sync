@@ -3,7 +3,7 @@
  *
  * 인증은 Bearer 토큰 하나로 통일한다. 세션 쿠키를 쓰지 않으므로
  *  - CSRF 토큰(<meta>)이 없는 정적 SPA에서도 POST 가 나가고,
- *  - 나중에 mail.mgnt.kr 같은 다른 출처로 옮겨도 그대로 동작한다.
+ *  - 출처가 달라져도 그대로 동작한다 (2026-09-15 mail.mgnt.kr 로 이사함).
  * 토큰이 없으면 /api/app/session-token 으로 PC 세션을 한 번 교환한다
  * (모바일 SPA가 쓰는 것과 같은 핸드오프).
  */
@@ -56,7 +56,7 @@ class ApiClient {
       if (optional) throw new Error('인증 없음');
       this.setToken(null);
       // PC에서 로그인하면 session-token 으로 다시 들어온다
-      window.location.href = '/login?next=/webmail/';
+      window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
       throw new Error('인증 만료');
     }
     return res;
@@ -155,7 +155,8 @@ export async function isStaleBuild() {
       .find((src) => src && src.includes('/assets/'));
     if (!mine) return false;
 
-    const html = await (await fetch('/webmail/', { cache: 'no-store' })).text();
+    // 지금 서 있는 주소를 다시 읽는다 — 호스트마다 엔트리 경로가 다르다
+    const html = await (await fetch(window.location.pathname, { cache: 'no-store' })).text();
     const m = html.match(/src="([^"]*\/assets\/[^"]+\.js)"/);
     if (!m) return false;
     return m[1] !== mine;

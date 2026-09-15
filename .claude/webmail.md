@@ -1,6 +1,39 @@
-# 메일 SPA (`/webmail`) — 구조와 함정
+# 메일 SPA (`mail.mgnt.kr`) — 구조와 함정
 
 2026-09-15 작업. 기존 메일 화면(`/mail`)은 **그대로 두고** 새 화면을 나란히 올렸다.
+같은 날 새 화면을 `work.mgnt.kr/webmail/` 에서 **`mail.mgnt.kr` 전용 호스트로 옮겼다**(§0).
+
+---
+
+## 0. 주소가 옮겨졌다 — mail.mgnt.kr
+
+| | 지금 |
+|---|---|
+| 정식 주소 | **`https://mail.mgnt.kr/`** — 루트가 곧 메일 화면 |
+| 옛 주소 | `work.mgnt.kr/webmail/` → **301** 로 넘김 |
+
+- `mail.mgnt.kr` 은 **원래 있던 이름이다** — `mgnt.kr` 의 MX(메일 서버)다.
+  건드린 건 443 뿐이고 **25/587/993 스트림과는 겹치지 않는다.**
+  443 은 예전에 시놀로지 webmail 로 가다 인증서 만료로 끊긴 자리다(VPS `stream` 맵 주석).
+- 백엔드는 **work 와 같은 ERP(8501)** 한 벌이다. 앱이 `Host` 를 보고 갈린다
+  (`app.py` 의 `_is_mail_host()` / `MAIL_APP_HOST`). 새 서비스·새 포트는 없다.
+- **번들 base 는 여전히 `/webmail/`** 이다. `mail.mgnt.kr/` 이 내주는 index.html 이
+  `/webmail/assets/*` 를 부른다 → `serve_mail_app()` 은 **호스트를 가리지 않고 파일을 내주고,
+  화면 진입(index.html)만** mail 호스트로 모은다. 옛 탭이 자산을 계속 받을 수 있는 이유다.
+- **세션 쿠키는 호스트별이다.** work 에 로그인해 있어도 `mail.mgnt.kr` 에서 한 번 더
+  로그인해야 한다(`SESSION_COOKIE_DOMAIN` 을 안 쓴다 — `.mgnt.kr` 로 풀면 team·rnd 등
+  남의 서비스에까지 ERP 쿠키가 날아간다).
+- 로그인 복귀 주소는 **지금 서 있는 경로**를 쓴다(`window.location.pathname`).
+  호스트마다 엔트리가 `/` 와 `/webmail/` 로 달라서다. 새 버전 감지(`isStaleBuild`)도 같다.
+- 301 은 **브라우저가 영구 캐시한다.** 되돌리려면 사용자 캐시가 걸림돌이다
+  (`app.py` 의 `code=301` 한 자리).
+
+nginx 는 두 군데를 같이 손댔다.
+
+| 어디 | 무엇 |
+|---|---|
+| VPS `/etc/nginx/nginx.conf` | `listen 4443 ssl; server_name mail.mgnt.kr;` → `100.110.60.7:8501` (work 와 같은 대용량 설정) |
+| webserver `sites-available/lan-direct.conf` | work 블록 `server_name` 에 `mail.mgnt.kr` 추가 (사내 DNS 가 가리키면 tailnet 을 건너뛴다) |
 
 ---
 
@@ -9,13 +42,14 @@
 | | 경로 | 코드 | 상태 |
 |---|---|---|---|
 | 기존 | `/mail`, `/mail/personal`, `/mail/compose` … | `templates/mail_*.html` + `static/js/mail.js` | 유지 (익숙한 사용자용) |
-| 신규 | `/webmail/` | `mail_app/` (Vite + React + zustand) | 3-pane 목록·읽기창, 작성 페이지 |
+| 신규 | **`mail.mgnt.kr/`** (자산은 `/webmail/`) | `mail_app/` (Vite + React + zustand) | 3-pane 목록·읽기창, 작성 페이지 |
 
 **둘은 같은 `/mail/api/*` 를 공유한다.** 백엔드는 한 벌이므로 API 수정은 양쪽에 같이 먹지만,
 화면 동작은 완전히 다르다. **버그 제보가 오면 어느 화면인지부터 확인한다.**
 
 - 빌드: `cd mail_app && npm run build` → `mail_app/dist/` (git 제외, 서버에서 빌드)
-- 서빙: `app.py` 의 `serve_mail_app()` — `/m/` 모바일 SPA 와 같은 방식
+- 서빙: `app.py` 의 `serve_mail_app()` + `index()` 의 호스트 분기 — `/m/` 모바일 SPA 와 같은 방식.
+  메일 호스트는 **모바일 판별보다 먼저** 본다 — 메일 주소로 들어온 사람에게 `/m/` 은 엉뚱하다.
 - 인증: **Bearer 토큰**. 부팅 때 `/api/app/session-token` 으로 PC 세션을 한 번 교환한다.
   세션 쿠키를 안 쓰니 CSRF 토큰이 필요 없다.
 

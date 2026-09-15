@@ -11,7 +11,9 @@ import './styles.css';
 (async () => {
   const ok = await api.bootstrap();
   if (!ok) {
-    window.location.href = '/login?next=/webmail/';
+    // 돌아올 곳은 지금 서 있는 경로 그대로 —
+    // mail.mgnt.kr 은 '/', work.mgnt.kr 은 '/webmail/' 이다
+    window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
     return;
   }
   createRoot(document.getElementById('root')).render(

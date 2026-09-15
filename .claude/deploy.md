@@ -13,6 +13,7 @@ ExecStart=/web/light_sync/venv/bin/gunicorn -w 8 -b 0.0.0.0:8501 --timeout 1800 
 | `routes/*.py`, `modules/**` | `sudo systemctl restart light_sync` |
 | `templates/*.html` | 〃 (**캐시라 파일만 바꿔선 안 바뀐다**) |
 | `mail_app/**` (SPA) | `cd mail_app && npm run build` — 재시작 불필요 (정적 파일) |
+| nginx (VPS / webserver) | `nginx -t` 뒤 `systemctl reload nginx` — 재시작 아님 |
 
 ## 여기서 착시가 생긴다
 
@@ -35,7 +36,7 @@ ExecStart=/web/light_sync/venv/bin/gunicorn -w 8 -b 0.0.0.0:8501 --timeout 1800 
   캐시버스팅하니 **JS 를 고치면 그 숫자도 같이 올린다**
   (`mail_compose.html` 은 매번 난수라 신경 안 써도 된다).
 
-- **SPA(`/webmail`)는 새로고침 전까지 옛 코드를 돈다.** 빌드해도 열어둔 탭은 그대로다.
+- **SPA(`mail.mgnt.kr`)는 새로고침 전까지 옛 코드를 돈다.** 빌드해도 열어둔 탭은 그대로다.
   번들 파일명이 바뀌면 띠를 띄우는 `StaleBanner` 가 있지만, 제보가 오면 새로고침부터 시켜본다.
 
 관련: `.claude/webmail.md`, `.claude/mail_send_paths.md`

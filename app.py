@@ -660,6 +660,10 @@ def _should_force_mobile() -> bool:
 
 @app.route('/')
 def index():
+    # mail.mgnt.kr 은 루트가 곧 메일 화면이다 (ERP 대시보드로 가지 않는다).
+    # 모바일 판별보다 먼저 본다 — 메일 주소로 들어온 사람에게 /m/ 은 엉뚱하다.
+    if _is_mail_host():
+        return _mail_app_index()
     # ?pc=1 쿼리로 PC 강제 진입 → 세션에 저장하여 이후 리다이렉트 체인에서 유지
     if request.args.get('pc') == '1':
         session['force_pc'] = True
@@ -671,25 +675,49 @@ def index():
 
 
 # =====================================================================
-# 메일 SPA 서빙 (/webmail/ 경로)
+# 메일 SPA 서빙 — mail.mgnt.kr 루트 (+ /webmail/ 자산 경로)
 # ---------------------------------------------------------------------
-# 기존 ERP 메일 화면(/mail)은 그대로 둔다 — 익숙한 사용자가 계속 쓰는 화면이라
-# 경로를 겹치지 않게 /webmail 로 잡았다. 두 화면이 같은 /mail/api/* 를 공유한다.
-# 인증은 Bearer 토큰(= /api/app/session-token 으로 세션에서 교환)이라
-# 이 라우트 자체는 정적 파일만 내보내면 된다.
+# 기존 ERP 메일 화면(/mail)은 그대로 둔다 — 익숙한 사용자가 계속 쓰는 화면이다.
+# 두 화면이 같은 /mail/api/* 를 공유한다.
+#
+# 2026-09-15 이사: 화면 진입점을 work.mgnt.kr/webmail/ → mail.mgnt.kr/ 로 옮겼다.
+#   · 번들 base 는 여전히 '/webmail/' 이라 mail.mgnt.kr 루트에서도 자산은
+#     /webmail/assets/* 로 받아간다. 그래서 이 라우트는 **호스트를 가리지 않고**
+#     파일을 내보내고, 화면 진입(index.html)만 mail.mgnt.kr 로 모은다.
+#   · 인증은 Bearer 토큰(= /api/app/session-token 으로 세션에서 교환)이라
+#     이 라우트 자체는 정적 파일만 내보내면 된다. 다만 세션 쿠키는 호스트별이라
+#     mail.mgnt.kr 에서는 한 번 따로 로그인해야 한다.
 # =====================================================================
 _mail_app_dist = os.path.join(os.path.dirname(__file__), 'mail_app', 'dist')
+
+# 메일 화면의 정식 주소. 환경이 다르면 .env 의 MAIL_APP_HOST 로 덮는다.
+MAIL_APP_HOST = os.environ.get('MAIL_APP_HOST', 'mail.mgnt.kr')
+
+
+def _is_mail_host():
+    """지금 요청이 메일 전용 호스트로 들어왔는가"""
+    return (request.host or '').split(':')[0].lower() == MAIL_APP_HOST
+
+
+def _mail_app_index():
+    """SPA 엔트리 — 캐시 금지(재배포 시 항상 최신 번들을 집는다)"""
+    resp = send_from_directory(_mail_app_dist, 'index.html')
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return resp
+
 
 @app.route('/webmail/')
 @app.route('/webmail/<path:path>')
 def serve_mail_app(path=''):
     """메일 SPA — 빌드된 정적 파일 서빙"""
+    # 자산(js·css·아이콘)은 어느 호스트로 와도 그대로 내준다.
+    # mail.mgnt.kr 루트 화면이 바로 이 경로로 번들을 받아간다.
     if path and os.path.isfile(os.path.join(_mail_app_dist, path)):
         return send_from_directory(_mail_app_dist, path)
-    # SPA 엔트리(index.html)는 캐시 금지 → 재배포 시 항상 최신 번들
-    resp = send_from_directory(_mail_app_dist, 'index.html')
-    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    return resp
+    # 화면은 한 주소로만 연다 — 옛 주소로 온 사람은 새 주소로 보낸다
+    if not _is_mail_host():
+        return redirect(f'https://{MAIL_APP_HOST}/', code=301)
+    return _mail_app_index()
 
 
 # =====================================================================
