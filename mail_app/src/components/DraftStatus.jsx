@@ -1,5 +1,5 @@
 import { useCompose } from '../store/compose';
-import { draftSignature } from '../lib/compose';
+import { draftSignature, attachBytes, AUTOSAVE_MAX_ATTACH } from '../lib/compose';
 
 const pad = (n) => String(n).padStart(2, '0');
 const clock = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
@@ -13,6 +13,8 @@ const clock = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSec
  *
  * 저장한 뒤 글자 한 자라도 고치면 '변경됨'으로 돌아간다 — 지문(draftSignature)이
  * 저장 순간의 것과 다른지로 판단한다.
+ *
+ * 자동저장이 **쉬고 있으면 그 이유를 적는다.** 조용히 저장 안 되는 게 제일 나쁘다.
  */
 export default function DraftStatus() {
   const c = useCompose();
@@ -35,12 +37,18 @@ export default function DraftStatus() {
     dirty: '저장 후 변경됨',
   };
 
+  // 첨부는 저장할 때마다 다시 올라간다 — 크면 자동저장을 쉰다(손저장은 된다)
+  const autoOff = attachBytes(w) > AUTOSAVE_MAX_ATTACH;
+
   return (
     <div className={`draft-status is-${state}`} aria-live="polite">
       <span className="ds-state"><i className="ds-dot" />{LABEL[state]}</span>
       {w.savedAt && (
-        <span className="ds-meta">v{w.draftVersion} · {clock(w.savedAt)}</span>
+        <span className="ds-meta">
+          v{w.draftVersion} · {clock(w.savedAt)}{w.savedAuto ? ' · 자동' : ''}
+        </span>
       )}
+      {autoOff && <span className="ds-note" title="첨부는 저장할 때마다 다시 올라갑니다">첨부가 커서 자동저장 안 함</span>}
     </div>
   );
 }

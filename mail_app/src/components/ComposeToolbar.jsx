@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useCompose } from '../store/compose';
 import { api } from '../api/client';
 import TimePicker, { Popover } from './TimePicker';
+import DraftStatus from './DraftStatus';
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -138,6 +139,9 @@ export default function ComposeToolbar({ account }) {
         내게쓰기
       </button>
 
+      {/* 임시저장 상태는 그 버튼과 같은 줄에 둔다 — 누르는 자리와 결과가 떨어져 있으면
+          눌렀는지 확인하러 눈이 화면을 건너다녀야 한다 */}
+      <DraftStatus />
     </div>
   );
 }

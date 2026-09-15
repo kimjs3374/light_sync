@@ -6,7 +6,6 @@ import { Paperclip, Close } from './Icons';
 import AddressInput from './AddressInput';
 import Editor from './Editor';
 import ComposeToolbar from './ComposeToolbar';
-import DraftStatus from './DraftStatus';
 import PreviewModal from './PreviewModal';
 
 const MODE_TITLE = {
@@ -42,16 +41,11 @@ export default function ComposePage({ win }) {
       <div className="compose-head">
         <div className="compose-head-title">
           <h2 className="compose-heading">{MODE_TITLE[win.mode] || '메일 쓰기'}</h2>
-          {/* 화면을 닫는 건 동작이 아니라 이탈이라 버튼줄이 아니라 여기에 둔다.
-              닫기 바로 아래에 임시저장 상태를 둔다 — 나가기 전에 마지막으로
-              눈에 들어와야 하는 정보가 "저장됐는가"다. */}
-          <div className="compose-close-col">
-            <button className="compose-close" title="작성 취소" aria-label="작성 취소"
-              onClick={() => c.close()}>
-              <Close size={16} />
-            </button>
-            <DraftStatus />
-          </div>
+          {/* 화면을 닫는 건 동작이 아니라 이탈이라 버튼줄이 아니라 여기에 둔다 */}
+          <button className="compose-close" title="작성 취소" aria-label="작성 취소"
+            onClick={() => c.close()}>
+            <Close size={16} />
+          </button>
         </div>
         <ComposeToolbar account={account} />
       </div>

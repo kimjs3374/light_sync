@@ -1,9 +1,18 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
-import { buildComposer, draftSignature } from '../lib/compose';
+import {
+  buildComposer, draftSignature, isTouched, attachBytes, AUTOSAVE_MAX_ATTACH,
+} from '../lib/compose';
 import { useMail } from './mail';
 
 let seq = 0;
+
+// ── 자동 임시저장 ─────────────────────────────────────────────────────────
+// 손으로 누르지 않아도 손을 멈추면 한 번 저장한다. 임시저장 버튼과 같은 곳
+// (임시보관함)에 같은 방식으로 들어간다 — 따로 보관하지 않는다.
+const AUTOSAVE_IDLE_MS = 5000;   // 이만큼 조용하면 저장
+let autosaveTimer = null;
+const cancelAutosave = () => { clearTimeout(autosaveTimer); autosaveTimer = null; };
 
 /**
  * 대용량 첨부 기준. 서버가 알려주는 값으로 덮어쓴다.
@@ -448,6 +457,37 @@ export const useCompose = create((set, get) => ({
 
   update(patch) {
     set((s) => (s.active ? { active: { ...s.active, ...patch } } : {}));
+    get()._scheduleAutosave();
+  },
+
+  /**
+   * 자동저장 시계 다시 맞추기 — 글자를 칠 때마다 뒤로 민다.
+   * 치는 도중에 저장이 끼어들면 커서가 튀고 서버도 쓸데없이 두드린다.
+   */
+  _scheduleAutosave() {
+    cancelAutosave();
+    autosaveTimer = setTimeout(() => get()._autosave(), AUTOSAVE_IDLE_MS);
+  },
+
+  /**
+   * 자동 임시저장.
+   *
+   * 건너뛰는 경우를 분명히 해둔다 — 조용히 저장 안 되는 게 제일 나쁘다:
+   *  - 예약 메일 수정: 임시저장이 아니라 예약본 고치기다
+   *  - 아직 아무것도 안 썼다: 빈 껍데기를 임시보관함에 쌓지 않는다
+   *  - 고친 게 없다: 같은 걸 다시 올리지 않는다
+   *  - 저장/발송 중: 겹쳐 쏘지 않는다
+   *  - 첨부가 크다: 첨부는 저장할 때마다 **다시 올라간다.** 40MB 를 5초마다
+   *    올릴 수는 없다. 이때는 쉬고, 화면이 "첨부가 커서 자동저장 안 함"을 적는다
+   */
+  async _autosave() {
+    const w = get().active;
+    if (!w || w.mode === 'editScheduled') return;
+    if (w.saving || w.sending) return;
+    if (!isTouched(w)) return;
+    if (draftSignature(w) === w.savedSig) return;
+    if (attachBytes(w) > AUTOSAVE_MAX_ATTACH) return;
+    await get().saveDraft({ auto: true });
   },
 
   /**
@@ -458,20 +498,16 @@ export const useCompose = create((set, get) => ({
   canLeave() {
     const a = get().active;
     if (!a) return true;
-    // 연 직후와 달라진 게 있을 때만 물어본다.
-    const i = a.initial || {};
-    const text = (h) => String(h || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-    const same = (x = [], y = []) => x.length === y.length && x.every((v, n) => v === y[n]);
-    const touched = !same(a.to, i.to) || !same(a.cc, i.cc) || !same(a.bcc, i.bcc)
-      || a.subject.trim() !== String(i.subject || '').trim()
-      || a.files.length > 0
-      || text(a.bodyHtml) !== text(i.bodyHtml);
-    if (!touched) return true;
+    // 연 직후와 달라진 게 없으면 묻지 않는다
+    if (!isTouched(a)) return true;
+    // 임시저장해 둔 그대로면 사라지는 게 아니다 — 임시보관함에 남아 있다
+    if (a.savedAt && draftSignature(a) === a.savedSig) return true;
     return window.confirm('쓰던 메일이 사라집니다. 그래도 나갈까요?');
   },
 
   close({ force = false } = {}) {
     if (!force && !get().canLeave()) return false;
+    cancelAutosave();
     get()._cleanupLarge();   // 올려둔 임시 파일은 두고 가지 않는다
     set({ active: null, done: null });
     return true;
@@ -670,10 +706,14 @@ export const useCompose = create((set, get) => ({
     get().update({ to: w.to.some(eq) ? w.to.filter((t) => !eq(t)) : [...w.to, me] });
   },
 
-  /** 임시저장 — 다시 누르면 앞서 저장한 임시본을 갈아끼운다 */
-  async saveDraft() {
+  /**
+   * 임시저장 — 다시 누르면(또는 자동저장이 돌면) 앞서 저장한 임시본을 갈아끼운다.
+   * 자동·수동이 같은 길을 쓴다. 임시보관함에 남는 건 늘 한 통이다.
+   */
+  async saveDraft({ auto = false } = {}) {
     const w = get().active;
     if (!w || w.saving) return;
+    cancelAutosave();   // 지금 저장하니 예약된 자동저장은 취소
     get().update({ saving: true, error: '' });
     try {
       const fd = get()._formData(w);
@@ -693,6 +733,7 @@ export const useCompose = create((set, get) => ({
         savedAt: new Date(),
         draftVersion: (w.draftVersion || 0) + 1,
         savedSig: sig,
+        savedAuto: auto,
       });
       // 임시보관함을 보고 있었다면 방금 저장분이 바로 보여야 한다
       const m = useMail.getState();
@@ -710,6 +751,7 @@ export const useCompose = create((set, get) => ({
    * 스케줄러가 꺼내 붙인다. 그래서 발송과 똑같이 multipart 로 보낸다.
    */
   async schedule(whenLocal) {
+    cancelAutosave();
     const w = get().active;
     if (!w) return;
     if (!w.to.length) { get().update({ error: '받는 사람을 입력하세요.' }); return; }
@@ -775,6 +817,7 @@ export const useCompose = create((set, get) => ({
   },
 
   async send() {
+    cancelAutosave();
     const w = get().active;
     if (!w || w.sending) return;
     if (!w.to.length) {

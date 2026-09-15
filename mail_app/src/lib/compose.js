@@ -69,6 +69,7 @@ export function buildComposer(mode, ctx = {}) {
     savedAt: null,
     draftVersion: 0,    // 몇 번째 임시저장인지 (화면에 v3 처럼 보인다)
     savedSig: '',       // 저장한 순간의 내용 지문 — 지금과 다르면 "변경됨"
+    savedAuto: false,   // 마지막 저장이 자동이었나
   };
 
   if (mode === 'self' && myEmail) return withInitial({ ...base, to: [myEmail] });
@@ -152,4 +153,30 @@ export function draftSignature(w) {
     w.largeFiles.filter((l) => l.status === 'done').map((l) => l.fileId),
     (w.kept || []).map((a) => a.index),
   ]);
+}
+
+
+/** 첨부를 뺀 자동저장 한도 — 이보다 크면 자동저장을 쉰다 */
+export const AUTOSAVE_MAX_ATTACH = 2 * 1024 * 1024;
+
+/** 지금 붙어 있는 (새로 올릴) 첨부의 총 바이트 */
+export const attachBytes = (w) =>
+  (w?.files || []).reduce((n, f) => n + (f.size || 0), 0);
+
+/**
+ * 화면을 연 뒤로 손을 댔는가.
+ *
+ * "나가면 사라진다" 경고와 자동저장이 같은 잣대를 써야 한다 — 한쪽만 손댔다고
+ * 보면 빈 껍데기가 임시보관함에 쌓이거나, 쓴 게 소리 없이 날아간다.
+ */
+export function isTouched(w) {
+  if (!w) return false;
+  const i = w.initial || {};
+  const text = (h) => String(h || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const same = (x = [], y = []) => x.length === y.length && x.every((v, n) => v === y[n]);
+  return !same(w.to, i.to) || !same(w.cc, i.cc) || !same(w.bcc, i.bcc)
+    || w.subject.trim() !== String(i.subject || '').trim()
+    || w.files.length > 0
+    || (w.largeFiles || []).length > 0
+    || text(w.bodyHtml) !== text(i.bodyHtml);
 }

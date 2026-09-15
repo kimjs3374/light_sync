@@ -587,12 +587,7 @@ body.is-splitting iframe { pointer-events: none; }
   flex: 0 0 auto; display: flex; flex-direction: column; gap: 9px;
   padding: 13px 20px 11px; border-bottom: 1px solid var(--hairline);
 }
-.compose-head-title { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
-/* 닫기(✕)와 그 아래 임시저장 상태 — 오른쪽 끝에 세로로 쌓는다 */
-.compose-close-col {
-  flex: 0 0 auto; display: flex; flex-direction: column;
-  align-items: flex-end; gap: 5px;
-}
+.compose-head-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .compose-head-title .compose-heading { flex: 1 1 auto; }
 .compose-heading {
   flex: 0 0 auto; margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.02em;
@@ -810,10 +805,12 @@ body.is-splitting iframe { pointer-events: none; }
 .act:disabled { opacity: .5; cursor: default; }
 .act-wrap { position: relative; }
 /* ── 임시저장 상태 (닫기 버튼 아래) ──────────────────────────────────── */
+/* 보내기·예약·임시저장과 같은 줄, 그 줄의 맨 오른쪽 */
 .draft-status {
-  display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
-  font-size: 11px; line-height: 1.45; white-space: nowrap; text-align: right;
+  margin-left: auto; display: flex; align-items: center; gap: 8px;
+  font-size: 11px; line-height: 1.45; white-space: nowrap;
 }
+.ds-note { color: var(--warn); }
 .ds-state { display: flex; align-items: center; gap: 5px; font-weight: 700; }
 .ds-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
 .ds-meta { color: var(--subtle); font-family: var(--mono); font-size: 10.5px; }
