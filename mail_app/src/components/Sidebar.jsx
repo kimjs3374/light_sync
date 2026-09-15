@@ -3,6 +3,7 @@ import { folderLabel, splitFolders, showsUnread } from '../lib/folders';
 import { Mail } from './Icons';
 import AccountCard from './AccountCard';
 import { useCompose } from '../store/compose';
+import { erpUrl } from '../lib/erp';
 
 export default function Sidebar() {
   const { folders, labels, folder, selectFolder, specialView, openSpecial, selfUnread } = useMail();
@@ -45,7 +46,7 @@ export default function Sidebar() {
         <div className="brand">
           <span className="brand-mark"><Mail /></span>
           <span className="brand-name">매그나텍 메일</span>
-          <a className="erp-link" href="/" title="ERP로 돌아가기">ERP ↗</a>
+          <a className="erp-link" href={erpUrl('/')} title="ERP로 돌아가기">ERP ↗</a>
         </div>
         <AccountCard />
       </div>

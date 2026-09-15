@@ -10,6 +10,7 @@ import ComposeDone from './components/ComposeDone';
 import ScheduledList from './components/ScheduledList';
 import StaleBanner from './components/StaleBanner';
 import { useCompose } from './store/compose';
+import { erpUrl } from './lib/erp';
 
 /**
  * 키보드 이동 — 목록에 커서를 두고 ↑↓/jk 로 옮긴다.
@@ -87,7 +88,7 @@ export default function App() {
     return (
       <div className="boot">
         <p>메일 계정이 설정되지 않았습니다.</p>
-        <a className="btn-compose" href="/mail/settings">ERP에서 메일 설정하기</a>
+        <a className="btn-compose" href={erpUrl('/mail/settings')}>ERP에서 메일 설정하기</a>
       </div>
     );
   }
