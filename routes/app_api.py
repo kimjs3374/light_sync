@@ -5,10 +5,14 @@
 - 토큰 인증 (앱용)
 """
 import datetime
+import hashlib
+import hmac
 import json
+import os
 import time
+from urllib.parse import quote, urlsplit, urlunsplit
 import bcrypt
-from flask import Blueprint, jsonify, request, session, make_response, current_app
+from flask import Blueprint, jsonify, request, session, make_response, current_app, redirect
 from functools import wraps
 from modules.db_context import get_db
 from modules.contract_filters import active_contract_filter
@@ -127,6 +131,105 @@ def app_session_token():
             'writable_menus': perms['writable_menus'],
             'hide_financial': perms['hide_financial'],
         })
+
+
+# ── 호스트 간 로그인 이어받기 (work.mgnt.kr → mail.mgnt.kr) ──────────────────
+# 세션 쿠키는 호스트별이라 mail.mgnt.kr 은 work 의 로그인을 모른다.
+#
+# `SESSION_COOKIE_DOMAIN = '.mgnt.kr'` 한 줄로 푸는 방법도 있지만 쓰지 않았다.
+# 그러면 ERP 세션 쿠키가 team(mattermost)·cloud·docs·db 등 **남의 서비스에까지
+# 매 요청 실려 간다.** 플라스크 세션 쿠키는 서명만 돼 있고 암호화가 아니라
+# 받은 쪽이 권한 목록까지 그대로 읽는다. 그래서 쿠키는 호스트에 가둔 채
+# **60초짜리 코드만 건네** 넘어간 호스트에서 세션을 새로 만든다.
+#
+#   mail.mgnt.kr 부팅 실패
+#     → GET https://work.mgnt.kr/api/app/handoff?to=https://mail.mgnt.kr/
+#         (세션 없으면 /login 부터 → 끝나면 이 주소로 되돌아온다)
+#     → 302 https://mail.mgnt.kr/api/app/handoff-land?code=…&next=/
+#     → mail 호스트에 세션 생성 → 302 /
+#
+# 코드는 상태를 두지 않는 HMAC 이다(일회성은 아니다). 대신 수명이 60초고,
+# 오가는 건 **같은 앱의 두 호스트뿐**이라 `to` 를 허용 목록으로 묶어둔다 —
+# 이게 없으면 남의 주소로 코드를 흘려보내는 열린 리다이렉트가 된다.
+_HANDOFF_TTL = 60
+
+
+def _handoff_hosts() -> set:
+    """로그인을 주고받아도 되는 호스트 — 같은 앱이 서는 이름만."""
+    hosts = {
+        os.environ.get('FLASK_DOMAIN', 'work.mgnt.kr'),
+        os.environ.get('MAIL_APP_HOST', 'mail.mgnt.kr'),
+        'lan-work.mgnt.kr',
+    }
+    return {h.strip().lower() for h in hosts if h and h.strip()}
+
+
+def _make_handoff_code(user_id: int) -> str:
+    """60초짜리 이어받기 코드. 앱 토큰과 섞이지 않도록 용도를 서명에 넣는다."""
+    expires = int(time.time()) + _HANDOFF_TTL
+    secret = current_app.config.get('SECRET_KEY', 'fallback-secret')
+    sig = hmac.new(
+        secret.encode(), f'handoff:{user_id}:{expires}'.encode(), hashlib.sha256
+    ).hexdigest()[:32]
+    return f'{user_id}:{expires}:{sig}'
+
+
+def _verify_handoff_code(code: str):
+    """이어받기 코드 검증 → user_id 또는 None."""
+    try:
+        user_id, expires, sig = code.split(':')
+        user_id, expires = int(user_id), int(expires)
+        if time.time() > expires:
+            return None
+        secret = current_app.config.get('SECRET_KEY', 'fallback-secret')
+        expected = hmac.new(
+            secret.encode(), f'handoff:{user_id}:{expires}'.encode(), hashlib.sha256
+        ).hexdigest()[:32]
+        if not hmac.compare_digest(sig, expected):
+            return None
+        return user_id
+    except Exception:
+        return None
+
+
+@app_api_bp.route('/handoff')
+def app_handoff():
+    """이 호스트의 로그인을 다른 호스트로 건네준다 (세션이 있는 쪽에서 부른다)."""
+    to = request.args.get('to', '')
+    parts = urlsplit(to)
+    if parts.scheme != 'https' or parts.hostname not in _handoff_hosts():
+        return jsonify(ok=False, error='허용되지 않은 주소입니다'), 400
+
+    if 'user_id' not in session:
+        # 로그인부터 시키고, 끝나면 이 주소로 돌아와 다시 건넨다
+        return redirect('/login?next=' + quote(request.full_path, safe=''))
+
+    code = _make_handoff_code(session['user_id'])
+    nxt = urlunsplit(('', '', parts.path or '/', parts.query, parts.fragment))
+    land = (f'{parts.scheme}://{parts.netloc}/api/app/handoff-land'
+            f'?code={quote(code, safe="")}&next={quote(nxt, safe="")}')
+    return redirect(land)
+
+
+@app_api_bp.route('/handoff-land')
+def app_handoff_land():
+    """건네받은 코드로 이 호스트에 세션을 만든다."""
+    nxt = request.args.get('next') or '/'
+    if not nxt.startswith('/') or nxt.startswith('//'):
+        nxt = '/'   # 열린 리다이렉트 방지 — 이 호스트 안으로만 보낸다
+
+    user_id = _verify_handoff_code(request.args.get('code', ''))
+    if not user_id:
+        # 코드가 늙었거나 어긋났다 — 조용히 평범한 로그인으로 보낸다
+        return redirect('/login?next=' + quote(nxt, safe=''))
+
+    with get_db() as db:
+        user = db.query(User).get(user_id)
+        if not user or not user.is_approved or user.is_active is False:
+            return redirect('/login?next=' + quote(nxt, safe=''))
+        session.update(compute_user_permissions(db, user))
+        session.permanent = True
+    return redirect(nxt)
 
 
 @app_api_bp.route('/logout', methods=['POST'])

@@ -20,9 +20,28 @@
 - **번들 base 는 여전히 `/webmail/`** 이다. `mail.mgnt.kr/` 이 내주는 index.html 이
   `/webmail/assets/*` 를 부른다 → `serve_mail_app()` 은 **호스트를 가리지 않고 파일을 내주고,
   화면 진입(index.html)만** mail 호스트로 모은다. 옛 탭이 자산을 계속 받을 수 있는 이유다.
-- **세션 쿠키는 호스트별이다.** work 에 로그인해 있어도 `mail.mgnt.kr` 에서 한 번 더
-  로그인해야 한다(`SESSION_COOKIE_DOMAIN` 을 안 쓴다 — `.mgnt.kr` 로 풀면 team·rnd 등
-  남의 서비스에까지 ERP 쿠키가 날아간다).
+- **세션 쿠키는 호스트별이다.** 그래서 로그인을 **건네받는다**(`/api/app/handoff`):
+
+  ```
+  mail.mgnt.kr/ 부팅 → session-token 401
+    → https://work.mgnt.kr/api/app/handoff?to=https://mail.mgnt.kr/
+        (work 에 세션 있으면 60초짜리 코드 발급 / 없으면 ERP 로그인부터 → 되돌아옴)
+    → https://mail.mgnt.kr/api/app/handoff-land?code=…&next=/
+    → mail 호스트에 세션 생성 → /
+  ```
+
+  `SESSION_COOKIE_DOMAIN = '.mgnt.kr'` 한 줄이면 끝나지만 **쓰지 않았다** —
+  그러면 ERP 세션 쿠키가 team(mattermost)·cloud·docs·db 등 남의 서비스에까지
+  매 요청 실려 가고, 플라스크 쿠키는 서명만 돼 있어 **권한 목록까지 읽힌다.**
+
+  - `to` 는 **허용 호스트 목록**으로 묶는다(`_handoff_hosts()`). 없으면 남의 주소로
+    코드를 흘리는 열린 리다이렉트가 된다.
+  - 코드는 상태 없는 HMAC 이고 **수명 60초**다. 일회성은 아니다.
+  - SPA 는 **한 번만** 건네받으려 한다(`sessionStorage` 의 `erp_handoff_tried`).
+    받고도 세션이 안 잡히면 그대로 무한히 돈다.
+  - **`goLogin()` 은 한 페이지에서 한 번만 나간다.** 401 은 겹쳐서 떨어지는데,
+    뒤엣것이 앞의 이동을 취소해 이어받기가 실제로 끊겼다(`net::ERR_ABORTED`).
+  - 로그아웃은 아직 호스트별이다 — **ERP 에서 로그아웃해도 메일 세션은 남는다**(최대 8시간).
 - 로그인 복귀 주소는 **지금 서 있는 경로**를 쓴다(`window.location.pathname`).
   호스트마다 엔트리가 `/` 와 `/webmail/` 로 달라서다. 새 버전 감지(`isStaleBuild`)도 같다.
 - 301 은 **브라우저가 영구 캐시한다.** 되돌리려면 사용자 캐시가 걸림돌이다

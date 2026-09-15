@@ -12,9 +12,8 @@ let seq = 0;
 let LARGE_THRESHOLD = 25 * 1024 * 1024;
 export const getThreshold = () => LARGE_THRESHOLD;
 
-api.get('/mail/api/upload-config')
-  .then((c) => { if (c?.threshold) LARGE_THRESHOLD = c.threshold; })
-  .catch(() => { /* 기본값으로 간다 */ });
+// 여기서 부팅 즉시 부르지 않는다 — 아래 loadUploadConfig() 주석 참고.
+// (첨부를 붙일 때 한 번 받는다)
 
 let largeSeq = 0;
 

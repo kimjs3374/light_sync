@@ -8,6 +8,8 @@
  * (모바일 SPA가 쓰는 것과 같은 핸드오프).
  */
 
+import { goLogin } from '../lib/erp';
+
 const TOKEN_KEY = 'token';   // 모바일 SPA와 같은 키 — 한쪽에서 받은 토큰을 공유한다
 const USER_KEY = 'user';
 
@@ -55,8 +57,8 @@ class ApiClient {
       // (앱이 뜨는 도중이라 토큰이 아직 없을 수 있다)
       if (optional) throw new Error('인증 없음');
       this.setToken(null);
-      // PC에서 로그인하면 session-token 으로 다시 들어온다
-      window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+      // ERP 에 로그인이 살아 있으면 이어받아 그대로 돌아온다
+      goLogin();
       throw new Error('인증 만료');
     }
     return res;
