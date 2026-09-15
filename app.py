@@ -671,6 +671,28 @@ def index():
 
 
 # =====================================================================
+# 메일 SPA 서빙 (/webmail/ 경로)
+# ---------------------------------------------------------------------
+# 기존 ERP 메일 화면(/mail)은 그대로 둔다 — 익숙한 사용자가 계속 쓰는 화면이라
+# 경로를 겹치지 않게 /webmail 로 잡았다. 두 화면이 같은 /mail/api/* 를 공유한다.
+# 인증은 Bearer 토큰(= /api/app/session-token 으로 세션에서 교환)이라
+# 이 라우트 자체는 정적 파일만 내보내면 된다.
+# =====================================================================
+_mail_app_dist = os.path.join(os.path.dirname(__file__), 'mail_app', 'dist')
+
+@app.route('/webmail/')
+@app.route('/webmail/<path:path>')
+def serve_mail_app(path=''):
+    """메일 SPA — 빌드된 정적 파일 서빙"""
+    if path and os.path.isfile(os.path.join(_mail_app_dist, path)):
+        return send_from_directory(_mail_app_dist, path)
+    # SPA 엔트리(index.html)는 캐시 금지 → 재배포 시 항상 최신 번들
+    resp = send_from_directory(_mail_app_dist, 'index.html')
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return resp
+
+
+# =====================================================================
 # 모바일 SPA 서빙 (/m/ 경로)
 # =====================================================================
 _mobile_dist = os.path.join(os.path.dirname(__file__), 'mobile', 'dist')
@@ -897,7 +919,40 @@ def cleanup_mail_files_cli():
             record.is_deleted = True
             deleted += 1
         db.commit()
-    click.echo(f"[메일정리] 만료 파일 {deleted}건 삭제")
+
+    # 작성하다 만 대용량 첨부 — 올려만 두고 안 보낸 것들.
+    # 정상 흐름에서는 발송 때 옮겨지거나 취소 때 지워지지만,
+    # 탭을 그냥 닫으면 아무도 안 치운다.
+    orphan = 0
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
+    for item in storage_adapter._list_prefix('mail-temp'):
+        name = item.get('name')
+        created = item.get('created_at') or item.get('updated_at') or ''
+        if not name:
+            continue
+        try:
+            when = datetime.datetime.fromisoformat(str(created).replace('Z', '+00:00'))
+        except Exception:
+            continue
+        if when < cutoff:
+            storage_adapter.delete_object(f'mail-temp/{name}')
+            orphan += 1
+
+    # 조각 업로드 찌꺼기 (합치기 전에 중단된 것)
+    chunk_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.upload_tmp')
+    chunk_gone = 0
+    if os.path.isdir(chunk_root):
+        import shutil, time as _t
+        for d in os.listdir(chunk_root):
+            path = os.path.join(chunk_root, d)
+            try:
+                if os.path.isdir(path) and _t.time() - os.path.getmtime(path) > 86400:
+                    shutil.rmtree(path, ignore_errors=True)
+                    chunk_gone += 1
+            except OSError:
+                pass
+
+    click.echo(f"[메일정리] 만료 파일 {deleted}건, 방치된 임시첨부 {orphan}건, 조각 찌꺼기 {chunk_gone}건 삭제")
 
 
 @app.cli.command('update-trip-status')
@@ -996,6 +1051,23 @@ def remind_pending_approvals_cli():
         n_appr, n_docs = svc.send_pending_reminders(db)
         db.commit()
     click.echo("[미결재알림] 결재자 %d명 / 문서 %d건 발송" % (n_appr, n_docs))
+
+
+@app.cli.command('send-scheduled-mails')
+def send_scheduled_mails_cli():
+    """예약발송 처리 (crontab용, 1분 주기).
+
+    APScheduler in-process 방식을 쓰지 않는 이유:
+      - .env 가 FLASK_DEBUG=true 라 init_scheduler() 가 아예 호출되지 않는다
+        (2026-03-31 이후 예약발송이 한 번도 실행되지 않은 원인)
+      - 설사 켜더라도 gunicorn 워커 8개가 각자 스케줄러를 돌려
+        같은 메일을 8번 보낸다. 다른 주기작업들이 이미 같은 이유로 crontab 으로 옮겨졌다.
+    """
+    from modules.scheduler import process_scheduled_mails_once
+
+    sent, failed = process_scheduled_mails_once(app)
+    if sent or failed:
+        click.echo(f"예약발송 — 성공 {sent}건, 실패 {failed}건")
 
 
 @app.cli.command('check-mail-volume')
