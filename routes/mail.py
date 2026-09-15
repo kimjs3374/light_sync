@@ -5,15 +5,21 @@
 """
 
 import os
+import re
+import time
 import json
 import logging
 import uuid
 from datetime import datetime, timedelta
+from urllib.parse import quote as urlquote
+
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
     session, flash, jsonify, Response, current_app, g,
 )
-from modules.auth_decorators import login_required, menu_required, admin_required
+from modules.auth_decorators import (
+    login_required, menu_required, admin_required, _try_token_auth,
+)
 from modules.db_context import get_db
 from modules.models.mail_entities import (
     MailAccount, MailSharedAccess, MailContact, MailReadReceipt, MailLargeFile,
@@ -549,6 +555,14 @@ def api_send():
     draft_replace_uid = request.form.get('draft_replace_uid', type=int)
     draft_folder = request.form.get('draft_folder', '')
 
+    # 대용량 첨부(이미 임시 위치에 올라가 있음) — 발송이 확정된 지금 옮기고 링크를 만든다
+    try:
+        large_items = json.loads(request.form.get('large_files', '[]'))
+    except Exception as e:
+        # 여기서 조용히 넘기면 첨부 링크가 통째로 사라진 채 메일이 나간다
+        logger.error('large_files 해석 실패 — 첨부 링크 없이 발송될 뻔: %s', e)
+        large_items = []
+
     if not to:
         return jsonify({'error': '받는 사람을 입력하세요.'}), 400
 
@@ -566,10 +580,15 @@ def api_send():
     forward_parts_json = request.form.get('forward_parts', '')
 
     with get_db() as db:
+        if large_items:
+            try:
+                html_body += _large_files_html(_promote_large_files(db, large_items))
+            except RuntimeError as e:
+                return jsonify({'error': str(e)}), 500
+
         # 원본 첨부파일 IMAP에서 fetch
         if forward_source_uid and forward_account_id and forward_parts_json:
             try:
-                import json
                 forward_parts = json.loads(forward_parts_json)
                 fwd_client, fwd_account, fwd_err = _get_mail_client(db, forward_account_id)
                 if fwd_client and not fwd_err:
@@ -878,16 +897,27 @@ def api_folders():
 @mail_bp.route('/mail/api/accounts')
 @login_required
 def api_accounts():
-    """현재 사용자가 접근 가능한 계정 목록 (IMAP 미사용, 가볍게 호출 가능)."""
+    """현재 사용자가 접근 가능한 계정 목록 (IMAP 미사용, 가볍게 호출 가능).
+
+    ?include_external=1 이면 외부메일(네이버·다음 등) 계정도 함께 준다.
+    기본값을 바꾸지 않는 이유: 모바일 메일 화면이 같은 API 를 쓰고 있어
+    목록이 갑자기 늘면 그쪽 계정 선택이 달라진다. 새 화면만 옵트인한다.
+    """
+    include_external = request.args.get('include_external') == '1'
     with get_db() as db:
         personal, shared = _get_user_accounts(db, session['user_id'])
+        rows = list(personal) + list(shared)
+        if include_external:
+            rows += list(_get_external_accounts(db, session['user_id']))
         accounts = []
-        for acc in list(personal) + list(shared):
+        for acc in rows:
             accounts.append({
                 'id': acc.id,
                 'email': acc.email,
                 'display_name': acc.display_name or '',
                 'is_shared': bool(acc.is_shared),
+                # 추가 필드 — 기존 소비자(모바일)는 무시하므로 그대로 둬도 안전하다
+                'account_type': getattr(acc, 'account_type', None) or 'internal',
             })
         return jsonify({'accounts': accounts})
 
@@ -1704,10 +1734,88 @@ def api_auto_forward_delete(fwd_id):
 # ---------------------------------------------------------------------------
 # 예약발송 API
 # ---------------------------------------------------------------------------
+# 예약발송 첨부 보관 위치 (Supabase Storage)
+_SCHED_ATTACH_PREFIX = 'mail-scheduled'
+
+
+def _store_scheduled_attachments(sched_id, files):
+    """예약 메일의 첨부를 Storage 에 올리고 메타데이터 목록을 돌려준다.
+
+    files: [(filename, bytes, content_type), ...]
+    반환:  [{'filename':…, 'path':…, 'size':…, 'content_type':…}, ...]
+
+    예약은 몇 시간 뒤에 실행되므로 파일 바이트를 메모리나 DB 본문에 들고 있을
+    수 없다. Storage 에 올려 두고 경로만 DB(attachments_json)에 적는다.
+    """
+    stored = []
+    for fname, data, ctype in files:
+        if not fname or not data:
+            continue
+        ext = os.path.splitext(fname)[1] or ''
+        # 번호 대신 임의 이름 — 예약을 수정할 때 남겨둔 첨부를 덮어쓰지 않도록
+        path = f'{_SCHED_ATTACH_PREFIX}/{sched_id}/{uuid.uuid4().hex[:10]}{ext}'
+        ok, msg = storage_adapter.upload_bytes(
+            path, data, content_type=ctype or 'application/octet-stream')
+        if not ok:
+            logger.error('예약 첨부 업로드 실패: %s → %s (%s)', fname, path, msg)
+            raise RuntimeError(f'첨부 저장 실패: {fname}')
+        stored.append({
+            'filename': fname, 'path': path,
+            'size': len(data), 'content_type': ctype or '',
+        })
+    return stored
+
+
+def _delete_scheduled_attachments(attachments_json):
+    """예약이 취소·완료됐을 때 Storage 에 남은 첨부를 지운다."""
+    try:
+        for a in json.loads(attachments_json or '[]'):
+            if a.get('path'):
+                storage_adapter.delete_object(a['path'])
+    except Exception as e:
+        logger.warning('예약 첨부 정리 실패: %s', e)
+
+
 @mail_bp.route('/mail/api/schedule', methods=['POST'])
 @login_required
 def api_schedule_send():
-    data = request.get_json()
+    """예약발송 등록.
+
+    JSON 과 multipart 를 모두 받는다 — 기존 ERP 작성 화면은 JSON 으로 부르고,
+    새 메일 화면은 첨부를 실어 multipart 로 부른다.
+    """
+    is_form = bool(request.files) or not request.is_json
+    if is_form:
+        data = {
+            'account_id': request.form.get('account_id', type=int),
+            'to': request.form.get('to', ''),
+            'cc': request.form.get('cc', ''),
+            'bcc': request.form.get('bcc', ''),
+            'subject': request.form.get('subject', ''),
+            'body': request.form.get('body', ''),
+            'scheduled_at': request.form.get('scheduled_at', ''),
+        }
+    else:
+        data = request.get_json() or {}
+
+    if not data.get('account_id') or not data.get('scheduled_at'):
+        return jsonify({'error': '계정과 예약 시각이 필요합니다.'}), 400
+
+    # 연도 네 자리로 제한 — 화면 제한만으로는 직접 호출을 못 막는다
+    _at = str(data['scheduled_at']).strip()
+    for _fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+        try:
+            _parsed = datetime.strptime(_at, _fmt)
+            break
+        except ValueError:
+            _parsed = None
+    if _parsed is None:
+        return jsonify({'error': '예약 시각 형식을 확인해주세요.'}), 400
+    if _parsed.year > 9999:
+        return jsonify({'error': '예약 연도는 9999년까지만 됩니다.'}), 400
+    if _parsed <= datetime.now():
+        return jsonify({'error': '지난 시각으로는 예약할 수 없습니다.'}), 400
+
     with get_db() as db:
         sched = MailScheduled(
             account_id=data['account_id'],
@@ -1719,30 +1827,287 @@ def api_schedule_send():
             body=data.get('body', ''),
             scheduled_at=data['scheduled_at'],
         )
+        # 대용량 첨부는 예약 시점에 바로 링크로 바꿔 본문에 넣는다
+        try:
+            large_items = json.loads(request.form.get('large_files', '[]'))
+        except Exception as e:
+            logger.error('예약 large_files 해석 실패: %s', e)
+            large_items = []
+        if large_items:
+            try:
+                sched.body = (sched.body or '') + _large_files_html(
+                    _promote_large_files(db, large_items))
+            except RuntimeError as e:
+                db.rollback()
+                return jsonify({'error': str(e)}), 500
+
         db.add(sched)
+        db.flush()   # 첨부 경로에 쓸 id 확보
+
+        # 새로 올린 파일 + 전달 원본 첨부(IMAP에서 바로 읽어 옮긴다)
+        pending = []
+        for f in request.files.getlist('attachments'):
+            if f.filename:
+                pending.append((f.filename, f.read(), f.mimetype))
+
+        fwd_uid = request.form.get('forward_source_uid', type=int)
+        fwd_account = request.form.get('forward_account_id', type=int)
+        fwd_folder = request.form.get('forward_folder', 'INBOX')
+        fwd_parts = request.form.get('forward_parts', '')
+        if fwd_uid and fwd_account and fwd_parts:
+            try:
+                fwd_client, _fwd_acc, fwd_err = _get_mail_client(db, fwd_account)
+                if fwd_client and not fwd_err:
+                    with fwd_client:
+                        for part_id in json.loads(fwd_parts):
+                            fname, ctype, raw = fwd_client.fetch_attachment(
+                                fwd_uid, str(part_id), fwd_folder)
+                            if fname and raw:
+                                pending.append((fname, raw, ctype))
+            except Exception as e:
+                logger.error('예약 전달 첨부 로드 실패: %s', e)
+
+        if pending:
+            try:
+                sched.attachments_json = json.dumps(
+                    _store_scheduled_attachments(sched.id, pending), ensure_ascii=False)
+            except RuntimeError as e:
+                db.rollback()
+                return jsonify({'error': str(e)}), 500
+
         db.commit()
-        return jsonify({'success': True, 'id': sched.id})
+        return jsonify({
+            'success': True, 'id': sched.id,
+            'attachment_count': len(pending),
+        })
 
 
 @mail_bp.route('/mail/api/schedule')
 @login_required
 def api_schedule_list():
+    """예약 대기 목록. status 를 주면 그 상태만 (기본: pending)."""
     account_id = request.args.get('account', type=int)
+    status = request.args.get('status', 'pending')
     with get_db() as db:
-        rows = db.query(MailScheduled).filter_by(
-            account_id=account_id, status='pending'
-        ).order_by(MailScheduled.scheduled_at).all()
-        return jsonify([{
-            'id': r.id, 'to': r.to_addresses, 'subject': r.subject,
-            'scheduled_at': r.scheduled_at.strftime('%Y-%m-%d %H:%M'),
-        } for r in rows])
+        q = db.query(MailScheduled).filter_by(account_id=account_id)
+        if status != 'all':
+            q = q.filter(MailScheduled.status == status)
+        rows = q.order_by(MailScheduled.scheduled_at).all()
+
+        out = []
+        for r in rows:
+            try:
+                n_att = len(json.loads(r.attachments_json or '[]'))
+            except Exception:
+                n_att = 0
+            out.append({
+                'id': r.id,
+                'to': r.to_addresses,
+                'cc': r.cc_addresses or '',
+                'bcc': r.bcc_addresses or '',
+                'subject': r.subject,
+                'status': r.status,
+                'attachment_count': n_att,
+                'scheduled_at': r.scheduled_at.strftime('%Y-%m-%d %H:%M') if r.scheduled_at else '',
+                'created_at': r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '',
+            })
+        return jsonify(out)
+
+
+def _own_schedule(db, sched_id):
+    """내가 손댈 수 있는 대기 중 예약인지 확인해서 돌려준다.
+
+    예전에는 id 만 맞으면 누구나 남의 예약을 지울 수 있었다.
+    예약을 건 사람(또는 관리자)만 만지게 한다.
+    """
+    row = db.query(MailScheduled).filter_by(id=sched_id, status='pending').first()
+    if not row:
+        return None, ('이미 보냈거나 없는 예약입니다.', 404)
+    if row.user_id != session.get('user_id') and session.get('role') != 'admin':
+        return None, ('이 예약을 변경할 권한이 없습니다.', 403)
+    return row, None
+
+
+@mail_bp.route('/mail/api/schedule/<int:sched_id>')
+@login_required
+def api_schedule_detail(sched_id):
+    """예약 메일 한 건의 본문·첨부 목록."""
+    with get_db() as db:
+        row = db.query(MailScheduled).filter_by(id=sched_id).first()
+        if not row:
+            return jsonify({'error': '예약을 찾을 수 없습니다.'}), 404
+        if row.user_id != session.get('user_id') and session.get('role') != 'admin':
+            return jsonify({'error': '이 예약을 볼 권한이 없습니다.'}), 403
+
+        try:
+            atts = json.loads(row.attachments_json or '[]')
+        except Exception:
+            atts = []
+
+        return jsonify({
+            'id': row.id,
+            'status': row.status,
+            'to': row.to_addresses, 'cc': row.cc_addresses or '', 'bcc': row.bcc_addresses or '',
+            'subject': row.subject or '',
+            # 본문은 이 사용자가 직접 쓴 HTML 이라 그대로 돌려준다
+            'body': row.body or '',
+            'scheduled_at': row.scheduled_at.strftime('%Y-%m-%d %H:%M') if row.scheduled_at else '',
+            'created_at': row.created_at.strftime('%Y-%m-%d %H:%M') if row.created_at else '',
+            'attachments': [{
+                'index': i,
+                'filename': a.get('filename', ''),
+                'size': a.get('size', 0),
+                'content_type': a.get('content_type', ''),
+            } for i, a in enumerate(atts)],
+        })
+
+
+@mail_bp.route('/mail/api/schedule/<int:sched_id>/attachment/<int:idx>')
+@login_required
+def api_schedule_attachment(sched_id, idx):
+    """예약 메일에 달아둔 첨부 내려받기 (Storage 에서 꺼내 그대로 넘긴다)."""
+    with get_db() as db:
+        row = db.query(MailScheduled).filter_by(id=sched_id).first()
+        if not row:
+            return jsonify({'error': '예약을 찾을 수 없습니다.'}), 404
+        if row.user_id != session.get('user_id') and session.get('role') != 'admin':
+            return jsonify({'error': '권한이 없습니다.'}), 403
+        try:
+            atts = json.loads(row.attachments_json or '[]')
+        except Exception:
+            atts = []
+        if idx < 0 or idx >= len(atts):
+            return jsonify({'error': '첨부를 찾을 수 없습니다.'}), 404
+
+        a = atts[idx]
+        data = storage_adapter.download_bytes(a.get('path', ''))
+        if data is None:
+            return jsonify({'error': '첨부 파일을 읽지 못했습니다.'}), 404
+
+        filename = a.get('filename') or 'attachment'
+        resp = Response(data, mimetype=a.get('content_type') or 'application/octet-stream')
+        resp.headers['Content-Disposition'] = (
+            "attachment; filename*=UTF-8''" + urlquote(filename)
+        )
+        return resp
+
+
+@mail_bp.route('/mail/api/schedule/<int:sched_id>', methods=['PATCH'])
+@login_required
+def api_schedule_update(sched_id):
+    """예약 시각 변경. 본문·첨부는 그대로 두고 보낼 시각만 바꾼다."""
+    data = request.get_json() or {}
+    at = (data.get('scheduled_at') or '').strip()
+    if not at:
+        return jsonify({'error': '변경할 시각이 필요합니다.'}), 400
+
+    with get_db() as db:
+        row, err = _own_schedule(db, sched_id)
+        if err:
+            return jsonify({'error': err[0]}), err[1]
+        try:
+            new_at = datetime.strptime(at, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            try:
+                new_at = datetime.strptime(at, '%Y-%m-%d %H:%M')
+            except ValueError:
+                return jsonify({'error': '시각 형식을 확인해주세요.'}), 400
+        if new_at <= datetime.now():
+            return jsonify({'error': '지난 시각으로는 변경할 수 없습니다.'}), 400
+        if new_at.year > 9999:
+            return jsonify({'error': '예약 연도는 9999년까지만 됩니다.'}), 400
+
+        row.scheduled_at = new_at
+        db.commit()
+        return jsonify({
+            'success': True,
+            'scheduled_at': new_at.strftime('%Y-%m-%d %H:%M'),
+        })
+
+
+@mail_bp.route('/mail/api/schedule/<int:sched_id>', methods=['PUT'])
+@login_required
+def api_schedule_replace(sched_id):
+    """예약 메일 통째로 수정 — 받는사람·제목·본문·첨부·시각.
+
+    첨부는 '남길 기존 첨부 번호(keep_attachments)' + '새로 올린 파일' 로 받는다.
+    빠진 기존 첨부는 Storage 에서도 지운다.
+    """
+    with get_db() as db:
+        row, err = _own_schedule(db, sched_id)
+        if err:
+            return jsonify({'error': err[0]}), err[1]
+
+        at = (request.form.get('scheduled_at') or '').strip()
+        parsed = None
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+            try:
+                parsed = datetime.strptime(at, fmt)
+                break
+            except ValueError:
+                continue
+        if parsed is None:
+            return jsonify({'error': '예약 시각 형식을 확인해주세요.'}), 400
+        if parsed.year > 9999:
+            return jsonify({'error': '예약 연도는 9999년까지만 됩니다.'}), 400
+        if parsed <= datetime.now():
+            return jsonify({'error': '지난 시각으로는 예약할 수 없습니다.'}), 400
+
+        to = request.form.get('to', '')
+        if not [a for a in to.split(',') if a.strip()]:
+            return jsonify({'error': '받는 사람을 입력하세요.'}), 400
+
+        try:
+            old = json.loads(row.attachments_json or '[]')
+        except Exception:
+            old = []
+        try:
+            keep = set(json.loads(request.form.get('keep_attachments', '[]')))
+        except Exception:
+            keep = set(range(len(old)))
+
+        kept = [a for i, a in enumerate(old) if i in keep]
+        for i, a in enumerate(old):
+            if i not in keep and a.get('path'):
+                storage_adapter.delete_object(a['path'])
+
+        pending = []
+        for f in request.files.getlist('attachments'):
+            if f.filename:
+                pending.append((f.filename, f.read(), f.mimetype))
+        try:
+            added = _store_scheduled_attachments(sched_id, pending) if pending else []
+        except RuntimeError as e:
+            return jsonify({'error': str(e)}), 500
+
+        row.to_addresses = to
+        row.cc_addresses = request.form.get('cc', '')
+        row.bcc_addresses = request.form.get('bcc', '')
+        row.subject = request.form.get('subject', '')
+        row.body = request.form.get('body', '')
+        row.scheduled_at = parsed
+        row.attachments_json = json.dumps(kept + added, ensure_ascii=False)
+        db.commit()
+
+        return jsonify({
+            'success': True,
+            'scheduled_at': parsed.strftime('%Y-%m-%d %H:%M'),
+            'attachment_count': len(kept) + len(added),
+        })
 
 
 @mail_bp.route('/mail/api/schedule/<int:sched_id>', methods=['DELETE'])
 @login_required
 def api_schedule_cancel(sched_id):
     with get_db() as db:
-        db.query(MailScheduled).filter_by(id=sched_id, status='pending').delete()
+        row, err = _own_schedule(db, sched_id)
+        if err:
+            # 이미 없는 건 성공으로 본다 (두 번 눌러도 오류가 안 뜨게)
+            return (jsonify({'success': True}) if err[1] == 404
+                    else (jsonify({'error': err[0]}), err[1]))
+        # 예약을 지우면 Storage 에 올려둔 첨부도 같이 치운다
+        _delete_scheduled_attachments(row.attachments_json)
+        db.delete(row)
         db.commit()
         return jsonify({'success': True})
 
@@ -2170,6 +2535,500 @@ LARGE_FILE_THRESHOLD = 25 * 1024 * 1024  # 25MB
 LARGE_FILE_EXPIRE_DAYS = 30
 
 
+# 대용량 첨부 — 임시 보관 위치. 발송이 확정되면 mail-attachments/ 로 옮긴다.
+_TEMP_ATTACH_PREFIX = 'mail-temp'
+LARGE_FILE_THRESHOLD = 25 * 1024 * 1024   # 이보다 크면 링크 방식
+
+
+@mail_bp.route('/mail/api/upload-config')
+@login_required
+def api_upload_config():
+    """작성 화면이 대용량 업로드를 어디로 보낼지 알려준다.
+
+    Cloudflare 를 거치면 업로드 용량이 막히므로(요청이 서버에 도달조차 못 한다)
+    사내망에서는 내부 주소로 바로 올린다. 기존 ERP 작성 화면도 같은 방식이다.
+    """
+    return jsonify({
+        'internal_url': os.environ.get('MAIL_UPLOAD_INTERNAL_URL', 'http://192.168.0.110:8501'),
+        'threshold': LARGE_FILE_THRESHOLD,
+        'expire_days': LARGE_FILE_EXPIRE_DAYS,
+        # Cloudflare 를 지나는 요청 하나의 크기. 넉넉히 작게 잡는다.
+        'chunk_size': 8 * 1024 * 1024,
+    })
+
+
+# 조각 업로드 임시 폴더. /tmp 를 쓰지 않는 이유: systemd PrivateTmp 가 켜져 있으면
+# 서비스마다 /tmp 가 따로 보여 조각을 서로 못 찾는다.
+_CHUNK_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.upload_tmp')
+_UPLOAD_ID_RE = re.compile(r'^[0-9a-f]{8,64}$')
+
+
+def _chunk_dir(upload_id):
+    """조각 보관 폴더. upload_id 는 16진수만 허용 — 경로를 벗어나지 못하게."""
+    if not _UPLOAD_ID_RE.match(upload_id or ''):
+        return None
+    return os.path.join(_CHUNK_DIR, upload_id)
+
+
+def _upload_auth_ok():
+    remote = request.remote_addr or ''
+    if remote.startswith('192.168.') or remote.startswith('10.') or remote == '127.0.0.1':
+        return True
+    return 'user_id' in session or _try_token_auth()
+
+
+@mail_bp.route('/mail/api/upload-sign', methods=['POST'])
+@login_required
+def api_upload_sign():
+    """대용량 첨부를 브라우저가 Storage 로 바로 올리도록 서명 URL 을 내준다.
+
+    조각 업로드는 브라우저 → Cloudflare → 우리 서버 → 디스크 병합 → Storage 로
+    같은 데이터를 두 번 실어 나른다. 서명 URL 을 쓰면 브라우저가 Storage 에
+    바로 꽂아 우리 서버를 아예 거치지 않는다.
+
+    서명은 서버만 할 수 있다 (service key 를 브라우저에 줄 수 없다).
+    토큰은 1분짜리라 발급받자마자 올리기 시작해야 한다.
+    """
+    data = request.get_json(silent=True) or {}
+    filename = data.get('filename') or 'attachment'
+
+    cfg = storage_adapter.get_storage_config()
+    internal_url = os.environ.get('SUPABASE_INTERNAL_URL', '').rstrip('/')
+    public_url = _storage_base()
+    if not cfg['enabled'] or not internal_url or not public_url:
+        return jsonify({'error': '파일 저장소가 설정되지 않았습니다.'}), 500
+
+    file_id = uuid.uuid4().hex[:16]
+    ext = os.path.splitext(filename)[1] or ''
+    temp_path = f'{_TEMP_ATTACH_PREFIX}/{file_id}{ext}'
+    obj = urlquote(temp_path, safe='/')
+
+    import requests as req
+    try:
+        r = req.post(
+            f"{internal_url}/storage/v1/object/upload/sign/{cfg['bucket']}/{obj}",
+            headers={
+                'apikey': cfg['key'],
+                'Authorization': f"Bearer {cfg['key']}",
+                'Content-Type': 'application/json',
+            },
+            json={},
+            timeout=20,
+        )
+    except Exception as e:
+        logger.error('서명 URL 발급 실패: %s', e)
+        return jsonify({'error': '업로드 준비에 실패했습니다.'}), 500
+
+    if r.status_code != 200:
+        logger.error('서명 URL 발급 실패: %s %s', r.status_code, r.text[:200])
+        return jsonify({'error': '업로드 준비에 실패했습니다.'}), 500
+
+    token = (r.json() or {}).get('token')
+    if not token:
+        return jsonify({'error': '업로드 토큰을 받지 못했습니다.'}), 500
+
+    return jsonify({
+        'success': True,
+        'file_id': file_id,
+        'temp_path': temp_path,
+        # 사내면 서버 직결 주소, 밖이면 평소 주소
+        'upload_url': f"{public_url}/storage/v1/object/upload/sign/{cfg['bucket']}/{obj}?token={token}",
+        'lan': _is_lan_client(),
+    })
+
+
+# 사내에서 접속했는지 판별 — 사내면 업로드를 서버로 바로 보낸다.
+#   사내 사용자도 지금은 VPS(서울)를 거쳐 되돌아오느라 tailnet 147Mbps 에 묶인다.
+#   같은 건물 서버에 올리는 파일이 서울을 왕복하는 셈이다.
+#   실측: VPS 경유 15.9MB/s vs 사내 직결 84.8MB/s
+_LAN_PREFIXES = ('192.168.', '10.', '127.0.0.1')
+
+
+def _client_ip():
+    """실제 사용자 IP. VPS(nginx)가 X-Forwarded-For 로 넘겨주고
+    ProxyFix(x_for=2) 가 remote_addr 에 반영한다."""
+    fwd = request.headers.get('X-Forwarded-For', '')
+    if fwd:
+        return fwd.split(',')[0].strip()
+    return request.remote_addr or ''
+
+
+def _is_lan_client():
+    ip = _client_ip()
+    if ip.startswith(_LAN_PREFIXES):
+        return True
+    # 172.16.0.0 ~ 172.31.255.255
+    if ip.startswith('172.'):
+        try:
+            return 16 <= int(ip.split('.')[1]) <= 31
+        except (IndexError, ValueError):
+            return False
+    return False
+
+
+def _storage_base():
+    """이 사용자가 써야 할 Storage 주소.
+
+    사내면 서버에 바로 꽂는 주소(MAIL_STORAGE_LAN_URL), 밖이면 평소 주소.
+    사내 주소는 공개 DNS 가 사설 IP 를 가리키게 해둔 것이라
+    밖에서는 접속이 안 된다 — 그래서 사내 사용자에게만 내준다.
+    """
+    lan = os.environ.get('MAIL_STORAGE_LAN_URL', '').rstrip('/')
+    if lan and _is_lan_client():
+        return lan
+    return os.environ.get('SUPABASE_URL', '').rstrip('/')
+
+
+@mail_bp.route('/mail/api/upload-token', methods=['POST'])
+@login_required
+def api_upload_token():
+    """100MB 넘는 첨부를 브라우저가 Storage 로 바로 올리게 해주는 토큰.
+
+    단일 PUT 은 Cloudflare 가 100MB 에서 막는다. TUS(재개 업로드)는 6MB 씩
+    나눠 보내므로 그 한도를 넘지 않으면서도 목적지는 Storage 직접이라
+    우리 서버를 한 번도 거치지 않는다.
+
+    service 키는 절대 브라우저에 주지 않는다. 대신 30분짜리 토큰을 만들어
+    준다 — 이 토큰으로 할 수 있는 일은 storage.objects 정책상
+    'company-files/mail-temp/' 아래 쓰기뿐이다.
+    """
+    import jwt as _jwt
+
+    secret = os.environ.get('SUPABASE_JWT_SECRET') or _read_supabase_jwt_secret()
+    if not secret:
+        return jsonify({'error': '업로드 토큰을 만들 수 없습니다.'}), 500
+
+    data = request.get_json(silent=True) or {}
+    filename = data.get('filename') or 'attachment'
+    file_id = uuid.uuid4().hex[:16]
+    ext = os.path.splitext(filename)[1] or ''
+    temp_path = f'{_TEMP_ATTACH_PREFIX}/{file_id}{ext}'
+
+    now = int(time.time())
+    token = _jwt.encode(
+        {
+            'role': 'authenticated',
+            'sub': str(session.get('user_id') or ''),
+            'aud': 'authenticated',
+            'iat': now,
+            'exp': now + 30 * 60,
+        },
+        secret, algorithm='HS256',
+    )
+
+    cfg = storage_adapter.get_storage_config()
+    base = _storage_base()
+    return jsonify({
+        'success': True,
+        'file_id': file_id,
+        'temp_path': temp_path,
+        'bucket': cfg['bucket'],
+        'endpoint': f'{base}/storage/v1/upload/resumable',
+        'token': token,
+        'lan': _is_lan_client(),
+    })
+
+
+def _read_supabase_jwt_secret():
+    """Supabase 설치 폴더에서 JWT 비밀키를 읽는다 (.env 에 없을 때)."""
+    for path in ('/supabase/config/docker/.env',):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.startswith('JWT_SECRET='):
+                        return line.split('=', 1)[1].strip()
+        except Exception:
+            continue
+    return None
+
+
+@mail_bp.route('/mail/api/upload-chunk', methods=['POST', 'OPTIONS'])
+def api_upload_chunk():
+    """대용량 첨부 조각 받기.
+
+    Cloudflare 가 큰 요청을 막아 서버까지 오지 못하므로(로그에 흔적조차 없다)
+    브라우저에서 파일을 잘라 보낸다. 조각 하나는 작아서 그대로 통과한다.
+    """
+    if request.method == 'OPTIONS':
+        return '', 200
+    if not _upload_auth_ok():
+        return jsonify({'error': '인증이 필요합니다.'}), 401
+
+    upload_id = request.form.get('upload_id', '')
+    d = _chunk_dir(upload_id)
+    if not d:
+        return jsonify({'error': '잘못된 업로드 번호입니다.'}), 400
+    try:
+        index = int(request.form.get('index', '-1'))
+    except ValueError:
+        index = -1
+    if index < 0:
+        return jsonify({'error': '조각 번호가 없습니다.'}), 400
+
+    chunk = request.files.get('chunk')
+    if not chunk:
+        return jsonify({'error': '조각이 없습니다.'}), 400
+
+    os.makedirs(d, exist_ok=True)
+    chunk.save(os.path.join(d, f'{index:06d}'))
+    return jsonify({'success': True, 'index': index})
+
+
+@mail_bp.route('/mail/api/upload-finish', methods=['POST', 'OPTIONS'])
+def api_upload_finish():
+    """조각을 이어 붙여 Storage 임시 위치로 올린다."""
+    if request.method == 'OPTIONS':
+        return '', 200
+    if not _upload_auth_ok():
+        return jsonify({'error': '인증이 필요합니다.'}), 401
+
+    data = request.get_json(silent=True) or request.form
+    upload_id = data.get('upload_id', '')
+    filename = data.get('filename') or 'attachment'
+    try:
+        total = int(data.get('total', '0'))
+    except ValueError:
+        total = 0
+
+    d = _chunk_dir(upload_id)
+    if not d or not os.path.isdir(d):
+        return jsonify({'error': '올라온 조각이 없습니다.'}), 400
+
+    parts = sorted(os.listdir(d))
+    if total and len(parts) != total:
+        _rm_chunks(d)
+        return jsonify({'error': f'조각이 모자랍니다 ({len(parts)}/{total}). 다시 올려주세요.'}), 400
+
+    merged = os.path.join(d, 'merged')
+    size = 0
+    try:
+        with open(merged, 'wb') as out:
+            for name in parts:
+                path = os.path.join(d, name)
+                with open(path, 'rb') as f:
+                    while True:
+                        buf = f.read(1024 * 1024)
+                        if not buf:
+                            break
+                        out.write(buf)
+                        size += len(buf)
+    except Exception as e:
+        _rm_chunks(d)
+        logger.exception('조각 병합 실패: %s', e)
+        return jsonify({'error': f'파일 합치기 실패: {e}'}), 500
+
+    file_id = uuid.uuid4().hex[:16]
+    ext = os.path.splitext(filename)[1] or ''
+    temp_path = f'{_TEMP_ATTACH_PREFIX}/{file_id}{ext}'
+
+    internal_url = os.environ.get('SUPABASE_INTERNAL_URL', '').rstrip('/')
+    cfg = storage_adapter.get_storage_config()
+    if not internal_url or not cfg['enabled']:
+        _rm_chunks(d)
+        return jsonify({'error': '파일 저장소가 설정되지 않았습니다.'}), 500
+
+    import requests as req
+    upload_url = f"{internal_url}/storage/v1/object/{cfg['bucket']}/{urlquote(temp_path, safe='/')}"
+    try:
+        with open(merged, 'rb') as f:
+            resp = req.post(
+                upload_url,
+                headers={
+                    'apikey': cfg['key'],
+                    'Authorization': f"Bearer {cfg['key']}",
+                    'Content-Type': 'application/octet-stream',
+                    'x-upsert': 'true',
+                },
+                data=f,
+                timeout=1800,
+            )
+    except Exception as e:
+        _rm_chunks(d)
+        logger.exception('조각 업로드 전송 오류: %s', e)
+        return jsonify({'error': f'업로드 오류: {e}'}), 500
+    finally:
+        pass
+
+    if resp.status_code not in (200, 201):
+        _rm_chunks(d)
+        logger.error('조각 업로드 실패: %s — %s %s', filename, resp.status_code, resp.text[:300])
+        return jsonify({'error': f'업로드 실패: {resp.text[:200]}'}), 500
+
+    _rm_chunks(d)
+    logger.info('조각 업로드 완료: %s (%s bytes, %d조각) → %s', filename, size, len(parts), temp_path)
+    return jsonify({
+        'success': True,
+        'file_id': file_id,
+        'filename': filename,
+        'size': size,
+        'temp_path': temp_path,
+    })
+
+
+@mail_bp.route('/mail/api/upload-chunk/<upload_id>', methods=['DELETE', 'OPTIONS'])
+def api_upload_chunk_cancel(upload_id):
+    """올리다 만 조각 정리."""
+    if request.method == 'OPTIONS':
+        return '', 200
+    if not _upload_auth_ok():
+        return jsonify({'error': '인증이 필요합니다.'}), 401
+    d = _chunk_dir(upload_id)
+    if d:
+        _rm_chunks(d)
+    return jsonify({'success': True})
+
+
+def _rm_chunks(d):
+    import shutil
+    try:
+        shutil.rmtree(d, ignore_errors=True)
+    except Exception:
+        pass
+
+
+@mail_bp.route('/mail/api/upload-temp', methods=['POST', 'OPTIONS'])
+def api_upload_temp():
+    """대용량 첨부 1단계 — 파일을 붙이는 즉시 임시 위치에 올린다.
+
+    아직 MailLargeFile 레코드는 만들지 않는다. 발송이 확정돼야 링크가 생긴다.
+    작성을 그만두면 /mail/api/upload-temp/<file_id> DELETE 로 지운다.
+    """
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    remote = request.remote_addr or ''
+    is_internal = remote.startswith('192.168.') or remote.startswith('10.') or remote == '127.0.0.1'
+    if not is_internal and 'user_id' not in session and not _try_token_auth():
+        return jsonify({'error': '인증이 필요합니다.'}), 401
+
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify({'error': '파일이 없습니다.'}), 400
+
+    file_id = uuid.uuid4().hex[:16]
+    ext = os.path.splitext(f.filename)[1] or ''
+    temp_path = f'{_TEMP_ATTACH_PREFIX}/{file_id}{ext}'
+
+    internal_url = os.environ.get('SUPABASE_INTERNAL_URL', '').rstrip('/')
+    cfg = storage_adapter.get_storage_config()
+    if not internal_url or not cfg['enabled']:
+        return jsonify({'error': '파일 저장소가 설정되지 않았습니다.'}), 500
+
+    import requests as req
+    upload_url = f"{internal_url}/storage/v1/object/{cfg['bucket']}/{urlquote(temp_path, safe='/')}"
+    try:
+        resp = req.post(
+            upload_url,
+            headers={
+                'apikey': cfg['key'],
+                'Authorization': f"Bearer {cfg['key']}",
+                'Content-Type': f.content_type or 'application/octet-stream',
+                'x-upsert': 'true',
+            },
+            data=f.stream,
+            timeout=1800,
+        )
+    except Exception as e:
+        logger.exception('임시 업로드 오류: %s', e)
+        return jsonify({'error': f'업로드 오류: {e}'}), 500
+
+    if resp.status_code not in (200, 201):
+        logger.error('임시 업로드 실패: %s — %s %s', f.filename, resp.status_code, resp.text[:300])
+        return jsonify({'error': f'업로드 실패: {resp.text[:200]}'}), 500
+
+    size = f.content_length or 0
+    if not size:
+        try:
+            size = f.stream.tell()
+        except Exception:
+            size = 0
+
+    logger.info('임시 업로드 완료: %s (%s bytes) → %s', f.filename, size, temp_path)
+    return jsonify({
+        'success': True,
+        'file_id': file_id,
+        'filename': f.filename,
+        'size': size,
+        'temp_path': temp_path,
+        'content_type': f.content_type or '',
+    })
+
+
+@mail_bp.route('/mail/api/upload-temp/<file_id>', methods=['DELETE', 'OPTIONS'])
+def api_upload_temp_delete(file_id):
+    """작성 취소·첨부 제거 시 임시 파일 삭제."""
+    if request.method == 'OPTIONS':
+        return '', 200
+    remote = request.remote_addr or ''
+    is_internal = remote.startswith('192.168.') or remote.startswith('10.') or remote == '127.0.0.1'
+    if not is_internal and 'user_id' not in session and not _try_token_auth():
+        return jsonify({'error': '인증이 필요합니다.'}), 401
+
+    ext = request.args.get('ext', '')
+    if not re.fullmatch(r'\.[A-Za-z0-9]{0,10}', ext or '.'):
+        ext = ''
+    storage_adapter.delete_object(f'{_TEMP_ATTACH_PREFIX}/{file_id}{ext}')
+    return jsonify({'success': True})
+
+
+def _promote_large_files(db, items):
+    """대용량 첨부 2단계 — 임시 위치에서 첨부 보관함으로 옮기고 링크를 만든다.
+
+    items: [{file_id, filename, size, temp_path}]
+    반환:  [{filename, size, download_url, expires_at}]
+    """
+    out = []
+    dl_domain = os.environ.get('FLASK_DOMAIN', 'work.mgnt.kr')
+    expires_at = datetime.now() + timedelta(days=LARGE_FILE_EXPIRE_DAYS)
+
+    for it in items:
+        file_id = str(it.get('file_id') or '')
+        temp_path = str(it.get('temp_path') or '')
+        filename = it.get('filename') or 'attachment'
+        if not file_id or not temp_path:
+            continue
+
+        ext = os.path.splitext(temp_path)[1] or ''
+        final_path = f'mail-attachments/{file_id}{ext}'
+        ok, msg = storage_adapter.move_object(temp_path, final_path)
+        if not ok:
+            logger.error('대용량 첨부 이동 실패: %s → %s (%s)', temp_path, final_path, msg)
+            raise RuntimeError(f'첨부 처리 실패: {filename}')
+
+        db.add(MailLargeFile(
+            file_id=file_id,
+            sender_user_id=session.get('user_id'),
+            original_filename=filename,
+            file_size=int(it.get('size') or 0),
+            storage_path=final_path,
+            expires_at=expires_at,
+        ))
+        out.append({
+            'filename': filename,
+            'size': int(it.get('size') or 0),
+            'download_url': f'https://{dl_domain}/mail/dl/{file_id}',
+            'expires_at': expires_at.strftime('%Y-%m-%d'),
+        })
+    return out
+
+
+def _large_files_html(links):
+    """본문 끝에 붙일 대용량 첨부 안내표 — 기존 ERP 작성 화면과 같은 모양."""
+    if not links:
+        return ''
+    rows = ''.join(
+        f'<tr style="border-bottom:1px solid #f1f5f9;">'
+        f'<td style="padding:6px 12px;">📄 <a href="{l["download_url"]}" style="color:#2563eb;">{l["filename"]}</a></td>'
+        f'<td style="padding:6px 12px;color:#94a3b8;">{l["size"]:,}바이트</td>'
+        f'<td style="padding:6px 12px;color:#dc2626;font-size:12px;">⏰ {l["expires_at"]}까지 다운로드 가능</td>'
+        f'</tr>'
+        for l in links
+    )
+    return ('<br><hr style="border-color:#e2e8f0;">'
+            '<p style="color:#64748b;font-size:13px;">📎 <strong>대용량 첨부파일</strong></p>'
+            f'<table style="border-collapse:collapse;font-size:13px;">{rows}</table>')
+
+
 @mail_bp.route('/mail/api/upload-large', methods=['POST', 'OPTIONS'])
 def api_upload_large():
     """대용량 파일 업로드 — 사내망 직접 → 서버 → Supabase 내부 경로."""
@@ -2198,7 +3057,6 @@ def api_upload_large():
         if not internal_url or not cfg['enabled']:
             return jsonify({'error': '파일 저장소가 설정되지 않았습니다.'}), 500
 
-        from urllib.parse import quote as urlquote
         obj_path = urlquote(storage_path, safe='/')
         upload_url = f"{internal_url}/storage/v1/object/{cfg['bucket']}/{obj_path}"
 

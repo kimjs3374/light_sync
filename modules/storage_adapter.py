@@ -86,6 +86,36 @@ def download_bytes(object_path: str) -> Optional[bytes]:
     return None
 
 
+def move_object(src_path: str, dst_path: str) -> Tuple[bool, str]:
+    """버킷 안에서 파일을 옮긴다 (서버쪽에서 처리 — 내려받았다 다시 올리지 않는다).
+
+    대용량 첨부는 임시 위치에 먼저 올려두고 발송이 확정될 때 옮기므로,
+    GB 단위 파일을 다시 왕복시키면 안 된다.
+    """
+    cfg = get_storage_config()
+    if not cfg["enabled"]:
+        return False, "supabase storage 설정이 없습니다"
+
+    url = f"{cfg['url']}/storage/v1/object/move"
+    headers = {
+        "apikey": cfg["key"],
+        "Authorization": f"Bearer {cfg['key']}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "bucketId": cfg["bucket"],
+        "sourceKey": _normalize_path(src_path),
+        "destinationKey": _normalize_path(dst_path),
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=120)
+    except Exception as e:
+        return False, f"이동 요청 실패: {e}"
+    if resp.status_code in (200, 201):
+        return True, "ok"
+    return False, f"{resp.status_code} {resp.text[:300]}"
+
+
 def delete_object(object_path: str) -> bool:
     cfg = get_storage_config()
     if not cfg["enabled"]:

@@ -1787,3 +1787,30 @@ UPDATE light_sync.approval_form_templates
        )
  WHERE form_key = 'expense'
    AND NOT (field_schema -> 1 -> 'columns' @> '[{"key":"bank"}]'::jsonb);
+
+-- ============================================================
+-- 2026-09-15 : 대용량 메일 첨부 브라우저 직접 업로드
+-- ------------------------------------------------------------
+-- 100MB 넘는 첨부는 Cloudflare 가 한 번에 못 통과시킨다.
+-- TUS(재개 업로드)로 잘게 나눠 브라우저 → Storage 로 바로 올리려면
+-- storage.objects 에 쓰기 정책이 있어야 한다 (지금은 정책이 하나도 없어
+-- service_role 만 통과한다 = 브라우저는 전부 403).
+--
+-- 범위를 임시 영역(mail-temp/)으로만 좁힌다.
+--  - 발송 때 mail-attachments/ 로 옮겨지고, 안 보내면 하루 뒤 자동 삭제된다
+--  - 토큰은 서버가 30분짜리로 발급한다 (service 키는 브라우저에 주지 않는다)
+--  - 버킷이 이미 public:true 라 읽기는 새로 열리는 게 없다
+-- ============================================================
+CREATE POLICY "mail_temp_insert" ON storage.objects
+    FOR INSERT TO authenticated
+    WITH CHECK (bucket_id = 'company-files' AND name LIKE 'mail-temp/%');
+
+CREATE POLICY "mail_temp_select" ON storage.objects
+    FOR SELECT TO authenticated
+    USING (bucket_id = 'company-files' AND name LIKE 'mail-temp/%');
+
+-- TUS 는 이어올릴 때 기존 객체를 갱신한다
+CREATE POLICY "mail_temp_update" ON storage.objects
+    FOR UPDATE TO authenticated
+    USING (bucket_id = 'company-files' AND name LIKE 'mail-temp/%')
+    WITH CHECK (bucket_id = 'company-files' AND name LIKE 'mail-temp/%');
