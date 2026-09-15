@@ -2276,44 +2276,98 @@ def api_shared_read_list():
 @mail_bp.route('/mail/api/search-advanced')
 @login_required
 def api_search_advanced():
-    """고급 검색: 발신자, 수신자, 날짜, 첨부 등."""
+    """상세검색 — 보낸사람·받는사람·제목·본문·기간·첨부·읽음을 겹쳐서 찾는다.
+
+    기본 검색(`/mail/api/search`)이 한 낱말을 여러 자리에서 훑는 것과 달리,
+    여기서는 **조건을 모두 만족하는** 메일만 남긴다(IMAP SEARCH 는 AND 다).
+
+    돌려주는 모양은 기본 검색과 같다 — 목록이 그대로 그릴 수 있어야 하니
+    uid 만 주지 않고 메시지까지 채워서 준다.
+    """
     account_id = request.args.get('account', type=int)
-    from_addr = request.args.get('from', '')
-    to_addr = request.args.get('to', '')
-    subject = request.args.get('subject', '')
-    date_from = request.args.get('date_from', '')
-    date_to = request.args.get('date_to', '')
-    has_attach = request.args.get('has_attachment', '')
     folder = request.args.get('folder', 'INBOX')
+    limit = 200
+
+    def _arg(name):
+        return (request.args.get(name) or '').strip()
+
+    def _flag(name):
+        return _arg(name).lower() in ('1', 'true', 'on', 'y')
+
+    criteria = []
+    used = []       # 무엇으로 찾았는지 — 화면이 조건 딱지를 띄우는 데 쓴다
+
+    for key, imap_key, label in (
+        ('from', 'FROM', '보낸사람'),
+        ('to', 'TO', '받는사람'),
+        ('subject', 'SUBJECT', '제목'),
+        ('body', 'BODY', '본문'),
+    ):
+        value = _arg(key)
+        if value:
+            criteria += [imap_key, value]
+            used.append(f'{label}: {value}')
+
+    # 기간. BEFORE 는 그 날을 포함하지 않으므로 끝나는 날까지 담으려면 하루 뒤로 민다.
+    for key, imap_key, label, shift in (
+        ('date_from', 'SINCE', '시작', 0),
+        ('date_to', 'BEFORE', '끝', 1),
+    ):
+        value = _arg(key)
+        if not value:
+            continue
+        try:
+            day = (datetime.strptime(value, '%Y-%m-%d') + timedelta(days=shift)).date()
+        except ValueError:
+            return jsonify({'error': f'날짜를 읽지 못했습니다: {value}'}), 400
+        criteria += [imap_key, day]
+        used.append(f'{label}: {value}')
+
+    if _flag('has_attachment'):
+        # IMAP 에 "첨부 있음" 조건은 없다. 목록이 첨부 아이콘을 띄울 때 보는 것과
+        # 같은 잣대(최상위 Content-Type)를 쓴다 — 그래야 결과와 아이콘이 어긋나지 않는다.
+        criteria += ['HEADER', 'Content-Type', 'multipart/mixed']
+        used.append('첨부 있음')
+    if _flag('unread'):
+        criteria.append('UNSEEN')
+        used.append('안읽음')
+    if _flag('flagged'):
+        criteria.append('FLAGGED')
+        used.append('중요')
+
+    if not criteria:
+        return jsonify({'error': '검색 조건을 하나 이상 넣어주세요.'}), 400
 
     with get_db() as db:
         client, account, err = _get_mail_client(db, account_id)
         if err:
             return jsonify({'error': err}), 400
+
+        # 받은편지함과 내게쓴메일함은 같은 INBOX 를 보낸사람으로 가른다.
+        # 목록이 그렇게 나뉘어 있으니 검색도 같은 칸 안에서만 찾아야 한다.
+        self_mode = _arg('self')
+        if self_mode in ('exclude', 'only') and account and account.email:
+            if self_mode == 'only':
+                criteria += ['FROM', account.email]
+            else:
+                criteria += ['NOT', 'FROM', account.email]
+
         try:
             with client:
-                # IMAP 검색 쿼리 빌드
-                criteria = []
-                if from_addr:
-                    criteria.append(f'FROM "{from_addr}"')
-                if to_addr:
-                    criteria.append(f'TO "{to_addr}"')
-                if subject:
-                    criteria.append(f'SUBJECT "{subject}"')
-                if date_from:
-                    from datetime import datetime as _dt
-                    d = _dt.strptime(date_from, '%Y-%m-%d')
-                    criteria.append(f'SINCE {d.strftime("%d-%b-%Y")}')
-                if date_to:
-                    from datetime import datetime as _dt2
-                    d = _dt2.strptime(date_to, '%Y-%m-%d')
-                    criteria.append(f'BEFORE {d.strftime("%d-%b-%Y")}')
-
-                search_str = ' '.join(criteria) if criteria else 'ALL'
-                results = client.search(folder, search_str)
-                return jsonify({'success': True, 'uids': results[:200]})
+                uids, total = client.search_advanced(folder, criteria, limit=limit)
+                result = client.fetch_by_uids(folder, uids) if uids else {
+                    'messages': [], 'total': 0, 'page': 1, 'pages': 1,
+                }
+            # fetch_by_uids 는 가져온 개수를 total 로 넣는다 — 자르기 전 건수로 되돌린다
+            result['total'] = total
+            result['shown'] = len(result.get('messages') or [])
+            result['truncated'] = total > len(uids)
+            result['criteria'] = used
+            return jsonify(result)
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            current_app.logger.warning('상세검색 실패 folder=%s criteria=%s: %s',
+                                       folder, criteria, e)
+            return jsonify({'error': f'검색하지 못했습니다: {e}'}), 500
 
 
 # ---------------------------------------------------------------------------

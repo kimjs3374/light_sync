@@ -402,6 +402,22 @@ class MailClient:
                  len(raw), len(messages), [m['subject'][:20] for m in messages])
         return {'messages': messages, 'total': len(messages), 'page': 1, 'pages': 1}
 
+    def search_advanced(self, folder, criteria, limit=200):
+        """상세검색 — imapclient 규격의 criteria **리스트**를 그대로 넘긴다.
+
+        문자열을 직접 이어붙이지 않는다. 따옴표와 한글 인코딩은 imapclient 가 맡는다 —
+        `f'FROM "{addr}"'` 로 만들면 값에 따옴표가 섞이는 순간 검색이 통째로 깨진다.
+
+        반환: (uids, total) — uids 는 최신순으로 limit 개까지, total 은 자르기 전 건수.
+        """
+        self._imap.select_folder(folder, readonly=True)
+        try:
+            uids = self._imap.sort('REVERSE DATE', criteria, charset='UTF-8')
+        except Exception:
+            # SORT 미지원 서버 — UID 는 단조증가라 역순이 최신순 근사치다
+            uids = sorted(self._imap.search(criteria, charset='UTF-8'), reverse=True)
+        return uids[:limit], len(uids)
+
     def search_messages(self, query, folder='INBOX'):
         """IMAP SEARCH로 메일 검색. 서버 검색 실패 시 ENVELOPE 클라이언트 스캔 폴백."""
         import logging as _log

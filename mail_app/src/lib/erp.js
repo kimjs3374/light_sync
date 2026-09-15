@@ -10,6 +10,9 @@
  */
 export const ERP_ORIGIN = 'https://work.mgnt.kr';
 
+/** 메일 첫 화면. 옛 주소(work.mgnt.kr/webmail/)에서 열려도 새 주소로 보낸다. */
+export const MAIL_ORIGIN = 'https://mail.mgnt.kr';
+
 /** ERP 안의 경로를 절대 주소로 — erpUrl('/mail/settings') */
 export const erpUrl = (path = '/') => ERP_ORIGIN + path;
 

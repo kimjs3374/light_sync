@@ -3,7 +3,7 @@ import { folderLabel, splitFolders, showsUnread } from '../lib/folders';
 import { Mail } from './Icons';
 import AccountCard from './AccountCard';
 import { useCompose } from '../store/compose';
-import { erpUrl } from '../lib/erp';
+import { erpUrl, MAIL_ORIGIN } from '../lib/erp';
 
 export default function Sidebar() {
   const { folders, labels, folder, selectFolder, specialView, openSpecial, selfUnread } = useMail();
@@ -44,8 +44,12 @@ export default function Sidebar() {
       {/* 고정 영역 — 폴더가 길어져도 신원·필터·메일쓰기는 늘 보인다 */}
       <div className="sidebar-fixed">
         <div className="brand">
-          <span className="brand-mark"><Mail /></span>
-          <span className="brand-name">매그나텍 메일</span>
+          {/* 로고를 누르면 메일 첫 화면. 주소를 박아둔다 —
+              옛 주소(work.mgnt.kr/webmail/)에서 열려도 새 주소로 간다 */}
+          <a className="brand-home" href={MAIL_ORIGIN} title="매그나텍 메일 (mail.mgnt.kr)">
+            <span className="brand-mark"><Mail /></span>
+            <span className="brand-name">매그나텍 메일</span>
+          </a>
           <a className="erp-link" href={erpUrl('/')} title="ERP로 돌아가기">ERP ↗</a>
         </div>
         <AccountCard />

@@ -54,7 +54,11 @@ export default function MessageList() {
     return (
       <div className="msg-list">
         <div className="list-state">
-          {s.searchQuery ? `'${s.searchQuery}' 검색 결과가 없습니다` : '메일이 없습니다'}
+          {s.searchQuery
+            ? `'${s.searchQuery}' 검색 결과가 없습니다`
+            : s.searchDetail
+              ? '조건에 맞는 메일이 없습니다'
+              : '메일이 없습니다'}
         </div>
       </div>
     );

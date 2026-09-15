@@ -126,6 +126,11 @@ export const mailApi = {
   search: ({ account, folder, q }) =>
     api.get(`/mail/api/search?${qs({ account, folder, q })}`),
 
+  // 상세검색 — 빈 칸은 qs() 가 알아서 떨군다. self 는 INBOX 를 받은편지함/
+  // 내게쓴메일함으로 가르는 조건('exclude' | 'only')이다.
+  searchAdvanced: ({ account, folder, self, ...fields }) =>
+    api.get(`/mail/api/search-advanced?${qs({ account, folder, self, ...fields })}`),
+
   setFlags: ({ account, folder, uids, flag, action }) =>
     api.post('/mail/api/flags', { uids, flag, action, folder, account_id: account }),
 

@@ -74,6 +74,11 @@ export const useMail = create((set, get) => ({
   // ── 보기 상태 ──
   quickFilter: 'all',
   searchQuery: '',
+  /**
+   * 상세검색이 걸려 있으면 `{ params, criteria, truncated }`.
+   * criteria 는 서버가 돌려준 사람이 읽는 조건 문구다 — 화면이 그대로 띄운다.
+   */
+  searchDetail: null,
   searching: false,
   prefs: loadPrefs(),
 
@@ -102,7 +107,7 @@ export const useMail = create((set, get) => ({
     localStorage.setItem('webmail_account', String(accountId));
     set({
       accountId, folder: 'INBOX', page: 1, openUid: null, detail: null,
-      checked: new Set(), quickFilter: 'all', searchQuery: '', specialView: null,
+      checked: new Set(), quickFilter: 'all', searchQuery: '', searchDetail: null, specialView: null,
     });
     await get().loadFolders();
     await get().loadMessages();
@@ -176,7 +181,7 @@ export const useMail = create((set, get) => ({
   openSpecial(name) {
     set({
       specialView: name, openUid: null, detail: null,
-      checked: new Set(), cursor: 0, searchQuery: '', quickFilter: 'all',
+      checked: new Set(), cursor: 0, searchQuery: '', searchDetail: null, quickFilter: 'all',
     });
     if (name === 'selfbox') {
       set({ folder: 'INBOX', page: 1 });
@@ -198,7 +203,7 @@ export const useMail = create((set, get) => ({
     set({
       specialView: null,
       folder: name, page: 1, openUid: null, detail: null,
-      checked: new Set(), cursor: 0, searchQuery: '',
+      checked: new Set(), cursor: 0, searchQuery: '', searchDetail: null,
       quickFilter: unreadOnly ? 'unread' : 'all',
     });
     get().loadMessages();
@@ -255,7 +260,7 @@ export const useMail = create((set, get) => ({
     const { accountId, folder } = get();
     const query = (q || '').trim();
     // 검색은 그 자체가 하나의 조건 — 걸려 있던 필터는 여기서 푼다
-    set({ searchQuery: query, quickFilter: 'all', cursor: 0, checked: new Set() });
+    set({ searchQuery: query, searchDetail: null, quickFilter: 'all', cursor: 0, checked: new Set() });
     if (!query) return get().loadMessages();
     set({ searching: true, listLoading: true, listError: '' });
     try {
@@ -271,6 +276,53 @@ export const useMail = create((set, get) => ({
     } catch (e) {
       set({ listError: e.message, listLoading: false, searching: false });
     }
+  },
+
+  /**
+   * 상세검색 — 조건을 모두 만족하는 메일만 남긴다(IMAP SEARCH 는 AND).
+   *
+   * 기본 검색과 자리를 다투므로 한쪽이 켜지면 다른 쪽은 꺼진다.
+   * 빠른 필터(안읽음·중요·첨부)도 함께 푼다 — 조건이 두 군데 걸려 있으면
+   * "왜 이것만 나오는지" 를 화면 어디에서도 읽을 수 없다.
+   */
+  async searchAdvanced(params) {
+    const { accountId, folder, specialView } = get();
+    if (!accountId) return;
+    // 받은편지함/내게쓴메일함은 같은 INBOX 를 보낸사람으로 가른다 — 검색도 그 칸 안에서만
+    const self = String(folder).toUpperCase() === 'INBOX'
+      ? (specialView === 'selfbox' ? 'only' : 'exclude')
+      : undefined;
+
+    set({
+      searchQuery: '', quickFilter: 'all', cursor: 0, checked: new Set(),
+      searching: true, listLoading: true, listError: '',
+    });
+    try {
+      const res = await mailApi.searchAdvanced({ account: accountId, folder, self, ...params });
+      if (res.error) {
+        set({ listError: res.error, messages: [], listLoading: false, searching: false });
+        return;
+      }
+      set({
+        messages: res.messages || [],
+        total: res.total || 0,
+        page: 1, pages: 1, listLoading: false, searching: false,
+        searchDetail: {
+          params,
+          criteria: res.criteria || [],
+          truncated: !!res.truncated,
+          shown: res.shown || 0,
+        },
+      });
+    } catch (e) {
+      set({ listError: e.message, listLoading: false, searching: false });
+    }
+  },
+
+  /** 상세검색 해제 — 보던 메일함으로 그대로 돌아간다 */
+  clearSearchDetail() {
+    set({ searchDetail: null, cursor: 0, checked: new Set() });
+    get().loadMessages();
   },
 
   // ── 읽기 ──────────────────────────────────────────────────────────────
