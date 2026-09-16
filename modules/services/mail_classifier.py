@@ -7,6 +7,23 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# 라벨 키워드
+# ---------------------------------------------------------------------------
+# **dovecot 은 한글 IMAP 키워드를 받지 못한다.** 2026-09-16 실측(kjs3374@mgnt.kr):
+# 'label_업무' 를 add_flags 하면 한글이 통째로 잘려 'label_' 만 저장되고
+# KEYWORD 검색으로도 다시 찾지 못한다(IMAP 의 flag 는 ASCII atom 이다).
+# 라벨 이름이 다 한글인 우리 환경에서는 서로 다른 라벨이 전부 'label_' 하나로
+# 뭉개진다는 뜻이다. 그래서 키워드는 **라벨 id** 로 만든다 — 'label_7' 은
+# 저장도 KEYWORD 검색도 정상이었다. 라벨 이름을 바꿔도 이미 붙은 키워드가
+# 끊어지지 않는 이점을 덤으로 얻는다.
+# 화면·자동분류 모두 이 함수 하나만 쓴다. 잣대가 갈리면 라벨이 통째로 사라진다.
+
+def label_keyword(label_id) -> str:
+    """메일에 다는 IMAP 키워드. label_id 가 숫자가 아니면 ValueError."""
+    return f'label_{int(label_id)}'
+
+
 def match_condition(cond: dict, mail: dict) -> bool:
     """단일 조건 매칭."""
     field = cond.get('field', '')
@@ -97,9 +114,11 @@ def apply_actions(client, uid: int, folder: str, actions: list) -> list:
                 client.move_messages([uid], 'Trash', src_folder=folder)
                 results.append(f"[{action['rule_name']}] → 삭제 (휴지통)")
             elif atype == 'add_label':
-                keyword = f"label_{avalue}"
+                # action_value 는 **라벨 id** 다(이름이 아니다 — label_keyword 주석 참고).
+                # 이름이 들어와 있으면 int() 가 터지고 아래 except 가 규칙 이름과 함께 남긴다.
+                keyword = label_keyword(avalue)
                 client.set_flags([uid], keyword, action='add', folder=folder)
-                results.append(f"[{action['rule_name']}] → 라벨: {avalue}")
+                results.append(f"[{action['rule_name']}] → 라벨: {keyword}")
         except Exception as e:
             results.append(f"[{action['rule_name']}] 실패: {e}")
             logger.exception("자동분류 액션 실패: rule=%s uid=%s", action['rule_name'], uid)

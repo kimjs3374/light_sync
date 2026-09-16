@@ -35,6 +35,7 @@ from modules.pagination import make_pagination
 from modules.services.mail_client import (
     MailClient, decrypt_password, encrypt_password, _decode_header_value,
 )
+from modules.services.mail_classifier import label_keyword
 from modules.services.vcard import parse_contacts_file, build_vcf
 
 logger = logging.getLogger(__name__)
@@ -911,9 +912,10 @@ def api_folders():
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-        # 라벨 조회
+        # 라벨 조회 — 모양은 /mail/api/labels 와 한 글자도 다르면 안 된다.
+        # 사이드바는 여기서, 설정 화면은 거기서 받아 **같은 라벨을 그린다**.
         labels = db.query(MailLabel).filter_by(account_id=account_id).order_by(MailLabel.sort_order, MailLabel.name).all()
-        labels_data = [{'id': l.id, 'name': l.name, 'color': l.color} for l in labels]
+        labels_data = [_label_row(lb) for lb in labels]
 
         if cache_key:
             _FOLDER_CACHE[cache_key] = {
@@ -1291,34 +1293,88 @@ def api_spam_apply():
         return jsonify({'success': True, 'moved': moved, 'checked': checked, 'folder': junk})
 
 
-@mail_bp.route('/mail/api/spam/empty', methods=['POST'])
-@login_required
-def api_spam_empty():
-    """스팸함 비우기 — 되돌릴 수 없다(휴지통을 거치지 않는다)."""
-    data = request.get_json(silent=True) or {}
-    account_id = data.get('account_id')
+# ── 메일함 비우기 ────────────────────────────────────────────────────────
+# 비운다 = 휴지통을 거치지 않고 \Deleted + EXPUNGE 다. **되돌릴 수 없다.**
+# 그래서 어떤 폴더를 비울 수 있는지는 화이트리스트로만 정한다 — '이건 안 된다'
+# 를 세는 방식이면 서버가 폴더 이름을 하나 바꾸는 순간 받은편지함이 날아간다.
+_EMPTYABLE_FOLDERS = (
+    # 휴지통
+    'trash', 'deleted', 'deleteditems', 'deletedmessages', '휴지통', '지운편지함',
+    # 스팸함
+    'junk', 'spam', 'junkemail', 'junkmail', 'bulkmail', '스팸', '스팸함', '스팸메일함',
+)
 
+
+def _is_emptyable_folder(name):
+    """비워도 되는 폴더인가. 잣대는 _is_system_folder 와 같은 모양으로 맞춘다 —
+    띄어쓰기를 지우고, 계층 구분자를 떼고 마지막 마디만 본다
+    ('INBOX.Trash', 'INBOX/휴지통' 처럼 계층 아래에 두는 서버가 있다)."""
+    n = (name or '').strip().lower().replace(' ', '')
+    if not n:
+        return False
+    base = n.split('.')[-1].split('/')[-1]
+    return base in _EMPTYABLE_FOLDERS
+
+
+def _empty_folder_response(account_id, folder=None):
+    """메일함 비우기 본체 — /mail/api/spam/empty 와 /mail/api/folder/empty 가 함께 쓴다.
+
+    folder=None 이면 이 계정의 스팸함을 서버에서 찾아 쓴다(옛 스팸함 비우기 동작).
+    folder 를 주는 쪽은 **부르기 전에 _is_emptyable_folder() 로 걸러야 한다** —
+    여기서는 이미 걸러진 이름이라고 믿는다.
+    """
     with get_db() as db:
         client, account, err = _get_mail_client(db, account_id)
         if err or not client:
             return jsonify({'error': err or '메일 계정 미설정'}), 400
         try:
             with client:
-                junk = _junk_folder(client)
+                target = folder or _junk_folder(client)
                 imap = client._imap
-                imap.select_folder(junk, readonly=False)
+                imap.select_folder(target, readonly=False)
                 uids = imap.search('ALL')
-                if not uids:
-                    return jsonify({'success': True, 'deleted': 0, 'folder': junk})
-                imap.add_flags(uids, [b'\\Deleted'])
-                imap.expunge()
+                deleted = len(uids)
+                if uids:
+                    imap.add_flags(uids, [b'\\Deleted'])
+                    imap.expunge()
         except Exception as e:
-            logger.warning("스팸함 비우기 실패: %s", e)
+            logger.warning("메일함 비우기 실패 (account=%s folder=%s): %s", account_id, folder, e)
             return jsonify({'error': f'비우지 못했습니다: {e}'}), 500
 
         _clear_folder_cache(account_id)
-        logger.info("스팸함 비우기: user=%s account=%s %s통", session['user_id'], account_id, len(uids))
-        return jsonify({'success': True, 'deleted': len(uids), 'folder': junk})
+        logger.info("메일함 비우기: user=%s account=%s folder=%s %s통",
+                    session['user_id'], account_id, target, deleted)
+        return jsonify({'success': True, 'deleted': deleted, 'folder': target})
+
+
+@mail_bp.route('/mail/api/spam/empty', methods=['POST'])
+@login_required
+def api_spam_empty():
+    """스팸함 비우기 — 되돌릴 수 없다(휴지통을 거치지 않는다).
+
+    폴더를 안 받는다. 옛 화면이 이 주소만 알고 있어서 그대로 둔다 —
+    새 화면은 /mail/api/folder/empty 를 쓴다.
+    """
+    data = request.get_json(silent=True) or {}
+    return _empty_folder_response(data.get('account_id'))
+
+
+@mail_bp.route('/mail/api/folder/empty', methods=['POST'])
+@login_required
+def api_folder_empty():
+    """휴지통·스팸함 비우기 — 되돌릴 수 없다(휴지통을 거치지 않는다).
+
+    **받은편지함을 실수로 비우는 일은 절대 없어야 한다.** 화면이 보내 온 폴더
+    이름을 그대로 SELECT 하므로, 여기서 걸러 내는 것 말고는 막을 자리가 없다.
+    """
+    data = request.get_json(silent=True) or {}
+    account_id = data.get('account_id')
+    folder = (data.get('folder') or '').strip()
+    if not folder:
+        return jsonify({'error': '비울 메일함을 지정하세요.'}), 400
+    if not _is_emptyable_folder(folder):
+        return jsonify({'error': '휴지통과 스팸함만 비울 수 있습니다.'}), 400
+    return _empty_folder_response(account_id, folder)
 
 
 # ---------------------------------------------------------------------------
@@ -1917,36 +1973,124 @@ def api_external_order():
 
 # 라벨 API
 # ---------------------------------------------------------------------------
+# 라벨은 두 군데에 나뉘어 산다: 이름·색은 DB(mail_labels), 메일에 달린 표시는
+# IMAP 키워드다. 키워드 모양은 mail_classifier.label_keyword() 한 곳에서만
+# 정한다 — 한글이 안 되는 사정이 거기 적혀 있다.
+def _label_row(label):
+    """라벨 한 줄의 응답 모양. /mail/api/folders 와 /mail/api/labels 가 함께 쓴다.
+
+    keyword 는 이 라벨을 메일에 달 때 쓰는 IMAP 키워드다. **이름이 아니라 id 로
+    만들기 때문에 이름을 바꿔도 키워드는 그대로다** — 이미 달아 둔 메일이
+    이름 변경 때문에 사이드바에서 사라지는 일은 없다.
+    """
+    return {
+        'id': label.id,
+        'name': label.name,
+        'color': label.color or '#64748b',
+        'sort_order': label.sort_order or 0,
+        'keyword': label_keyword(label.id),
+    }
+
+
+def _check_label_name(raw):
+    """라벨 이름 다듬기 + 검사.
+
+    앞뒤 공백은 화면에서 보이지 않아, 안 지우면 같은 이름이 두 줄로 쌓인다.
+    """
+    name = (raw or '').strip()
+    if not name:
+        return None, '라벨 이름을 입력하세요.'
+    if len(name) > 60:
+        return None, '라벨 이름이 너무 깁니다 (60자까지).'
+    return name, None
+
+
+@mail_bp.route('/mail/api/labels')
+@login_required
+def api_labels_list():
+    """라벨 목록.
+
+    keyword 는 이 라벨을 메일에 달 때 쓰는 IMAP 키워드다.
+    **화면은 이름으로 키워드를 만들지 말고 이 값만 그대로 써야 한다** —
+    한글로 만든 키워드는 서버가 삼켜 버린다(label_keyword 주석 참고).
+    """
+    account_id = request.args.get('account', type=int)
+    with get_db() as db:
+        if not _account_allowed(db, account_id):
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
+        labels = db.query(MailLabel).filter_by(account_id=account_id).order_by(
+            MailLabel.sort_order, MailLabel.id).all()
+        return jsonify([_label_row(lb) for lb in labels])
+
+
 @mail_bp.route('/mail/api/labels', methods=['POST'])
 @login_required
 def api_label_save():
-    """라벨 생성/수정."""
-    data = request.get_json()
-    account_id = data.get('account_id')
+    """라벨 생성/수정.
+
+    계정 확인이 없던 자리다 — 남의 account_id 를 적어 남의 계정에 라벨을 만들어
+    넣을 수 있었다. 수정은 **라벨이 달린 계정**을 본다(요청 body 의 account_id 가
+    아니다 — 그걸 믿으면 내 계정 번호를 적어 남의 라벨을 고칠 수 있다).
+    """
+    data = request.get_json(silent=True) or {}
+    label_id = data.get('id')
+    raw_name = data.get('name')
+
+    # 이름을 안 보낸 수정 요청은 이름을 건드리지 않는다(색·순서만 바꾸는 호출이 있다).
+    name = None
+    if raw_name is not None or not label_id:
+        name, err = _check_label_name(raw_name)
+        if err:
+            return jsonify({'error': err}), 400
+
     with get_db() as db:
-        label_id = data.get('id')
         if label_id:
             label = db.query(MailLabel).filter_by(id=label_id).first()
             if not label:
                 return jsonify({'error': '라벨을 찾을 수 없습니다.'}), 404
+            if not _account_allowed(db, label.account_id):
+                return jsonify({'error': '접근 권한이 없습니다.'}), 403
         else:
-            label = MailLabel(account_id=account_id)
+            account_id = data.get('account_id')
+            if not _account_allowed(db, account_id):
+                return jsonify({'error': '접근 권한이 없습니다.'}), 403
+            label = MailLabel(account_id=account_id, color='#64748b', sort_order=0)
             db.add(label)
-        label.name = data.get('name', label.name if label_id else '')
-        label.color = data.get('color', label.color if label_id else '#64748b')
-        label.sort_order = data.get('sort_order', label.sort_order if label_id else 0)
+
+        if name is not None:
+            label.name = name
+        if data.get('color') is not None:
+            label.color = data.get('color')
+        if data.get('sort_order') is not None:
+            label.sort_order = data.get('sort_order')
         db.commit()
-        return jsonify({'success': True, 'id': label.id})
+        # 사이드바는 /mail/api/folders 의 5분 캐시에서 라벨을 받는다 —
+        # 안 버리면 방금 만든 라벨이 최대 5분 동안 안 보인다.
+        _clear_folder_cache(label.account_id)
+        # 새로 만든 라벨은 commit 뒤에야 id 가 생긴다 — 키워드도 그 뒤에 만든다.
+        return jsonify({'success': True, **_label_row(label)})
 
 
 @mail_bp.route('/mail/api/labels/<int:label_id>', methods=['DELETE'])
 @login_required
 def api_label_delete(label_id):
-    """라벨 삭제."""
+    """라벨 삭제. 권한은 **그 라벨이 달린 계정**으로 본다.
+
+    이미 메일에 붙어 있는 IMAP 키워드까지 떼지는 않는다 — 메일함 전체를 훑어야
+    하는 일이라 요청 하나 안에서 끝낼 수 없다. 화면은 목록에 없는 키워드를
+    그냥 무시하면 된다.
+    """
     with get_db() as db:
-        db.query(MailLabel).filter_by(id=label_id).delete()
+        label = db.query(MailLabel).filter_by(id=label_id).first()
+        if not label:
+            return jsonify({'success': True, 'deleted': 0})   # 이미 없으면 성공으로 본다
+        if not _account_allowed(db, label.account_id):
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
+        account_id = label.account_id
+        db.delete(label)
         db.commit()
-        return jsonify({'success': True})
+        _clear_folder_cache(account_id)   # 지운 라벨이 사이드바에 계속 남지 않게
+        return jsonify({'success': True, 'deleted': 1})
 
 
 # ---------------------------------------------------------------------------
@@ -2719,12 +2863,27 @@ def api_template_delete(tid):
 @mail_bp.route('/mail/api/shared-read', methods=['POST'])
 @login_required
 def api_shared_read_mark():
-    data = request.get_json()
+    """이 메일을 내가 봤다고 남긴다.
+
+    account_id 를 그냥 믿고 있었다 — 남의 공용계정 번호만 적으면 그 계정의
+    "누가 읽었나" 에 내 이름을 심을 수 있었다. 잣대는 _account_allowed 하나.
+
+    같은 사람이 같은 메일을 여러 번 열어도 줄은 하나다:
+    (account_id, user_id, mail_uid, folder) 에 UNIQUE 가 걸려 있고
+    on_conflict_do_nothing 이 그 위에서 걸린다(실측 확인).
+    """
+    data = request.get_json(silent=True) or {}
+    account_id = data.get('account_id')
+    uid = data.get('uid')
+    if not account_id or not uid:
+        return jsonify({'error': '계정과 메일 번호가 필요합니다.'}), 400
     with get_db() as db:
+        if not _account_allowed(db, account_id):
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
         from sqlalchemy.dialects.postgresql import insert
         stmt = insert(MailSharedRead).values(
-            account_id=data['account_id'], user_id=session['user_id'],
-            mail_uid=data['uid'], folder=data.get('folder', 'INBOX'),
+            account_id=account_id, user_id=session['user_id'],
+            mail_uid=uid, folder=data.get('folder') or 'INBOX',
         ).on_conflict_do_nothing()
         db.execute(stmt)
         db.commit()
@@ -2734,14 +2893,13 @@ def api_shared_read_mark():
 @mail_bp.route('/mail/api/shared-read')
 @login_required
 def api_shared_read_list():
-    """공유 메일의 읽은 사용자 목록."""
+    """공유 메일의 읽은 사용자 목록. 권한 없는 계정의 열람 이력은 남의 업무 기록이다."""
     account_id = request.args.get('account', type=int)
     uid = request.args.get('uid', type=int)
     folder = request.args.get('folder', 'INBOX')
     with get_db() as db:
-        rows = db.execute(
-            db.bind.execute if hasattr(db, 'bind') else db.execute.__func__,
-        ) if False else None
+        if not _account_allowed(db, account_id):
+            return jsonify({'error': '접근 권한이 없습니다.'}), 403
         from sqlalchemy import text as _text
         rows = db.execute(_text("""
             SELECT u.full_name, u.position, sr.read_at
@@ -3337,6 +3495,8 @@ def api_receipts():
         return jsonify([{
             'id': r.id,
             'tracking_id': r.tracking_id,
+            # 어느 계정으로 보낸 건인지 — 화면이 메일함의 보낸메일과 맞춰 볼 때 쓴다
+            'mail_account_id': r.mail_account_id,
             'to_email': r.to_email,
             'subject': r.subject,
             'sent_at': r.sent_at.isoformat() if r.sent_at else None,
@@ -4055,12 +4215,29 @@ def api_cleanup_expired():
 @mail_bp.route('/mail/api/user-signature', methods=['GET'])
 @login_required
 def api_get_user_signature():
-    """로그인 사용자 정보 기반 서명 HTML 반환."""
+    """작성 화면에 넣을 서명 HTML.
+
+    ?account=<id> 를 주면 그 계정에 **직접 적어 둔** 서명(mail_accounts.signature,
+    /mail/api/account POST 가 저장한다)을 우선한다. 비어 있거나 권한이 없으면
+    ERP 계정정보(부서·이름·직급·연락처)로 만든 서명을 준다.
+
+    account 없이 부르는 옛 화면이 아직 있어(static/js/mail.js) 파라미터는 선택이다 —
+    없으면 지금까지와 똑같이 자동 생성본을 돌려준다.
+
+    custom 은 화면이 "직접 적은 서명입니다 / 계정 정보로 만든 서명입니다" 를
+    구분해 적는 데 쓴다.
+    """
+    account_id = request.args.get('account', type=int)
     with get_db() as db:
+        if account_id and _account_allowed(db, account_id):
+            account = db.query(MailAccount).filter_by(id=account_id).first()
+            saved = (account.signature or '').strip() if account else ''
+            if saved:
+                return jsonify({'html': saved, 'custom': True})
         user = db.query(User).filter_by(id=session['user_id']).first()
         if not user:
-            return jsonify({})
-        return jsonify({'html': user.to_signature_html()})
+            return jsonify({'html': '', 'custom': False})
+        return jsonify({'html': user.to_signature_html(), 'custom': False})
 
 
 # ---------------------------------------------------------------------------
