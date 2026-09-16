@@ -14,6 +14,7 @@ const MODE_TITLE = {
   new: '메일 쓰기', self: '내게 쓰기', reply: '답장',
   replyAll: '전체답장', forward: '전달', resend: '다시 보내기',
   editScheduled: '예약 메일 수정',
+  draft: '이어서 쓰기',
 };
 
 export default function ComposePage({ win }) {

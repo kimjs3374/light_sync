@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMail, visibleMessages } from '../store/mail';
+import { useMail, visibleMessages, SORT_KEYS, SORT_LABEL, isDefaultSort } from '../store/mail';
 import { folderLabel, findTrash, findJunk, splitFolders } from '../lib/folders';
 import { Refresh, Search as SearchIcon, Gear } from './Icons';
 import { useSettings } from '../store/settings';
@@ -34,6 +34,17 @@ export default function Toolbar() {
       : `선택한 ${n}통을 휴지통으로 옮길까요?`;
     if (!confirm(msg)) return;
     run(s.deleteChecked);
+  };
+
+  /**
+   * 휴지통·스팸함 비우기 — 되돌릴 수 없으니 몇 통인지 세어 보여주고 한 번 묻는다.
+   * 서버가 이 두 곳 외에는 거절하므로 화면에서도 그 두 곳에서만 버튼을 낸다.
+   */
+  const emptiable = !s.specialView && (s.folder === trash || s.folder === junk);
+  const onEmpty = () => {
+    const where = folderLabel(s.folder);
+    if (!confirm(`${where}에 있는 메일 ${s.total}통이 모두 지워집니다. 되돌릴 수 없습니다.`)) return;
+    run(s.emptyCurrentFolder);
   };
 
   const { sys, user } = splitFolders(s.folders);
@@ -90,6 +101,21 @@ export default function Toolbar() {
                 <span className="af-x">✕</span>
               </button>
             )}
+            {/* 라벨도 마찬가지다 — 누른 곳은 왼쪽 라벨 목록이지만,
+                지금 목록이 왜 이것만인지는 목록 위에 적혀 있어야 한다 */}
+            {s.labelFilter && (
+              <button className="active-filter" onClick={s.clearLabelFilter}
+                title="라벨 해제">
+                라벨 · {s.labelFilter.name}
+                <span className="af-x">✕</span>
+              </button>
+            )}
+            {/* 비우기는 휴지통·스팸함에서만. 지울 것이 없으면 내놓지 않는다 */}
+            {emptiable && s.total > 0 && (
+              <button className="empty-folder" disabled={busy} onClick={onEmpty}>
+                비우기
+              </button>
+            )}
           </div>
         )}
 
@@ -122,6 +148,30 @@ export default function Toolbar() {
             {advOpen && <AdvancedSearch onClose={() => setAdvOpen(false)} />}
           </div>
 
+          {/* 정렬 고르기. 무엇이 걸렸는지와 "이 쪽에서만"이라는 사실은
+              아래 한 줄(sort-criteria)이 맡는다 — 여기 적으면 화면이 좁아질 때
+              제일 먼저 밀려나 사라진다. */}
+          <select
+            className="pane-select sort-select"
+            value={`${s.sortBy}:${s.sortDir}`}
+            onChange={(e) => {
+              const [by, dir] = e.target.value.split(':');
+              s.setSort(by, dir);
+            }}
+            title="정렬 — 지금 보고 있는 쪽 안에서만 순서를 바꿉니다"
+          >
+            {SORT_KEYS.map((k) => (
+              <optgroup key={k} label={SORT_LABEL[k]}>
+                <option value={`${k}:desc`}>
+                  {SORT_LABEL[k]} 내림차순{k === 'date' ? ' (최신순)' : ''}
+                </option>
+                <option value={`${k}:asc`}>
+                  {SORT_LABEL[k]} 오름차순{k === 'date' ? ' (오래된순)' : ''}
+                </option>
+              </optgroup>
+            ))}
+          </select>
+
           <button className="icon-btn" title="새로고침" disabled={s.listLoading}
             onClick={() => { s.loadFolders(true); s.loadMessages(); }}><Refresh /></button>
         </div>
@@ -152,6 +202,24 @@ export default function Toolbar() {
 
       {/* 상세검색이 걸려 있으면 무엇으로 걸렀는지 적어둔다 —
           안 적으면 "왜 이것만 나오는지" 를 화면 어디서도 읽을 수 없다 */}
+      {/* 정렬은 **지금 보고 있는 쪽 안에서만** 돈다 — 서버가 날짜순으로 한 쪽씩
+          떼어 주기 때문이다. 이 줄을 빼면 "2쪽에 더 오래된 메일이 있는데 왜
+          안 올라오냐"를 화면 어디에서도 읽을 수 없다.
+          툴바 안(검색칸 옆)이 아니라 아래 한 줄로 두는 까닭: 저 안에 두면
+          화면이 좁아질 때 제일 먼저 밀려나 사라진다. */}
+      {!isDefaultSort(s) && (
+        <div className="toolbar-row sort-criteria">
+          <span className="sc-tag">정렬</span>
+          <span className="sc-chip">
+            {SORT_LABEL[s.sortBy]} {s.sortDir === 'asc' ? '오름차순' : '내림차순'}
+          </span>
+          <span className="dc-more">지금 보고 있는 쪽 안에서만 순서가 바뀝니다</span>
+          <button className="dc-clear" onClick={() => s.setSort('date', 'desc')}>
+            기본 순서로 ✕
+          </button>
+        </div>
+      )}
+
       {s.searchDetail && (
         <div className="toolbar-row detail-criteria">
           <span className="dc-tag">상세검색</span>

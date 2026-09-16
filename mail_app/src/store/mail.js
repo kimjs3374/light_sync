@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { mailApi } from '../api/client';
+import { senderName, splitSubject } from '../lib/format';
 
 /**
  * 설정은 브라우저에 남긴다 — 목록 밀도와 경계선 위치는 사람마다 갈린다.
@@ -44,9 +45,48 @@ const FILTER_CRITERIA = {
   attach: '',   // clientSide
 };
 
-/** 첨부 필터는 서버가 못 걸러주므로 화면에서 건다 (현재 쪽 기준) */
-export const visibleMessages = (s) =>
-  s.quickFilter === 'attach' ? s.messages.filter((m) => m.has_attachment) : s.messages;
+/** 목록 정렬 기준 — 화면에 그대로 적히는 이름이라 여기 한 곳에서만 정한다 */
+export const SORT_KEYS = ['date', 'from', 'subject'];
+export const SORT_LABEL = { date: '날짜', from: '보낸사람', subject: '제목' };
+export const DEFAULT_SORT = { sortBy: 'date', sortDir: 'desc' };
+
+/** 지금 정렬이 기본값(= 서버가 준 그대로)인가 */
+export const isDefaultSort = (s) =>
+  s.sortBy === DEFAULT_SORT.sortBy && s.sortDir === DEFAULT_SORT.sortDir;
+
+const sortValue = (m, by) => {
+  if (by === 'from') return senderName(m.from);
+  // 제목은 [태그] 를 뗀 본문으로 줄을 세운다 — 목록에서 눈이 좇는 글자가 그것이다.
+  // 태그째 세우면 `[매그나텍]` 이 붙은 메일끼리만 몰려 제목순으로 안 읽힌다.
+  if (by === 'subject') return splitSubject(m.subject).text;
+  const t = new Date(m.date).getTime();
+  return Number.isFinite(t) ? t : 0;
+};
+
+/**
+ * 화면에 보일 목록 — 필터를 걸고, 고른 순서로 세운다.
+ *
+ * 첨부 필터도 정렬도 **지금 보고 있는 쪽 안에서만** 돈다. 서버는 늘 날짜
+ * 내림차순으로 한 쪽씩 떼어 주므로, 여기서 세운 순서는 그 쪽의 순서일 뿐이다
+ * (2쪽에 더 이른 날짜가 있어도 1쪽으로 올라오지 않는다).
+ * 툴바가 그 사실을 화면에 적는다 — 안 적으면 "정렬이 틀렸다"로 읽힌다.
+ *
+ * 기본값(날짜·내림)일 때는 **손대지 않는다.** 서버가 IMAP SORT 로 세워 준
+ * 순서를 흉내내다 같은 시각끼리 자리가 뒤바뀌면, 아무것도 안 고른 사람에게
+ * 목록이 달라 보인다.
+ */
+export const visibleMessages = (s) => {
+  const list = s.quickFilter === 'attach'
+    ? s.messages.filter((m) => m.has_attachment) : s.messages;
+  if (isDefaultSort(s)) return list;
+  const dir = s.sortDir === 'asc' ? 1 : -1;
+  return [...list].sort((a, b) => {
+    const x = sortValue(a, s.sortBy);
+    const y = sortValue(b, s.sortBy);
+    if (typeof x === 'number') return (x - y) * dir;
+    return String(x).localeCompare(String(y), 'ko') * dir;
+  });
+};
 
 export const useMail = create((set, get) => ({
   // ── 계정 ──
@@ -100,6 +140,22 @@ export const useMail = create((set, get) => ({
    */
   searchDetail: null,
   searching: false,
+
+  /**
+   * 목록 정렬 — **지금 보고 있는 쪽 안에서만** 적용된다(서버는 날짜순으로만 준다).
+   * 메일함을 옮기면 기본값(날짜·내림)으로 돌아온다. 정렬이 따라다니면
+   * "받은편지함을 눌렀는데 순서가 이상하다"가 되고, 그 이유는 화면에 안 적혀 있다.
+   */
+  sortBy: DEFAULT_SORT.sortBy,
+  sortDir: DEFAULT_SORT.sortDir,
+
+  /**
+   * 라벨로 걸러 보는 중이면 `{ keyword, name }`.
+   * keyword 는 IMAP 키워드 그대로다 — 사이드바가 준 값을 손대지 않고 싣는다
+   * (라벨 이름으로 키워드를 만들면 안 된다. api/client.js 의 라벨 주석 참고).
+   */
+  labelFilter: null,
+
   prefs: loadPrefs(),
 
   setPref(key, value) {
@@ -128,6 +184,7 @@ export const useMail = create((set, get) => ({
     set({
       accountId, folder: 'INBOX', page: 1, openUid: null, detail: null, readerFull: false,
       checked: new Set(), quickFilter: 'all', searchQuery: '', searchDetail: null, specialView: null,
+      labelFilter: null, ...DEFAULT_SORT,
     });
     await get().loadFolders();
     await get().loadMessages();
@@ -207,6 +264,7 @@ export const useMail = create((set, get) => ({
     set({
       specialView: name, openUid: null, detail: null, readerFull: false,
       checked: new Set(), cursor: 0, searchQuery: '', searchDetail: null, quickFilter: 'all',
+      labelFilter: null, ...DEFAULT_SORT,
     });
     if (name === 'selfbox') {
       set({ folder: 'INBOX', page: 1 });
@@ -230,6 +288,8 @@ export const useMail = create((set, get) => ({
       folder: name, page: 1, openUid: null, detail: null, readerFull: false,
       checked: new Set(), cursor: 0, searchQuery: '', searchDetail: null,
       quickFilter: unreadOnly ? 'unread' : 'all',
+      // 라벨 딱지와 정렬은 메일함을 옮기면 떨어진다 — 일회용이다(위 주석 참고)
+      labelFilter: null, ...DEFAULT_SORT,
     });
     get().loadMessages();
   },
@@ -260,6 +320,14 @@ export const useMail = create((set, get) => ({
         criteria = criteria ? `${self} ${criteria}` : self;
       }
 
+      // 라벨은 IMAP 키워드다 — 조건을 겹쳐 실으면 그 라벨이 달린 것만 남는다
+      // (IMAP SEARCH 는 AND 다). 키워드 값은 사이드바가 준 것을 그대로 쓴다.
+      const { labelFilter } = get();
+      if (labelFilter?.keyword) {
+        const kw = `KEYWORD ${labelFilter.keyword}`;
+        criteria = criteria ? `${criteria} ${kw}` : kw;
+      }
+
       const res = await mailApi.messages({
         account: accountId, folder, page, perPage: get().prefs.perPage,
         unreadOnly: criteria === 'UNSEEN',
@@ -285,7 +353,10 @@ export const useMail = create((set, get) => ({
     const { accountId, folder } = get();
     const query = (q || '').trim();
     // 검색은 그 자체가 하나의 조건 — 걸려 있던 필터는 여기서 푼다
-    set({ searchQuery: query, searchDetail: null, quickFilter: 'all', cursor: 0, checked: new Set() });
+    set({
+      searchQuery: query, searchDetail: null, quickFilter: 'all', labelFilter: null,
+      cursor: 0, checked: new Set(),
+    });
     if (!query) return get().loadMessages();
     set({ searching: true, listLoading: true, listError: '' });
     try {
@@ -319,7 +390,7 @@ export const useMail = create((set, get) => ({
       : undefined;
 
     set({
-      searchQuery: '', quickFilter: 'all', cursor: 0, checked: new Set(),
+      searchQuery: '', quickFilter: 'all', labelFilter: null, cursor: 0, checked: new Set(),
       searching: true, listLoading: true, listError: '',
     });
     try {
@@ -342,6 +413,78 @@ export const useMail = create((set, get) => ({
     } catch (e) {
       set({ listError: e.message, listLoading: false, searching: false });
     }
+  },
+
+  /**
+   * 라벨로 걸러 보기 — 사이드바에서 라벨을 누르면 여기로 온다.
+   *
+   * @param keyword   IMAP 키워드. **사이드바가 준 값을 그대로 넘겨라** —
+   *                  라벨 이름으로 키워드를 만들면 안 된다(한글이 잘린다).
+   * @param labelName 화면에 적을 사람이 읽는 이름. 없으면 키워드를 그대로 적는다.
+   *
+   * 보고 있던 메일함 **안에서** 거른다(IMAP SEARCH 는 폴더 단위다). 그래서
+   * 받은편지함에서 라벨을 누르면 받은편지함 안의 그 라벨만 나온다.
+   * 검색·상세검색과는 자리를 다투므로 한쪽이 켜지면 다른 쪽은 꺼진다 —
+   * 조건이 두 군데 걸려 있으면 "왜 이것만 나오는지"를 어디서도 못 읽는다.
+   *
+   * 메일 목록을 안 그리는 화면(주소록·예약 발송·수신확인)에 서 있었다면 그
+   * 화면을 **내리고** 목록으로 돌아온다. 안 내리면 목록만 조용히 걸러지고
+   * 화면은 그대로라, 누른 사람에게는 아무 일도 안 일어난 것으로 보인다.
+   * 내게쓴메일함(selfbox)만 그대로 둔다 — 그건 목록을 그리는 화면이라
+   * "내게쓴메일함 안의 그 라벨"이 말이 된다.
+   * (이 판단은 스토어 안에 있어야 한다. 부르는 자리가 늘 때마다 같은 코드를
+   *  밖에 또 쓰게 되면 언젠가 한 곳이 빠진다)
+   */
+  async filterByLabel(keyword, labelName) {
+    if (!keyword) return;
+    const { specialView } = get();
+    set({
+      labelFilter: { keyword, name: labelName || keyword },
+      specialView: specialView === 'selfbox' ? specialView : null,
+      page: 1, cursor: 0, checked: new Set(),
+      openUid: null, detail: null, readerFull: false,
+      quickFilter: 'all', searchQuery: '', searchDetail: null,
+    });
+    await get().loadMessages();
+  },
+
+  /** 라벨 딱지 떼기 — 보던 메일함으로 그대로 돌아간다 */
+  clearLabelFilter() {
+    set({ labelFilter: null, page: 1, cursor: 0, checked: new Set() });
+    get().loadMessages();
+  },
+
+  /**
+   * 목록 정렬 바꾸기.
+   *
+   * 서버를 다시 부르지 않는다 — 지금 받아 둔 쪽을 화면에서 세울 뿐이다
+   * (visibleMessages 주석 참고). 커서는 처음으로 돌린다: 줄 순서가 바뀌었는데
+   * 커서만 3번째에 남아 있으면 엉뚱한 메일이 열린다.
+   */
+  setSort(sortBy, sortDir) {
+    set({
+      sortBy: SORT_KEYS.includes(sortBy) ? sortBy : DEFAULT_SORT.sortBy,
+      sortDir: sortDir === 'asc' ? 'asc' : 'desc',
+      cursor: 0,
+    });
+  },
+
+  /**
+   * 휴지통·스팸함 비우기 — 그 메일함의 메일을 전부 지운다.
+   *
+   * 서버가 그 두 곳 외에는 거절한다. 화면에서도 그 두 곳에서만 버튼을 내놓지만,
+   * 여기서도 막지 않는다 — 막는 잣대가 두 벌이 되면 어느 쪽이 참인지 흐려진다.
+   * 지운 뒤에는 목록과 메일함 뱃지를 다시 읽는다.
+   */
+  async emptyCurrentFolder() {
+    const { accountId, folder } = get();
+    if (!accountId) return;
+    const res = await mailApi.emptyFolder({ account: accountId, folder });
+    if (res?.error) throw new Error(res.error);
+    // 보고 있던 메일도 방금 지워졌다 — 읽기창을 닫지 않으면 없는 메일이 남는다
+    set({ openUid: null, detail: null, readerFull: false, checked: new Set(), cursor: 0, page: 1 });
+    await get().loadMessages();
+    get().loadFolders(true);
   },
 
   /** 상세검색 해제 — 보던 메일함으로 그대로 돌아간다 */

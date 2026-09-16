@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api } from '../api/client';
+import { api, mailApi } from '../api/client';
 import {
   buildComposer, draftSignature, isTouched, attachBytes, AUTOSAVE_MAX_ATTACH,
 } from '../lib/compose';
@@ -317,17 +317,44 @@ function uploadChunked(file, { onProgress, onDone, onError }) {
   };
 }
 
-/** 서명은 한 번만 받아 두고 재사용한다 */
-let signatureCache = null;
-async function getSignature() {
-  if (signatureCache !== null) return signatureCache;
-  try {
-    const res = await api.get('/mail/api/user-signature');
-    signatureCache = res.html || '';
-  } catch {
-    signatureCache = '';
+/**
+ * 서명 — **계정마다 다르다.** 계정별로 따로 받아 두고 재사용한다.
+ *
+ * 한 벌만 캐시하면 공용계정(purchase@ 등)으로 바꿔 메일을 써도 먼저 받아 둔
+ * 내 개인 서명이 계속 따라붙는다. 계정을 갈아 가며 쓰는 화면이라 반드시 밟는다.
+ *
+ * 값이 아니라 **약속(Promise)** 을 담는다 — 작성 화면을 연달아 열어도 같은 계정을
+ * 두 번 묻지 않는다.
+ */
+const signatureCache = new Map();
+
+/**
+ * 이 계정의 서명. 계정에 직접 적어 둔 것이 있으면 그것을, 없으면 서버가
+ * ERP 정보로 만든 자동 서명을 준다(응답: `{ html, custom }`).
+ */
+async function getSignature(accountId) {
+  const key = String(accountId ?? '');
+  if (!signatureCache.has(key)) {
+    signatureCache.set(key, mailApi.signature(accountId)
+      .then((res) => res?.html || '')
+      .catch(() => {
+        // 실패는 **캐시하지 않는다.** 잠깐 끊겼다고 빈 서명을 박아 두면
+        // 탭을 새로 열 때까지 서명 없는 메일만 나간다.
+        signatureCache.delete(key);
+        return '';
+      }));
   }
-  return signatureCache;
+  return signatureCache.get(key);
+}
+
+/**
+ * 서명 캐시 비우기 — **설정에서 서명을 고친 직후에 부른다.**
+ * 안 부르면 방금 고친 서명이 이 탭에서는 다음 새로고침까지 안 보인다.
+ * 계정 id 를 주면 그 계정만, 안 주면 전부 비운다.
+ */
+export function clearSignatureCache(accountId) {
+  if (accountId === undefined || accountId === null) signatureCache.clear();
+  else signatureCache.delete(String(accountId));
 }
 
 export const useCompose = create((set, get) => ({
@@ -347,7 +374,7 @@ export const useCompose = create((set, get) => ({
     const m = useMail.getState();
     const accountId = ctx.accountId ?? m.accountId;
     const myEmail = m.accounts.find((a) => a.id === accountId)?.email || '';
-    const signature = await getSignature();
+    const signature = await getSignature(accountId);
 
     const active = {
       id: ++seq,
@@ -358,6 +385,39 @@ export const useCompose = create((set, get) => ({
       }),
     };
     set({ active });
+    return active.id;
+  },
+
+  /**
+   * 임시보관함 이어쓰기 — 읽고 있던 임시본을 작성 화면으로 되살린다.
+   *
+   * 저장하면 **그 임시본을 갈아끼운다**(buildComposer 가 draftUid/draftFolder 를
+   * 채워 두므로 saveDraft 가 replace_uid 를 싣는다). 임시보관함에 두 통이 되면
+   * 무엇이 최신인지 사람이 가릴 방법이 없다.
+   *
+   * 읽기창은 닫는다. 저장하는 순간 이 uid 는 지워지고 새 uid 로 다시 쌓이므로,
+   * 열어 둔 채로 두면 읽기창이 없는 메일을 가리키게 된다.
+   */
+  async openDraft(ctx = {}) {
+    const m = useMail.getState();
+    // detail 은 닫기 전에 붙들어 둔다 — close() 가 detail 을 비운다
+    const detail = ctx.detail ?? m.detail;
+    const folder = ctx.folder ?? m.folder;
+    const accountId = ctx.accountId ?? m.accountId;
+    if (!detail) return null;
+    if (!get().canLeave()) return null;
+
+    const active = {
+      id: ++seq,
+      ...buildComposer('draft', {
+        detail, folder, accountId,
+        myEmail: m.accounts.find((a) => a.id === accountId)?.email || '',
+        // 서명은 일부러 비운다 — 저장된 본문에 이미 들어 있다
+        signature: '',
+      }),
+    };
+    m.close();
+    set({ active, done: null });
     return active.id;
   },
 
@@ -754,6 +814,42 @@ export const useCompose = create((set, get) => ({
   },
 
   /**
+   * 교체 저장 뒤, 원본 첨부가 가리키는 자리를 새 임시본으로 옮긴다.
+   *
+   * 옮길 대상은 **방금 지워진 임시본을 가리키던 forward 뿐**이다.
+   * 전달·다시보내기의 forward 는 받은편지함·보낸편지함의 살아 있는 메일을
+   * 가리키므로 손대지 않는다.
+   *
+   * 새 part 번호는 서버가 메시지를 다시 조립하면서 정해지므로(= 우리가 계산할 수
+   * 없다) 새 임시본을 한 번 읽어 확인한다. 이어쓰기 중인 임시본에만, 저장할
+   * 때만 한 번 도는 길이다.
+   */
+  async _repointForward(w, res) {
+    const fwd = w.forward;
+    if (!fwd) return null;
+    const wasThisDraft = w.draftUid
+      && String(fwd.uid) === String(w.draftUid)
+      && fwd.folder === w.draftFolder;
+    if (!wasThisDraft || !res.uid) return fwd;
+    try {
+      const d = await mailApi.message({
+        account: w.accountId, folder: res.folder, uid: res.uid,
+      });
+      const atts = d?.attachments || [];
+      if (!atts.length) return null;   // 첨부가 없으면 겨눌 자리도 없다
+      return {
+        uid: res.uid, folder: res.folder, accountId: w.accountId,
+        parts: atts.map((a) => a.part_id),
+        names: atts.map((a) => a.filename),
+      };
+    } catch {
+      // 못 읽었으면 있던 것을 그대로 둔다 — 여기서 null 로 지우면
+      // 첨부가 '확실히' 사라진다. 틀릴 수 있는 쪽보다 나쁘다.
+      return fwd;
+    }
+  },
+
+  /**
    * 임시저장 — 다시 누르면(또는 자동저장이 돌면) 앞서 저장한 임시본을 갈아끼운다.
    * 자동·수동이 같은 길을 쓴다. 임시보관함에 남는 건 늘 한 통이다.
    */
@@ -773,6 +869,11 @@ export const useCompose = create((set, get) => ({
         get().update({ saving: false, error: res.error });
         return;
       }
+      // ⚠ 교체 저장은 옛 임시본을 **지우고** 새로 쌓는다. forward 가 방금 지워진
+      //   그 uid 를 가리킨 채로 남으면(=임시보관함 이어쓰기) 다음 저장 때 서버가
+      //   없는 메일에서 첨부를 찾다가 조용히 빈손으로 돌아온다 — 두 번째 저장부터
+      //   첨부만 사라진 임시본이 남는다. 새로 쌓인 임시본으로 다시 겨눈다.
+      const forward = await get()._repointForward(w, res);
       get().update({
         saving: false,
         draftUid: res.uid || null,
@@ -781,6 +882,7 @@ export const useCompose = create((set, get) => ({
         draftVersion: (w.draftVersion || 0) + 1,
         savedSig: sig,
         savedAuto: auto,
+        forward,
       });
       // 임시보관함을 보고 있었다면 방금 저장분이 바로 보여야 한다
       const m = useMail.getState();

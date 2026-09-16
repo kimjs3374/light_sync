@@ -30,7 +30,18 @@ ${sourceBody(d)}
 const stripPrefix = (s, re) => (re.test(s || '') ? s : '');
 
 /**
- * @param mode  new | self | reply | replyAll | forward | resend
+ * 임시보관함인가.
+ *
+ * 폴더 이름이 서버마다 `Drafts` · `INBOX.Drafts` · `Draft` 로 갈려서 이름에
+ * draft 가 들었는지로만 본다 — 이미 compose 스토어가 같은 잣대(`/draft/i`)로
+ * "저장 뒤 목록을 다시 읽을지"를 정하고 있어, 두 곳이 갈리면 저장은 됐는데
+ * 목록에 안 뜨는 일이 생긴다.
+ * (lib/folders.js 의 folderLabel 과도 같은 잣대다)
+ */
+export const isDraftFolder = (name) => /draft/i.test(String(name || ''));
+
+/**
+ * @param mode  new | self | reply | replyAll | forward | resend | draft
  * @param ctx   { detail, folder, accountId, myEmail, signature }
  */
 export function buildComposer(mode, ctx = {}) {
@@ -129,12 +140,47 @@ export function buildComposer(mode, ctx = {}) {
     });
   }
 
+  if (mode === 'draft') {
+    /**
+     * 임시보관함 이어쓰기 — 저장해 둔 그대로 되살린다.
+     *
+     * 서명을 다시 붙이지 않는다(ctx.signature 를 안 쓴다). 저장된 본문에 이미
+     * 들어 있어서, 붙이면 이어 쓸 때마다 서명이 한 벌씩 늘어난다.
+     *
+     * draftUid/draftFolder 를 여기서 채우는 것이 핵심이다. 이 둘이 있어야
+     *  - 저장할 때 `replace_uid` 로 옛 임시본을 지우고 갈아끼우고(두 통이 안 되고),
+     *  - 발송할 때 `draft_replace_uid` 로 임시본이 치워진다.
+     *
+     * 원본 첨부는 전달과 같은 방식으로 들고 간다 — 브라우저로 내려받았다가
+     * 다시 올리지 않고, 서버가 IMAP 에서 바로 집어 붙인다.
+     */
+    const bcc = addrList(d.bcc);
+    return withInitial({
+      ...base,
+      to: addrList(d.to),
+      cc: addrList(d.cc),
+      bcc,
+      showBcc: bcc.length > 0,
+      subject: subj,
+      bodyHtml: sourceBody(d),
+      forward: (d.attachments || []).length
+        ? {
+          uid: d.uid, folder, accountId,
+          parts: d.attachments.map((a) => a.part_id),
+          names: d.attachments.map((a) => a.filename),
+        }
+        : null,
+      draftUid: d.uid ?? null,
+      draftFolder: folder || '',
+    });
+  }
+
   return withInitial(base);
 }
 
 export const composerTitle = (c) => {
   if (c.subject) return c.subject;
-  return { reply: '답장', replyAll: '전체답장', forward: '전달', resend: '다시 보내기', self: '내게 쓰기' }[c.mode]
+  return { reply: '답장', replyAll: '전체답장', forward: '전달', resend: '다시 보내기', self: '내게 쓰기', draft: '이어서 쓰기' }[c.mode]
     || '새 메일';
 };
 

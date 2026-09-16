@@ -1,0 +1,115 @@
+/* 이 파일은 styles.read 전용입니다 — styles.css 는 건드리지 않습니다. */
+
+/* ═══════════════════════════════════════════════════════════════════════
+   읽기창·목록에 새로 붙은 것들.
+
+   색은 아낀다. 강조는 굵기와 옅은 회색 바탕과 ✓ 로 하고, 파랑은 진짜 누르는
+   버튼에만 쓴다 — 읽기창은 남이 쓴 글을 읽는 자리라, 우리 화면이 색을 더할수록
+   본문이 뒤로 밀린다.
+   색 값을 직접 적지 않고 styles.css 의 토큰만 쓴다. 규칙마다 색을 박아 두면
+   다크 테마로 갈 때 반드시 어딘가 하나가 밝은 채로 남는다.
+
+   ⚠ **이 파일은 styles.css 의 맨 앞에서 @import 된다.** 그래서 styles.css 의
+   규칙이 전부 뒤에 오고, 같은 굵기(specificity)로 맞서면 **여기가 진다.**
+   이미 있는 규칙을 덮어야 할 때는 선택자를 한 칸 더 붙여 굵기를 올린다
+   (.contact-card.att-card / .toolbar-row.sort-criteria 처럼).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── 읽기창 한 줄 안내 (수신확인 · 이미 본 사람) ──────────────────────────
+   받는사람·참조 줄(.addr-line)과 같은 자리·같은 크기로 맞춘다. 여기만 딴
+   모양이면 "메일이 알려주는 것"과 "우리가 알려주는 것"이 섞여 보인다. */
+.read-note {
+  display: flex; gap: 10px; align-items: baseline;
+  font-size: 12px; margin-top: 4px;
+}
+.read-note-label { flex: 0 0 56px; color: var(--subtle); }
+.read-note-value {
+  min-width: 0; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.read-note-value b { color: var(--ink); font-weight: 700; }
+
+/* 여러 사람이면 가운뎃점으로 잇는다 — 사람마다 칩을 두르면 줄이 요란해진다 */
+.read-reader:not(:last-child)::after { content: ' · '; color: var(--faint); }
+
+/* ── 첨부 ───────────────────────────────────────────────────────────────
+   [보기] 와 파일 이름은 겉보기로 한 덩어리여야 한다. 버튼 안에 버튼을 넣을 수
+   없어 나란히 두고, 테두리를 서로 마주 붙여 하나처럼 보이게 한다. */
+.attach-title { display: flex; align-items: center; gap: 10px; }
+.attach-zip {
+  padding: 2px 9px; border: 0; border-radius: 999px;
+  background: var(--chip-bg); color: var(--label-ink);
+  font-family: inherit; font-size: 10.5px; font-weight: 700; letter-spacing: 0;
+  white-space: nowrap;
+}
+.attach-zip:hover { background: var(--hover-strong); color: var(--ink); }
+
+.attach-entry { display: inline-flex; align-items: stretch; max-width: 100%; }
+.attach-entry .attach-item { min-width: 0; }
+/* [보기] 가 붙었을 때만(= 이름 버튼이 마지막이 아닐 때만) 맞닿는 쪽 모서리를 편다 */
+.attach-entry .attach-item:not(:last-child) { border-radius: 7px 0 0 7px; }
+.attach-view {
+  flex: 0 0 auto; padding: 0 11px; border: 0; border-radius: 0 7px 7px 0;
+  background: var(--surface); color: var(--subtle);
+  font-family: inherit; font-size: 11.5px; white-space: nowrap;
+  box-shadow: var(--shadow-lift);
+  border-left: 1px solid var(--hairline);
+}
+.attach-view:hover { color: var(--primary); }
+
+/* ── 첨부 미리보기 창 ───────────────────────────────────────────────────
+   원문보기(.raw-card)와 같은 틀(.contact-card.wide)을 쓴다 — 읽기창에서 뜨는
+   창이 둘인데 생김새가 다르면 어느 쪽이 무엇이었는지 헷갈린다. */
+.contact-card.att-card { width: min(920px, 100%); }
+/* .contact-card-head h3 가 font-size 15px 을 박아 두므로 그보다 굵게 쓴다 */
+.contact-card-head .att-head-name {
+  flex: 1 1 auto; min-width: 0; margin: 0;
+  font-size: 14px; font-weight: 700;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.att-head-size {
+  flex: 0 0 auto; margin-right: 10px;
+  color: var(--subtle); font-family: var(--mono); font-size: 11px; white-space: nowrap;
+}
+.att-body {
+  flex: 1 1 auto; min-height: 320px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: auto; padding: 14px; background: var(--sunken);
+}
+/* 원래 크기보다 키우지 않는다 — 작은 도장 이미지가 화면을 가득 채우면
+   무엇을 보고 있는지 알기 어렵다 */
+.att-image { max-width: 100%; max-height: 74vh; object-fit: contain; }
+.att-frame { width: 100%; height: 74vh; border: 0; background: var(--surface); }
+
+/* ── 툴바: 정렬 ─────────────────────────────────────────────────────────
+   무엇으로 세웠는지와 "이 쪽에서만"이라는 사실은 상세검색 조건 줄
+   (.detail-criteria)과 같은 자리·같은 짜임으로 적는다. 기본 순서로 돌리면
+   줄째 사라진다 — 아무것도 안 고른 사람에게 군더더기를 남기지 않는다.
+   딱지는 파랑을 쓰지 않는다(그 색은 진짜 누르는 버튼 몫이다). */
+.sort-select { max-width: 190px; }
+.toolbar-row.sort-criteria {
+  padding: 0 16px 12px; gap: 6px; flex-wrap: wrap;
+  font-size: 11px;
+}
+.sc-tag { color: var(--label-ink); font-weight: 700; }
+.sc-chip {
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  background: var(--chip-bg); color: var(--label-ink); font-weight: 700;
+}
+
+/* ── 툴바: 비우기 ───────────────────────────────────────────────────────
+   되돌릴 수 없는 일이라 눈에는 띄어야 하지만, 빨간 버튼으로 두면 휴지통에
+   들어갈 때마다 먼저 보인다. 평소엔 옅게 두고 손이 닿을 때만 붉어진다. */
+.empty-folder {
+  padding: 4px 11px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--subtle);
+  font-family: inherit; font-size: 11.5px; white-space: nowrap;
+}
+.empty-folder:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); }
+.empty-folder:disabled { opacity: .5; cursor: default; }
+
+@media (max-width: 900px) {
+  /* 고르는 칸만 줄인다. 안내 줄(.sort-criteria)은 따로 한 줄을 쓰므로
+     여기서 밀려날 일이 없다 — 좁다고 해서 감추지 않는다. */
+  .sort-select { max-width: 132px; }
+}

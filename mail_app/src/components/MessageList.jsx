@@ -74,7 +74,10 @@ export default function MessageList() {
             ? `'${s.searchQuery}' 검색 결과가 없습니다`
             : s.searchDetail
               ? '조건에 맞는 메일이 없습니다'
-              : '메일이 없습니다'}
+              : s.labelFilter
+                // 라벨로 걸러 비었을 때 '메일이 없습니다'만 뜨면 메일함이 빈 줄 안다
+                ? `'${s.labelFilter.name}' 라벨이 달린 메일이 없습니다`
+                : '메일이 없습니다'}
         </div>
       </div>
     );
