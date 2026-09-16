@@ -326,7 +326,11 @@ def _expand_detail_row(row):
     detail은 결재문서/수동등록 1건이 1행이라 다일 연차(7/28~7/31, 4일)가
     시작일 하나로 뭉쳐 있다. 서면에는 날짜가 모두 찍혀야 하므로 전개한다.
 
-    종료일이 없는데 days>1 인 행(관리자 수동등록분)은 어느 날짜인지 원본에
+    기간은 **근무일만** 편다. 일수 자체가 근무일 기준으로 차감되므로(주말·공휴일
+    제외), 달력일을 그대로 펴면 8/3~8/14 가 10일인데 서면에는 12일이 찍혀
+    주말이 '실제로 썼는데 서면에 없는 날'로 잡힌다.
+
+    종료일이 없는데 days>1 인 행(옛 관리자 수동등록분)은 어느 날짜인지 원본에
     정보가 없다 → 날짜를 지어내지 않고 unresolved 로 표시해 올려보낸다.
     """
     s = _d(row.get('start'))
@@ -344,10 +348,19 @@ def _expand_detail_row(row):
         return [{'date': s.strftime('%Y-%m-%d'),
                  'type': '반차' if days == 0.5 else '연차',
                  'days': days or 1.0}]
-    out = [{'date': (s + datetime.timedelta(days=i)).strftime('%Y-%m-%d'),
-            'type': '연차', 'days': 1.0} for i in range(span)]
+    dates = [s + datetime.timedelta(days=i) for i in range(span)]
+    try:
+        from modules.services import holiday_service
+        work = [d for d in dates
+                if d.weekday() < 5 and not holiday_service.is_holiday(d)]
+    except Exception:
+        work = []
+    if work:
+        dates = work          # 전부 휴일인 이상 행은 달력일 그대로 둔다
+    out = [{'date': d.strftime('%Y-%m-%d'), 'type': '연차', 'days': 1.0}
+           for d in dates]
     # 마지막 날만 반차인 경우(예: 3일 구간 2.5일) 보정
-    if days and abs(span - days - 0.5) < 0.001:
+    if days and abs(len(out) - days - 0.5) < 0.001:
         out[-1] = {'date': out[-1]['date'], 'type': '반차', 'days': 0.5}
     return out
 

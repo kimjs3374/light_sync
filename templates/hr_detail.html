@@ -86,12 +86,44 @@
     {% if is_admin %}
     <form method="POST" action="{{ url_for('hr.hr_leave_usage', user_id=u.id) }}" class="d-flex gap-2 align-items-end mt-2 flex-wrap">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div><label class="form-label">사용일</label><input type="date" name="used_date" required class="form-control form-control-sm" style="width:150px"></div>
-      <div><label class="form-label">일수</label><input type="number" step="0.5" min="0.5" name="days" value="1" class="form-control form-control-sm" style="width:80px"></div>
+      <div><label class="form-label">사용일</label><input type="date" name="used_date" id="lu-start" required class="form-control form-control-sm" style="width:150px"></div>
+      <div><label class="form-label">종료일(연속 사용)</label><input type="date" name="end_date" id="lu-end" class="form-control form-control-sm" style="width:150px"></div>
+      <div><label class="form-label">일수</label><input type="number" step="0.5" min="0.5" name="days" id="lu-days" value="1" class="form-control form-control-sm" style="width:80px"></div>
       <div style="flex:1;min-width:140px"><label class="form-label">사유(선택)</label><input type="text" name="reason" class="form-control form-control-sm" placeholder="예: 개인사정"></div>
       <button class="btn btn-sm btn-outline-warning">사용 등록</button>
     </form>
-    <div class="text-muted mt-1" style="font-size:.74rem">전자결재 없이 실제 사용한 연차를 직접 등록합니다. (반차=0.5) 도입 전 사용분 소급 입력용.</div>
+    <div class="text-muted mt-1" style="font-size:.74rem">
+      전자결재 없이 실제 사용한 연차를 직접 등록합니다. (반차=0.5) 도입 전 사용분 소급 입력용.<br>
+      며칠을 이어서 썼다면 <b>종료일</b>을 넣으세요. 일수는 주말·공휴일을 뺀 근무일수로 자동 계산됩니다.
+      기간 중 하루만 반차라면 그 하루는 따로 등록하세요.
+    </div>
+    <script>
+    (function () {
+      var st = document.getElementById('lu-start'),
+          en = document.getElementById('lu-end'),
+          dy = document.getElementById('lu-days');
+      if (!st || !en || !dy) return;
+      // 공휴일은 서버가 최종 판정한다. 여기선 주말만 빼서 미리 보여주는 용도.
+      function sync() {
+        en.min = st.value || '';
+        if (!st.value || !en.value || en.value <= st.value) {
+          dy.readOnly = false;
+          dy.title = '';
+          return;
+        }
+        var d = new Date(st.value + 'T00:00:00'), e = new Date(en.value + 'T00:00:00'), n = 0;
+        while (d <= e) {
+          if (d.getDay() !== 0 && d.getDay() !== 6) n++;
+          d.setDate(d.getDate() + 1);
+        }
+        dy.value = n;
+        dy.readOnly = true;
+        dy.title = '종료일이 있으면 근무일수로 자동 계산됩니다 (공휴일은 저장 시 서버가 제외)';
+      }
+      st.addEventListener('change', sync);
+      en.addEventListener('change', sync);
+    })();
+    </script>
     {% endif %}
 
     {# 수동 조정 #}

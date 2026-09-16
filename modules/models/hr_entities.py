@@ -89,12 +89,17 @@ class LeaveUsage(Base):
 
     전자결재 휴가 승인분 자동 차감과 별개로, 관리자가 실제 사용한 연차를
     날짜 단위로 직접 등록한다. used_leave_days 계산 시 사용일 기준으로 합산.
+
+    연속 사용(예: 8/3~8/14)은 end_date 를 채운다. end_date 가 없는데 days>1 이면
+    어느 날짜를 썼는지 알 수 없어 연차사용촉진 서면 대조가 불가능해진다
+    (leave_promotion_service._expand_detail_row 의 unresolved).
     """
     __tablename__ = 'leave_usages'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     used_date = Column(Date, nullable=False)              # 사용일(시작일)
+    end_date = Column(Date, nullable=True)                # 연속 사용 종료일 (하루면 NULL)
     days = Column(Numeric(3, 1), nullable=False, default=1)  # 사용일수 (반차=0.5)
     leave_type = Column(String(20), nullable=True, default='연차')
     reason = Column(Text, nullable=True)

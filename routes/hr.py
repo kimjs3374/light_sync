@@ -169,25 +169,48 @@ def hr_leave_usage(user_id):
         if not used_date:
             flash('사용일을 입력하세요.', 'warning')
             return redirect(url_for('hr.hr_detail', user_id=user_id))
-        try:
-            days = float((request.form.get('days') or '1').replace(',', ''))
-        except ValueError:
-            flash('일수를 올바르게 입력하세요.', 'warning')
+        end_date = _safe_date(request.form.get('end_date'))
+        if end_date and end_date < used_date:
+            flash('종료일이 시작일보다 빠릅니다.', 'warning')
             return redirect(url_for('hr.hr_detail', user_id=user_id))
-        if days <= 0:
-            flash('사용일수는 0보다 커야 합니다.', 'warning')
-            return redirect(url_for('hr.hr_detail', user_id=user_id))
+        if end_date == used_date:
+            end_date = None      # 하루짜리는 종료일을 두지 않는다
+        if end_date:
+            # 기간 등록: 일수는 근무일수(주말·공휴일 제외)로 서버가 정한다.
+            # 전자결재 휴가(_doc_leave_days)와 같은 기준이어야 잔여가 어긋나지 않는다.
+            from modules.services import holiday_service
+            days = float(holiday_service.working_days(used_date, end_date))
+            if days <= 0:
+                flash('그 기간은 전부 주말·공휴일이라 차감할 연차가 없습니다.', 'warning')
+                return redirect(url_for('hr.hr_detail', user_id=user_id))
+        else:
+            try:
+                days = float((request.form.get('days') or '1').replace(',', ''))
+            except ValueError:
+                flash('일수를 올바르게 입력하세요.', 'warning')
+                return redirect(url_for('hr.hr_detail', user_id=user_id))
+            if days <= 0:
+                flash('사용일수는 0보다 커야 합니다.', 'warning')
+                return redirect(url_for('hr.hr_detail', user_id=user_id))
+            if days > 1:
+                # 종료일 없이 여러 날 = 어느 날짜인지 특정 불가 → 촉진 서면이 막힌다
+                flash('하루를 넘으면 종료일을 입력하세요. '
+                      '(종료일 없이 여러 날로 등록하면 연차사용촉진 서면을 출력할 수 없습니다)',
+                      'warning')
+                return redirect(url_for('hr.hr_detail', user_id=user_id))
         # 사용일이 속한 연차연도 시작연도
         ys, _ = hr.leave_year_range(u.hire_date, used_date)
         db.add(LeaveUsage(
-            user_id=u.id, used_date=used_date, days=days,
+            user_id=u.id, used_date=used_date, end_date=end_date, days=days,
             leave_type=(request.form.get('leave_type') or '연차').strip() or '연차',
             reason=(request.form.get('reason') or '').strip() or None,
             leave_year=ys.year,
             created_by=session.get('full_name', ''),
         ))
+        period = (f'{used_date:%Y-%m-%d}~{end_date:%Y-%m-%d}' if end_date
+                  else f'{used_date:%Y-%m-%d}')
         log_activity(db, 'hr', 'leave_usage',
-                     f'{u.full_name} 연차 사용 {used_date:%Y-%m-%d} {days:g}일 직접등록',
+                     f'{u.full_name} 연차 사용 {period} {days:g}일 직접등록',
                      ref_type='user', ref_id=u.id, ref_label=u.full_name)
         db.commit()
         flash(f'연차 사용 {days:g}일이 등록되었습니다. ({ys.year}년도 연차연도)', 'success')

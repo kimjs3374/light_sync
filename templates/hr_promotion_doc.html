@@ -115,7 +115,7 @@
 <div class="body-text" style="color:#dc2626">
   ※ 실제 사용내역에 <b>종료일이 기재되지 않은 다일 연차</b>가 있어 지정 사용일과 대조할 수 없습니다
   ({% for e in diff.unresolved %}{{ e.date }} {{ e.days }}일{% if not loop.last %} · {% endif %}{% endfor %}).
-  연차관리에서 실제 사용일을 정정한 뒤 출력하시기 바랍니다.
+  연차관리 사용 내역에서 해당 기록을 지우고 <b>종료일</b>을 넣어 다시 등록한 뒤 출력하시기 바랍니다.
 </div>
 {% endif %}
 

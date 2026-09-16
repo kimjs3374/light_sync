@@ -263,7 +263,7 @@ def used_leave_days(db, user_id, year_start, year_end):
             'doc_id': None, 'doc_no': None, 'title': u.reason or '',
             'leave_type': u.leave_type or '연차',
             'start': u.used_date.strftime('%Y-%m-%d'),
-            'end': '',
+            'end': u.end_date.strftime('%Y-%m-%d') if u.end_date else '',
             'days': days,
             'manual': True,
             'usage_id': u.id,

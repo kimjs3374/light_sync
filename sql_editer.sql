@@ -1883,3 +1883,9 @@ CREATE TABLE IF NOT EXISTS light_sync.mail_folder_prefs (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_mail_folder_prefs
     ON light_sync.mail_folder_prefs (account_id, folder);
+
+-- 2026-09-16 연차 수동 사용 등록에 종료일 추가
+-- 기존: used_date(시작일) + days 만 있어 "8/3부터 10일"이 어느 날짜인지 알 수 없었다.
+-- 연차사용촉진 서면(지정 사용일 ↔ 실제 사용일 대조)이 날짜를 특정 못 해 출력을 막았다.
+ALTER TABLE light_sync.leave_usages ADD COLUMN IF NOT EXISTS end_date DATE;
+COMMENT ON COLUMN light_sync.leave_usages.end_date IS '연속 사용 종료일 (하루면 NULL)';
