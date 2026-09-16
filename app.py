@@ -1066,8 +1066,8 @@ def check_leave_promotions_cli(dry):
             return
         out = lp.run_promotion_cycle(db, do_email=True, do_notify=True)
         db.commit()
-    click.echo("[연차촉진] 발송 %d (2회차 %d) · 메일 %d"
-               % (out['recorded'], out['second'], out['emailed']))
+    click.echo("[연차촉진] 촉구 발송 %d · 메일 %d · 회사지정 필요 %d명(사람이 날짜를 정해야 함)"
+               % (out['recorded'], out['emailed'], out['second_pending']))
 
 
 @app.cli.command('remind-pending-approvals')

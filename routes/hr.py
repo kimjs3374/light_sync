@@ -332,6 +332,29 @@ def hr_promotion_delete(promo_id):
         return redirect(url_for('hr.hr_promotion'))
 
 
+@hr_bp.route('/promotion/<int:promo_id>/resend', methods=['POST'])
+@admin_required
+def hr_promotion_resend(promo_id):
+    """촉구·통보 메일 재발송 — 발송 실패가 조용히 묻히지 않게."""
+    from modules.models import LeavePromotion
+    with get_db() as db:
+        p = db.get(LeavePromotion, promo_id)
+        if not p:
+            abort(404)
+        u = db.get(User, p.user_id)
+        ok = lp.send_promotion_email(db, p, u)
+        log_activity(db, 'hr', 'leave_promotion_resend',
+                     f'{u.full_name} 연차촉진 {lp.STAGE_LABEL.get(p.stage, p.stage)} '
+                     f'메일 {"재발송" if ok else "재발송 실패"}',
+                     detail=f'수신 {p.email_to}',
+                     ref_type='user', ref_id=u.id, ref_label=u.full_name)
+        db.commit()
+        flash(f'{u.full_name} 메일을 {p.email_to}로 재발송했습니다.' if ok
+              else f'메일 발송에 실패했습니다. 서면으로 교부해 주세요.',
+              'success' if ok else 'danger')
+        return redirect(url_for('hr.hr_promotion'))
+
+
 @hr_bp.route('/promotion/<int:promo_id>/uncancel', methods=['POST'])
 @admin_required
 def hr_promotion_uncancel(promo_id):
@@ -387,13 +410,22 @@ def hr_promotion_second():
         stage = (request.form.get('stage') or 'second').strip()
         if stage not in ('second', 'extra2'):
             stage = 'second'
-        lp.record_second(db, u, emp_type, dates, by=by, stage=stage)
+        p = lp.record_second(db, u, emp_type, dates, by=by, stage=stage)
         label = lp.STAGE_LABEL.get(stage, stage)
+        # 회사지정은 '통보'까지 해야 성립한다 — 기록만 남기고 안 보내면
+        # 근로자는 어느 날 쉬어야 하는지 모른다(제61조 제1항 2호).
+        mailed = lp.send_promotion_email(db, p, u)
         log_activity(db, 'hr', 'leave_promotion_second',
                      f'{u.full_name} 연차촉진 {label}(회사지정 {len(dates)}일) 통보',
+                     detail=('메일 발송 완료' if mailed else
+                             '⚠ 메일 발송 실패 — 서면으로 교부해야 합니다'),
                      ref_type='user', ref_id=u.id, ref_label=u.full_name)
         db.commit()
-        flash(f'{u.full_name} {label}(회사지정 {len(dates)}일)이 기록되었습니다.', 'success')
+        if mailed:
+            flash(f'{u.full_name} {label}(회사지정 {len(dates)}일)을 통보했습니다.', 'success')
+        else:
+            flash(f'{u.full_name} {label}이 기록됐지만 <b>메일이 나가지 않았습니다.</b> '
+                  f'서면으로 교부하시거나 이력에서 재발송해 주세요.', 'warning')
         return redirect(url_for('hr.hr_promotion'))
 
 

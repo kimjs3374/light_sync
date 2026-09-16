@@ -179,7 +179,9 @@ def record_promotion(db, user, emp_type, stage, by='system',
         granted_days=s['granted'], used_days=s['used'],
         remaining_days=s['remaining'],
         notified_at=datetime.datetime.now(), notified_by=by,
-        channel=channel, email_to=getattr(user, 'email', None),
+        # 실제 발송 주소를 적는다. user.email(개인메일)을 적어두면
+        # 서면·이력의 수신처가 실제와 달라 증빙이 거짓이 된다.
+        channel=channel, email_to=_employee_email(user),
         email_sent=email_sent,
         designate_due=as_of + datetime.timedelta(days=DESIGNATE_DAYS),
         status='sent',
@@ -210,7 +212,7 @@ def record_second(db, user, emp_type, admin_dates, by, as_of=None,
         granted_days=s['granted'], used_days=s['used'],
         remaining_days=s['remaining'],
         notified_at=datetime.datetime.now(), notified_by=by, channel='email',
-        email_to=getattr(user, 'email', None),
+        email_to=_employee_email(user),
         admin_dates=admin_dates, admin_by=by, admin_at=datetime.datetime.now(),
         status='admin_designated',
     )
@@ -521,8 +523,14 @@ def mark_printed(db, promo_id):
 
 
 def promotions_for_user(db, user_id, leave_year=None):
-    """직원 본인의 촉진 이력(셀프 지정 화면용)."""
-    q = db.query(LeavePromotion).filter(LeavePromotion.user_id == user_id)
+    """직원 본인의 촉진 이력(셀프 지정 화면용).
+
+    회수분은 뺀다 — 회수의 목적이 바로 '직원 화면에서 내리는 것'이다.
+    관리자 이력(all_promotions)에는 증빙으로 그대로 남는다.
+    """
+    q = (db.query(LeavePromotion)
+         .filter(LeavePromotion.user_id == user_id,
+                 LeavePromotion.cancelled_at.is_(None)))
     if leave_year is not None:
         q = q.filter(LeavePromotion.leave_year == leave_year)
     return q.order_by(LeavePromotion.notified_at.desc()).all()
@@ -595,47 +603,73 @@ def send_promotion_email(db, promo, user):
     from modules.services.email_sender import send_email_with_attachments
     base = (__import__('os').environ.get('ERP_BASE_URL') or 'https://erp.mgnt.kr').rstrip('/')
     due = promo.designate_due.strftime('%Y-%m-%d') if promo.designate_due else '-'
-    is_second = (promo.stage == 'second')
-    round_label = '2회차(최종)' if is_second else '1회차'
-    extra = ('\n기한 내 미지정 시 근로기준법 제61조에 따라 회사가 사용시기를 직접 지정합니다.\n'
-             if is_second else
-             '\n미지정 시 2회차 촉구 후 회사가 사용시기를 지정할 수 있습니다.\n')
+    # 회사지정 통보(second/extra2)는 **지정한 날짜가 본문에 있어야** 통보가 된다.
+    # 촉구(first/extra)는 근로자에게 정해 달라고 요청하는 것이라 기한을 적는다.
+    is_desig = promo.stage in ('second', 'extra2')
+    round_label = STAGE_LABEL.get(promo.stage, promo.stage)
     link = f'{base}/hr/my-promotion'
+    if is_desig:
+        days = normalize_entries(promo.admin_dates)
+        lines = '\n'.join(
+            f"      {d['date']} ({d['type']} {d['days']}일)" for d in days)
+        head = (f"기한 내 사용시기를 통보하지 않으셔서, 근로기준법 제61조에 따라 "
+                f"회사가 아래와 같이 사용시기를 지정하여 통보합니다.")
+        mid = (f"  · 회사 지정 사용일: {sum(d['days'] for d in days):g}일\n{lines}\n")
+        tail = "지정된 날짜에 연차유급휴가를 사용하시기 바랍니다.\n"
+    else:
+        head = (f"근로기준법 제61조(연차 유급휴가 사용촉진)에 따라 "
+                f"미사용 연차 일수를 알려드립니다.")
+        mid = f"  · 사용시기 지정 기한: {due} (통보일로부터 10일)\n"
+        tail = ("기한 내 미지정 시 근로기준법 제61조에 따라 "
+                "회사가 사용시기를 직접 지정합니다.\n\n"
+                f"아래 링크에서 연차 사용 예정일을 지정해 주시기 바랍니다.\n\n"
+                f"  ▶ 사용시기 지정: {link}\n")
     body = (
         f"{user.full_name}님,\n\n"
-        f"근로기준법 제61조(연차 유급휴가 사용촉진)에 따라 {round_label} 통보드립니다.\n\n"
+        f"{head}\n\n"
         f"  · 연차연도: {promo.year_start} ~ {promo.year_end} ({promo.leave_year}년도)\n"
         f"  · 미사용 잔여 연차: {promo.remaining_days}일\n"
-        f"  · 사용시기 지정 기한: {due} (통보일로부터 10일)\n"
-        f"{extra}\n"
-        f"아래 링크에서 연차 사용 예정일을 지정해 주시기 바랍니다.\n\n"
-        f"  ▶ 사용시기 지정: {link}\n\n"
+        f"{mid}\n"
+        f"{tail}\n"
         f"(주)매그나텍 인사담당"
     )
+    if is_desig:
+        rows = ''.join(
+            f'<li>{d["date"]} — {d["type"]} {d["days"]}일</li>' for d in days)
+        tail_html = (
+            f'<p>회사가 지정한 사용일입니다. 해당 날짜에 연차유급휴가를 '
+            f'사용하시기 바랍니다.</p>'
+            f'<ol style="padding-left:20px">{rows}</ol>')
+    else:
+        tail_html = (
+            f'<p>기한 내 미지정 시 근로기준법 제61조에 따라 회사가 사용시기를 '
+            f'직접 지정합니다.</p>'
+            f'<p>아래 버튼에서 연차 사용 예정일을 지정해 주시기 바랍니다.</p>'
+            f'<p style="margin:18px 0">'
+            f'<a href="{link}" style="display:inline-block;background:#2563eb;color:#fff;'
+            f'text-decoration:none;padding:11px 22px;border-radius:6px;font-weight:700">'
+            f'사용시기 지정하기</a></p>'
+            f'<p style="font-size:12px;color:#888">버튼이 안 보이면 다음 주소로 접속하세요: '
+            f'<a href="{link}">{link}</a></p>')
     body_html = (
         f'<div style="font-family:Malgun Gothic,sans-serif;font-size:14px;color:#222;line-height:1.7">'
         f'<p>{user.full_name}님,</p>'
-        f'<p>근로기준법 제61조(연차 유급휴가 사용촉진)에 따라 <b>{round_label}</b> 통보드립니다.</p>'
+        f'<p>{head}</p>'
         f'<ul style="padding-left:18px">'
         f'<li>연차연도: {promo.year_start} ~ {promo.year_end} ({promo.leave_year}년도)</li>'
         f'<li>미사용 잔여 연차: <b>{promo.remaining_days}일</b></li>'
-        f'<li>사용시기 지정 기한: <b>{due}</b> (통보일로부터 10일)</li>'
+        f'{"" if is_desig else f"<li>사용시기 지정 기한: <b>{due}</b> (통보일로부터 10일)</li>"}'
         f'</ul>'
-        f'<p>{extra.strip()}</p>'
-        f'<p>아래 버튼에서 연차 사용 예정일을 지정해 주시기 바랍니다.</p>'
-        f'<p style="margin:18px 0">'
-        f'<a href="{link}" style="display:inline-block;background:#2563eb;color:#fff;'
-        f'text-decoration:none;padding:11px 22px;border-radius:6px;font-weight:700">'
-        f'사용시기 지정하기</a></p>'
-        f'<p style="font-size:12px;color:#888">버튼이 안 보이면 다음 주소로 접속하세요: '
-        f'<a href="{link}">{link}</a></p>'
+        f'{tail_html}'
         f'<p style="margin-top:20px">(주)매그나텍 인사담당</p>'
         f'</div>'
     )
     try:
         r = send_email_with_attachments(
             to_email=to_addr,
-            subject=f'[연차사용촉진 {round_label}] {promo.leave_year}년도 미사용 연차 사용시기 지정 요청',
+            subject=(f'[연차사용촉진 {round_label}] {promo.leave_year}년도 '
+                     + ('회사 지정 사용일 통보' if is_desig
+                        else '미사용 연차 사용시기 지정 요청')),
             body_text=body, body_html=body_html,
             from_account_email=SENDER_EMAIL, from_name=SENDER_NAME,
         )
@@ -662,19 +696,22 @@ def run_promotion_cycle(db, as_of=None, do_email=True, do_notify=True, by='syste
     out = {'recorded': 0, 'emailed': 0, 'second': 0, 'second_pending': len(cand['second']),
            'names': []}
 
-    # 1회차 + 회사지정 모두 자동 촉구 — stage 는 candidates 가 산출한 것을 쓴다.
-    # ('first'/'second' 로 박아두면 1년 미만자의 추가분(extra/extra2)이
-    #  1회차로 잘못 기록돼 정작 필요한 회차가 영영 안 나간다)
-    rounds = ([c for c in cand['first']] + [c for c in cand['second']])
+    # **촉구(1차·추가)만 자동으로 나간다.**
+    # 회사지정(second/extra2)은 "사용 시기를 정하여" 통보하는 것이라(제61조
+    # 제1항 2호·제2항 2호) 날짜가 없으면 통보 자체가 성립하지 않는다.
+    # 예전엔 여기서 record_promotion(stage='second') 로 날짜 없는 2차를 만들고
+    # 「2회차(최종)」 메일까지 보냈다 — 지정일이 빠진 통보는 효력이 없다.
+    # 이제 관리자 명단 알림으로 "회사지정 필요 N명"만 올리고, 날짜는 사람이
+    # 정해 record_second() 로 보낸다.
+    # stage 는 candidates 가 산출한 것을 쓴다('first' 로 박아두면 1년 미만자의
+    # 추가 촉구(extra)가 1회차로 기록돼 정작 필요한 회차가 영영 안 나간다).
+    rounds = list(cand['first'])
     for c in rounds:
         u = c['user']
         stage = c['stage']
         p = record_promotion(db, u, c['emp_type'], stage, by=by)
         out['recorded'] += 1
-        if stage in ('second', 'extra2'):
-            out['second'] += 1
-        else:
-            out['names'].append(u.full_name)
+        out['names'].append(u.full_name)
         if do_email:
             if send_promotion_email(db, p, u):
                 out['emailed'] += 1
@@ -690,15 +727,15 @@ def run_promotion_cycle(db, as_of=None, do_email=True, do_notify=True, by='syste
             except Exception:
                 pass
 
-    # 인사관리자 명단 알림
-    if do_notify and rounds:
+    # 인사관리자 명단 알림 — 보낸 게 없어도 '회사지정 필요'가 있으면 띄운다
+    if do_notify and (rounds or cand['second']):
         mgr_ids = hr_manager_user_ids(db)
         from modules import notification_format as nf
         # 0명인 회차는 줄을 아예 빼야 '없음'만 늘어놓은 알림이 안 된다
         detail = nf.body(
-            nf.kv('1회차 촉구 %d명' % len(cand['first']),
+            nf.kv('촉구 발송 %d명' % len(cand['first']),
                   ', '.join(out['names'])),
-            nf.kv('2회차 미지정 %d명' % len(cand['second']),
+            nf.kv('회사지정 필요 %d명' % len(cand['second']),
                   ', '.join(c['user'].full_name for c in cand['second'])),
         ) or '대상자 없음'
         try:

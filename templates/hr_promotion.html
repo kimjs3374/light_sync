@@ -63,8 +63,10 @@
         <td>{{ c.anchor.strftime('%Y-%m-%d') }}</td>
         <td class="text-end text-muted">—</td>
         <td>
-          {% if c.late %}<span class="lp-badge" style="background:#fef2f2;color:#dc2626">지연</span>
-          {% else %}<span class="lp-badge" style="background:#f0fdf4;color:#16a34a">기한내</span>{% endif %}
+          {% if c.late %}<span class="lp-badge" style="background:#fef2f2;color:#dc2626"
+                title="기준일 {{ c.anchor.strftime('%Y-%m-%d') }} 로부터 10일이 지났습니다.&#10;법정 기간을 벗어난 촉구는 촉진 효력(미사용 수당 면제)이 인정되지 않습니다.">기간 경과</span>
+          {% else %}<span class="lp-badge" style="background:#f0fdf4;color:#16a34a"
+                title="기준일 {{ c.anchor.strftime('%Y-%m-%d') }} 로부터 10일 이내입니다.">기한내</span>{% endif %}
         </td>
         <td class="text-end">
           <form method="post" action="{{ url_for('hr.hr_promotion_send') }}">
@@ -72,7 +74,8 @@
             <input type="hidden" name="user_id" value="{{ c.user.id }}">
             <input type="hidden" name="stage" value="{{ c.stage }}">
             <input type="hidden" name="emp_type" value="{{ c.emp_type }}">
-            <button class="btn btn-sm btn-outline-primary">촉구</button>
+            <button class="btn btn-sm {{ 'btn-outline-danger' if c.late else 'btn-outline-primary' }}"
+                    {% if c.late %}onclick="return confirm('기준일({{ c.anchor.strftime('%Y-%m-%d') }})로부터 10일이 지났습니다.\n\n법정 기간을 벗어난 촉구는 촉진 효력이 인정되지 않아, 보내더라도 미사용 수당 지급 의무가 남습니다.\n\n그래도 보낼까요?')"{% endif %}>촉구</button>
           </form>
         </td>
       </tr>
@@ -154,7 +157,11 @@
           {% endif %}</td>
         <td>{{ p.leave_year }}</td>
         <td>{{ stage_label.get(p.stage, p.stage) }}</td>
-        <td>{{ p.notified_at.strftime('%Y-%m-%d') if p.notified_at else '-' }}</td>
+        <td>{{ p.notified_at.strftime('%Y-%m-%d') if p.notified_at else '-' }}
+          {%- if not p.email_sent %}
+          <span class="lp-badge ms-1" style="background:#fef2f2;color:#dc2626"
+                title="이 촉구의 메일이 나가지 않았습니다. 기록만 있고 근로자는 통보를 못 받은 상태입니다.&#10;수신 예정: {{ p.email_to or '주소 없음' }}">메일 미발송</span>
+          {%- endif %}</td>
         <td class="text-end">{{ (p.remaining_live if p.remaining_live is defined and p.remaining_live is not none else p.remaining_days) if p.remaining_days is not none else '-' }}</td>
         <td>{% if p.employee_dates %}<span title="{{ fmt_entries(p.employee_dates) }}">{{ sum_days(p.employee_dates)|trim }}일</span>
           {% if not p.cancelled_at %}
@@ -220,6 +227,14 @@
                     title="잘못 회수한 촉구를 되살립니다">회수 취소</button>
           </form>
           {% else %}
+          {% if not p.email_sent %}
+          <form method="post" action="{{ url_for('hr.hr_promotion_resend', promo_id=p.id) }}" class="d-inline"
+                onsubmit="return confirm('{{ p.email_to or '주소 없음' }} 로 다시 보냅니다.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-outline-primary btn-xs" style="white-space:nowrap"
+                    title="{{ p.email_to or '주소 없음' }} 로 재발송">메일 재발송</button>
+          </form>
+          {% endif %}
           <form method="post" action="{{ url_for('hr.hr_promotion_delete', promo_id=p.id) }}" class="d-inline"
                 onsubmit="return confirm('이 촉구를 회수하시겠습니까?\n\n직원 화면과 알림에서는 내려가고, 같은 회차를 다시 보낼 수 있게 됩니다.\n기록 자체는 이력에 남아 서면 출력이 계속 가능합니다.\n※ 이미 발송된 메일 자체는 회수되지 않습니다.')">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

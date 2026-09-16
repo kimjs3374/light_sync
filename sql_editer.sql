@@ -1896,3 +1896,13 @@ COMMENT ON COLUMN light_sync.leave_usages.end_date IS '연속 사용 종료일 (
 ALTER TABLE light_sync.leave_promotions ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP;
 ALTER TABLE light_sync.leave_promotions ADD COLUMN IF NOT EXISTS cancelled_by VARCHAR(50);
 COMMENT ON COLUMN light_sync.leave_promotions.cancelled_at IS '촉구 회수 시각 (NULL=유효). 행은 지우지 않는다';
+
+-- 2026-09-16 회수분은 유니크에서 빼야 재발송이 된다
+-- leave_promotions_user_id_leave_year_stage_key 가 회수분까지 세는 바람에,
+-- 촉구를 회수하고 제 날짜에 다시 보내려 하면 UniqueViolation 으로 막혔다.
+-- (회수 = 삭제였을 땐 행이 없어져 안 걸리던 문제. soft delete 로 바꾸며 드러남)
+ALTER TABLE light_sync.leave_promotions
+    DROP CONSTRAINT IF EXISTS leave_promotions_user_id_leave_year_stage_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_leave_promotions_active
+    ON light_sync.leave_promotions (user_id, leave_year, stage)
+    WHERE cancelled_at IS NULL;
