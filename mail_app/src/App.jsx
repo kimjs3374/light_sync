@@ -8,6 +8,7 @@ import Splitter from './components/Splitter';
 import ComposePage from './components/ComposePage';
 import ComposeDone from './components/ComposeDone';
 import ScheduledList from './components/ScheduledList';
+import ReceiptsPage from './components/ReceiptsPage';
 import ContactsPage from './components/ContactsPage';
 import ContactEditModal from './components/ContactEditModal';
 import SettingsModal from './components/SettingsModal';
@@ -160,6 +161,9 @@ export default function App() {
             <ComposeDone done={composeDone} />
           ) : s.specialView === 'scheduled' ? (
             <ScheduledList />
+          ) : s.specialView === 'receipts' ? (
+            /* 수신확인도 메일함이 아니다 — 목록·읽기창 대신 가운데를 통째로 쓴다 */
+            <ReceiptsPage />
           ) : s.specialView === 'contacts' ? (
             <ContactsPage />
           ) : (

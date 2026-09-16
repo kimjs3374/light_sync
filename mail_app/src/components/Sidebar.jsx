@@ -5,10 +5,13 @@ import { Mail } from './Icons';
 import AccountCard from './AccountCard';
 import ThemeToggle from './ThemeToggle';
 import { useCompose } from '../store/compose';
+import { labelKeyword } from '../store/labels';
 import { erpUrl, MAIL_ORIGIN } from '../lib/erp';
 
 export default function Sidebar() {
   const { folders, labels, folder, selectFolder, specialView, openSpecial, selfUnread } = useMail();
+  /* 지금 어느 라벨로 걸러 보고 있는지 — {keyword, name} 이다(스토어가 든다) */
+  const labelFilter = useMail((st) => st.labelFilter);
   /* 메일을 쓰는 동안에는 어떤 메일함도 활성이 아니다.
      가운데는 작성 화면인데 왼쪽만 받은편지함이 켜져 있으면, 지금 무엇을 보고 있는지가
      화면 두 곳에서 다르게 읽힌다. 눌러서 옮겨 간 메일함이 그때 켜진다. */
@@ -122,6 +125,9 @@ export default function Sidebar() {
 
           {/* 예약 발송도 실제 IMAP 폴더가 아니다 — 메일함 목록 끝에 둔다 */}
           <VirtualItem item={{ key: 'scheduled', label: '예약 발송', unread: 0 }} />
+          {/* 수신확인은 내가 **보낸** 메일 이야기라 예약 발송 바로 아래에 붙인다 —
+              보낸편지함 옆에 두면 메일함처럼 읽혀서 "여기 메일이 왜 없냐"가 된다 */}
+          <VirtualItem item={{ key: 'receipts', label: '수신확인', unread: 0 }} />
         </div>
 
         {/* 주소록은 메일함이 아니다 — 칸을 갈라 둔다.
@@ -163,16 +169,32 @@ export default function Sidebar() {
           <>
             <div className="folder-section">라벨</div>
             <div className="folder-group">
-              {labels.map((l) => (
-                <div key={l.id} className="folder-row">
-                  <div className="folder-item label-item">
-                    <span className="folder-name">
-                      <span className="label-dot" style={{ background: l.color }} />
-                      {l.name}
-                    </span>
+              {/* 라벨 줄은 메일함 줄과 똑같이 **눌린다** — 누르면 그 라벨을 단 메일만 모아 본다.
+                  거를 때 쓰는 값은 이름이 아니라 키워드다(labelKeyword 주석 참고).
+                  메일함 줄과 같이, 쓰던 메일이 있으면 먼저 물어본 뒤에 옮긴다. */}
+              {labels.map((l) => {
+                const kw = labelKeyword(l);   // 이름이 아니라 서버가 준 키워드다
+                return (
+                  <div key={l.id} className={`folder-row${labelFilter?.keyword === kw ? ' active' : ''}`}>
+                    <button
+                      className="folder-item"
+                      title={`'${l.name}' 라벨을 단 메일만 보기`}
+                      onClick={() => {
+                        if (!useCompose.getState().close()) return;
+                        /* 거르는 일도, 예약 발송·주소록·수신확인처럼 목록을 안 그리는
+                           화면에서 빠져나오는 일도 스토어가 한 번에 한다
+                           (내게쓴메일함은 목록을 그리는 화면이라 거기 머문다). */
+                        useMail.getState().filterByLabel(kw, l.name);
+                      }}
+                    >
+                      <span className="folder-name">
+                        <span className="label-dot" style={{ background: l.color }} />
+                        {l.name}
+                      </span>
+                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}

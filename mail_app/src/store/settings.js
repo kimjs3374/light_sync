@@ -9,7 +9,9 @@ import { create } from 'zustand';
  */
 export const SETTING_SECTIONS = [
   { key: 'display', label: '화면' },
+  { key: 'accounts', label: '메일 계정' },
   { key: 'folders', label: '메일함 관리' },
+  { key: 'labels', label: '라벨' },
   { key: 'sending', label: '보내기' },
   { key: 'autoreply', label: '부재중 자동응답' },
   { key: 'forward', label: '자동 전달' },

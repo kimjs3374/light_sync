@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { useMail, PER_PAGE_CHOICES, LAYOUTS, LAYOUT_LABEL } from '../store/mail';
 import { useSettings, SETTING_SECTIONS } from '../store/settings';
 import { useContacts } from '../store/contacts';
+// 서명을 고치면 작성 화면이 들고 있던 옛 서명을 버리게 한다
+import { clearSignatureCache } from '../store/compose';
+import { useLabels, LABEL_COLORS, DEFAULT_LABEL_COLOR } from '../store/labels';
 import { api, mailApi } from '../api/client';
 import { erpUrl } from '../lib/erp';
 import { folderLabel, splitFolders, arrangeUserFolders } from '../lib/folders';
@@ -383,16 +386,515 @@ function FoldersPanel({ account }) {
   );
 }
 
+/* ── 라벨 ───────────────────────────────────────────────────────────────
+   라벨은 메일함이 아니다 — 메일을 옮기지 않고 표시만 하나 더 붙인다.
+   그래서 한 통에 여러 개를 달 수 있고, 라벨을 지워도 메일은 남는다.
+   그 차이를 맨 위에 적어 둔다: 안 적으면 "라벨을 지웠더니 메일이 없어졌다"가 된다. */
+
+/** 정해진 색 중에서 고르게 한다 — 이유는 store/labels.js 의 LABEL_COLORS 주석에 */
+function ColorPick({ value, onPick }) {
+  return (
+    <div className="label-colors">
+      {LABEL_COLORS.map((c) => (
+        <button
+          key={c.value}
+          type="button"
+          className={`label-color${value === c.value ? ' on' : ''}`}
+          style={{ background: c.value }}
+          title={c.label}
+          aria-label={c.label}
+          aria-pressed={value === c.value}
+          onClick={() => onPick(c.value)}
+        >
+          {value === c.value ? '✓' : ''}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LabelsPanel({ account }) {
+  const { items, loading, error, load, save, remove } = useLabels();
+  const [name, setName] = useState('');
+  const [color, setColor] = useState(DEFAULT_LABEL_COLOR);
+  const [editing, setEditing] = useState(null);   // {id, name, color}
+  const [busy, setBusy] = useState(false);
+  const [state, setState] = useState('');
+
+  useEffect(() => {
+    setEditing(null); setState('');
+    load(account.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account.id]);
+
+  const create = async () => {
+    const n = name.trim();
+    if (!n) return;
+    if (items.some((l) => l.name === n)) { setState('같은 이름의 라벨이 이미 있습니다.'); return; }
+    setBusy(true); setState('');
+    try {
+      await save({ name: n, color, sortOrder: items.length });
+      setName(''); setColor(DEFAULT_LABEL_COLOR);
+      setState(`'${n}' 라벨을 만들었습니다.`);
+    } catch (e) { setState(e.message || '만들지 못했습니다'); }
+    finally { setBusy(false); }
+  };
+
+  const saveEdit = async () => {
+    const n = (editing.name || '').trim();
+    if (!n) return;
+    setBusy(true); setState('');
+    try {
+      // sort_order 는 건드리지 않는다 — 안 보내면 서버가 있던 값을 그대로 둔다
+      await save({ id: editing.id, name: n, color: editing.color });
+      setEditing(null); setState('바꿨습니다.');
+    } catch (e) { setState(e.message || '바꾸지 못했습니다'); }
+    finally { setBusy(false); }
+  };
+
+  const del = async (l) => {
+    if (!window.confirm(
+      `'${l.name}' 라벨을 지울까요?\n`
+      + '라벨만 없어집니다 — 라벨을 달아 두신 메일은 그대로 남습니다.')) return;
+    setBusy(true); setState('');
+    try {
+      await remove(l.id);
+      setState('라벨을 지웠습니다.');
+    } catch (e) { setState(e.message || '지우지 못했습니다'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <p className="set-note">
+        라벨은 메일함과 다릅니다. <b>메일을 옮기지 않고 표시만 답니다</b> —
+        한 통에 여러 개를 달 수 있고, 라벨을 지워도 메일은 그대로 남습니다.
+        여기서 만드신 라벨은 <b>왼쪽 「라벨」 칸</b>에 바로 서고, 누르시면 그 라벨을 단 메일만 모여 보입니다.
+        <br />이 칸은 <b>[만들기]·[저장]을 누르실 때</b> 저장됩니다.
+      </p>
+
+      <Row label="새 라벨" hint="이름을 적고 색을 고르신 뒤 [만들기]">
+        <div className="set-inline">
+          <input className="set-input" value={name} onChange={(e) => setName(e.target.value)}
+            placeholder="예) 조달청" onKeyDown={(e) => { if (e.key === 'Enter') create(); }} />
+          <ColorPick value={color} onPick={setColor} />
+          <button className="set-btn primary" onClick={create} disabled={busy || !name.trim()}>만들기</button>
+        </div>
+      </Row>
+
+      <Row label={`만들어 둔 라벨 ${items.length}개`} hint="이름과 색을 바꾸실 수 있습니다">
+        {loading ? <span className="set-empty">불러오는 중…</span>
+          : error ? <span className="set-bad">{error}</span>
+            : items.length === 0 ? <span className="set-empty">만들어 둔 라벨이 없습니다.</span> : (
+              <table className="contact-table set-table">
+                <thead>
+                  <tr><th>라벨</th><th className="col-color">색</th><th className="col-act"></th></tr>
+                </thead>
+                <tbody>
+                  {items.map((l) => (
+                    <tr key={l.id}>
+                      <td title={l.name}>
+                        {editing?.id === l.id ? (
+                          <input className="set-input" value={editing.name} autoFocus
+                            onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveEdit();
+                              if (e.key === 'Escape') setEditing(null);
+                            }} />
+                        ) : (
+                          <span className="label-chip">
+                            <span className="label-dot" style={{ background: l.color }} />
+                            {l.name}
+                          </span>
+                        )}
+                      </td>
+                      <td className="col-color">
+                        {editing?.id === l.id
+                          ? <ColorPick value={editing.color} onPick={(c) => setEditing({ ...editing, color: c })} />
+                          : (LABEL_COLORS.find((c) => c.value === l.color)?.label || l.color)}
+                      </td>
+                      <td className="col-act">
+                        {editing?.id === l.id ? (
+                          <>
+                            <button className="row-act" onClick={saveEdit} disabled={busy}>저장</button>
+                            <button className="row-act" onClick={() => setEditing(null)}>취소</button>
+                          </>
+                        ) : (
+                          <>
+                            <button className="row-act" disabled={busy}
+                              onClick={() => setEditing({ id: l.id, name: l.name, color: l.color || DEFAULT_LABEL_COLOR })}>
+                              이름 · 색
+                            </button>
+                            <button className="row-act danger" disabled={busy}
+                              onClick={() => del(l)}>삭제</button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+      </Row>
+
+      {state && <p className="set-note">{state}</p>}
+    </>
+  );
+}
+
+/* ── 메일 계정 ──────────────────────────────────────────────────────────
+   쓸 수 있는 주소를 한자리에 모아 보여준다.
+
+   사내 계정·공용 계정은 **목록에만** 낸다 — 서버 주소와 비밀번호를 관리자가 쥐고
+   있어 여기서 고치면 메일이 통째로 끊긴다. 그래도 감추지는 않는다: 안 보이면
+   "내 공용계정이 왜 없냐" 가 된다.
+
+   외부 계정(네이버·다음)만 본인이 직접 붙이고 뗀다. 예전엔 이것 때문에 ERP 설정
+   화면까지 갔다 와야 했다. */
+
+/** 네이버·다음은 서버 주소가 정해져 있다 — 외우게 하지 말고 단추로 채운다 */
+const EXT_PRESETS = [
+  { key: 'naver', label: '네이버', imap_host: 'imap.naver.com', imap_port: 993, smtp_host: 'smtp.naver.com', smtp_port: 587 },
+  { key: 'daum', label: '다음', imap_host: 'imap.daum.net', imap_port: 993, smtp_host: 'smtp.daum.net', smtp_port: 465 },
+];
+
+const emptyExt = () => ({
+  email: '', display_name: '',
+  imap_host: '', imap_port: 993, smtp_host: '', smtp_port: 587,
+  username: '', password: '',
+});
+
+/** 계정 목록을 다시 읽어 왼쪽 계정 고르기까지 따라오게 한다 */
+async function reloadAccounts() {
+  const res = await mailApi.accounts();
+  useMail.setState({ accounts: res.accounts || [] });
+  return res.accounts || [];
+}
+
+function ExternalForm({ onCancel, onSaved }) {
+  const [v, setV] = useState(emptyExt);
+  const [busy, setBusy] = useState(false);
+  const [state, setState] = useState('');
+  const patch = (o) => setV((prev) => ({ ...prev, ...o }));
+
+  /* 보내는 값은 한 곳에서 만든다 — 연결시험과 저장이 **같은 값**을 써야
+     "시험은 됐는데 저장하면 안 된다" 가 안 생긴다 */
+  const body = () => ({
+    email: v.email.trim(),
+    display_name: v.display_name.trim(),
+    imap_host: v.imap_host.trim(),
+    imap_port: Number(v.imap_port) || 993,
+    smtp_host: v.smtp_host.trim(),
+    smtp_port: Number(v.smtp_port) || 587,
+    username: (v.username || v.email).trim(),
+    password: v.password,
+    use_ssl: true,
+  });
+
+  const test = async () => {
+    setBusy(true); setState('연결을 확인하고 있습니다…');
+    try {
+      const r = await mailApi.externalTestNew(body());
+      setState(r.success
+        ? `연결됐습니다. ${r.message || ''}`.trim()
+        : (r.error || '연결하지 못했습니다'));
+    } catch (e) { setState(e.message || '연결하지 못했습니다'); }
+    finally { setBusy(false); }
+  };
+
+  const save = async () => {
+    const b = body();
+    if (!b.email || !b.imap_host) { setState('메일주소와 받는 서버(IMAP)는 꼭 적어 주세요.'); return; }
+    if (!b.password) { setState('비밀번호를 적어 주세요.'); return; }
+    setBusy(true); setState('저장하고 있습니다…');
+    try {
+      const r = await mailApi.externalSave(b);
+      if (r.error) throw new Error(r.error);
+      await reloadAccounts();
+      onSaved(b.email);
+    } catch (e) { setState(e.message || '저장하지 못했습니다'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="rule-editor">
+      <div className="rule-editor-head">외부 메일 계정 추가</div>
+
+      <Row label="어느 메일인가요" hint="누르시면 서버 주소가 채워집니다">
+        <div className="set-inline">
+          {EXT_PRESETS.map((p) => (
+            <button key={p.key} type="button" className="set-btn"
+              onClick={() => patch({
+                imap_host: p.imap_host, imap_port: p.imap_port,
+                smtp_host: p.smtp_host, smtp_port: p.smtp_port,
+              })}>
+              {p.label}
+            </button>
+          ))}
+          <span className="set-empty">그 밖의 메일은 아래 칸에 직접 적어 주세요.</span>
+        </div>
+      </Row>
+
+      <Row label="메일주소">
+        <div className="set-inline">
+          <input className="set-input" value={v.email} autoFocus
+            onChange={(e) => patch({ email: e.target.value })} placeholder="hong@naver.com" />
+        </div>
+      </Row>
+
+      <Row label="보내는 이름" hint="받는 분께 이 이름으로 보입니다">
+        <input className="set-input" value={v.display_name}
+          onChange={(e) => patch({ display_name: e.target.value })} placeholder="홍길동" />
+      </Row>
+
+      <Row label="받는 서버 (IMAP)">
+        <div className="set-inline">
+          <input className="set-input" value={v.imap_host}
+            onChange={(e) => patch({ imap_host: e.target.value })} placeholder="imap.naver.com" />
+          <span className="set-unit">포트</span>
+          <input className="set-input cond-num" type="number" value={v.imap_port}
+            onChange={(e) => patch({ imap_port: e.target.value })} />
+        </div>
+      </Row>
+
+      <Row label="보내는 서버 (SMTP)">
+        <div className="set-inline">
+          <input className="set-input" value={v.smtp_host}
+            onChange={(e) => patch({ smtp_host: e.target.value })} placeholder="smtp.naver.com" />
+          <span className="set-unit">포트</span>
+          <input className="set-input cond-num" type="number" value={v.smtp_port}
+            onChange={(e) => patch({ smtp_port: e.target.value })} />
+        </div>
+      </Row>
+
+      <Row label="아이디" hint="비워 두시면 메일주소를 그대로 씁니다">
+        <input className="set-input" value={v.username}
+          onChange={(e) => patch({ username: e.target.value })} placeholder={v.email || '아이디'} />
+      </Row>
+
+      <Row label="비밀번호">
+        <input className="set-input" type="password" value={v.password}
+          onChange={(e) => patch({ password: e.target.value })}
+          autoComplete="new-password" placeholder="메일 비밀번호" />
+      </Row>
+
+      <p className="set-note">
+        네이버·다음은 그쪽 메일 설정에서 <b>IMAP 사용을 먼저 켜 두셔야</b> 연결됩니다.
+        2단계 인증을 쓰고 계시면 로그인 비밀번호가 아니라
+        <b> 애플리케이션 비밀번호</b>를 적어 주세요.
+        <br />저장하기 전에 <b>[연결 시험]</b>으로 먼저 확인해 보시길 권합니다.
+      </p>
+
+      <div className="set-foot">
+        <button className="set-btn" onClick={test} disabled={busy}>연결 시험</button>
+        <button className="set-btn primary" onClick={save} disabled={busy}>저장</button>
+        <button className="set-btn" onClick={onCancel} disabled={busy}>취소</button>
+      </div>
+      {state && <p className="set-note">{state}</p>}
+    </div>
+  );
+}
+
+/** 계정 한 갈래를 표로. 고칠 수 없는 갈래는 단추 칸이 아예 없다 */
+function AccountRows({ rows, empty }) {
+  if (!rows.length) return <span className="set-empty">{empty}</span>;
+  return (
+    <table className="contact-table set-table">
+      <tbody>
+        {rows.map((a) => (
+          <tr key={a.id}>
+            <td title={a.email}>{a.email}</td>
+            <td title={a.display_name}>{a.display_name || ''}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function AccountsPanel() {
+  const accounts = useMail((s) => s.accounts);
+  const accountId = useMail((s) => s.accountId);
+  const [ext, setExt] = useState(null);     // 외부계정 상세(서버 주소까지)
+  const [adding, setAdding] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+  const [state, setState] = useState('');
+
+  const load = () => mailApi.externalList()
+    .then((r) => setExt(Array.isArray(r) ? r : []))
+    .catch((e) => { setExt([]); setState(e.message || '외부 계정을 불러오지 못했습니다'); });
+
+  useEffect(() => { load(); }, []);
+
+  const mine = accounts.filter((a) => a.account_type !== 'external' && !a.is_shared);
+  const shared = accounts.filter((a) => a.is_shared);
+
+  const test = async (row) => {
+    setBusyId(row.id); setState('연결을 확인하고 있습니다…');
+    try {
+      const r = await mailApi.externalTest(row.id);
+      setState(r.success ? `${row.email} — 연결됐습니다. ${r.message || ''}`.trim()
+        : `${row.email} — ${r.error || '연결하지 못했습니다'}`);
+    } catch (e) { setState(e.message || '연결하지 못했습니다'); }
+    finally { setBusyId(null); }
+  };
+
+  const remove = async (row) => {
+    if (!window.confirm(
+      `${row.email} 계정을 빼시겠습니까?\n`
+      + '이 계정을 빼면 그 메일함은 더 이상 보이지 않습니다.\n'
+      + '(네이버·다음에 있는 메일 자체가 지워지지는 않습니다. 다시 넣으시면 그대로 보입니다.)')) return;
+    setBusyId(row.id); setState('');
+    try {
+      const r = await mailApi.externalDelete(row.id);
+      if (r.error) throw new Error(r.error);
+      const left = await reloadAccounts();
+      // 지금 보고 있던 계정을 뺐으면 남은 계정 중 하나로 옮겨 준다 —
+      // 안 그러면 없는 계정을 가리킨 채로 빈 목록만 남는다
+      if (accountId === row.id && left.length) useMail.getState().switchAccount(left[0].id);
+      await load();
+      setState(`${row.email} 계정을 뺐습니다.`);
+    } catch (e) { setState(e.message || '빼지 못했습니다'); }
+    finally { setBusyId(null); }
+  };
+
+  if (adding) {
+    return (
+      <ExternalForm
+        onCancel={() => setAdding(false)}
+        onSaved={async (email) => {
+          setAdding(false);
+          await load();
+          setState(`${email} 계정을 넣었습니다. 왼쪽 위 주소를 누르시면 바로 고르실 수 있습니다.`);
+        }}
+      />
+    );
+  }
+
+  return (
+    <>
+      <p className="set-note">
+        지금 쓰실 수 있는 메일주소를 모두 모았습니다.
+        <b> 외부 메일(네이버·다음)만 여기서 넣고 빼실 수 있습니다</b> —
+        사내 계정과 공용 계정은 관리자가 맡고 있어 목록으로만 보여 드립니다.
+        <br />이 칸은 <b>[저장]·[삭제]를 누르실 때</b> 저장됩니다.
+      </p>
+
+      <Row label="내 계정" hint="사내 메일주소입니다">
+        <AccountRows rows={mine} empty="사내 계정이 없습니다." />
+      </Row>
+
+      <Row label="공용 계정" hint="부서에서 함께 쓰는 주소 (관리자가 넣어 줍니다)">
+        <AccountRows rows={shared} empty="함께 쓰는 공용 계정이 없습니다." />
+      </Row>
+
+      <Row label="외부 계정" hint="네이버 · 다음처럼 따로 연결해 두신 주소">
+        {ext === null ? <span className="set-empty">불러오는 중…</span>
+          : ext.length === 0 ? <span className="set-empty">연결해 두신 외부 계정이 없습니다.</span> : (
+            <table className="contact-table set-table">
+              <thead>
+                <tr><th>메일주소</th><th>보내는 이름</th><th className="col-host">받는 서버</th>
+                  <th className="col-act"></th></tr>
+              </thead>
+              <tbody>
+                {ext.map((a) => (
+                  <tr key={a.id}>
+                    <td title={a.email}>{a.email}</td>
+                    <td title={a.display_name}>{a.display_name || ''}</td>
+                    <td className="col-host" title={`${a.imap_host}:${a.imap_port}`}>
+                      {a.imap_host}:{a.imap_port}
+                    </td>
+                    <td className="col-act">
+                      <button className="row-act" disabled={busyId === a.id}
+                        onClick={() => test(a)}>연결 시험</button>
+                      <button className="row-act danger" disabled={busyId === a.id}
+                        onClick={() => remove(a)}>빼기</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+      </Row>
+
+      <div className="set-foot">
+        <button className="set-btn primary" onClick={() => { setState(''); setAdding(true); }}>
+          + 외부 계정 추가
+        </button>
+      </div>
+      {state && <p className="set-note">{state}</p>}
+    </>
+  );
+}
+
 /* ── 보내기 — 내가 누구로 보이는가 ──────────────────────────────────────── */
+
+/* 서명은 HTML 로 저장되는데, 여기서 고치는 건 **여러 줄 글**이다.
+   서식 편집기를 들이면 자동으로 만든 서명(표·링크)을 건드렸다가 망가뜨리기 쉬워,
+   글자와 줄바꿈만 다룬다. 들어올 때 태그를 떼고, 나갈 때 줄바꿈만 <br> 로 되돌린다. */
+const sigHtmlToText = (html) => {
+  const box = document.createElement('div');
+  // 줄을 가르는 태그만 줄바꿈으로 바꿔 두고 나머지는 textContent 로 떼어낸다.
+  // (떼어낸 조각은 화면에 붙이지 않는다 — 문서에 붙지 않은 노드라 아무것도 실행되지 않는다)
+  box.innerHTML = String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n');
+  return (box.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+};
+
+const sigTextToHtml = (text) => String(text || '').trim()
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/\r?\n/g, '<br>');
+
 function SendingPanel({ account }) {
   const [name, setName] = useState(account?.display_name || '');
-  const [sig, setSig] = useState('');
+  const [sig, setSig] = useState(null);       // {html, custom} — 아직 못 읽었으면 null
+  const [draft, setDraft] = useState(null);   // 고치는 중인 여러 줄 글 (null 이면 보기만)
+  const [sigState, setSigState] = useState('');
   const [state, setState] = useState('');
 
   useEffect(() => { setName(account?.display_name || ''); }, [account?.id, account?.display_name]);
+
+  const loadSig = () => mailApi.signature(account?.id)
+    .then((r) => setSig({ html: r.html || '', custom: !!r.custom }))
+    .catch(() => setSig({ html: '', custom: false }));
+
   useEffect(() => {
-    api.get('/mail/api/user-signature').then((r) => setSig(r.html || '')).catch(() => setSig(''));
-  }, []);
+    setSig(null); setDraft(null); setSigState('');
+    if (account?.id) loadSig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.id]);
+
+  const saveSig = async () => {
+    const html = sigTextToHtml(draft);
+    /* 빈 채로 저장하면 「되돌리기」와 같은 일이 벌어진다 — 서버가 다시 자동으로
+       만들어 준다. 서명을 아예 없애려던 분이 놀라지 않도록 한 번 짚어 드린다. */
+    if (!html && !window.confirm(
+      '서명을 비워 두시면 ERP 계정 정보로 만든 서명이 다시 붙습니다.\n그렇게 할까요?')) return;
+    setSigState('saving');
+    try {
+      const r = await mailApi.saveSignature({ account: account.id, html });
+      if (r.error) throw new Error(r.error);
+      clearSignatureCache(account.id);   // 다음에 쓰는 메일부터 바로 새 서명
+      setDraft(null);
+      await loadSig();
+      setSigState('saved');
+    } catch (e) { setSigState(e.message || '저장하지 못했습니다'); }
+  };
+
+  /* 빈 글자를 저장하면 서버가 "적어 둔 서명 없음"으로 보고 다시 자동으로 만들어 준다 */
+  const resetSig = async () => {
+    if (!window.confirm('직접 적어 두신 서명을 지우고, ERP 계정 정보로 만든 서명으로 되돌릴까요?')) return;
+    setSigState('saving');
+    try {
+      const r = await mailApi.saveSignature({ account: account.id, html: '' });
+      if (r.error) throw new Error(r.error);
+      clearSignatureCache(account.id);
+      setDraft(null);
+      await loadSig();
+      setSigState('reset');
+    } catch (e) { setSigState(e.message || '되돌리지 못했습니다'); }
+  };
 
   const save = async () => {
     setState('saving');
@@ -427,16 +929,73 @@ function SendingPanel({ account }) {
         </p>
       )}
 
-      <Row label="서명" hint="ERP 계정 정보(부서·이름·직급·연락처)로 만들어집니다">
-        <div className="set-sig">
-          {sig
-            ? <div className="mail-html" dangerouslySetInnerHTML={{ __html: sig }} />
-            : <span className="set-empty">서명이 없습니다</span>}
+      <Row
+        label="서명"
+        hint={sig === null ? '' : sig.custom
+          ? '직접 적어 두신 서명입니다'
+          : 'ERP 계정 정보(부서·이름·직급·연락처)로 만든 서명입니다'}
+      >
+        {sig === null ? <span className="set-empty">불러오는 중…</span> : draft !== null ? (
+          <>
+            {/* 서식 없이 글과 줄바꿈만 다룬다 — 이유는 sigHtmlToText 위 주석에 */}
+            <textarea className="set-input wide" rows={7} value={draft} autoFocus
+              onChange={(e) => setDraft(e.target.value)} />
+            <span className="set-empty">
+              줄을 바꾸신 그대로 메일에 들어갑니다. 글씨 크기·색 같은 서식은 들어가지 않습니다.
+            </span>
+          </>
+        ) : (
+          <div className="set-sig">
+            {sig.html
+              ? <div className="mail-html" dangerouslySetInnerHTML={{ __html: sig.html }} />
+              : <span className="set-empty">서명이 없습니다</span>}
+          </div>
+        )}
+
+        <div className="set-inline">
+          {draft !== null ? (
+            <>
+              <button className="set-btn primary" onClick={saveSig} disabled={sigState === 'saving'}>
+                {sigState === 'saving' ? '저장 중…' : '서명 저장'}
+              </button>
+              <button className="set-btn" onClick={() => { setDraft(null); setSigState(''); }}>취소</button>
+            </>
+          ) : (
+            <>
+              <button className="set-btn" disabled={sig === null}
+                onClick={() => { setSigState(''); setDraft(sigHtmlToText(sig?.html)); }}>
+                직접 고치기
+              </button>
+              {sig?.custom && (
+                <button className="set-btn" onClick={resetSig} disabled={sigState === 'saving'}>
+                  기본 서명으로 되돌리기
+                </button>
+              )}
+            </>
+          )}
         </div>
       </Row>
+
+      {sigState && sigState !== 'saving' && (
+        <p className={`set-note${sigState === 'saved' || sigState === 'reset' ? ' ok' : ' bad'}`}>
+          {sigState === 'saved' ? '서명을 저장했습니다.'
+            : sigState === 'reset' ? 'ERP 계정 정보로 만든 서명으로 되돌렸습니다.'
+              : sigState}
+        </p>
+      )}
+
       <p className="set-note">
-        서명 내용을 바꾸려면 ERP 의 내 정보(부서·직급·연락처)를 고쳐야 합니다.
+        서명은 <b>[서명 저장]을 누르실 때</b> 저장됩니다.
+        {/* 작성 화면이 서명을 계정별로 캐시한다 — 저장할 때 그 계정 것만 버리게 해 두었으므로
+            새로고침 없이 다음 메일부터 바로 새 서명이 붙는다(store/compose.js 의 clearSignatureCache) */}
+        <br />저장하시면 <b>다음에 쓰시는 메일부터</b> 바로 새 서명이 붙습니다.
       </p>
+
+      {!sig?.custom && sig !== null && (
+        <p className="set-note">
+          직접 고치지 않으시면 ERP 의 내 정보(부서·직급·연락처)가 바뀔 때 서명도 따라 바뀝니다.
+        </p>
+      )}
     </>
   );
 }
@@ -1109,7 +1668,10 @@ export default function SettingsModal() {
     return () => document.removeEventListener('keydown', onKey);
   }, [close]);
 
-  const perAccount = section !== 'display' && section !== 'help';
+  /* 「설정할 계정」 머리말은 **한 계정에만 걸리는** 설정에만 붙인다.
+     화면·도움말은 계정과 무관하고, 메일 계정 칸은 계정 전부를 다루는 자리라
+     거기에 "설정할 계정: …" 이 서 있으면 그 계정만 고치는 화면처럼 읽힌다. */
+  const perAccount = section !== 'display' && section !== 'help' && section !== 'accounts';
 
   return (
     <div className="modal-backdrop" onClick={close}>
@@ -1140,13 +1702,15 @@ export default function SettingsModal() {
             {!account && perAccount ? (
               <p className="set-note bad">메일 계정이 없어 이 설정을 쓸 수 없습니다.</p>
             ) : section === 'display' ? <DisplayPanel />
-              : section === 'folders' ? <FoldersPanel account={account} />
-                : section === 'sending' ? <SendingPanel account={account} />
-                  : section === 'autoreply' ? <AutoReplyPanel account={account} />
-                    : section === 'forward' ? <ForwardPanel account={account} />
-                      : section === 'rules' ? <RulesPanel account={account} />
-                        : section === 'spam' ? <SpamPanel account={account} />
-                          : <HelpPanel />}
+              : section === 'accounts' ? <AccountsPanel />
+                : section === 'folders' ? <FoldersPanel account={account} />
+                  : section === 'labels' ? <LabelsPanel account={account} />
+                    : section === 'sending' ? <SendingPanel account={account} />
+                      : section === 'autoreply' ? <AutoReplyPanel account={account} />
+                        : section === 'forward' ? <ForwardPanel account={account} />
+                          : section === 'rules' ? <RulesPanel account={account} />
+                            : section === 'spam' ? <SpamPanel account={account} />
+                              : <HelpPanel />}
           </div>
         </div>
       </div>
