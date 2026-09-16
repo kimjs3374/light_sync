@@ -174,6 +174,44 @@ export const mailApi = {
   // 자동회신·자동전달·자동분류가 실제로 돌고 있는지
   automationStatus: () => api.get('/mail/api/automation-status'),
 
+  // ── 아래는 서버에 이미 있던 것들. 새 화면이 이제 쓴다 ──────────────────
+  // 수신확인 — 보낼 때 심어 둔 추적으로 상대가 열었는지 본다
+  receipts: () => api.get('/mail/api/receipts'),
+
+  // 공용계정에서 이 메일을 누가 이미 봤는지 / 내가 봤다고 남기기
+  sharedRead: ({ account, folder, uid }) =>
+    api.get(`/mail/api/shared-read?${qs({ account, folder, uid })}`),
+  markSharedRead: ({ account, folder, uid }) =>
+    api.post('/mail/api/shared-read', { account_id: account, folder, uid }),
+
+  // 라벨 — 만들기·지우기는 DB, 메일에 달기는 IMAP 키워드다.
+  // **키워드는 이름이 아니라 label_<라벨id> 다.** dovecot 이 한글 키워드를 잘라먹어
+  // (label_업무 → label_) 한글 라벨이 전부 한 키워드로 뭉개졌다(2026-09-16 실측).
+  // 화면은 키워드를 만들지 말고 목록 응답의 keyword 값을 그대로 써라.
+  saveLabel: ({ account, id, name, color, sortOrder }) =>
+    api.post('/mail/api/labels', { account_id: account, id, name, color, sort_order: sortOrder }),
+  deleteLabel: (id) => api.del(`/mail/api/labels/${id}`),
+
+  // 첨부 전부를 한 번에 (서버가 zip 으로 묶어 준다)
+  attachmentsZipUrl: ({ account, folder, uid }) =>
+    `/mail/api/attachments-zip/${uid}?${qs({ account, folder })}`,
+
+  // 휴지통·스팸함 비우기
+  emptyFolder: ({ account, folder }) =>
+    api.post('/mail/api/folder/empty', { account_id: account, folder }),
+
+  // 외부 메일 계정(네이버·다음 등) 직접 관리
+  externalList: () => api.get('/mail/api/external'),
+  externalSave: (body) => api.post('/mail/api/external', body),
+  externalDelete: (id) => api.del(`/mail/api/external/${id}`),
+  externalTest: (id) => api.post(`/mail/api/external/${id}/test`, {}),
+  externalTestNew: (body) => api.post('/mail/api/external/test-new', body),
+
+  // 서명 — 계정에 직접 적어 둔 것이 있으면 그것을, 없으면 ERP 정보로 만든 것을 준다
+  signature: (account) => api.get(`/mail/api/user-signature?${qs({ account })}`),
+  saveSignature: ({ account, html }) =>
+    api.post('/mail/api/account', { id: account, signature: html }),
+
   // 인쇄 화면(서버가 그려 준다)과 원문 — Bearer 로 받아서 쓴다.
   // 주소만 새 창에 띄우면 세션 쿠키가 없을 때 로그인 화면이 대신 뜬다.
   printUrl: ({ account, folder, uid }) => `/mail/print/${uid}?${qs({ account, folder })}`,

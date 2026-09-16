@@ -14,7 +14,7 @@
  *
  *   #/mail/INBOX          받은편지함
  *   #/mail/INBOX/1234     그 메일함의 1234번 메일을 연 상태
- *   #/selfbox  #/scheduled  #/contacts/personal
+ *   #/selfbox  #/scheduled  #/receipts  #/contacts/personal
  *
  * 메일쓰기는 **주소에 적지 않는다.** 뒤로가기로 빈 작성창이 되살아나면
  * 쓰던 내용이 없는 껍데기라 더 헷갈린다. 대신 작성 중에 뒤로가기를 누르면
@@ -35,6 +35,7 @@ export function currentHash() {
   const m = useMail.getState();
   if (m.specialView === 'contacts') return `#/contacts/${useContacts.getState().book}`;
   if (m.specialView === 'scheduled') return '#/scheduled';
+  if (m.specialView === 'receipts') return '#/receipts';
   const base = m.specialView === 'selfbox' ? '#/selfbox' : `#/mail/${encodeURIComponent(m.folder)}`;
   return m.openUid ? `${base}/${m.openUid}` : base;
 }
@@ -46,6 +47,7 @@ export function parseHash(hash) {
   const [head, ...rest] = parts;
   if (head === 'contacts') return { kind: 'contacts', book: rest[0] || 'personal' };
   if (head === 'scheduled') return { kind: 'scheduled' };
+  if (head === 'receipts') return { kind: 'receipts' };
   if (head === 'selfbox') return { kind: 'selfbox', uid: rest[0] };
   if (head === 'mail' && rest.length) {
     return { kind: 'folder', folder: decodeURIComponent(rest[0]), uid: rest[1] };
@@ -69,8 +71,8 @@ async function applyView(v) {
     if (m.specialView !== 'contacts') m.openSpecial('contacts');
     return;
   }
-  if (v.kind === 'scheduled') {
-    if (m.specialView !== 'scheduled') m.openSpecial('scheduled');
+  if (v.kind === 'scheduled' || v.kind === 'receipts') {
+    if (m.specialView !== v.kind) m.openSpecial(v.kind);
     return;
   }
 
