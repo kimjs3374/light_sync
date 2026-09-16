@@ -267,6 +267,37 @@ def record_second(db, user, emp_type, admin_dates, by, as_of=None,
     return p
 
 
+def legal_deadline(promo, user):
+    """이 회차의 **법정 기한**과 준수 여부.
+
+    제61조는 촉구와 회사지정을 **둘 다** 기한 안에 해야 면제가 성립한다.
+    한쪽이라도 늦으면 그 연차연도 전체가 효력을 잃는다 — 그래서 회차마다
+    기한을 따로 보여줘야 한다.
+
+    반환: {'deadline','ok','days_over'} / 계산 불가면 None
+    """
+    if not user or not user.hire_date or not promo.year_start or not promo.notified_at:
+        return None
+    ys, ye, last, stages = _emp_window(user.hire_date, promo.year_start)
+    ye = last + datetime.timedelta(days=1)
+    deadline = None
+    for _, stage, anchor, sec_stage, _ in stages:
+        if promo.stage == stage:                    # 촉구 = 기준일 + 10일
+            deadline = anchor + datetime.timedelta(days=ACTION_WINDOW_DAYS)
+        elif promo.stage == sec_stage:              # 회사지정 = '~까지'
+            if promo.emp_type == 'over1y':
+                deadline = _add_months(ye, -2)      # 끝나기 2개월 전까지
+            elif sec_stage == 'second':
+                deadline = _add_months(ye, -1)      # 끝나기 1개월 전까지
+            else:
+                deadline = ye - datetime.timedelta(days=10)  # 끝나기 10일 전까지
+    if not deadline:
+        return None
+    sent = promo.notified_at.date()
+    return {'deadline': deadline, 'ok': sent <= deadline,
+            'days_over': max(0, (sent - deadline).days)}
+
+
 def promo_asof(promo, as_of=None):
     """촉진 레코드가 속한 **연차연도 안**으로 clamp된 기준일.
 

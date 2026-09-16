@@ -194,6 +194,13 @@
         <td>{{ p.leave_year }}</td>
         <td>{{ stage_label.get(p.stage, p.stage) }}</td>
         <td>{{ p.notified_at.strftime('%Y-%m-%d') if p.notified_at else '-' }}
+          {%- if p.legal and not p.legal.ok %}
+          <span class="lp-badge ms-1" style="background:#fef2f2;color:#dc2626"
+                title="법정 기한 {{ p.legal.deadline.strftime('%Y-%m-%d') }} 을 {{ p.legal.days_over }}일 넘겨 발송됐습니다.&#10;근로기준법 제61조는 촉구와 회사지정을 둘 다 기한 안에 해야 면제가 성립합니다.&#10;이 회차는 미사용 수당 면제 증빙으로 쓸 수 없습니다.">기한 {{ p.legal.days_over }}일 초과</span>
+          {%- elif p.legal %}
+          <span class="lp-badge ms-1" style="background:#f0fdf4;color:#16a34a"
+                title="법정 기한 {{ p.legal.deadline.strftime('%Y-%m-%d') }} 내 발송">기한내</span>
+          {%- endif %}
           {%- if not p.email_sent %}
           <span class="lp-badge ms-1" style="background:#fef2f2;color:#dc2626"
                 title="이 촉구의 메일이 나가지 않았습니다. 기록만 있고 근로자는 통보를 못 받은 상태입니다.&#10;수신 예정: {{ p.email_to or '주소 없음' }}">메일 미발송</span>

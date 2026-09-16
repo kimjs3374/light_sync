@@ -251,6 +251,8 @@ def hr_promotion():
             p.diff = lp.doc_dates_diff(db, p, p.user, today)
             if not p.diff['in_sync']:
                 n_off += 1
+            # 법정 기한을 넘긴 회차는 증빙으로 못 쓴다 — 표에서 바로 보이게
+            p.legal = lp.legal_deadline(p, p.user)
         return render_template('hr_promotion.html',
                                cand=cand, records=records, n_off=n_off,
                                excluded=lp.excluded_employees(db),
