@@ -4,8 +4,12 @@
   한글(.hwp/.hwpx)  → HTML   (tools/hwp/render.mjs, rhwp Rust+WASM)
   오피스(.xlsx 등)  → PDF    (LibreOffice 변환)
 
-왜 두 갈래인가: LibreOffice 에는 한글 필터가 아예 없고(2026-09-16 실측),
-rhwp 는 한글 전용이다. 하나로 합칠 방법이 없어 파일 종류로 가른다.
+**워드·엑셀·PPT 는 이제 화면이 이 길로 오지 않는다** — 회사 문서서버(ONLYOFFICE)가
+원본 그대로 열어 주므로 그쪽이 낫다(modules/services/attach_office.py).
+여기 남겨 둔 오피스→PDF 는 문서서버가 안 뜨는 날의 뒷길이다.
+
+왜 한글만 따로인가: LibreOffice 에는 한글 필터가 아예 없고(2026-09-16 실측),
+문서서버도 한글을 못 연다. rhwp 말고는 길이 없다.
 
 지켜야 할 것
   - **임시파일을 /tmp 에 두지 않는다.** systemd PrivateTmp 때문에 서비스마다 /tmp 가

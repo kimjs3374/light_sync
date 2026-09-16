@@ -221,9 +221,14 @@ export const mailApi = {
   attachmentUrl: ({ account, folder, uid, partId }) =>
     `/mail/api/attachment/${uid}/${partId}?${qs({ account, folder })}`,
 
-  // 한글(.hwp)·오피스 문서를 화면에서 보기 — 서버가 HTML/PDF 로 바꿔 준다
+  // 한글(.hwp) 미리보기 — 서버가 HTML 로 세워 준다
   attachmentPreviewUrl: ({ account, folder, uid, partId }) =>
     `/mail/api/attachment/${uid}/${partId}/preview?${qs({ account, folder })}`,
+
+  // 워드·엑셀·PPT 는 회사 문서서버(ONLYOFFICE)로 원본 그대로 연다.
+  // 첨부를 잠깐 보관하고 볼 주소를 받아 온다.
+  attachmentOffice: ({ account, folder, uid, partId }) =>
+    api.post(`/mail/api/attachment/${uid}/${partId}/office?${qs({ account, folder })}`, {}),
 };
 
 /**

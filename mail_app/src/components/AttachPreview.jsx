@@ -13,8 +13,8 @@ import { Close } from './Icons';
  * 네 갈래다:
  *   이미지·PDF   원본 그대로 (blob)
  *   한글 hwp/hwpx 서버가 HTML 로 세워 준다 (rhwp) — **sandbox 건 iframe** 에 넣는다
- *   오피스 문서   서버가 PDF 로 바꿔 준다 (LibreOffice)
- * 뒤 둘은 서버가 변환하므로 몇 초 걸린다. 그 사이에 무엇을 하고 있는지 적어 준다.
+ *   오피스 문서   회사 문서서버(ONLYOFFICE)가 **원본 그대로** 연다
+ * 뒤 둘은 준비에 몇 초 걸린다. 그 사이에 무엇을 하고 있는지 적어 준다.
  *
  * 주소를 그대로 <img src> 에 걸 수 없다. 첨부 주소는 Bearer 토큰을 요구하는데
  * 브라우저가 이미지·iframe 을 받아올 때는 헤더를 못 붙인다. 그래서 blob 으로
@@ -47,6 +47,7 @@ export function previewKind(att) {
 export default function AttachPreview({ account, folder, uid, att, onClose }) {
   const [url, setUrl] = useState('');
   const [html, setHtml] = useState('');   // 한글 문서를 세운 HTML
+  const [viewUrl, setViewUrl] = useState('');   // 문서서버 보기 화면 주소
   const [error, setError] = useState('');
   const kind = previewKind(att);
 
@@ -61,9 +62,19 @@ export default function AttachPreview({ account, folder, uid, att, onClose }) {
     let alive = true;
     (async () => {
       try {
-        // 한글·오피스는 서버가 바꿔 준 것을 받는다. 이미지·PDF 는 원본 그대로.
-        const converted = kind === 'hwp' || kind === 'office';
-        const url0 = converted
+        /* 워드·엑셀·PPT 는 회사 문서서버가 원본 그대로 연다. 우리가 PDF 로 바꾸면
+           서식이 틀어지고, 이 서버에는 워드·PPT 를 여는 구성 요소도 없다.
+           문서서버는 자기가 파일을 가지러 오므로 **먼저 자리를 만들고 주소를 받는다.** */
+        if (kind === 'office') {
+          const r = await mailApi.attachmentOffice({ account, folder, uid, partId: att.part_id });
+          if (r.error) throw new Error(r.error);
+          if (!alive) return;
+          setViewUrl(r.view_url);
+          return;
+        }
+
+        // 한글은 서버가 세워 준 HTML 을 받는다. 이미지·PDF 는 원본 그대로.
+        const url0 = kind === 'hwp'
           ? mailApi.attachmentPreviewUrl({ account, folder, uid, partId: att.part_id })
           : mailApi.attachmentUrl({ account, folder, uid, partId: att.part_id });
 
@@ -120,13 +131,17 @@ export default function AttachPreview({ account, folder, uid, att, onClose }) {
 
         <div className="att-body">
           {error ? <div className="list-state error">{error}</div>
-            : !url && !html ? (
+            : !url && !html && !viewUrl ? (
               <div className="list-state">
-                {kind === 'hwp' || kind === 'office'
-                  ? '문서를 보기 좋게 바꾸는 중입니다… 잠시만 기다려 주세요.'
-                  : '첨부를 여는 중…'}
+                {kind === 'office' ? '문서를 여는 중입니다… 잠시만 기다려 주세요.'
+                  : kind === 'hwp' ? '한글 문서를 세우는 중입니다… 잠시만 기다려 주세요.'
+                    : '첨부를 여는 중…'}
               </div>
             )
+              : viewUrl ? (
+                /* 문서서버 화면은 우리 서버가 내주는 우리 페이지다(같은 출처) */
+                <iframe className="att-frame" src={viewUrl} title={att.filename} />
+              )
               : kind === 'image' ? <img className="att-image" src={url} alt={att.filename} />
                 : kind === 'hwp' ? (
                   /* sandbox 를 비워 두면 스크립트도, 바깥으로 나가는 링크도 못 돈다 */

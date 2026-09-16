@@ -516,7 +516,8 @@ crontab */5                    ← 안전망. 감시자가 죽거나 신호를 �
 |---|---|---|
 | 이미지 · PDF | 원본 그대로(blob) | 화면에서만 |
 | **한글 .hwp/.hwpx** | 서버가 **HTML 로 세워** 준다 | `tools/hwp/render.mjs` (rhwp, Rust+WASM) |
-| 오피스(xlsx·docx…) | 서버가 **PDF 로 바꿔** 준다 | LibreOffice |
+| **워드 · 엑셀 · PPT** | 회사 **문서서버(ONLYOFFICE)가 원본 그대로** 연다 | `attach_office.py` + `mail_office_view.html` |
+| (뒷길) 오피스 → PDF | LibreOffice 변환 | 문서서버가 안 뜨는 날용 |
 
 - 입구는 하나다: `GET /mail/api/attachment/<uid>/<part>/preview`.
   종류를 보고 HTML 또는 PDF 를 돌려주고, 못 바꾸면 **사람이 읽을 사유**를 415 로 준다
@@ -556,9 +557,36 @@ crontab */5                    ← 안전망. 감시자가 죽거나 신호를 �
 sql_editer.sql  → 415 "이 형식은 화면에서 볼 수 없습니다."
 ```
 
-**워드·PPT 는 아직 안 된다** — 서버에 `libreoffice-writer`·`impress` 가 없다.
-설치하면 같은 길로 바로 된다(코드는 이미 그 확장자를 받는다).
-회사에 OnlyOffice 문서서버(`docs.mgnt.kr`)도 돌고 있어 그쪽으로 가는 길도 있다.
+### 워드·엑셀·PPT — 문서서버로 연다 (LibreOffice 로 바꾸지 않는다)
+
+서버에 `libreoffice-writer`·`impress` 가 없어 워드·PPT 는 PDF 로도 못 바꾼다.
+그런데 **회사에 문서서버가 이미 떠 있다**(도커 `onlyoffice-docs`, `docs.mgnt.kr`,
+ERP `/office` 가 쓰는 그것). 원본 그대로 열리니 서식이 안 틀어진다.
+
+**문서서버는 자기가 파일을 가지러 온다.** 메일 첨부는 IMAP 안에 있어 줄 주소가 없으므로,
+잠깐 디스크에 두고 한 번 쓰고 버리는 주소를 내준다.
+
+```
+① POST /mail/api/attachment/<uid>/<part>/office   (로그인 필요)
+   → 첨부를 .upload_tmp/office/<토큰>.bin 에 담고 { view_url } 을 준다
+② GET  /mail/office-view/<토큰>                    (로그인 필요)
+   → DocsAPI 를 띄우는 우리 페이지. **읽기 전용**이라 callbackUrl 을 주지 않는다
+     (원본이 IMAP 안이라 고쳐도 돌려놓을 자리가 없다)
+③ GET  /mail/office-raw/<토큰>                     ← 문서서버(172.17.0.2)가 가지러 온다
+```
+
+③ 은 **로그인을 못 본다** — 문서서버는 세션을 안 들고 있다. 그래서 셋으로 막는다:
+추측 못 하는 32자리 토큰 · 30분 수명 · **사설 IP 에서 온 요청만**.
+(사람이 [내려받기] 를 누른 경우만 `?dl=1` 로 로그인을 본다)
+
+실측(2026-09-16):
+```
+① 자리 만들기        200 {view_url: /mail/office-view/…}
+② 보기 화면          200 (DocsAPI · docs.mgnt.kr 포함)
+③ 172.17.0.2 에서    200 22,348바이트   ← 문서서버 컨테이너가 직접 받아가는 것까지 확인
+   바깥 IP 에서       403
+   한글을 이 길로     415 (한글은 rhwp 로 간다)
+```
 
 ---
 

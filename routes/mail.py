@@ -17,7 +17,7 @@ from sqlalchemy import func
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
-    session, flash, jsonify, Response, current_app, g,
+    session, flash, jsonify, Response, current_app, g, abort,
 )
 from modules.auth_decorators import (
     login_required, menu_required, admin_required, _try_token_auth,
@@ -1495,6 +1495,109 @@ def api_unread_count():
                 'error': error,
             })
         return jsonify({'total': total, 'accounts': per_account})
+
+
+# ---------------------------------------------------------------------------
+# 첨부를 ONLYOFFICE 로 보기 (워드·엑셀·PPT)
+# ---------------------------------------------------------------------------
+# 회사에 이미 떠 있는 문서서버(도커 onlyoffice-docs, docs.mgnt.kr)를 그대로 쓴다.
+# LibreOffice 로 PDF 를 만드는 길도 있지만(아래 /preview), 서버에 writer·impress 가
+# 없어 워드·PPT 가 안 되고 서식도 틀어진다. 문서서버는 원본 그대로 연다.
+#
+# 문서서버는 **자기가 파일을 가지러 온다.** 메일 첨부는 IMAP 안에 있어 주소가 없으므로
+# 잠깐 디스크에 두고 한 번 쓰고 버리는 주소를 내준다(modules/services/attach_office.py).
+# ---------------------------------------------------------------------------
+
+@mail_bp.route('/mail/api/attachment/<int:uid>/<part_id>/office', methods=['POST'])
+@login_required
+def api_attachment_office(uid, part_id):
+    """첨부를 문서서버로 열 준비 — 잠깐 보관하고 볼 주소를 돌려준다."""
+    from modules.services import attach_office
+
+    folder = request.args.get('folder', 'INBOX')
+    account_id = request.args.get('account', type=int)
+
+    with get_db() as db:
+        client, account, err = _get_mail_client(db, account_id)
+        if err or not client:
+            return jsonify({'error': err or '메일 계정 미설정'}), 400
+        try:
+            with client:
+                filename, _ctype, file_bytes = client.fetch_attachment(uid, part_id, folder)
+        except Exception as e:
+            logger.warning("첨부 조회 실패 (uid=%s part=%s): %s", uid, part_id, e)
+            return jsonify({'error': '첨부를 읽지 못했습니다.'}), 500
+
+    if not file_bytes:
+        return jsonify({'error': '첨부파일을 찾을 수 없습니다.'}), 404
+    if not attach_office.doc_type(filename):
+        return jsonify({'error': '이 형식은 문서 보기로 열 수 없습니다.'}), 415
+    if len(file_bytes) > 50 * 1024 * 1024:
+        return jsonify({'error': '파일이 커서 문서 보기를 열지 않습니다. 내려받아 보십시오.'}), 413
+
+    token = attach_office.stash(file_bytes, filename)
+    logger.info("첨부 문서보기: user=%s %s (%s바이트)", session['user_id'], filename, len(file_bytes))
+    return jsonify({'view_url': f'/mail/office-view/{token}', 'filename': filename})
+
+
+@mail_bp.route('/mail/office-view/<token>')
+@login_required
+def mail_office_view(token):
+    """문서서버로 첨부를 보는 화면."""
+    from modules.services import attach_office
+
+    filename, ext, data = attach_office.load(token)
+    if data is None:
+        return '<h3>미리보기가 만료되었습니다. 메일에서 다시 열어 주세요.</h3>', 410
+
+    cb = int(time.time())
+    return render_template(
+        'mail_office_view.html',
+        filename=filename, ext=ext,
+        doc_type=attach_office.doc_type(filename),
+        # 문서서버(도커)가 우리 서버로 가지러 오는 주소다. 브라우저가 쓰는 주소가 아니다.
+        file_url=f'http://host.internal:8501/mail/office-raw/{token}?_cb={cb}',
+        download_url=f'/mail/office-raw/{token}?dl=1',
+        doc_key=f'mail_{token[:16]}',
+        user_name=session.get('full_name') or session.get('username') or '사용자',
+    )
+
+
+@mail_bp.route('/mail/office-raw/<token>')
+def mail_office_raw(token):
+    """문서서버가 파일을 가져가는 자리.
+
+    **로그인을 보지 않는다** — 문서서버는 세션을 들고 있지 않다. 대신
+      ① 추측할 수 없는 토큰(32자리) ② 30분 수명 ③ 사설 IP 에서 온 요청만
+    셋으로 막는다. 도커 브리지(172.17.0.x)에서 온다.
+    """
+    from modules.services import attach_office
+
+    if not attach_office.is_internal_caller(request.remote_addr) and not request.args.get('dl'):
+        logger.warning("첨부 원본 요청 거부: addr=%s token=%s", request.remote_addr, token[:8])
+        abort(403)
+
+    filename, ext, data = attach_office.load(token)
+    if data is None:
+        abort(404)
+
+    if request.args.get('dl'):
+        # 사람이 [내려받기] 를 누른 경우 — 이건 로그인한 사람만
+        if not session.get('user_id'):
+            abort(403)
+        return Response(data, mimetype='application/octet-stream', headers={
+            'Content-Disposition': f"attachment; filename*=UTF-8''{urlquote(filename or 'attach')}",
+        })
+
+    mime = {
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'pdf': 'application/pdf',
+    }.get(ext, 'application/octet-stream')
+    return Response(data, mimetype=mime, headers={
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+    })
 
 
 @mail_bp.route('/mail/api/attachment/<int:uid>/<part_id>/preview')

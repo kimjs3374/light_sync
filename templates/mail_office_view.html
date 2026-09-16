@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ filename }} — 첨부 보기</title>
+{# 문서서버는 회사에 이미 떠 있는 것을 그대로 쓴다(ERP /office 와 같은 것) #}
+<script src="https://docs.mgnt.kr/web-apps/apps/api/documents/api.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; display:flex; flex-direction:column; background:#1e293b; }
+  .bar { height:42px; min-height:42px; display:flex; align-items:center; gap:12px; padding:0 14px; }
+  .name { color:#fff; font-size:.86rem; font-weight:600; flex:1;
+          overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar a { color:#cbd5e1; text-decoration:none; font-size:.8rem;
+           border:1px solid #475569; padding:4px 12px; border-radius:6px; }
+  .bar a:hover { background:#334155; color:#fff; }
+  #editor { flex:1; }
+  .fail { color:#fca5a5; font-size:.85rem; padding:14px; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="name">{{ filename }}</span>
+  {# 문서서버가 안 뜨는 날을 위해 내려받는 길은 늘 열어 둔다 #}
+  <a href="{{ download_url }}">내려받기</a>
+</div>
+<div id="editor"></div>
+<script>
+  /* 읽기 전용이다 — 메일 첨부는 원본이 IMAP 안에 있어 고쳐도 돌려놓을 자리가 없다.
+     그래서 callbackUrl 을 주지 않는다(저장 요청 자체가 오지 않는다). */
+  try {
+    new DocsAPI.DocEditor("editor", {
+      document: {
+        fileType: "{{ ext }}",
+        key: "{{ doc_key }}",
+        title: {{ filename | tojson }},
+        url: "{{ file_url }}",
+        permissions: { edit: false, download: true, print: true },
+      },
+      documentType: "{{ doc_type }}",
+      editorConfig: {
+        mode: "view",
+        lang: "ko",
+        user: { id: "{{ session.get('user_id', 'anonymous') }}", name: {{ user_name | tojson }} },
+        customization: { forcesave: false, autosave: false },
+      },
+      events: {
+        onError: function (e) { console.error("ONLYOFFICE error:", e); },
+      },
+    });
+  } catch (e) {
+    document.getElementById('editor').innerHTML =
+      '<p class="fail">문서 보기를 열지 못했습니다. 위의 [내려받기]로 받아 보십시오.</p>';
+  }
+</script>
+</body>
+</html>
