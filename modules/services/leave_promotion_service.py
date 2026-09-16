@@ -528,14 +528,32 @@ def promotions_for_user(db, user_id, leave_year=None):
     return q.order_by(LeavePromotion.notified_at.desc()).all()
 
 
+# 한 직원의 촉구 한 벌을 순서대로 — 1회차 → 회사지정 → 추가 → 추가 지정
+STAGE_ORDER = {'first': 0, 'second': 1, 'extra': 2, 'extra2': 3}
+
+
 def all_promotions(db, leave_year=None, status=None):
-    """관리자 화면 — 전체 촉진 이력. **회수분도 포함**한다(증빙이므로)."""
-    q = db.query(LeavePromotion)
+    """관리자 화면 — 전체 촉진 이력. **회수분도 포함**한다(증빙이므로).
+
+    정렬: 직원 가나다 → 연차연도 최근순 → 회차순.
+    발송일순으로 늘어놓으면 같은 사람의 1회차와 회사지정이 표 여기저기로
+    흩어져, 누가 어디까지 갔는지를 표에서 읽을 수 없다.
+
+    파이썬에서 정렬한다 — 한글은 코드포인트가 곧 가나다순이라 DB 콜레이션
+    (지금 en_US.UTF-8)에 기대지 않는 편이 결과가 예측 가능하다.
+    """
+    from sqlalchemy.orm import joinedload
+    q = db.query(LeavePromotion).options(joinedload(LeavePromotion.user))
     if leave_year is not None:
         q = q.filter(LeavePromotion.leave_year == leave_year)
     if status:
         q = q.filter(LeavePromotion.status == status)
-    return q.order_by(LeavePromotion.notified_at.desc()).all()
+    return sorted(q.all(), key=lambda r: (
+        (r.user.full_name or '') if r.user else '',
+        -(r.leave_year or 0),
+        STAGE_ORDER.get(r.stage, 9),
+        r.notified_at or datetime.datetime.min,
+    ))
 
 
 # ── 자동화: 관리자 명단 알림 + 직원 메일 발송 ──────────────────

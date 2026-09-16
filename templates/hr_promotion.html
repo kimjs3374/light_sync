@@ -24,6 +24,8 @@
   .lp-table tr.lp-cancelled td { background:#f8fafc; color:#94a3b8; }
   .lp-table tr.lp-cancelled td:first-child { text-decoration:line-through; }
   .lp-table tr.lp-cancelled .lp-badge { opacity:.65; }
+  /* 직원이 바뀌는 자리에만 선을 긋는다 — 한 사람의 촉구 한 벌이 덩어리로 보이게 */
+  .lp-table tr.lp-grp td { border-top:2px solid #cbd5e1; }
   .lp-dates { width:200px; font-size:.8rem; }
 </style>
 
@@ -121,7 +123,8 @@
 
 {# ── 3) 촉구/지정 이력 ── #}
 <div class="lp-sec-title mg-fade d-flex align-items-center gap-2">
-  <span>촉구·지정 이력 <span class="text-muted fw-normal">({{ records|length }})</span></span>
+  <span>촉구·지정 이력 <span class="text-muted fw-normal">({{ records|length }})</span>
+    <span class="text-muted fw-normal" style="font-size:.78rem">— 직원 가나다 · 최근 연차연도 · 회차 순</span></span>
   {% if n_off %}
   <span class="lp-badge" style="background:#fffbeb;color:#b45309">서면 ≠ 실제 {{ n_off }}건</span>
   <form method="post" action="{{ url_for('hr.hr_promotion_sync_actual') }}" class="d-inline"
@@ -140,9 +143,15 @@
       <th>상태</th><th>서면</th><th>관리</th>
     </tr></thead>
     <tbody>
+      {% set ns = namespace(prev=None) %}
       {% for p in records %}
-      <tr{% if p.cancelled_at %} class="lp-cancelled"{% endif %}>
-        <td class="fw-semibold">{{ p.user.full_name if p.user else p.user_id }}</td>
+      {% set who = p.user.full_name if p.user else p.user_id %}
+      {% set newgrp = who != ns.prev %}
+      <tr class="{{ 'lp-cancelled ' if p.cancelled_at }}{{ 'lp-grp' if newgrp and not loop.first }}">
+        <td class="fw-semibold">
+          {%- if newgrp %}{{ who }}
+            {%- if p.user and p.user.position %} <span class="text-muted fw-normal">{{ p.user.position }}</span>{% endif -%}
+          {% endif %}</td>
         <td>{{ p.leave_year }}</td>
         <td>{{ stage_label.get(p.stage, p.stage) }}</td>
         <td>{{ p.notified_at.strftime('%Y-%m-%d') if p.notified_at else '-' }}</td>
@@ -220,6 +229,7 @@
           {% endif %}
         </td>
       </tr>
+      {% set ns.prev = who %}
       {% endfor %}
     </tbody>
   </table>
