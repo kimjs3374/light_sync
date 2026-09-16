@@ -120,7 +120,7 @@ export default function ReadPane() {
   }, [openedUid, isSent, s.accountId]);
 
   /**
-   * 공용계정이면 "이미 본 사람"을 적고, 내가 봤다는 것도 남긴다.
+   * 공용계정이면 "읽은 사람"을 적고, 내가 읽었다는 것도 남긴다.
    *
    * **읽는 것이 먼저, 남기는 것이 나중이다.** 순서를 바꾸면 방금 연 내가 늘
    * 목록에 들어가서 "아무도 안 봤으면 안 띄운다"가 영영 안 먹는다 —
@@ -276,15 +276,15 @@ export default function ReadPane() {
                   {receipt.read_at && ` · ${stamp(receipt.read_at)}`}
                   {receipt.read_count > 1 && ` · ${receipt.read_count}번`}
                 </>
-              ) : '아직 읽지 않음'}
+              ) : '아직 안 읽음'}
             </span>
           </div>
         )}
 
-        {/* 공용계정에서 나보다 먼저 이 메일을 본 사람들. 아무도 없으면 안 띄운다. */}
+        {/* 공용계정에서 나보다 먼저 이 메일을 읽은 사람들. 아무도 없으면 안 띄운다. */}
         {readers.length > 0 && (
           <div className="read-note">
-            <span className="read-note-label">이미 본 사람</span>
+            <span className="read-note-label">읽은 사람</span>
             <span className="read-note-value">
               {readers.map((r, i) => (
                 <span key={i} className="read-reader">

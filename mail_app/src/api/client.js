@@ -220,6 +220,10 @@ export const mailApi = {
 
   attachmentUrl: ({ account, folder, uid, partId }) =>
     `/mail/api/attachment/${uid}/${partId}?${qs({ account, folder })}`,
+
+  // 한글(.hwp)·오피스 문서를 화면에서 보기 — 서버가 HTML/PDF 로 바꿔 준다
+  attachmentPreviewUrl: ({ account, folder, uid, partId }) =>
+    `/mail/api/attachment/${uid}/${partId}/preview?${qs({ account, folder })}`,
 };
 
 /**

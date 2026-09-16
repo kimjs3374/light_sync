@@ -1497,6 +1497,53 @@ def api_unread_count():
         return jsonify({'total': total, 'accounts': per_account})
 
 
+@mail_bp.route('/mail/api/attachment/<int:uid>/<part_id>/preview')
+@login_required
+def api_attachment_preview(uid, part_id):
+    """첨부를 내려받지 않고 화면에서 보기.
+
+    한글(.hwp/.hwpx)은 **HTML**, 오피스 문서는 **PDF** 로 돌려준다
+    (이미지·PDF 는 원본 그대로 보면 되므로 이 길로 오지 않는다).
+
+    HTML 은 우리가 글자 하나하나를 escape 해 세운 것이지만, 화면 쪽에서는
+    **sandbox 를 건 iframe** 안에 넣어야 한다 — 남이 보낸 파일에서 나온 내용이다.
+    """
+    from modules.services import attach_preview
+
+    folder = request.args.get('folder', 'INBOX')
+    account_id = request.args.get('account', type=int)
+
+    with get_db() as db:
+        client, account, err = _get_mail_client(db, account_id)
+        if err or not client:
+            return jsonify({'error': err or '메일 계정 미설정'}), 400
+        try:
+            with client:
+                filename, _ctype, file_bytes = client.fetch_attachment(uid, part_id, folder)
+        except Exception as e:
+            logger.warning("첨부 미리보기 조회 실패 (uid=%s part=%s): %s", uid, part_id, e)
+            return jsonify({'error': '첨부를 읽지 못했습니다.'}), 500
+
+    if not file_bytes:
+        return jsonify({'error': '첨부파일을 찾을 수 없습니다.'}), 404
+    if len(file_bytes) > attach_preview.MAX_BYTES:
+        return jsonify({'error': '파일이 커서 미리보기를 만들지 않습니다. 내려받아 보십시오.'}), 413
+
+    kind = attach_preview.preview_kind(filename)
+    if kind == 'hwp':
+        html, perr = attach_preview.render_hwp(file_bytes, filename)
+        if perr:
+            return jsonify({'error': perr}), 415
+        return Response(html, mimetype='text/html; charset=utf-8')
+    if kind == 'office':
+        pdf, perr = attach_preview.render_office_pdf(file_bytes, filename)
+        if perr:
+            return jsonify({'error': perr}), 415
+        return Response(pdf, mimetype='application/pdf')
+
+    return jsonify({'error': '이 형식은 화면에서 볼 수 없습니다.'}), 415
+
+
 @mail_bp.route('/mail/api/attachment/<int:uid>/<part_id>')
 @login_required
 def api_attachment(uid, part_id):

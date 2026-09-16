@@ -1,0 +1,7 @@
+{
+  "name": "light-sync-hwp",
+  "private": true,
+  "type": "module",
+  "description": "메일 첨부 한글(.hwp/.hwpx) 미리보기 — rhwp(Rust+WASM)로 글자와 좌표를 읽어 HTML 로 세운다",
+  "dependencies": { "@rhwp/core": "^0.8.6" }
+}

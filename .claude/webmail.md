@@ -508,6 +508,60 @@ crontab */5                    ← 안전망. 감시자가 죽거나 신호를 �
 
 ---
 
+## 1-18. 첨부 미리보기 — 한글(.hwp)까지
+
+읽기창 첨부의 [보기]. 네 갈래다.
+
+| 형식 | 어떻게 | 어디 |
+|---|---|---|
+| 이미지 · PDF | 원본 그대로(blob) | 화면에서만 |
+| **한글 .hwp/.hwpx** | 서버가 **HTML 로 세워** 준다 | `tools/hwp/render.mjs` (rhwp, Rust+WASM) |
+| 오피스(xlsx·docx…) | 서버가 **PDF 로 바꿔** 준다 | LibreOffice |
+
+- 입구는 하나다: `GET /mail/api/attachment/<uid>/<part>/preview`.
+  종류를 보고 HTML 또는 PDF 를 돌려주고, 못 바꾸면 **사람이 읽을 사유**를 415 로 준다
+  (화면은 그 문구를 그대로 띄운다 — "내려받아 보십시오").
+
+### 한글은 왜 따로인가
+
+**LibreOffice 에는 한글 필터가 아예 없다**(2026-09-16 실측: `libreoffice-calc` 만 설치돼
+있고 hwp 필터는 어느 구성 요소에도 없다). 그래서 `@rhwp/core`(김정수 지시, MIT, Rust+WASM)
+를 쓴다. 파서가 Node 라 ERP(파이썬)에서 **subprocess 로 부른다**(`modules/services/attach_preview.py`).
+
+- **`getPageText` 가 아니라 `getPageTextLayout` 을 쓴다.** `getPageText` 는 표 안의 글자를
+  통째로 버린다(실측: 심사기준표 .hwpx 가 493자로 나오고 「배점」이 아예 없었다).
+  공고문·서식은 표가 알맹이다.
+- `getPageTextLayout` 은 글자마다 x·y·크기·글꼴을 준다. **표를 복원하지 않고 그 자리에
+  그대로 세우면** 원본과 같은 모양이 나온다 — 절대위치 `<span>` 으로 찍는다.
+- wasm 은 **바이트를 직접 넘긴다**. README 의 `'/rhwp_bg.wasm'` 경로 방식은 브라우저용이라
+  Node 에서는 못 찾는다.
+- 앞 30쪽까지만. 그 이상은 미리보기가 아니라 열람이다.
+
+### 지켜야 할 것
+
+- **임시파일을 `/tmp` 에 두지 않는다** — systemd PrivateTmp 때문에 서비스마다 `/tmp` 가
+  달라 다른 프로세스가 만든 파일을 못 찾는다(대용량 첨부에서 한 번 겪었다).
+  `.upload_tmp/preview/` 를 쓰고 끝나면 지운다.
+- **PATH 를 직접 넣는다** — systemd 가 주는 PATH 에는 venv 뿐이라 node·libreoffice 래퍼가
+  dirname·sed 를 못 찾는다(`routes/office.py` 와 같은 사정).
+- 변환은 바깥 프로그램을 돌리는 일이다. **시간(90초)·크기(20MB) 제한**을 반드시 건다.
+- 한글 HTML 은 우리가 글자를 escape 해 만든 것이지만 **남이 보낸 파일에서 나온 내용**이다.
+  화면은 `sandbox=""` 를 건 iframe 에 넣는다(스크립트도 바깥 링크도 안 돈다).
+
+### 실측 (2026-09-16, 메일 첨부로 끝까지)
+
+```
+공고문.hwp      → 200 text/html        375,049바이트  1.82초
+관리대장.xlsx    → 200 application/pdf   58,498바이트  1.55초
+sql_editer.sql  → 415 "이 형식은 화면에서 볼 수 없습니다."
+```
+
+**워드·PPT 는 아직 안 된다** — 서버에 `libreoffice-writer`·`impress` 가 없다.
+설치하면 같은 길로 바로 된다(코드는 이미 그 확장자를 받는다).
+회사에 OnlyOffice 문서서버(`docs.mgnt.kr`)도 돌고 있어 그쪽으로 가는 길도 있다.
+
+---
+
 ## 2. 대용량 첨부 (25MB 초과)
 
 메일에 싣지 않고 링크로 보낸다.
