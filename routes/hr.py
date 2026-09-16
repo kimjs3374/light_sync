@@ -383,12 +383,17 @@ def hr_promotion_second():
         if not dates:
             flash('연차연도 안의 사용일이 없습니다.', 'warning')
             return redirect(url_for('hr.hr_promotion'))
-        lp.record_second(db, u, emp_type, dates, by=by)
+        # 1년 미만은 회사지정이 두 번(second / extra2) 있다 — 어느 벌인지 폼이 알려준다
+        stage = (request.form.get('stage') or 'second').strip()
+        if stage not in ('second', 'extra2'):
+            stage = 'second'
+        lp.record_second(db, u, emp_type, dates, by=by, stage=stage)
+        label = lp.STAGE_LABEL.get(stage, stage)
         log_activity(db, 'hr', 'leave_promotion_second',
-                     f'{u.full_name} 연차촉진 2차(회사지정 {len(dates)}일) 통보',
+                     f'{u.full_name} 연차촉진 {label}(회사지정 {len(dates)}일) 통보',
                      ref_type='user', ref_id=u.id, ref_label=u.full_name)
         db.commit()
-        flash(f'{u.full_name} 2차 회사지정({len(dates)}일)이 기록되었습니다.', 'success')
+        flash(f'{u.full_name} {label}(회사지정 {len(dates)}일)이 기록되었습니다.', 'success')
         return redirect(url_for('hr.hr_promotion'))
 
 

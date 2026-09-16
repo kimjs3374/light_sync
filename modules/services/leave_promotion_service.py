@@ -3,13 +3,22 @@
 입사일 기준 연차연도(hr_service.leave_year_range)를 그대로 활용해,
 직원별로 1차 촉구 / 2차(회사 지정) 시점을 산출하고 leave_promotions에 이력을 남긴다.
 
-촉구 단계(stage):
-  - first  : 1회차 촉구 (사용시기 지정 요청) — 연차연도 시작 후 6개월
-  - second : 2회차 — 미지정자 최종 촉구 + 회사 지정 통보 — 연차연도 시작 후 9개월
+1년 이상(제61조 제1항)과 1년 미만(제61조 제2항)은 **일정이 다르다.**
+예전엔 둘 다 6개월/9개월을 썼는데, 1년 미만자에게 3개월 이른 촉구가 나갔다.
+법정 기간을 벗어난 촉구는 촉진 효과(미사용 수당 면제)가 인정되지 않는다.
 
-시점(연차연도 시작 기준, 1년 이상/미만 동일):
-  · 1회차 = 시작 후 6개월
-  · 2회차 = 시작 후 9개월 (직원이 1회차에 미지정한 경우)
+1년 이상 — 제61조 제1항 (연차연도 1년 기준)
+  · first  : 끝나기 6개월 전 기준 10일 이내 서면 촉구
+  · second : 미지정 시 끝나기 2개월 전까지 회사 지정 통보
+             (여유를 두려고 끝나기 3개월 전부터 목록에 올린다)
+
+1년 미만 — 제61조 제2항 (최초 1년 기준). 두 벌이 돈다.
+  · first  : 끝나기 3개월 전 기준 10일 이내 촉구
+             — 끝나기 1개월 전까지 발생한 연차가 대상
+  · second : 미지정 시 끝나기 1개월 전까지 회사 지정 통보
+  · extra  : 끝나기 1개월 전 기준 5일 이내 촉구
+             — 그 뒤 발생분(마지막 개근 1일)이 대상
+  · extra2 : 미지정 시 끝나기 10일 전까지 회사 지정 통보
 """
 import datetime
 from calendar import monthrange
@@ -18,13 +27,14 @@ from modules.models import LeavePromotion, User
 from modules.services import hr_service
 
 # ── 시점 상수 (연차연도 시작 기준 N개월 후) ──────────────────
-FIRST_MONTHS_AFTER_START = 6   # 1회차 촉구
-SECOND_MONTHS_AFTER_START = 9  # 2회차 (미지정자)
+FIRST_MONTHS_AFTER_START = 6   # 1년 이상 1회차 촉구 (= 끝나기 6개월 전)
+SECOND_MONTHS_AFTER_START = 9  # 1년 이상 2회차 (= 끝나기 3개월 전부터 목록에)
 
 ACTION_WINDOW_DAYS = 10   # 촉구 발송 권장 기간(기준일로부터 10일 이내)
 DESIGNATE_DAYS = 10       # 직원 사용시기 지정 기한(촉구일로부터 10일)
 
-STAGE_LABEL = {'first': '1회차 촉구', 'second': '2회차 지정통보'}
+STAGE_LABEL = {'first': '1회차 촉구', 'second': '2회차 지정통보',
+               'extra': '추가 촉구', 'extra2': '추가 지정통보'}
 EMP_TYPE_LABEL = {'over1y': '1년 이상', 'under1y': '1년 미만'}
 
 
@@ -37,19 +47,31 @@ def _add_months(d, n):
 
 
 def _emp_window(hire_date, as_of):
-    """현재 연차연도의 촉구 단계별 기준일 계산 (연차연도 시작 기준).
+    """현재 연차연도의 촉구 단계별 기준일 계산.
 
-    반환: (ys, ye, last_day, stages, second_anchor)
-      stages: [(emp_type, stage, anchor_date), ...]  ← 1회차 촉구
-      second_anchor: 2회차(미지정자) 시점
+    반환: (ys, ye, last_day, stages)
+      stages: [(emp_type, stage, anchor, second_stage, second_anchor), ...]
+              촉구 한 벌 = 1회차 + 그에 딸린 회사지정. 1년 미만은 두 벌이다.
     """
     ys, ye = hr_service.leave_year_range(hire_date, as_of)
     under1y = hr_service._completed_years(hire_date, ys) < 1
     emp_type = 'under1y' if under1y else 'over1y'
     last = ye - datetime.timedelta(days=1)
-    stages = [(emp_type, 'first', _add_months(ys, FIRST_MONTHS_AFTER_START))]
-    second_anchor = _add_months(ys, SECOND_MONTHS_AFTER_START)
-    return ys, ye, last, stages, second_anchor
+    if under1y:
+        # 제61조 제2항 — 기준은 '최초 1년이 끝나기 N개월 전'이다.
+        # ys 가 입사일이므로 ye(=+1년) 에서 거꾸로 센다.
+        m3 = _add_months(ye, -3)    # 끝나기 3개월 전
+        m1 = _add_months(ye, -1)    # 끝나기 1개월 전
+        stages = [
+            (emp_type, 'first', m3, 'second', m1),
+            (emp_type, 'extra', m1, 'extra2',
+             m1 + datetime.timedelta(days=DESIGNATE_DAYS)),
+        ]
+    else:
+        stages = [(emp_type, 'first',
+                   _add_months(ys, FIRST_MONTHS_AFTER_START),
+                   'second', _add_months(ys, SECOND_MONTHS_AFTER_START))]
+    return ys, ye, last, stages
 
 
 def _active_employees(db):
@@ -115,11 +137,11 @@ def candidates(db, as_of=None):
     as_of = as_of or datetime.date.today()
     out = {'first': [], 'second': []}
     for u in _active_employees(db):
-        ys, ye, last, stages, second_anchor = _emp_window(u.hire_date, as_of)
+        ys, ye, last, stages = _emp_window(u.hire_date, as_of)
         existing = _existing_by_stage(db, u.id, ys.year)
 
-        # 1차/추가 촉구 대상 (기준일 도래 + 연차연도 내 + 미발송)
-        for emp_type, stage, anchor in stages:
+        for emp_type, stage, anchor, sec_stage, sec_anchor in stages:
+            # 1차/추가 촉구 대상 (기준일 도래 + 연차연도 내 + 미발송)
             if anchor <= as_of <= last and stage not in existing:
                 out['first'].append({
                     'user': u, 'emp_type': emp_type, 'stage': stage,
@@ -127,17 +149,17 @@ def candidates(db, as_of=None):
                     'late': as_of > anchor + datetime.timedelta(days=ACTION_WINDOW_DAYS),
                 })
 
-        # 2차 대상 (1차/추가 발송됐고 직원 미지정 + 2차 시점 도래 + 2차 미발송)
-        if as_of >= second_anchor and 'second' not in existing:
-            for emp_type, stage, _ in stages:
-                p = existing.get(stage)
-                if p and not p.employee_dates and (
-                        not p.designate_due or as_of >= p.designate_due):
-                    out['second'].append({
-                        'user': u, 'emp_type': emp_type, 'leave_year': ys.year,
-                        'source': p, 'second_anchor': second_anchor,
-                    })
-                    break
+            # 회사지정 대상 (그 벌의 촉구가 나갔고 직원 미지정 + 시점 도래 + 미발송)
+            if as_of < sec_anchor or sec_stage in existing:
+                continue
+            src = existing.get(stage)
+            if src and not src.employee_dates and (
+                    not src.designate_due or as_of >= src.designate_due):
+                out['second'].append({
+                    'user': u, 'emp_type': emp_type, 'leave_year': ys.year,
+                    'source': src, 'stage': sec_stage,
+                    'second_anchor': sec_anchor,
+                })
     return out
 
 
@@ -167,12 +189,13 @@ def record_promotion(db, user, emp_type, stage, by='system',
     return p
 
 
-def record_second(db, user, emp_type, admin_dates, by, as_of=None):
-    """2차 — 회사가 사용시기를 직접 지정해 통보한 이력 생성."""
+def record_second(db, user, emp_type, admin_dates, by, as_of=None,
+                  stage='second'):
+    """회사지정 통보 이력 생성. 1년 미만은 추가분(extra2)도 같은 길을 쓴다."""
     as_of = as_of or datetime.date.today()
     s = hr_service.leave_summary(db, user, as_of)
     ly = s['year_start'].year
-    existing = _existing_by_stage(db, user.id, ly).get('second')
+    existing = _existing_by_stage(db, user.id, ly).get(stage)
     if existing:
         existing.admin_dates = admin_dates
         existing.admin_by = by
@@ -181,7 +204,7 @@ def record_second(db, user, emp_type, admin_dates, by, as_of=None):
         db.flush()
         return existing
     p = LeavePromotion(
-        user_id=user.id, leave_year=ly, emp_type=emp_type, stage='second',
+        user_id=user.id, leave_year=ly, emp_type=emp_type, stage=stage,
         year_start=s['year_start'],
         year_end=s['year_end'] - datetime.timedelta(days=1),
         granted_days=s['granted'], used_days=s['used'],
@@ -621,14 +644,16 @@ def run_promotion_cycle(db, as_of=None, do_email=True, do_notify=True, by='syste
     out = {'recorded': 0, 'emailed': 0, 'second': 0, 'second_pending': len(cand['second']),
            'names': []}
 
-    # 1회차 + 2회차(미지정자) 모두 자동 촉구 — stage는 candidates가 산출
-    rounds = ([('first', c) for c in cand['first']]
-              + [('second', c) for c in cand['second']])
-    for stage, c in rounds:
+    # 1회차 + 회사지정 모두 자동 촉구 — stage 는 candidates 가 산출한 것을 쓴다.
+    # ('first'/'second' 로 박아두면 1년 미만자의 추가분(extra/extra2)이
+    #  1회차로 잘못 기록돼 정작 필요한 회차가 영영 안 나간다)
+    rounds = ([c for c in cand['first']] + [c for c in cand['second']])
+    for c in rounds:
         u = c['user']
+        stage = c['stage']
         p = record_promotion(db, u, c['emp_type'], stage, by=by)
         out['recorded'] += 1
-        if stage == 'second':
+        if stage in ('second', 'extra2'):
             out['second'] += 1
         else:
             out['names'].append(u.full_name)

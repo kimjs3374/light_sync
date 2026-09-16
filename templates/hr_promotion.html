@@ -57,7 +57,7 @@
       <tr>
         <td class="fw-semibold">{{ c.user.full_name }} <span class="text-muted">{{ c.user.position or '' }}</span></td>
         <td>{{ emp_label[c.emp_type] }}</td>
-        <td>{{ stage_label[c.stage] }}</td>
+        <td>{{ stage_label.get(c.stage, c.stage) }}</td>
         <td>{{ c.anchor.strftime('%Y-%m-%d') }}</td>
         <td class="text-end text-muted">—</td>
         <td>
@@ -89,13 +89,14 @@
 <div class="table-responsive mg-fade">
   <table class="table lp-table mb-0">
     <thead><tr>
-      <th>직원</th><th>구분</th><th>1차 발송일</th><th>지정기한</th><th>회사 지정 사용일</th><th></th>
+      <th>직원</th><th>구분</th><th>단계</th><th>촉구 발송일</th><th>지정기한</th><th>회사 지정 사용일</th><th></th>
     </tr></thead>
     <tbody>
       {% for c in cand.second %}
       <tr>
         <td class="fw-semibold">{{ c.user.full_name }} <span class="text-muted">{{ c.user.position or '' }}</span></td>
         <td>{{ emp_label[c.emp_type] }}</td>
+        <td>{{ stage_label.get(c.stage, c.stage) }}</td>
         <td>{{ c.source.notified_at.strftime('%Y-%m-%d') if c.source.notified_at else '-' }}</td>
         <td>{{ c.source.designate_due.strftime('%Y-%m-%d') if c.source.designate_due else '-' }}</td>
         <td colspan="2">
@@ -103,6 +104,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="user_id" value="{{ c.user.id }}">
             <input type="hidden" name="emp_type" value="{{ c.emp_type }}">
+            <input type="hidden" name="stage" value="{{ c.stage }}">
             <input type="text" name="dates" class="form-control form-control-sm lp-dates"
                    placeholder="2026-07-10, 2026-07-11" required>
             <button class="btn btn-sm btn-outline-danger">회사지정 통보</button>
