@@ -63,11 +63,46 @@ def _active_employees(db):
 
 
 def _existing_by_stage(db, user_id, leave_year):
+    """재발송 판정용 — **회수된 회차는 없는 셈** 친다.
+
+    회수(cancel)의 목적이 '다시 보낼 수 있게'이므로 여기서만 제외한다.
+    이력 조회·서면 출력에서는 회수분도 그대로 보인다(증빙이라 지우지 않는다).
+    """
     rows = (db.query(LeavePromotion)
             .filter(LeavePromotion.user_id == user_id,
-                    LeavePromotion.leave_year == leave_year)
+                    LeavePromotion.leave_year == leave_year,
+                    LeavePromotion.cancelled_at.is_(None))
             .all())
     return {r.stage: r for r in rows}
+
+
+def cancel_promotion(db, promo_id, by):
+    """촉구 회수 — 행을 지우지 않고 회수 표시만 한다.
+
+    이미 나간 메일은 되돌릴 수 없다. 이 행이 '보냈다'는 유일한 증빙이므로
+    지우면 근로기준법 제61조 입증 수단이 사라진다(실제로 한 건 사라졌다).
+    """
+    p = db.get(LeavePromotion, promo_id)
+    if not p or p.cancelled_at:
+        return p
+    p.cancelled_at = datetime.datetime.now()
+    p.cancelled_by = by
+    db.flush()
+    return p
+
+
+def uncancel_promotion(db, promo_id):
+    """회수 취소 — 같은 회차가 이미 다시 발송됐으면 되돌리지 않는다."""
+    p = db.get(LeavePromotion, promo_id)
+    if not p or not p.cancelled_at:
+        return p, None
+    dup = _existing_by_stage(db, p.user_id, p.leave_year).get(p.stage)
+    if dup:
+        return p, dup
+    p.cancelled_at = None
+    p.cancelled_by = None
+    db.flush()
+    return p, None
 
 
 def candidates(db, as_of=None):
@@ -471,7 +506,7 @@ def promotions_for_user(db, user_id, leave_year=None):
 
 
 def all_promotions(db, leave_year=None, status=None):
-    """관리자 화면 — 전체 촉진 이력."""
+    """관리자 화면 — 전체 촉진 이력. **회수분도 포함**한다(증빙이므로)."""
     q = db.query(LeavePromotion)
     if leave_year is not None:
         q = q.filter(LeavePromotion.leave_year == leave_year)

@@ -81,6 +81,11 @@ class LeavePromotion(Base):
     note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
 
+    # 회수 — 행을 지우지 않는다. 메일은 이미 나갔고 이 행이 그 증빙이다.
+    # 재발송 판정(_existing_by_stage)에서만 빠지고, 이력·서면 출력은 남는다.
+    cancelled_at = Column(DateTime, nullable=True)        # NULL = 유효
+    cancelled_by = Column(String(50), nullable=True)
+
     user = relationship('User')
 
 

@@ -1889,3 +1889,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_mail_folder_prefs
 -- 연차사용촉진 서면(지정 사용일 ↔ 실제 사용일 대조)이 날짜를 특정 못 해 출력을 막았다.
 ALTER TABLE light_sync.leave_usages ADD COLUMN IF NOT EXISTS end_date DATE;
 COMMENT ON COLUMN light_sync.leave_usages.end_date IS '연속 사용 종료일 (하루면 NULL)';
+
+-- 2026-09-16 연차촉진 '회수'를 삭제에서 취소로 — 증빙이 사라지면 안 된다
+-- 회수 버튼이 db.delete() 였다. 메일은 이미 나갔는데 근로기준법 제61조 증빙만
+-- 없어진다. 실제로 김선중 2025년도 1차 촉구가 이렇게 지워졌다(2026-09-15 17:24).
+ALTER TABLE light_sync.leave_promotions ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP;
+ALTER TABLE light_sync.leave_promotions ADD COLUMN IF NOT EXISTS cancelled_by VARCHAR(50);
+COMMENT ON COLUMN light_sync.leave_promotions.cancelled_at IS '촉구 회수 시각 (NULL=유효). 행은 지우지 않는다';

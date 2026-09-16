@@ -298,27 +298,61 @@ def hr_promotion_send():
 @hr_bp.route('/promotion/<int:promo_id>/delete', methods=['POST'])
 @admin_required
 def hr_promotion_delete(promo_id):
-    """촉구 회수 — leave_promotions 기록 삭제(재발송 가능 상태로 복원).
+    """촉구 회수 — 기록은 남기고 '회수됨'으로만 표시(재발송 가능 상태로 복원).
 
-    이미 발송된 메일 자체는 회수 불가. 직원 화면/추적에서만 제거되고,
-    관련 ERP 인앱 알림도 정리한다.
+    예전엔 행을 지웠다. 그런데 메일은 이미 나갔고 이 행이 '보냈다'는 유일한
+    증빙이라(근로기준법 제61조), 지우면 입증 수단만 없어진다. 실제로 그렇게
+    한 건이 사라져 백업에서 되살렸다. 이제 지우지 않는다.
+
+    직원 화면/인앱 알림에서는 그대로 걷어낸다 — 회수의 목적은 그쪽이다.
     """
     from modules.models import LeavePromotion, Notification
     with get_db() as db:
         p = db.get(LeavePromotion, promo_id)
         if not p:
             abort(404)
+        if p.cancelled_at:
+            flash('이미 회수된 촉구입니다.', 'info')
+            return redirect(url_for('hr.hr_promotion'))
         u = db.get(User, p.user_id)
         # 직원 인앱 알림 정리
         dk = 'lp_emp_%d_%d_%s' % (p.user_id, p.leave_year, p.stage)
         db.query(Notification).filter(Notification.dedupe_key == dk).delete(
             synchronize_session=False)
+        lp.cancel_promotion(db, promo_id, by=session.get('full_name', '') or 'system')
         log_activity(db, 'hr', 'leave_promotion_cancel',
                      f'{u.full_name if u else p.user_id} 연차촉진 {lp.STAGE_LABEL.get(p.stage, p.stage)} 회수',
-                     ref_type='user', ref_id=p.user_id)
-        db.delete(p)
+                     detail=f'통보일 {p.notified_at:%Y-%m-%d} · 기록은 이력에 남습니다(서면 출력 가능)'
+                            if p.notified_at else '기록은 이력에 남습니다(서면 출력 가능)',
+                     ref_type='user', ref_id=p.user_id,
+                     ref_label=(u.full_name if u else None))
         db.commit()
-        flash('촉구 기록을 회수했습니다. (이미 발송된 메일 자체는 회수되지 않습니다)', 'success')
+        flash('촉구를 회수했습니다. 기록은 이력에 남아 서면 출력이 가능합니다. '
+              '(이미 발송된 메일 자체는 회수되지 않습니다)', 'success')
+        return redirect(url_for('hr.hr_promotion'))
+
+
+@hr_bp.route('/promotion/<int:promo_id>/uncancel', methods=['POST'])
+@admin_required
+def hr_promotion_uncancel(promo_id):
+    """회수 취소 — 잘못 회수한 촉구를 되살린다."""
+    from modules.models import LeavePromotion
+    with get_db() as db:
+        p = db.get(LeavePromotion, promo_id)
+        if not p:
+            abort(404)
+        u = db.get(User, p.user_id)
+        _, dup = lp.uncancel_promotion(db, promo_id)
+        if dup:
+            flash('같은 회차가 이미 다시 발송되어 있어 되돌릴 수 없습니다. '
+                  f'(발송일 {dup.notified_at:%Y-%m-%d})', 'warning')
+            return redirect(url_for('hr.hr_promotion'))
+        log_activity(db, 'hr', 'leave_promotion_uncancel',
+                     f'{u.full_name if u else p.user_id} 연차촉진 {lp.STAGE_LABEL.get(p.stage, p.stage)} 회수 취소',
+                     ref_type='user', ref_id=p.user_id,
+                     ref_label=(u.full_name if u else None))
+        db.commit()
+        flash('회수를 취소했습니다.', 'success')
         return redirect(url_for('hr.hr_promotion'))
 
 

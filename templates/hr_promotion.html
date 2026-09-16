@@ -20,6 +20,10 @@
   .lp-sec-title { font-size:.9rem; font-weight:700; color:#334155; margin:1.4rem 0 .5rem; }
   .lp-badge { display:inline-block; font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:6px; white-space:nowrap; }
   .lp-empty { color:#94a3b8; font-size:.84rem; padding:.8rem; }
+  /* 회수된 촉구 — 지우지 않고 옅게 남긴다. 색만으로 두지 않고 상태칸에 '회수됨' 배지가 같이 선다. */
+  .lp-table tr.lp-cancelled td { background:#f8fafc; color:#94a3b8; }
+  .lp-table tr.lp-cancelled td:first-child { text-decoration:line-through; }
+  .lp-table tr.lp-cancelled .lp-badge { opacity:.65; }
   .lp-dates { width:200px; font-size:.8rem; }
 </style>
 
@@ -135,19 +139,20 @@
     </tr></thead>
     <tbody>
       {% for p in records %}
-      <tr>
+      <tr{% if p.cancelled_at %} class="lp-cancelled"{% endif %}>
         <td class="fw-semibold">{{ p.user.full_name if p.user else p.user_id }}</td>
         <td>{{ p.leave_year }}</td>
         <td>{{ stage_label.get(p.stage, p.stage) }}</td>
         <td>{{ p.notified_at.strftime('%Y-%m-%d') if p.notified_at else '-' }}</td>
         <td class="text-end">{{ (p.remaining_live if p.remaining_live is defined and p.remaining_live is not none else p.remaining_days) if p.remaining_days is not none else '-' }}</td>
         <td>{% if p.employee_dates %}<span title="{{ fmt_entries(p.employee_dates) }}">{{ sum_days(p.employee_dates)|trim }}일</span>
+          {% if not p.cancelled_at %}
           <form method="post" action="{{ url_for('hr.hr_promotion_desig_delete', promo_id=p.id) }}" class="d-inline"
                 onsubmit="return confirm('직원이 지정한 사용일을 삭제하시겠습니까?\n삭제 후 직원이 다시 지정할 수 있습니다.')">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-outline-danger btn-xs ms-1" style="white-space:nowrap"
                     title="직원이 지정한 사용일 삭제 — 직원이 다시 지정 가능">지정 삭제</button>
-          </form>{% else %}<span class="text-muted">미지정</span>{% endif %}</td>
+          </form>{% endif %}{% else %}<span class="text-muted">미지정</span>{% endif %}</td>
         <td>{% if p.admin_dates %}<span title="{{ fmt_entries(p.admin_dates) }}">{{ sum_days(p.admin_dates)|trim }}일</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>{% if p.diff.actual %}<span title="{{ fmt_entries(p.diff.actual) }}">{{ sum_days(p.diff.actual)|trim }}일</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td>
@@ -174,26 +179,39 @@
         </td>
         <td>
           {% set st = p.status %}
-          {% if st == 'designated' %}<span class="lp-badge" style="background:#eff6ff;color:#2563eb">직원지정</span>
+          {% if p.cancelled_at %}<span class="lp-badge" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1"
+                title="{{ p.cancelled_at.strftime('%Y-%m-%d %H:%M') }} {{ p.cancelled_by or '' }} 회수&#10;기록은 증빙으로 남습니다. 서면 출력은 그대로 가능합니다.">회수됨</span>
+          {% elif st == 'designated' %}<span class="lp-badge" style="background:#eff6ff;color:#2563eb">직원지정</span>
           {% elif st == 'admin_designated' %}<span class="lp-badge" style="background:#fef2f2;color:#dc2626">회사지정</span>
           {% elif st == 'completed' %}<span class="lp-badge" style="background:#f0fdf4;color:#16a34a">완료</span>
           {% else %}<span class="lp-badge" style="background:#f1f5f9;color:#64748b">발송</span>{% endif %}
         </td>
         <td class="text-nowrap">
+          {% if not p.cancelled_at %}
           <a href="{{ url_for('hr.hr_promotion_doc_edit', promo_id=p.id) }}"
              class="btn btn-outline-primary btn-xs" style="white-space:nowrap"
              title="서면 통보서에 들어갈 사용일 편집">편집</a>
+          {% endif %}
           <a href="{{ url_for('hr.hr_promotion_print', promo_id=p.id) }}" target="_blank"
              class="btn btn-outline-secondary btn-xs" style="white-space:nowrap"
              title="노동부 서식 서면 통보서 출력(새 탭)">출력</a>
         </td>
         <td class="text-nowrap">
+          {% if p.cancelled_at %}
+          <form method="post" action="{{ url_for('hr.hr_promotion_uncancel', promo_id=p.id) }}" class="d-inline"
+                onsubmit="return confirm('이 촉구를 다시 유효한 상태로 되돌릴까요?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-outline-secondary btn-xs" style="white-space:nowrap"
+                    title="잘못 회수한 촉구를 되살립니다">회수 취소</button>
+          </form>
+          {% else %}
           <form method="post" action="{{ url_for('hr.hr_promotion_delete', promo_id=p.id) }}" class="d-inline"
-                onsubmit="return confirm('이 촉구 기록을 회수(삭제)하시겠습니까?\n※ 이미 발송된 메일 자체는 회수되지 않습니다.')">
+                onsubmit="return confirm('이 촉구를 회수하시겠습니까?\n\n직원 화면과 알림에서는 내려가고, 같은 회차를 다시 보낼 수 있게 됩니다.\n기록 자체는 이력에 남아 서면 출력이 계속 가능합니다.\n※ 이미 발송된 메일 자체는 회수되지 않습니다.')">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-outline-danger btn-xs" style="white-space:nowrap"
-                    title="촉구 기록 삭제 — 재발송 가능 상태로 복원">촉구 회수</button>
+                    title="직원 화면에서 내리고 재발송 가능 상태로 — 기록은 남습니다">촉구 회수</button>
           </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
