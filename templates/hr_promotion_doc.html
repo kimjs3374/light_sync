@@ -5,24 +5,41 @@
 <title>{% if is_second %}연차유급휴가 사용시기 지정 통보서{% else %}연차유급휴가 사용촉진 통보서{% endif %}</title>
 <style>
   * { box-sizing:border-box; }
+  /* 한 장에 담는 게 기본이다. 여백·행높이는 여기 한 곳에서만 조인다. */
   body { font-family:"Malgun Gothic","맑은 고딕",sans-serif; color:#000; background:#fff;
-         margin:0; padding:24mm 20mm; font-size:13px; line-height:1.7; }
-  .doc-title { text-align:center; font-size:21px; font-weight:800; letter-spacing:.4em;
-               margin:0 0 6px; padding-bottom:14px; border-bottom:3px solid #000; }
-  .doc-law { text-align:center; font-size:11px; color:#333; margin:10px 0 22px; }
-  table.doc { width:100%; border-collapse:collapse; margin:14px 0; }
-  table.doc th, table.doc td { border:1px solid #000; padding:8px 10px; font-size:12.5px; }
+         margin:0; padding:18mm 20mm; font-size:12.5px; line-height:1.5; }
+  .doc-title { text-align:center; font-size:19px; font-weight:800; letter-spacing:.35em;
+               margin:0 0 4px; padding-bottom:9px; border-bottom:3px solid #000; }
+  .doc-law { text-align:center; font-size:10.5px; color:#333; margin:7px 0 13px; }
+  table.doc { width:100%; border-collapse:collapse; margin:9px 0; }
+  table.doc th, table.doc td { border:1px solid #000; padding:4px 9px; font-size:12px; line-height:1.45; }
   table.doc th { background:#f2f2f2; font-weight:700; text-align:center; width:22%; white-space:nowrap; }
   table.doc td { text-align:left; }
-  .body-text { margin:18px 4px; font-size:13.5px; line-height:1.9; }
+  .body-text { margin:11px 4px; font-size:12.5px; line-height:1.7; }
   .em { font-weight:800; text-decoration:underline; }
+  /* 사용일 목록은 줄 수가 사람마다 다르다 — 여기가 제일 먼저 넘친다 */
+  .used-list th, .used-list td { padding:2.5px 8px; font-size:11.5px; line-height:1.4; }
   .used-list th { background:#f2f2f2; text-align:center; white-space:nowrap; }
-  .used-list td { text-align:center; }
-  .sign { margin-top:36px; text-align:right; font-size:13.5px; line-height:2.4; }
-  .sign .date { text-align:center; margin-bottom:18px; font-size:13px; }
+  .used-list td { text-align:center; white-space:nowrap; }
+  .sign { margin-top:22px; text-align:right; font-size:13px; line-height:2; }
+  .sign .date { text-align:center; margin-bottom:11px; font-size:12.5px; }
   .stamp { display:inline-block; min-width:46px; }
-  .confirm { margin-top:30px; border-top:1px dashed #888; padding-top:16px; }
-  @media print { body { padding:14mm 16mm; } .no-print { display:none; } @page { size:A4; margin:0; } }
+  .confirm { margin-top:18px; border-top:1px dashed #888; padding-top:11px; }
+  /* 줄이 많으면 한 단 더 조인다 (서버가 건수를 보고 붙인다) */
+  body.dense .used-list th, body.dense .used-list td { padding:1px 6px; font-size:10.5px; line-height:1.3; }
+  body.dense .body-text { margin:8px 4px; line-height:1.55; }
+  body.dense table.doc { margin:7px 0; }
+  body.dense table.doc th, body.dense table.doc td { padding:3px 8px; }
+  body.dense .sign { margin-top:14px; line-height:1.8; }
+  body.dense .confirm { margin-top:12px; padding-top:9px; }
+  @media print {
+    body { padding:12mm 15mm; }
+    .no-print { display:none; }
+    @page { size:A4; margin:0; }
+    table.doc { page-break-inside:auto; }
+    table.doc tr { page-break-inside:avoid; }
+    .sign, .confirm { page-break-inside:avoid; }
+  }
   .no-print button { padding:7px 18px; font-size:13px; cursor:pointer; }
   .print-bar { text-align:center; margin-bottom:16px; }
   .check-panel { margin-top:40px; padding:16px 18px; border:1px solid #e2e8f0;
@@ -37,7 +54,41 @@
   .check-panel table.doc th, .check-panel table.doc td { border-color:#cbd5e1; }
 </style>
 </head>
-<body>
+{# 사용일 표는 1차·2차가 같은 모양이다. 한 벌만 두고 제목만 바꾼다.
+   줄이 아주 많으면(반차를 잘게 쓴 경우) 2단으로 접어 한 장을 지킨다. #}
+{% macro _dt(d) %}{% if d is mapping %}{{ d.date }}{% else %}{{ d }}{% endif %}{% endmacro %}
+{% macro _tp(d) %}{% if d is mapping %}{{ d.type }} ({{ d.days }}일){% else %}연차 (1일){% endif %}{% endmacro %}
+{% macro dates_table(rows, label) %}
+{% if rows|length > 26 %}
+{% set half = (rows|length + 1) // 2 %}
+<table class="doc used-list">
+  <tr><th style="width:7%">No</th><th>{{ label }}</th><th style="width:16%">구분</th>
+      <th style="width:7%">No</th><th>{{ label }}</th><th style="width:16%">구분</th></tr>
+  {% for i in range(half) %}
+  <tr>
+    <td>{{ i + 1 }}</td><td>{{ _dt(rows[i]) }}</td><td>{{ _tp(rows[i]) }}</td>
+    {% if half + i < rows|length %}
+    <td>{{ half + i + 1 }}</td><td>{{ _dt(rows[half + i]) }}</td><td>{{ _tp(rows[half + i]) }}</td>
+    {% else %}<td></td><td></td><td></td>{% endif %}
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<table class="doc used-list">
+  <tr><th style="width:10%">No</th><th>{{ label }}</th><th style="width:20%">구분</th></tr>
+  {% for d in rows %}
+  <tr><td>{{ loop.index }}</td><td>{{ _dt(d) }}</td><td>{{ _tp(d) }}</td></tr>
+  {% else %}
+  <tr><td colspan="3">지정된 사용일이 없습니다.</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endmacro %}
+
+{# 서면에 찍히는 사용일 줄 수 — 여기가 한 장을 넘기는 유일한 변수다.
+   많으면 body.dense 로 한 단 더 조인다(대략 24줄까지 A4 한 장). #}
+{% set n_rows = ((p.admin_dates if is_second else (p.admin_dates or p.employee_dates)) or [])|length %}
+<body{% if n_rows > 12 %} class="dense"{% endif %}>
 <div class="no-print print-bar">
   <button onclick="window.print()">🖨 인쇄</button>
 </div>
@@ -82,16 +133,7 @@
   근로기준법 제61조에 따라 회사가 아래와 같이 귀하의 연차유급휴가 <span class="em">사용시기를 지정</span>하여 통보합니다.
   지정된 날짜에 연차유급휴가를 사용하시기 바랍니다.
 </div>
-<table class="doc used-list">
-  <tr><th style="width:10%">No</th><th>회사 지정 사용일</th><th style="width:20%">구분</th></tr>
-  {% for d in (p.admin_dates or []) %}
-  <tr><td>{{ loop.index }}</td>
-    <td>{% if d is mapping %}{{ d.date }}{% else %}{{ d }}{% endif %}</td>
-    <td>{% if d is mapping %}{{ d.type }} ({{ d.days }}일){% else %}연차 (1일){% endif %}</td></tr>
-  {% else %}
-  <tr><td colspan="3">지정된 사용일이 없습니다.</td></tr>
-  {% endfor %}
-</table>
+{{ dates_table(p.admin_dates or [], '회사 지정 사용일') }}
 {% else %}
 <div class="body-text">
   귀하의 {{ p.leave_year }}년도 연차유급휴가 미사용 일수가 위와 같음을 통보하오니,
@@ -104,14 +146,7 @@
    employee_dates(근로자 원지정)를 그대로 찍으면 아래 실제 사용일 표와 어긋난다. #}
 {% set desig = p.admin_dates or p.employee_dates %}
 {% if desig %}
-<table class="doc used-list">
-  <tr><th style="width:10%">No</th><th>지정 사용일</th><th style="width:20%">구분</th></tr>
-  {% for d in desig %}
-  <tr><td>{{ loop.index }}</td>
-    <td>{% if d is mapping %}{{ d.date }}{% else %}{{ d }}{% endif %}</td>
-    <td>{% if d is mapping %}{{ d.type }} ({{ d.days }}일){% else %}연차 (1일){% endif %}</td></tr>
-  {% endfor %}
-</table>
+{{ dates_table(desig, '지정 사용일') }}
 {% if p.admin_dates and p.employee_dates and orig_differs %}
 <div class="body-text" style="font-size:.85em;color:#64748b">
   ※ 위 지정 사용일은 근로자가 통보일에 지정한 일자를 <b>실제 사용일 기준으로 확정</b>한 것입니다.
