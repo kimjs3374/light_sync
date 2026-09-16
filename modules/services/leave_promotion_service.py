@@ -19,6 +19,11 @@
   · extra  : 끝나기 1개월 전 기준 5일 이내 촉구
              — 그 뒤 발생분(마지막 개근 1일)이 대상
   · extra2 : 미지정 시 끝나기 10일 전까지 회사 지정 통보
+
+시스템이 하지 않는 것 (2026-09-16 결정):
+  · 서면 통보서의 교부·수령확인(서명) 보관 — 담당자가 종이로 관리한다.
+    여기선 출력(printed_at)까지만 남긴다. 스캔 첨부 기능을 만들지 않는다.
+  · 출근율 판정 — 전원 80% 이상으로 본다(hr_service.annual_entitlement).
 """
 import datetime
 from calendar import monthrange
@@ -588,11 +593,15 @@ def hr_manager_user_ids(db):
 
 
 def _employee_email(user):
-    """직원 수신 메일 = 회사 메일(username@mgnt.kr)."""
-    un = getattr(user, 'username', None)
-    if un:
-        return f'{un}@mgnt.kr'
-    return getattr(user, 'email', None)
+    """직원 수신 메일 = **사내 개인메일**(username@mgnt.kr). 이것만 쓴다.
+
+    user.email 로 흘리지 않는다 — 거기엔 개인 네이버·네이트 주소가 들어 있고
+    (오타 도메인도 있다), 촉진 통보는 회사가 보냈다는 증빙이라 사내 계정으로
+    가야 한다. 사번계정이 없으면 주소를 지어내지 말고 None 을 돌려
+    「메일 미발송」으로 드러나게 둔다.
+    """
+    un = (getattr(user, 'username', '') or '').strip()
+    return f'{un}@mgnt.kr' if un else None
 
 
 def send_promotion_email(db, promo, user):

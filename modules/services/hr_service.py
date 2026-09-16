@@ -34,7 +34,12 @@ def _completed_months(hire_date, as_of):
 
 
 def annual_entitlement(hire_date, as_of=None):
-    """입사일 기준 연차 부여일수."""
+    """입사일 기준 연차 부여일수.
+
+    **출근율은 전원 80% 이상으로 본다**(2026-09-16 결정). 제60조 제2항의
+    '1년간 80% 미만 출근' 갈래는 계산에 넣지 않는다 — 결근 데이터를 ERP 가
+    갖고 있지 않고, 실제로 해당자가 없다. 결근 관리가 들어오면 여기부터 고친다.
+    """
     if not hire_date:
         return 0
     as_of = as_of or datetime.date.today()
