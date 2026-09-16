@@ -247,7 +247,9 @@ def hr_promotion():
         n_off = 0
         for p in records:
             p.remaining_live = lp.live_leave(db, p, p.user, today)['remaining']
-            # 서면 지정 사용일 ↔ 실제 사용일 대사 (표시용, 비영속)
+            # 지정 사용일 ↔ 실제 사용일 대사 — **화면에서만** 본다.
+            # 지정한 날에 안 쉰 사람을 찾아 노무수령거부를 판단하기 위한 것이지,
+            # 서면을 실제에 맞춰 고치라는 뜻이 아니다(고치면 통보서가 아니게 된다).
             p.diff = lp.doc_dates_diff(db, p, p.user, today)
             if not p.diff['in_sync']:
                 n_off += 1
@@ -415,53 +417,6 @@ def hr_promotion_desig_delete(promo_id):
         return redirect(url_for('hr.hr_promotion'))
 
 
-@hr_bp.route('/promotion/sync-actual', methods=['POST'])
-@hr_bp.route('/promotion/<int:promo_id>/sync-actual', methods=['POST'])
-@admin_required
-def hr_promotion_sync_actual(promo_id=None):
-    """서면 인쇄용 지정 사용일을 **실제 사용일**과 일치시킨다. 단건 또는 전체.
-
-    회차별 통보일 이후 ~ 연차연도 종료일의 실제 사용분 기준.
-    직원 사전지정(employee_dates)과 status는 건드리지 않는다.
-    """
-    from modules.models import LeavePromotion
-    by = session.get('full_name', '') or 'admin'
-    with get_db() as db:
-        if promo_id:
-            targets = [db.get(LeavePromotion, promo_id)]
-            if not targets[0]:
-                abort(404)
-        else:
-            targets = lp.all_promotions(db)
-        synced, already, noact = 0, 0, 0
-        for p in targets:
-            u = db.get(User, p.user_id)
-            if not u:
-                continue
-            _, diff = lp.sync_doc_dates_to_actual(db, p, u, by=by)
-            if diff['in_sync']:
-                already += 1
-                continue
-            if not diff['has_actual'] and not diff['designated']:
-                noact += 1
-                continue
-            synced += 1
-            log_activity(
-                db, 'hr', 'leave_promotion_sync_actual',
-                f'{u.full_name} 연차촉진 {lp.STAGE_LABEL.get(p.stage, p.stage)} '
-                f'서면 사용일 실제기준 정정 '
-                f'(추가 {len(diff["missing"])} · 제거 {len(diff["extra"])} · '
-                f'구분정정 {len(diff["changed"])})',
-                ref_type='user', ref_id=p.user_id, ref_label=u.full_name)
-        db.commit()
-        if synced:
-            flash(f'{synced}건을 실제 사용일 기준으로 맞췄습니다.'
-                  + (f' (이미 일치 {already}건)' if already else ''), 'success')
-        else:
-            flash('정정할 대상이 없습니다. (모두 실제 사용일과 일치)', 'info')
-        return redirect(url_for('hr.hr_promotion'))
-
-
 @hr_bp.route('/promotion/<int:promo_id>/print')
 @menu_required('hr')
 def hr_promotion_print(promo_id):
@@ -491,9 +446,6 @@ def hr_promotion_print(promo_id):
                                today=datetime.date.today(),
                                stage_label=lp.STAGE_LABEL,
                                diff=diff,
-                               # 근로자 최초 지정과 확정분이 다를 때만 각주
-                               orig_differs=(lp.normalize_entries(p.employee_dates)
-                                             != lp.normalize_entries(p.admin_dates)),
                                # 문서 종류는 **회차·상태**로만 판정.
                                # admin_dates 유무로 보면 실제 사용일을 서면에
                                # 반영했다는 이유만으로 1차 통보서가 회사

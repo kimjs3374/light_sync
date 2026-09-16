@@ -473,20 +473,11 @@ def doc_dates_diff(db, promo, user, as_of=None):
     }
 
 
-def sync_doc_dates_to_actual(db, promo, user, by, as_of=None):
-    """서면 인쇄용 지정 사용일을 이 회차 실제 사용일과 일치시킨다.
-
-    직원이 사전에 낸 지정(employee_dates)은 근로기준법상 '근로자의 사용시기
-    지정' 증빙이라 건드리지 않는다. status도 바꾸지 않는다(set_status=False).
-    반환: (promo, diff_before) — 이미 일치하면 쓰기 없이 (promo, diff) 반환.
-    """
-    diff = doc_dates_diff(db, promo, user, as_of)
-    if diff['in_sync']:
-        return promo, diff
-    # 날짜 특정 불가분(unresolved)은 제외 — 서면에 지어낸 날짜를 넣지 않는다
-    entries = [e for e in diff['actual'] if not e.get('unresolved')]
-    set_doc_dates(db, promo.id, entries, by=by, set_status=False)
-    return promo, diff
+# 서면 지정일을 실제 사용일로 덮어쓰는 기능(sync_doc_dates_to_actual)은 없앴다.
+# 통보서에 적히는 건 '지정한 날'이고, 실제로 그 날 썼는지는 다른 사실이다.
+# 둘을 같게 만들면 통보서가 아니라 사후 정산표가 되고, 서면이 근거로 못 쓰인다.
+# 차이는 doc_dates_diff() 로 화면에서만 본다 — 지정한 날에 안 쉰 사람을
+# 찾아내는 용도(노무수령거부 판단)라야 의미가 있다.
 
 
 def mark_printed(db, promo_id):

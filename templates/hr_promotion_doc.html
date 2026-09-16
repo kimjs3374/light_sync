@@ -142,17 +142,12 @@
   잔여 연차유급휴가의 <span class="em">사용시기를 정하여 회사에 통보</span>하여 주시기 바랍니다.
   기한 내 미통보 시 회사가 사용시기를 지정할 수 있습니다.
 </div>
-{# 실제 사용일 기준으로 확정된 지정일(admin_dates)이 있으면 그것을 인쇄한다.
-   employee_dates(근로자 원지정)를 그대로 찍으면 아래 실제 사용일 표와 어긋난다. #}
-{% set desig = p.admin_dates or p.employee_dates %}
+{# 여기 찍히는 건 '근로자가 지정한 날'이다. 실제로 그 날 썼는지는 다른 이야기고
+   서면에 들어갈 내용이 아니다. employee_dates(ERP 지정)를 먼저 쓰고, 근로자가
+   종이·구두로 낸 걸 관리자가 옮겨 적은 경우에만 admin_dates 를 쓴다. #}
+{% set desig = p.employee_dates or p.admin_dates %}
 {% if desig %}
 {{ dates_table(desig, '지정 사용일') }}
-{% if p.admin_dates and p.employee_dates and orig_differs %}
-<div class="body-text" style="font-size:.85em;color:#64748b">
-  ※ 위 지정 사용일은 근로자가 통보일에 지정한 일자를 <b>실제 사용일 기준으로 확정</b>한 것입니다.
-  (근로자 최초 지정: {% for d in p.employee_dates %}{{ d.date if d is mapping else d }}{% if not loop.last %}, {% endif %}{% endfor %})
-</div>
-{% endif %}
 {% endif %}
 {% endif %}
 

@@ -121,12 +121,8 @@
 <div class="lp-sec-title mg-fade d-flex align-items-center gap-2">
   <span>촉구·지정 이력 <span class="text-muted fw-normal">({{ records|length }})</span></span>
   {% if n_off %}
-  <span class="lp-badge" style="background:#fffbeb;color:#b45309">서면 ≠ 실제 {{ n_off }}건</span>
-  <form method="post" action="{{ url_for('hr.hr_promotion_sync_actual') }}" class="d-inline"
-        onsubmit="return confirm('{{ n_off }}건의 서면 지정 사용일을 실제 사용일과 동일하게 맞춥니다.\n\n※ 직원이 사전에 지정한 날짜(직원 지정)는 그대로 보존됩니다.')">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="btn btn-outline-warning btn-xs" style="white-space:nowrap">전체 맞추기</button>
-  </form>
+  <span class="lp-badge" style="background:#fffbeb;color:#b45309"
+        title="지정한 날과 실제로 쉰 날이 다른 건수입니다. 서면을 고치라는 뜻이 아니라, 지정한 날에 안 쉰 사람을 확인하시라는 표시입니다.">지정 ≠ 실제 {{ n_off }}건</span>
   {% endif %}
 </div>
 {% if records %}
@@ -134,7 +130,7 @@
   <table class="table lp-table mb-0">
     <thead><tr>
       <th>직원</th><th>연차연도</th><th>단계</th><th>발송일</th><th class="text-end">잔여</th>
-      <th>직원 지정</th><th>서면 지정일</th><th>실제 사용일</th><th>대사</th>
+      <th>직원 지정</th><th>서면 지정일</th><th>실제 사용일</th><th>차이</th>
       <th>상태</th><th>서면</th><th>관리</th>
     </tr></thead>
     <tbody>
@@ -164,17 +160,12 @@
             <span class="lp-badge" style="background:#f0fdf4;color:#16a34a">일치</span>
           {% else %}
             <span class="lp-badge" style="background:#fffbeb;color:#b45309"
-                  title="누락(실제로 썼는데 서면에 없음): {{ p.diff.missing|join(', ') or '-' }}&#10;초과(서면에만 있음): {{ p.diff.extra|join(', ') or '-' }}&#10;구분(연차/반차) 불일치: {{ p.diff.changed|join(', ') or '-' }}">
-              불일치
+                  title="지정한 날과 실제로 쉰 날의 차이입니다. 서면은 지정한 날 그대로 둡니다.&#10;지정 안 했는데 쉰 날: {{ p.diff.missing|join(', ') or '-' }}&#10;지정했는데 안 쉰 날: {{ p.diff.extra|join(', ') or '-' }}&#10;연차/반차가 다른 날: {{ p.diff.changed|join(', ') or '-' }}">
+              차이
               {%- if p.diff.missing %} +{{ p.diff.missing|length }}{% endif -%}
               {%- if p.diff.extra %} −{{ p.diff.extra|length }}{% endif -%}
               {%- if p.diff.changed %} ~{{ p.diff.changed|length }}{% endif -%}
             </span>
-            <form method="post" action="{{ url_for('hr.hr_promotion_sync_actual', promo_id=p.id) }}" class="d-inline"
-                  onsubmit="return confirm('{{ p.user.full_name if p.user else p.user_id }} {{ stage_label.get(p.stage, p.stage) }}의 서면 지정 사용일을 실제 사용일과 동일하게 맞춥니다.\n\n추가 {{ p.diff.missing|length }}건 · 제거 {{ p.diff.extra|length }}건 · 구분정정 {{ p.diff.changed|length }}건\n\n※ 직원이 사전에 지정한 날짜는 그대로 보존됩니다.')">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn btn-outline-warning btn-xs ms-1" style="white-space:nowrap">맞추기</button>
-            </form>
           {% endif %}
         </td>
         <td>
