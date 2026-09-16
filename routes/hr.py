@@ -251,11 +251,34 @@ def hr_promotion():
             p.diff = lp.doc_dates_diff(db, p, p.user, today)
             if not p.diff['in_sync']:
                 n_off += 1
-        # user_id → 미지정(2차 필요) 표시용 맵
         return render_template('hr_promotion.html',
                                cand=cand, records=records, n_off=n_off,
+                               excluded=lp.excluded_employees(db),
                                stage_label=lp.STAGE_LABEL,
                                emp_label=lp.EMP_TYPE_LABEL)
+
+
+@hr_bp.route('/promotion/exempt', methods=['POST'])
+@admin_required
+def hr_promotion_exempt():
+    """연차촉진 제외 지정/해제 — 근로자가 아닌 임원 등."""
+    user_id = request.form.get('user_id', type=int)
+    exempt = request.form.get('exempt') == '1'
+    reason = request.form.get('reason') or ''
+    with get_db() as db:
+        u, err = lp.set_promotion_exempt(db, user_id, exempt, reason,
+                                         by=session.get('full_name', ''))
+        if err:
+            flash(err, 'warning')
+            return redirect(url_for('hr.hr_promotion'))
+        log_activity(db, 'hr', 'leave_promotion_exempt',
+                     f'{u.full_name} 연차촉진 {"제외" if exempt else "제외 해제"}',
+                     detail=(f'사유: {reason.strip()}' if exempt else None),
+                     ref_type='user', ref_id=u.id, ref_label=u.full_name)
+        db.commit()
+        flash(f'{u.full_name}님을 연차촉진 대상에서 '
+              + ('제외했습니다.' if exempt else '다시 포함했습니다.'), 'success')
+        return redirect(url_for('hr.hr_promotion'))
 
 
 @hr_bp.route('/promotion/send', methods=['POST'])

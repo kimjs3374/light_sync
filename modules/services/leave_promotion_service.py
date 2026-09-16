@@ -80,13 +80,54 @@ def _emp_window(hire_date, as_of):
 
 
 def _active_employees(db):
-    """촉진 대상 활성 직원(입사일 보유, 최고관리자 제외)."""
+    """촉진 대상 활성 직원.
+
+    제외: 최고관리자(시스템 계정) · 제외 지정자(leave_promotion_exempt) ·
+          입사일 미기재.
+    입사일이 없어 빠지는 건 '우연한 제외'라 감사에 쓸 수 없다 —
+    excluded_employees() 가 그 사람들을 사유와 함께 화면에 올린다.
+    """
     return (db.query(User)
             .filter(User.is_active.is_(True),
                     User.user_group != '최고관리자',
+                    User.leave_promotion_exempt.isnot(True),
                     User.hire_date.isnot(None))
             .order_by(User.user_group, User.full_name)
             .all())
+
+
+def excluded_employees(db):
+    """촉진 대상에서 빠진 활성 직원 + 그 사유. 조용한 제외를 드러낸다.
+
+    반환: [{'user','reason','fixable'}]  fixable=True 면 손봐야 할 누락이다.
+    """
+    out = []
+    for u in (db.query(User)
+              .filter(User.is_active.is_(True),
+                      User.user_group != '최고관리자')
+              .order_by(User.user_group, User.full_name).all()):
+        if u.leave_promotion_exempt:
+            out.append({'user': u, 'fixable': False,
+                        'reason': (u.leave_promotion_exempt_reason or '').strip()
+                        or '제외 지정 (사유 미기재)'})
+        elif not u.hire_date:
+            out.append({'user': u, 'fixable': True,
+                        'reason': '입사일이 없어 연차연도를 계산할 수 없습니다'})
+    return out
+
+
+def set_promotion_exempt(db, user_id, exempt, reason, by=None):
+    """촉진 제외 지정/해제. 제외에는 사유가 반드시 있어야 한다."""
+    u = db.get(User, user_id)
+    if not u:
+        return None, '직원을 찾을 수 없습니다.'
+    reason = (reason or '').strip()
+    if exempt and not reason:
+        return u, '제외 사유를 적어 주세요. 왜 빠졌는지가 남아야 합니다.'
+    u.leave_promotion_exempt = bool(exempt)
+    u.leave_promotion_exempt_reason = reason if exempt else None
+    db.flush()
+    return u, None
 
 
 def _existing_by_stage(db, user_id, leave_year):

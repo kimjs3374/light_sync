@@ -124,6 +124,42 @@
 <div class="lp-empty mg-fade">2차 회사지정이 필요한 직원이 없습니다.</div>
 {% endif %}
 
+{# ── 2-5) 대상에서 빠진 사람 — 조용히 빠지는 걸 막는다 ── #}
+{% if excluded %}
+<div class="lp-sec-title mg-fade">대상 제외 <span class="text-muted fw-normal">({{ excluded|length }})</span>
+  <span class="text-muted fw-normal" style="font-size:.78rem">— 왜 빠졌는지가 남아야 감사에 쓸 수 있습니다</span></div>
+<div class="table-responsive mg-fade">
+  <table class="table lp-table mb-0">
+    <thead><tr><th>직원</th><th>소속</th><th>사유</th><th></th></tr></thead>
+    <tbody>
+      {% for e in excluded %}
+      <tr>
+        <td class="fw-semibold">{{ e.user.full_name }}
+          <span class="text-muted fw-normal">{{ e.user.position or '' }}</span></td>
+        <td>{{ e.user.user_group or '-' }}</td>
+        <td class="{{ 'text-danger' if e.fixable else 'text-muted' }}"
+            style="white-space:normal">{{ e.reason }}</td>
+        <td class="text-end">
+          {% if e.fixable %}
+          <a href="{{ url_for('hr.hr_detail', user_id=e.user.id) }}"
+             class="btn btn-outline-danger btn-xs" style="white-space:nowrap">입사일 입력</a>
+          {% else %}
+          <form method="post" action="{{ url_for('hr.hr_promotion_exempt') }}" class="d-inline"
+                onsubmit="return confirm('{{ e.user.full_name }}님을 연차촉진 대상에 다시 포함할까요?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="user_id" value="{{ e.user.id }}">
+            <input type="hidden" name="exempt" value="0">
+            <button class="btn btn-outline-secondary btn-xs" style="white-space:nowrap">제외 해제</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {# ── 3) 촉구/지정 이력 ── #}
 <div class="lp-sec-title mg-fade d-flex align-items-center gap-2">
   <span>촉구·지정 이력 <span class="text-muted fw-normal">({{ records|length }})</span>
@@ -233,6 +269,17 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-outline-primary btn-xs" style="white-space:nowrap"
                     title="{{ p.email_to or '주소 없음' }} 로 재발송">메일 재발송</button>
+          </form>
+          {% endif %}
+          {% if newgrp and p.user and not p.user.leave_promotion_exempt %}
+          <form method="post" action="{{ url_for('hr.hr_promotion_exempt') }}" class="d-inline"
+                onsubmit="this.reason.value = prompt('{{ who }}님을 연차촉진 대상에서 빼는 사유를 적어주세요.\n(예: 등기임원 — 근로기준법상 근로자가 아님)') || ''; return this.reason.value !== '';">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="user_id" value="{{ p.user.id }}">
+            <input type="hidden" name="exempt" value="1">
+            <input type="hidden" name="reason" value="">
+            <button class="btn btn-outline-secondary btn-xs" style="white-space:nowrap"
+                    title="앞으로 이 직원에게는 촉구를 보내지 않습니다. 지난 이력은 남습니다.">대상 제외</button>
           </form>
           {% endif %}
           <form method="post" action="{{ url_for('hr.hr_promotion_delete', promo_id=p.id) }}" class="d-inline"

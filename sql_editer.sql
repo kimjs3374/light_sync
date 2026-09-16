@@ -1906,3 +1906,13 @@ ALTER TABLE light_sync.leave_promotions
 CREATE UNIQUE INDEX IF NOT EXISTS uq_leave_promotions_active
     ON light_sync.leave_promotions (user_id, leave_year, stage)
     WHERE cancelled_at IS NULL;
+
+-- 2026-09-16 연차촉진 제외를 명시적으로 — '우연히 빠짐'에 기대지 않는다
+-- 대표이사는 입사일이 비어 있어서 대상에서 빠져 있었다. 입사일을 넣는 순간
+-- 근로자가 아닌 사람에게 촉구가 나간다. 왜 빠졌는지 사유가 남아야 한다.
+ALTER TABLE light_sync.users
+    ADD COLUMN IF NOT EXISTS leave_promotion_exempt BOOLEAN DEFAULT FALSE;
+ALTER TABLE light_sync.users
+    ADD COLUMN IF NOT EXISTS leave_promotion_exempt_reason TEXT;
+COMMENT ON COLUMN light_sync.users.leave_promotion_exempt IS
+    '연차사용촉진 제외 (근로기준법상 근로자가 아닌 임원 등). 사유 필수';

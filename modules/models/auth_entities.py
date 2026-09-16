@@ -39,6 +39,10 @@ class User(Base):
     hire_date = Column(Date, nullable=True)                # 입사일
     deactivated_at = Column(DateTime, nullable=True)
     deactivated_reason = Column(Text, nullable=True)
+    # 연차사용촉진(근로기준법 제61조) 제외 — 근로자가 아닌 임원 등.
+    # 대표이사가 '입사일이 비어서' 우연히 빠져 있던 걸 명시적으로 바꾼 것이다.
+    leave_promotion_exempt = Column(Boolean, default=False)
+    leave_promotion_exempt_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
     priority_permission = relationship(
         "UserPriorityPermission",
