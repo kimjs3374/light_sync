@@ -27,6 +27,7 @@ import { useCompose } from '../store/compose';
 import { useContacts } from '../store/contacts';
 
 let applying = false;    // 뒤로가기를 적용하는 동안에는 새 기록을 쌓지 않는다
+let suspended = 0;       // 창(파일서버 탐색 등)이 뒤로가기를 가져다 쓰는 동안
 let started = false;     // StrictMode 이중 실행 방지
 let skipNextPop = false; // 되민 것(history.forward)이 되돌아오는 popstate 한 번은 흘린다
 
@@ -116,6 +117,10 @@ export function startRouting() {
 
   const onPop = async () => {
     if (skipNextPop) { skipNextPop = false; return; }
+    // 창이 뒤로가기를 가져다 쓰는 중이면 여기서는 아무것도 하지 않는다.
+    // 안 그러면 파일서버 창에서 뒤로가기를 눌렀는데 **쓰던 메일이 닫힌다**
+    // (applyView 가 작성 중인 메일을 닫으려 든다).
+    if (suspended) return;
     const v = parseHash(window.location.hash) || { kind: 'folder', folder: 'INBOX' };
     applying = true;
     try { await applyView(v); } finally { applying = false; }
@@ -134,5 +139,24 @@ export function startRouting() {
     window.removeEventListener('popstate', onPop);
     stop.forEach((fn) => fn());
     started = false;
+  };
+}
+
+/**
+ * 뒤로가기를 잠깐 창이 가져다 쓴다 (파일서버 탐색처럼 창 안에서 오갈 때).
+ *
+ * 마우스 옆버튼은 브라우저가 먼저 처리해서 preventDefault 로 못 막는다.
+ * 그래서 막는 대신 창이 기록 한 칸을 쌓아 두고 뒤로가기 신호를 받아쓰는데,
+ * 그 신호를 이 파일이 같이 받아 화면을 옮겨 버리면 안 된다.
+ *
+ * 반환값은 되돌리는 함수다 — 창을 닫을 때 반드시 부른다.
+ */
+export function suspendRouting() {
+  suspended += 1;
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    suspended = Math.max(0, suspended - 1);
   };
 }

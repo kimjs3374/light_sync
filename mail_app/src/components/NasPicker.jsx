@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { mailApi } from '../api/client';
 import { useCompose } from '../store/compose';
 import { formatSize } from '../lib/format';
+import { suspendRouting } from '../lib/route';
 import { Close, Folder } from './Icons';
 
 /**
@@ -58,12 +59,53 @@ export default function NasPicker({ onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose, idx, hist, path]);
 
-  /* 마우스 옆버튼(뒤로/앞으로)도 받는다. 막지 않으면 브라우저가 메일 화면을 떠난다. */
-  const onMouseNav = (e) => {
-    if (e.button !== 3 && e.button !== 4) return;
-    e.preventDefault();
-    if (e.button === 3) back(); else fwd();
-  };
+  /**
+   * 마우스 옆버튼(뒤로)을 **막지 않고 받아쓴다.**
+   *
+   * 크롬은 옆버튼을 브라우저가 먼저 처리해서 `preventDefault` 로 막히지 않는다
+   * (실제로 눌러 보니 메일 화면째 뒤로 가 버렸다). 그래서 막는 대신,
+   * 창이 열릴 때 **주소는 그대로 둔 채 기록 한 칸을 쌓아** 두고,
+   * 뒤로가기 신호가 오면 그걸 창 안의 '한 폴더 뒤로' 로 돌려쓴다.
+   * 더 뒤로 갈 곳이 없으면 창을 닫는다 — 그게 사람이 기대하는 다음 단계다.
+   *
+   * 주소(해시)는 바뀌지 않으므로 메일 화면은 그대로 있는다.
+   */
+  const idxRef = useRef(0);
+  const pushedRef = useRef(false);
+  useEffect(() => { idxRef.current = idx; }, [idx]);
+
+  useEffect(() => {
+    // 뒤로가기를 이 창이 가져다 쓴다 — 라우터가 같이 받아 작성창을 닫으면 안 된다
+    const resume = suspendRouting();
+    window.history.pushState({ nasPicker: true }, '', window.location.href);
+    pushedRef.current = true;
+
+    const onPop = () => {
+      if (idxRef.current > 0) {
+        setIdx((i) => i - 1);
+        // 다시 한 칸 쌓아 둬야 다음 뒤로가기도 창 안에서 받는다
+        window.history.pushState({ nasPicker: true }, '', window.location.href);
+      } else {
+        pushedRef.current = false;   // 이미 소진됐다
+        onClose();
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      // 닫기 버튼으로 닫았으면 쌓아 둔 칸이 남는다 — 치워야 뒤로가기가 헛돌지 않는다.
+      // 그 back() 이 만드는 신호까지 라우터가 안 보도록, 치운 **뒤에** 풀어 준다.
+      if (pushedRef.current) {
+        window.history.back();
+        /* back() 이 만드는 popstate 는 **다음 차례**에 온다. 0ms 로 풀면 라우터가
+           그 신호를 받아 작성 중인 메일을 닫아 버린다. 넉넉히 지나고 푼다. */
+        setTimeout(resume, 150);
+      } else {
+        resume();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -111,7 +153,6 @@ export default function NasPicker({ onClose }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="contact-card wide nas-card" onClick={(e) => e.stopPropagation()}
-        onMouseDown={onMouseNav} onAuxClick={onMouseNav}
         role="dialog" aria-label="파일서버에서 첨부">
         <div className="contact-card-head">
           <h3>파일서버에서 첨부</h3>
