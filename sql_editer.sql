@@ -1964,3 +1964,23 @@ CREATE TABLE IF NOT EXISTS light_sync.mail_send_jobs (
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mail_send_jobs_user ON light_sync.mail_send_jobs (user_id, created_at DESC);
+
+-- ============================================================
+-- 2026-09-17 : 같은 파일이면 한 벌만 둔다 (대용량 첨부 링크 나눠쓰기)
+-- ------------------------------------------------------------
+-- 같은 파일(reluxSuite 294MB)이 네 벌 올라가 30일씩 각각 자리를 차지했다.
+-- 내용이 같으면 저장소에는 한 벌만 두고, 메일마다 자기 링크(file_id)를 갖되
+-- storage_path 를 나눠 쓴다.
+--
+-- content_key = sha256( 크기 + 앞 1MB + 뒤 1MB ).
+--   전체를 해시하면 브라우저가 GB 를 통째로 읽어야 해서 화면이 굳는다.
+--   앞뒤 1MB + 크기가 같은 서로 다른 문서는 실무에서 나오지 않는다.
+--
+-- ※ storage_path 를 나눠 쓰므로, 만료 청소는 **그 경로를 아직 쓰는 다른 줄이
+--   있는지** 보고 지워야 한다(app.py cleanup-mail-files).
+-- 되돌리기: ALTER TABLE light_sync.mail_large_files DROP COLUMN content_key;
+-- ============================================================
+ALTER TABLE light_sync.mail_large_files ADD COLUMN IF NOT EXISTS content_key VARCHAR(64);
+CREATE INDEX IF NOT EXISTS idx_mail_large_files_content
+    ON light_sync.mail_large_files (content_key, file_size)
+    WHERE is_deleted = FALSE;

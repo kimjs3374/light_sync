@@ -84,6 +84,10 @@ class MailLargeFile(Base):
     original_filename = Column(String(500), nullable=False)
     file_size = Column(BigInteger, nullable=False)
     storage_path = Column(String(500), nullable=False)
+    # 내용 지문 — sha256(크기 + 앞 1MB + 뒤 1MB).
+    # 같은 지문이면 저장소에 한 벌만 두고 storage_path 를 나눠 쓴다.
+    # (그래서 파일을 지울 때는 **그 경로를 아직 쓰는 다른 줄이 있는지** 봐야 한다)
+    content_key = Column(String(64), index=True)
     download_count = Column(Integer, default=0)
     expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.now)

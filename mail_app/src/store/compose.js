@@ -47,6 +47,31 @@ async function loadUploadConfig() {
   } catch { /* 기본값으로 간다 */ }
 }
 
+/**
+ * 내용 지문 — sha256(크기 + 앞 1MB + 뒤 1MB).
+ *
+ * 같은 파일을 여러 번 보내도 저장소에는 한 벌만 두려고 쓴다(서버가 이 값으로
+ * 찾는다). 파일 전체를 해시하면 GB 를 통째로 읽어 화면이 굳으므로 **앞뒤 1MB만**
+ * 본다 — 크기까지 같은 서로 다른 문서는 실무에서 나오지 않는다.
+ * 서버(routes/mail.py `_content_key_stream`)도 똑같은 방식으로 만든다.
+ */
+const KEY_EDGE = 1024 * 1024;
+async function contentKey(file) {
+  try {
+    const head = new Uint8Array(await file.slice(0, KEY_EDGE).arrayBuffer());
+    const tail = new Uint8Array(await file.slice(Math.max(0, file.size - KEY_EDGE)).arrayBuffer());
+    const size = new TextEncoder().encode(String(file.size));
+    const buf = new Uint8Array(size.length + head.length + tail.length);
+    buf.set(size, 0);
+    buf.set(head, size.length);
+    buf.set(tail, size.length + head.length);
+    const digest = await crypto.subtle.digest('SHA-256', buf);
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return '';       // 못 만들면 그냥 따로 올라간다 — 보내는 데는 지장 없다
+  }
+}
+
 /* 한 파일 한도. 저장소(supabase-storage)가 이 위를 아예 안 받는다 —
    다 올린 뒤에 튕기면 몇 GB 를 헛수고한 셈이라, 붙이는 자리에서 먼저 거른다.
    서버가 upload-config 로 진짜 값을 알려준다. */
@@ -857,7 +882,7 @@ export const useCompose = create((set, get) => ({
     const entry = {
       id, name: file.name, size: file.size, lastModified: file.lastModified,
       status: 'uploading', progress: 0, loaded: 0, speed: 0, remain: null,
-      fileId: null, tempPath: null, error: '', xhr: null,
+      fileId: null, tempPath: null, contentKey: '', error: '', xhr: null,
     };
     set((s) => (s.active ? { active: { ...s.active, largeFiles: [...s.active.largeFiles, entry] } } : {}));
 
@@ -874,6 +899,9 @@ export const useCompose = create((set, get) => ({
         ...(f === s.flight ? {} : { flight: f }),
       };
     });
+
+    // 지문은 앞뒤 1MB 만 읽으므로 금방 나온다 — 올리기와 나란히 간다
+    contentKey(file).then((k) => { if (k) patch({ contentKey: k }); });
 
     const done = (r) => patch({
       status: 'done', progress: 100, loaded: file.size,
@@ -983,6 +1011,7 @@ export const useCompose = create((set, get) => ({
     if (ready.length) {
       fd.append('large_files', JSON.stringify(ready.map((l) => ({
         file_id: l.fileId, temp_path: l.tempPath, filename: l.name, size: l.size,
+        content_key: l.contentKey || '',
       }))));
     }
     // 파일서버에서 고른 첨부 — **경로만** 보낸다.

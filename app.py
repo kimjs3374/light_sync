@@ -939,7 +939,17 @@ def cleanup_mail_files_cli():
             MailLargeFile.is_deleted == False,
         ).all()
         for record in expired:
-            storage_adapter.delete_object(record.storage_path)
+            # 같은 파일을 여러 메일이 나눠 쓴다(content_key 로 한 벌만 둔다).
+            # **아직 쓰는 줄이 남아 있으면 파일은 두고 기록만 닫는다** —
+            # 안 그러면 한 메일이 만료됐다고 남의 첨부까지 사라진다.
+            shared = db.query(MailLargeFile).filter(
+                MailLargeFile.storage_path == record.storage_path,
+                MailLargeFile.id != record.id,
+                MailLargeFile.is_deleted == False,
+                MailLargeFile.expires_at >= now,
+            ).first()
+            if not shared:
+                storage_adapter.delete_object(record.storage_path)
             ext = os.path.splitext(record.storage_path)[1] or ''
             cache_file = f'/tmp/mail_dl_cache/{record.file_id}{ext}'
             if os.path.exists(cache_file):

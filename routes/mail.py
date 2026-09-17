@@ -8,6 +8,7 @@ import os
 import re
 import threading
 import time
+import hashlib
 import json
 import logging
 import uuid
@@ -1461,6 +1462,29 @@ def api_nas_resolve():
 # 그 일감을 모른다. DB 에 적어야 누가 받아도 같은 답을 준다.
 # ---------------------------------------------------------------------------
 
+def _content_key_stream(chunks, size, out):
+    """흘려보내면서 **앞 1MB·뒤 1MB** 만 손에 들고 내용 지문을 만든다.
+
+    전체를 해시하면 30GB 를 한 번 더 읽는 셈이고, 브라우저 쪽은 아예 못 한다.
+    크기가 같고 앞뒤 1MB 가 같은 서로 다른 문서는 실무에서 나오지 않는다.
+    (브라우저도 같은 방식으로 만든다 — mail_app 의 contentKey)
+    """
+    head = bytearray()
+    tail = bytearray()
+    for chunk in chunks:
+        if len(head) < _KEY_EDGE:
+            head.extend(chunk[:_KEY_EDGE - len(head)])
+        tail.extend(chunk)
+        if len(tail) > _KEY_EDGE:
+            del tail[:-_KEY_EDGE]
+        yield chunk
+    h = hashlib.sha256()
+    h.update(str(size).encode())
+    h.update(bytes(head))
+    h.update(bytes(tail))
+    out['key'] = h.hexdigest()
+
+
 def _job_update(job_id, **fields):
     """일감 진행 상황 갱신 — 짧게 열고 바로 닫는다(오래 쥐면 다른 요청이 막힌다)."""
     try:
@@ -1498,6 +1522,9 @@ def _run_send_job(app, job_id, user_id, payload):
                 ext = os.path.splitext(name)[1] or ''
                 temp_path = f'{_TEMP_ATTACH_PREFIX}/{file_id}{ext}'
 
+                keyout = {}
+                chunks = _content_key_stream(chunks, size, keyout)
+
                 last = [0]
 
                 def on_progress(done, _base=done_before, _last=last):
@@ -1513,7 +1540,8 @@ def _run_send_job(app, job_id, user_id, payload):
 
                 done_before += size
                 big_items.append({'file_id': file_id, 'filename': name,
-                                  'size': size, 'temp_path': temp_path})
+                                  'size': size, 'temp_path': temp_path,
+                                  'content_key': keyout.get('key')})
                 _job_update(job_id, done_bytes=done_before, done_files=i + 1)
 
             _job_update(job_id, status='sending', phase='메일 보내는 중')
@@ -4128,6 +4156,8 @@ LARGE_FILE_THRESHOLD = 25 * 1024 * 1024   # 이보다 크면 링크 방식
 # 한 파일 한도. **저장소가 정한다** — supabase-storage 의 FILE_SIZE_LIMIT(지금 4GB).
 # 그 값을 올리면 여기와 synology.MAX_STREAM 도 같이 올린다.
 LARGE_FILE_MAX = 4 * 1024 * 1024 * 1024
+# 내용 지문을 만들 때 앞뒤로 보는 양
+_KEY_EDGE = 1024 * 1024
 
 
 @mail_bp.route('/mail/api/upload-config')
@@ -4589,12 +4619,30 @@ def _promote_large_files(db, items, user_id=None):
         if not file_id or not temp_path:
             continue
 
+        # 같은 내용이 이미 있으면 **그것을 가리키고, 방금 올라온 것은 지운다.**
+        # 같은 파일을 네 번 보내면 294MB 가 네 벌 쌓여 30일씩 자리를 차지했다.
+        # 메일마다 자기 링크(file_id)는 따로 갖되 실물은 한 벌만 둔다.
+        key = str(it.get('content_key') or '')
+        size = int(it.get('size') or 0)
+        if key:
+            twin = (db.query(MailLargeFile)
+                    .filter(MailLargeFile.content_key == key,
+                            MailLargeFile.file_size == size,
+                            MailLargeFile.is_deleted == False)  # noqa: E712
+                    .order_by(MailLargeFile.id.desc()).first())
+            if twin and twin.storage_path != temp_path:
+                if storage_adapter.exists(twin.storage_path):
+                    storage_adapter.delete_object(temp_path)
+                    temp_path = twin.storage_path
+                    logger.info('대용량 첨부 같은 내용 재사용: %s ← %s', filename, temp_path)
+
         db.add(MailLargeFile(
             file_id=file_id,
             sender_user_id=user_id or _session_get('user_id'),
             original_filename=filename,
             file_size=int(it.get('size') or 0),
             storage_path=temp_path,      # 올라간 그 자리 그대로 (복사하지 않는다)
+            content_key=key or None,
             expires_at=expires_at,
         ))
         out.append({
