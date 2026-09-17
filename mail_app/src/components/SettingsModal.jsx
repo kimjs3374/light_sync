@@ -1721,13 +1721,15 @@ function NasPanel() {
       </div>
       {state && <p className="set-note">{state}</p>}
 
-      {/* 어느 폴더를 열지 고른다. 아무것도 안 고르면 계정이 보는 것 전부다 —
-          급여·인사처럼 첨부와 무관한 폴더까지 메일 화면에 뜨므로 좁히는 편이 낫다. */}
+      {/* 첨부 화면 **목록에 보일** 폴더를 고른다.
+          이건 화면을 깔끔하게 하려는 것이지 접근을 막는 장치가 아니다 —
+          경로를 직접 적으면 목록에 없는 폴더의 파일도 그대로 붙는다.
+          정말 못 보게 하려면 NAS 계정 권한에서 잘라야 한다. */}
       {allShares.length > 0 && (
-        <Row label="첨부에 쓸 폴더"
+        <Row label="목록에 보일 폴더"
           hint={cfg.allowed_shares?.length
-            ? `${cfg.allowed_shares.length}개만 보입니다`
-            : '아무것도 안 고르면 전부 보입니다'}>
+            ? `${cfg.allowed_shares.length}개만 목록에 뜹니다 (경로를 직접 적으면 나머지도 붙습니다)`
+            : '아무것도 안 고르면 전부 목록에 뜹니다'}>
           <div className="nas-shares">
             {allShares.map((n) => {
               const on = (cfg.allowed_shares || []).includes(n);

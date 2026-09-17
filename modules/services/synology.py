@@ -136,6 +136,8 @@ def test_connection(cfg):
 
 
 def list_shares(cfg):
+    """첨부 화면에 보일 공유폴더. allowed_shares 로 좁힌다(목록만 좁히는 것이다 —
+    경로를 직접 적으면 계정이 볼 수 있는 곳은 그대로 열린다)."""
     j = _call(cfg, {'api': 'SYNO.FileStation.List', 'version': 2, 'method': 'list_share',
                     'additional': '["time"]'})
     out = []
@@ -198,15 +200,16 @@ def download(cfg, path):
 
 
 def check_path(cfg, path):
-    """경로 검사 — 여기를 지나지 않은 경로로는 아무것도 읽지 않는다."""
+    """경로 모양 검사 — 여기를 지나지 않은 경로로는 아무것도 읽지 않는다.
+
+    **allowed_shares 는 여기서 보지 않는다.** 그 목록은 "첨부 화면에 **보일** 폴더" 를
+    정할 뿐이고, 경로를 직접 적어 붙이는 것은 그대로 된다(김정수 지시 2026-09-17).
+    화면을 깔끔하게 하려는 것이지 접근을 막으려는 것이 아니다 —
+    실제로 못 보게 하려면 NAS 계정 권한에서 잘라야 한다.
+    """
     p = (path or '').strip()
     if not p.startswith('/') or '..' in p or '\\' in p:
         raise NasError('올바른 경로가 아닙니다.')
-    allowed = cfg.get('allowed_shares') or []
-    if allowed:
-        share = p.strip('/').split('/')[0]
-        if share not in allowed:
-            raise NasError('열려 있지 않은 폴더입니다.')
     return p
 
 

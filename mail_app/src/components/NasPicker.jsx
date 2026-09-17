@@ -101,7 +101,7 @@ export default function NasPicker({ onClose }) {
           <div className="nas-paste">
             <p className="set-note">
               탐색기에서 파일을 <b>Shift+우클릭 → 「경로로 복사」</b> 한 뒤 붙여넣어 주세요.
-              여러 개면 한 줄에 하나씩.
+              여러 개면 한 줄에 하나씩. <b>목록에 없는 폴더도 경로로는 붙습니다.</b>
               <br />
               예: {'\\\\magnatech\\현장관리\\2026\\견적.xlsx'}
             </p>
