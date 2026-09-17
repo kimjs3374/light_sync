@@ -35,8 +35,14 @@
 
 ## DB
 - PostgreSQL (Supabase), 스키마: `light_sync`
-- sql_editer.sql에 마이그레이션 SQL 기록 (스키마 접두사 `light_sync.` 필수)
-- DB 컬럼 추가 시 ORM만으로 부족, ALTER TABLE 직접 실행 필요
+- **스키마 변경은 Alembic 리비전으로 한다** (2026-09-17~). `sql_editer.sql` 은 지나간 기록이다
+  ```
+  venv/bin/alembic revision -m "무엇을 왜"     # migrations/versions/ 에 생긴다
+  ./scripts/db-upgrade.sh --dry-run            # 올릴 SQL 을 먼저 읽어본다
+  ./scripts/db-upgrade.sh                      # 덤프 뜨고 올린다
+  ```
+- 처음 까는 곳은 같은 스크립트가 `create_all` + `stamp head` 로 알아서 맞춘다
+- 모델(`modules/models/`)도 **같이** 고친다 — 새로 까는 곳은 모델로 표를 만든다
 
 ## 파일 저장 규칙
 - **static/ 디렉토리에 사용자 파일 저장 금지** — 모든 업로드 파일은 Supabase Storage에 저장

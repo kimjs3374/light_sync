@@ -94,3 +94,6 @@ vehicle_refs/*.png
 # MCP 설정 (DATABASE_URL 등 자격증명 포함)
 .mcp.json
 .upload_tmp
+
+# DB 스키마 덤프 (업데이트 전 자동 백업)
+backups/
