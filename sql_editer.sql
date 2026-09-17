@@ -1916,3 +1916,25 @@ ALTER TABLE light_sync.users
     ADD COLUMN IF NOT EXISTS leave_promotion_exempt_reason TEXT;
 COMMENT ON COLUMN light_sync.users.leave_promotion_exempt IS
     '연차사용촉진 제외 (근로기준법상 근로자가 아닌 임원 등). 사유 필수';
+
+-- ============================================================
+-- 2026-09-17 : 사내 파일서버(시놀로지 NAS) 접속 정보
+-- ------------------------------------------------------------
+-- 메일 첨부를 NAS → PC → 서버로 두 번 나르던 것을, 서버가 사내망에서
+-- 곧바로 읽어 붙이도록 한다. 외부로 여는 포트는 없다(서버 ↔ NAS 내부 통신).
+-- 비밀번호는 메일 계정과 같은 방식으로 암호화해 둔다(MAIL_ENCRYPT_KEY).
+-- allowed_shares: 비어 있으면 계정이 보는 공유폴더 전부. 좁히려면 이름을 적는다.
+-- 되돌리기: DROP TABLE light_sync.nas_config;
+-- ============================================================
+CREATE TABLE IF NOT EXISTS light_sync.nas_config (
+    id                 SERIAL PRIMARY KEY,
+    host               VARCHAR(120) NOT NULL,
+    port               INTEGER NOT NULL DEFAULT 5001,
+    use_ssl            BOOLEAN NOT NULL DEFAULT TRUE,
+    username           VARCHAR(100) NOT NULL,
+    password_encrypted TEXT NOT NULL,
+    allowed_shares     TEXT,
+    is_active          BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_by         INTEGER,
+    updated_at         TIMESTAMPTZ DEFAULT NOW()
+);

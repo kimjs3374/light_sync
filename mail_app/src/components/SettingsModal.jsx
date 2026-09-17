@@ -726,6 +726,14 @@ function AccountsPanel() {
 
   useEffect(() => { load(); }, []);
 
+  /* 좁혀 둔 상태에서는 서버가 그 4개만 돌려준다 — 그러면 나머지를 다시 고를 수 없다.
+     그래서 이미 고른 것은 후보 목록에 늘 남겨 둔다. 전체를 다시 보려면
+     [전부 보이기] → [저장하고 연결 시험] 을 누르면 된다. */
+  useEffect(() => {
+    const picked = cfg?.allowed_shares || [];
+    if (picked.length) setAllShares((prev) => [...new Set([...prev, ...picked])].sort());
+  }, [cfg?.allowed_shares]);
+
   const mine = accounts.filter((a) => a.account_type !== 'external' && !a.is_shared);
   const shared = accounts.filter((a) => a.is_shared);
 
@@ -1615,6 +1623,145 @@ function SpamPanel({ account }) {
   );
 }
 
+/* ── 사내 파일서버(NAS) ──────────────────────────────────────────────────
+   메일 첨부를 NAS → PC → 서버로 두 번 나르던 것을, 서버가 사내망에서 한 번에
+   읽도록 하는 설정이다. **외부로 여는 포트는 없다.**
+   비밀번호는 화면에 되돌려 주지 않는다 — 서버가 암호화해 들고만 있는다. */
+function NasPanel() {
+  const [cfg, setCfg] = useState(null);
+  const [pw, setPw] = useState('');
+  const [state, setState] = useState('');
+  const [shares, setShares] = useState(null);
+  // 서버에서 받은 '보이는 전체 목록' — 고를 수 있게 들고 있는다
+  const [allShares, setAllShares] = useState([]);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => mailApi.nasConfig()
+    .then((r) => setCfg(r.configured ? r : {
+      configured: false, host: '', port: 5001, use_ssl: true, username: '', allowed_shares: [],
+    }))
+    .catch((e) => setState(e.message || '설정을 불러오지 못했습니다'));
+
+  useEffect(() => { load(); }, []);
+
+  const patch = (o) => setCfg((c) => ({ ...c, ...o }));
+
+  const save = async () => {
+    setBusy(true); setState(''); setShares(null);
+    try {
+      const r = await mailApi.nasSaveConfig({ ...cfg, password: pw });
+      if (r.error) throw new Error(r.error);
+      setPw('');
+      if (r.connected) {
+        setShares(r.shares || []);
+        if (!(cfg.allowed_shares || []).length) setAllShares(r.shares || []);
+        setState(`연결됐습니다. 공유폴더 ${r.shares?.length || 0}개가 보입니다.`);
+      }
+      else setState(r.error || '저장은 됐지만 연결되지 않았습니다.');
+      await load();
+    } catch (e) { setState(e.message || '저장하지 못했습니다'); }
+    finally { setBusy(false); }
+  };
+
+  const test = async () => {
+    setBusy(true); setState(''); setShares(null);
+    try {
+      const r = await mailApi.nasTest();
+      if (r.connected) {
+        setShares(r.shares || []);
+        // 시험은 허용 목록을 통과한 결과라, 좁혀 둔 상태면 전체 목록이 아니다
+        if (!(cfg.allowed_shares || []).length) setAllShares(r.shares || []);
+        setState(`연결됩니다. 공유폴더 ${r.shares?.length || 0}개.`);
+      }
+      else setState(r.error || '연결되지 않습니다.');
+    } catch (e) { setState(e.message || '시험하지 못했습니다'); }
+    finally { setBusy(false); }
+  };
+
+  if (!cfg) return <p className="set-note">불러오는 중…</p>;
+
+  return (
+    <>
+      <p className="set-note">
+        메일에 붙일 파일이 사내 파일서버에 있으면, 내려받았다 다시 올리지 않고
+        <b> 서버가 사내망에서 바로 읽어</b> 붙입니다.
+        <br />
+        서버와 파일서버 사이 통신이라 <b>외부로 여는 포트는 없습니다.</b>
+        읽기만 하므로 파일서버의 파일이 바뀌거나 지워질 일도 없습니다.
+      </p>
+
+      <Row label="주소" hint="사내망 주소만 됩니다 (예: 192.168.0.101)">
+        <div className="set-inline">
+          <input className="set-input" value={cfg.host}
+            onChange={(e) => patch({ host: e.target.value })} placeholder="192.168.0.101" />
+          <span className="set-unit">포트</span>
+          <input className="set-input cond-num" type="number" value={cfg.port}
+            onChange={(e) => patch({ port: e.target.value })} />
+          <Toggle on={cfg.use_ssl} onChange={(b) => patch({ use_ssl: b })} label="HTTPS" />
+        </div>
+      </Row>
+
+      <Row label="계정" hint="읽기 전용 계정을 쓰시는 것이 안전합니다">
+        <div className="set-inline">
+          <input className="set-input" value={cfg.username}
+            onChange={(e) => patch({ username: e.target.value })} placeholder="erp" />
+          <input className="set-input" type="password" value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            placeholder={cfg.configured ? '비밀번호 (그대로 두면 안 바뀜)' : '비밀번호'} />
+        </div>
+      </Row>
+
+      <div className="set-foot">
+        <button className="set-btn primary" onClick={save} disabled={busy}>
+          {busy ? '확인 중…' : '저장하고 연결 시험'}
+        </button>
+        {cfg.configured && (
+          <button className="set-btn" onClick={test} disabled={busy}>지금 연결되나 보기</button>
+        )}
+      </div>
+      {state && <p className="set-note">{state}</p>}
+
+      {/* 어느 폴더를 열지 고른다. 아무것도 안 고르면 계정이 보는 것 전부다 —
+          급여·인사처럼 첨부와 무관한 폴더까지 메일 화면에 뜨므로 좁히는 편이 낫다. */}
+      {allShares.length > 0 && (
+        <Row label="첨부에 쓸 폴더"
+          hint={cfg.allowed_shares?.length
+            ? `${cfg.allowed_shares.length}개만 보입니다`
+            : '아무것도 안 고르면 전부 보입니다'}>
+          <div className="nas-shares">
+            {allShares.map((n) => {
+              const on = (cfg.allowed_shares || []).includes(n);
+              return (
+                <button key={n} type="button" className={`set-pick${on ? ' on' : ''}`}
+                  onClick={() => patch({
+                    allowed_shares: on
+                      ? cfg.allowed_shares.filter((x) => x !== n)
+                      : [...(cfg.allowed_shares || []), n],
+                  })}>
+                  {on ? '✓ ' : ''}{n}
+                </button>
+              );
+            })}
+          </div>
+          <div className="set-foot">
+            <button className="set-btn" onClick={() => patch({ allowed_shares: [] })}>
+              전부 보이기
+            </button>
+            <span className="set-note">고치신 뒤 [저장하고 연결 시험]을 눌러 주세요.</span>
+          </div>
+        </Row>
+      )}
+
+      <p className="set-note">
+        비밀번호는 저장한 뒤 화면에 다시 보여 드리지 않습니다(서버가 암호화해 들고 있습니다).
+        <br />
+        메일쓰기 화면의 <b>[파일서버에서 첨부]</b> 로 쓰시거나, 탐색기에서
+        <b> Shift+우클릭 → 「경로로 복사」</b> 한 것을 붙여넣으셔도 됩니다.
+      </p>
+    </>
+  );
+}
+
 /* ── 단축키 · 도움말 ────────────────────────────────────────────────────── */
 const KEYS = [
   ['↑ ↓ / j k', '목록에서 위아래로'],
@@ -1671,7 +1818,9 @@ export default function SettingsModal() {
   /* 「설정할 계정」 머리말은 **한 계정에만 걸리는** 설정에만 붙인다.
      화면·도움말은 계정과 무관하고, 메일 계정 칸은 계정 전부를 다루는 자리라
      거기에 "설정할 계정: …" 이 서 있으면 그 계정만 고치는 화면처럼 읽힌다. */
-  const perAccount = section !== 'display' && section !== 'help' && section !== 'accounts';
+  /* 계정마다 따로인 설정에만 "설정할 계정" 을 띄운다.
+     화면·도움말·메일계정·파일서버는 계정과 무관하다 — 파일서버는 회사에 하나다. */
+  const perAccount = !['display', 'help', 'accounts', 'nas'].includes(section);
 
   return (
     <div className="modal-backdrop" onClick={close}>
@@ -1710,6 +1859,7 @@ export default function SettingsModal() {
                         : section === 'forward' ? <ForwardPanel account={account} />
                           : section === 'rules' ? <RulesPanel account={account} />
                             : section === 'spam' ? <SpamPanel account={account} />
+                          : section === 'nas' ? <NasPanel />
                               : <HelpPanel />}
           </div>
         </div>

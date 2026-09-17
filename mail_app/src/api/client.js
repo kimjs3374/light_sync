@@ -171,6 +171,14 @@ export const mailApi = {
   spamApply: (account, only) => api.post('/mail/api/spam/apply', { account_id: account, only }),
   spamEmpty: (account) => api.post('/mail/api/spam/empty', { account_id: account }),
 
+  // 사내 파일서버(NAS) — 서버가 사내망에서 직접 읽는다. PC 를 거치지 않는다
+  nasConfig: () => api.get('/mail/api/nas/config'),
+  nasSaveConfig: (body) => api.post('/mail/api/nas/config', body),
+  nasTest: () => api.post('/mail/api/nas/test', {}),
+  nasList: (path) => api.get(`/mail/api/nas/list?${qs({ path })}`),
+  // 탐색기에서 「경로로 복사」 한 것을 그대로 넘긴다
+  nasResolve: (paths) => api.post('/mail/api/nas/resolve', { paths }),
+
   // 자동회신·자동전달·자동분류가 실제로 돌고 있는지
   automationStatus: () => api.get('/mail/api/automation-status'),
 

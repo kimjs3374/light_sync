@@ -772,6 +772,25 @@ export const useCompose = create((set, get) => ({
   },
 
   /** 발송·임시저장이 공유하는 본문 꾸러미 */
+  /** 파일서버에서 고른 파일 담기 (NasPicker 가 부른다) */
+  addNasFiles(list) {
+    set((st) => {
+      if (!st.active) return {};
+      const have = new Set((st.active.nasFiles || []).map((f) => f.path));
+      const add = (list || []).filter((f) => f.path && !have.has(f.path));
+      if (!add.length) return {};
+      return { active: { ...st.active, nasFiles: [...(st.active.nasFiles || []), ...add] } };
+    });
+    get()._scheduleAutosave();
+  },
+
+  removeNasFile(path) {
+    set((st) => (st.active
+      ? { active: { ...st.active, nasFiles: (st.active.nasFiles || []).filter((f) => f.path !== path) } }
+      : {}));
+    get()._scheduleAutosave();
+  },
+
   _formData(w) {
     const fd = new FormData();
     fd.append('account_id', String(w.accountId));
@@ -787,6 +806,11 @@ export const useCompose = create((set, get) => ({
       fd.append('large_files', JSON.stringify(ready.map((l) => ({
         file_id: l.fileId, temp_path: l.tempPath, filename: l.name, size: l.size,
       }))));
+    }
+    // 파일서버에서 고른 첨부 — **경로만** 보낸다.
+    // 파일 내용은 서버가 사내망에서 직접 읽는다(브라우저는 바이트를 만지지 않는다).
+    if (w.nasFiles?.length) {
+      fd.append('nas_files', JSON.stringify(w.nasFiles.map((f) => f.path)));
     }
     if (w.forward) {
       // 원본 첨부는 브라우저를 거치지 않고 서버가 IMAP 에서 바로 가져다 붙인다

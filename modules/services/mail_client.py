@@ -70,6 +70,18 @@ def sanitize_html(html_body: str) -> str:
 # ---------------------------------------------------------------------------
 # 헤더 디코딩 유틸리티
 # ---------------------------------------------------------------------------
+def _parse_nas_header(value):
+    """`X-Mgnt-Nas-Files` 헤더 → 경로 목록. 깨져 있으면 조용히 빈 목록."""
+    if not value:
+        return []
+    try:
+        import json as _json
+        data = _json.loads(_decode_header_value(value))
+        return [str(p) for p in data if str(p).startswith('/')]
+    except Exception:
+        return []
+
+
 def _decode_header_value(value):
     """RFC2047 인코딩된 메일 헤더를 유니코드로 디코딩."""
     if not value:
@@ -600,6 +612,8 @@ class MailClient:
             'flags': [str(f) for f in flags],
             'is_read': b'\\Seen' in flags,
             'is_flagged': b'\\Flagged' in flags,
+            # 임시보관함에서 이어 쓸 때 파일서버 첨부를 되살리려고 적어 둔 것
+            'nas_files': _parse_nas_header(msg.get('X-Mgnt-Nas-Files')),
         }
 
     def fetch_raw(self, uid, folder='INBOX'):
@@ -788,7 +802,7 @@ class MailClient:
             return None
 
     def save_draft(self, from_addr, to, subject, html_body, cc=None, bcc=None,
-                   attachments=None, from_name=None, replace_uid=None):
+                   attachments=None, from_name=None, replace_uid=None, extra_headers=None):
         """임시보관함(Drafts)에 저장.
 
         replace_uid 가 주어지면 기존 임시본을 삭제하고 새로 저장(교체)하여
@@ -812,6 +826,11 @@ class MailClient:
         msg_id = make_msgid(domain=from_addr.split('@')[-1] if '@' in from_addr else 'mgnt.kr')
         msg['Message-ID'] = msg_id
         msg['MIME-Version'] = '1.0'
+        # 파일서버에서 고른 첨부는 **경로만 헤더에 적어 둔다.**
+        # 자동저장이 5초마다 도는데 그때마다 NAS 에서 큰 파일을 받아오면
+        # 사내망만 두드리게 된다. 실제로 붙이는 것은 보낼 때 한 번이면 된다.
+        for key, value in (extra_headers or {}).items():
+            msg[key] = value
         if html_body:
             msg.attach(MIMEText(html_body, 'html', 'utf-8'))
         if attachments:

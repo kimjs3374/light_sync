@@ -233,6 +233,26 @@ class MailNotifyState(Base):
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
+class NasConfig(Base):
+    """사내 파일서버(시놀로지) 접속 정보 — 한 줄만 쓴다.
+
+    비밀번호는 메일 계정과 같은 방식으로 암호화해 둔다(MAIL_ENCRYPT_KEY).
+    allowed_shares 가 비어 있으면 그 계정이 보는 공유폴더 전부를 쓴다.
+    """
+    __tablename__ = 'nas_config'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    host = Column(String(120), nullable=False)
+    port = Column(Integer, nullable=False, default=5001)
+    use_ssl = Column(Boolean, nullable=False, default=True)
+    username = Column(String(100), nullable=False)
+    password_encrypted = Column(Text, nullable=False)
+    allowed_shares = Column(Text)
+    is_active = Column(Boolean, nullable=False, default=True)
+    updated_by = Column(Integer)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+
 class MailFolderPref(Base):
     """메일함 순서 · 그룹.
 

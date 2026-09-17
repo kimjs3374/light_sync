@@ -58,3 +58,7 @@
   font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .rcpt-unread { color: var(--subtle); }
+
+/* 파일서버 — 첨부에 쓸 공유폴더 고르기 */
+.set-control .nas-shares { display: flex; flex-wrap: wrap; gap: 6px; }
+.set-control .nas-shares .set-pick { font-size: 12px; }

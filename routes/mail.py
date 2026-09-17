@@ -26,7 +26,7 @@ from modules.db_context import get_db
 from modules.models.mail_entities import (
     MailAccount, MailSharedAccess, MailContact, MailReadReceipt, MailLargeFile,
     MailLabel, MailRule, MailAutoReply, MailAutoForward, MailScheduled,
-    MailPin, MailTemplate, MailSharedRead, MailBlocklist, MailFolderPref,
+    MailPin, MailTemplate, MailSharedRead, MailBlocklist, MailFolderPref, NasConfig,
 )
 from modules import storage_adapter
 from modules.models.procurement_entities import EmailHistory
@@ -603,6 +603,14 @@ def api_send():
         if f.filename:
             attachments.append((f.filename, f.read()))
 
+    # 사내 파일서버에서 고른 첨부 — 경로만 왔다. 바이트는 **서버가 직접 읽는다**
+    # (사람 PC 를 거치지 않는다). 큰 파일은 _attach_nas_files 가 링크로 바꾼다.
+    try:
+        nas_paths = json.loads(request.form.get('nas_files', '[]'))
+    except Exception as e:
+        logger.error('nas_files 해석 실패 — 첨부가 빠진 채 나갈 뻔: %s', e)
+        nas_paths = []
+
     # 전달 시 원본 첨부파일 가져오기
     forward_source_uid = request.form.get('forward_source_uid', type=int)
     forward_account_id = request.form.get('forward_account_id', type=int)
@@ -615,6 +623,14 @@ def api_send():
                 html_body += _large_files_html(_promote_large_files(db, large_items))
             except RuntimeError as e:
                 return jsonify({'error': str(e)}), 500
+
+        if nas_paths:
+            try:
+                html_body, _n = _attach_nas_files(db, nas_paths, attachments, html_body)
+            except Exception as e:
+                # 파일서버에서 못 읽었는데 그냥 보내면 첨부 없는 메일이 나간다
+                logger.error('파일서버 첨부 실패: %s', e)
+                return jsonify({'error': f'파일서버에서 첨부를 가져오지 못했습니다: {e}'}), 502
 
         # 원본 첨부파일 IMAP에서 fetch
         if forward_source_uid and forward_account_id and forward_parts_json:
@@ -756,6 +772,15 @@ def api_save_draft():
         if f.filename:
             attachments.append((f.filename, f.read()))
 
+    # 파일서버에서 고른 첨부 — 여기서는 **받아오지 않는다.**
+    # 자동저장이 5초마다 도는데 그때마다 큰 파일을 내려받으면 사내망만 두드린다.
+    # 경로만 메일 헤더에 적어 두었다가, 이어 쓸 때 되살리고 보낼 때 한 번만 붙인다.
+    nas_paths_raw = request.form.get('nas_files', '[]')
+    try:
+        nas_paths = [p for p in json.loads(nas_paths_raw) if str(p).startswith('/')]
+    except Exception:
+        nas_paths = []
+
     # 원본 첨부(전달/이어쓰기) IMAP 재첨부
     forward_source_uid = request.form.get('forward_source_uid', type=int)
     forward_account_id = request.form.get('forward_account_id', type=int)
@@ -794,6 +819,8 @@ def api_save_draft():
                     attachments=attachments or None,
                     from_name=account.display_name,
                     replace_uid=replace_uid,
+                    extra_headers=({'X-Mgnt-Nas-Files': json.dumps(nas_paths, ensure_ascii=False)}
+                                   if nas_paths else None),
                 )
             if not result.get('success'):
                 return jsonify({'error': result.get('error', '임시저장 실패')}), 500
@@ -1154,6 +1181,220 @@ def api_folder_prefs_save():
 
         db.commit()
         return jsonify({'success': True, 'count': len(seen)})
+
+
+# ---------------------------------------------------------------------------
+# 사내 파일서버(NAS) — 메일 첨부를 서버가 직접 읽어 온다
+# ---------------------------------------------------------------------------
+# 예전엔 NAS → 사람 PC → 서버로 같은 파일이 두 번 건넜다. 서버가 NAS 와 같은 망에
+# 있으므로 한 번만 건너면 된다. **외부로 여는 포트는 없다.**
+# 받는 사람에게 나가는 모양은 지금과 똑같다(메일에 실리거나 우리 Storage 링크).
+# ---------------------------------------------------------------------------
+
+def _nas_cfg(db, need_password=True):
+    """저장해 둔 접속 정보. 없으면 None."""
+    row = db.query(NasConfig).filter_by(is_active=True).order_by(NasConfig.id.desc()).first()
+    if not row:
+        return None
+    cfg = {
+        'id': row.id, 'host': row.host, 'port': row.port, 'use_ssl': row.use_ssl,
+        'username': row.username, 'password': '',
+        'allowed_shares': json.loads(row.allowed_shares) if row.allowed_shares else [],
+    }
+    if need_password:
+        try:
+            cfg['password'] = decrypt_password(row.password_encrypted)
+        except Exception:
+            logger.error('파일서버 비밀번호 복호화 실패 (MAIL_ENCRYPT_KEY 확인)')
+            return None
+    return cfg
+
+
+@mail_bp.route('/mail/api/nas/config', methods=['GET'])
+@login_required
+def api_nas_config_get():
+    """접속 정보 보기 — **비밀번호는 절대 내보내지 않는다.**"""
+    with get_db() as db:
+        cfg = _nas_cfg(db, need_password=False)
+        if not cfg:
+            return jsonify({'configured': False})
+        return jsonify({
+            'configured': True, 'host': cfg['host'], 'port': cfg['port'],
+            'use_ssl': cfg['use_ssl'], 'username': cfg['username'],
+            'allowed_shares': cfg['allowed_shares'],
+        })
+
+
+@mail_bp.route('/mail/api/nas/config', methods=['POST'])
+@login_required
+@admin_required
+def api_nas_config_save():
+    """접속 정보 저장 — 관리자만. 비밀번호는 암호화해 둔다."""
+    from modules.services import synology
+
+    data = request.get_json(silent=True) or {}
+    host = (data.get('host') or '').strip()
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+    if not host or not username:
+        return jsonify({'error': '주소와 계정을 입력하세요.'}), 400
+    # **저장하기 전에** 막는다. 저장한 뒤에 걸러내면 잘못된 주소가 남아
+    # 다시 제대로 넣을 때까지 파일서버 기능 전체가 멈춘다(실측에서 밟았다).
+    if not synology.check_host(host):
+        return jsonify({'error': '사내망 주소(192.168.x.x 등)만 넣을 수 있습니다.'}), 400
+
+    with get_db() as db:
+        row = db.query(NasConfig).order_by(NasConfig.id.desc()).first()
+        if not password:
+            # 비밀번호를 비워 두면 쓰던 것을 그대로 둔다(화면이 안 보여주기 때문이다)
+            if not row:
+                return jsonify({'error': '비밀번호를 입력하세요.'}), 400
+            password_enc = row.password_encrypted
+        else:
+            password_enc = encrypt_password(password)
+
+        if not row:
+            row = NasConfig(host=host, username=username, password_encrypted=password_enc)
+            db.add(row)
+        row.host = host
+        row.port = int(data.get('port') or 5001)
+        row.use_ssl = bool(data.get('use_ssl', True))
+        row.username = username
+        row.password_encrypted = password_enc
+        row.allowed_shares = json.dumps(data.get('allowed_shares') or [], ensure_ascii=False)
+        row.is_active = True
+        row.updated_by = session['user_id']
+        db.commit()
+        logger.info('파일서버 접속정보 저장: user=%s host=%s', session['user_id'], host)
+
+        cfg = _nas_cfg(db)
+        try:
+            shares = synology.test_connection(cfg)
+        except synology.NasError as e:
+            return jsonify({'success': True, 'connected': False, 'error': str(e)})
+        except Exception as e:
+            logger.warning('파일서버 접속 시험 실패: %s', e)
+            return jsonify({'success': True, 'connected': False,
+                            'error': '파일서버에 닿지 못했습니다. 주소와 포트를 확인해 주세요.'})
+        return jsonify({'success': True, 'connected': True, 'shares': shares})
+
+
+@mail_bp.route('/mail/api/nas/test', methods=['POST'])
+@login_required
+def api_nas_test():
+    """저장해 둔 정보로 지금 닿는지 본다."""
+    from modules.services import synology
+
+    with get_db() as db:
+        cfg = _nas_cfg(db)
+    if not cfg:
+        return jsonify({'error': '파일서버가 설정돼 있지 않습니다.'}), 404
+    try:
+        return jsonify({'connected': True, 'shares': synology.test_connection(cfg)})
+    except synology.NasError as e:
+        return jsonify({'connected': False, 'error': str(e)})
+    except Exception as e:
+        logger.warning('파일서버 접속 시험 실패: %s', e)
+        return jsonify({'connected': False, 'error': '파일서버에 닿지 못했습니다.'})
+
+
+@mail_bp.route('/mail/api/nas/list')
+@login_required
+def api_nas_list():
+    """폴더 내용 보기. path 가 없으면 공유폴더 목록."""
+    from modules.services import synology
+
+    path = (request.args.get('path') or '').strip()
+    with get_db() as db:
+        cfg = _nas_cfg(db)
+    if not cfg:
+        return jsonify({'error': '파일서버가 설정돼 있지 않습니다.'}), 404
+    try:
+        if not path:
+            return jsonify({'path': '', 'items': synology.list_shares(cfg)})
+        return jsonify({'path': path, 'items': synology.list_folder(cfg, path)})
+    except synology.NasError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.warning('파일서버 목록 실패 (%s): %s', path, e)
+        return jsonify({'error': '파일서버를 읽지 못했습니다.'}), 502
+
+
+@mail_bp.route('/mail/api/nas/resolve', methods=['POST'])
+@login_required
+def api_nas_resolve():
+    r"""윈도우 경로(\\magnatech\... )를 받아 붙일 수 있는 파일인지 확인한다.
+
+    브라우저는 고른 파일의 경로를 안 알려준다(보안상 C:\fakepath 로만 준다). 그래서
+    탐색기에서 「경로로 복사」 한 것을 붙여넣게 하고, 여기서 NAS 경로로 바꿔 확인한다.
+    """
+    from modules.services import synology
+
+    data = request.get_json(silent=True) or {}
+    raw_list = data.get('paths') or []
+    if isinstance(raw_list, str):
+        raw_list = [raw_list]
+
+    with get_db() as db:
+        cfg = _nas_cfg(db)
+    if not cfg:
+        return jsonify({'error': '파일서버가 설정돼 있지 않습니다.'}), 404
+
+    out, errors = [], []
+    for raw in raw_list[:20]:
+        try:
+            path = synology.parse_unc(raw, cfg)
+            info = synology.stat(cfg, path)
+            if info['is_dir']:
+                errors.append(f'{raw} — 폴더는 붙일 수 없습니다.')
+                continue
+            out.append({'path': info['path'], 'name': info['name'], 'size': info['size']})
+        except synology.NasError as e:
+            errors.append(f'{raw} — {e}')
+        except Exception as e:
+            logger.warning('파일서버 경로 확인 실패 (%s): %s', raw, e)
+            errors.append(f'{raw} — 파일서버를 읽지 못했습니다.')
+    return jsonify({'files': out, 'errors': errors})
+
+
+def _attach_nas_files(db, paths, attachments, html_body):
+    """NAS 파일을 첨부로 붙인다. 큰 것은 Storage 로 올려 링크로 바꾼다.
+
+    반환: (바뀐 html_body, 붙인 개수)
+    **누가 어느 파일을 붙였는지 남긴다** — 공유폴더 전체가 열려 있으므로,
+    나중에 "이 파일이 왜 나갔나" 를 물을 수 있어야 한다.
+    """
+    from modules.services import synology
+
+    if not paths:
+        return html_body, 0
+    cfg = _nas_cfg(db)
+    if not cfg:
+        raise RuntimeError('파일서버가 설정돼 있지 않습니다.')
+
+    big_items = []
+    count = 0
+    for path in paths:
+        name, data = synology.download(cfg, path)
+        logger.info('파일서버 첨부: user=%s %s (%s바이트)', session.get('user_id'), path, len(data))
+        count += 1
+        if len(data) <= LARGE_FILE_THRESHOLD:
+            attachments.append((name, data))
+            continue
+        # 큰 파일은 메일에 싣지 않는다 — 지금 쓰는 대용량 첨부와 같은 길로 보낸다
+        file_id = uuid.uuid4().hex
+        ext = os.path.splitext(name)[1] or ''
+        temp_path = f'mail-temp/{file_id}{ext}'
+        ok, msg = storage_adapter.upload_bytes(temp_path, data)
+        if not ok:
+            logger.error('파일서버 대용량 첨부 업로드 실패: %s (%s)', name, msg)
+            raise RuntimeError(f'첨부 처리 실패: {name}')
+        big_items.append({'file_id': file_id, 'filename': name,
+                          'size': len(data), 'temp_path': temp_path})
+
+    if big_items:
+        html_body += _large_files_html(_promote_large_files(db, big_items))
+    return html_body, count
 
 
 # ---------------------------------------------------------------------------

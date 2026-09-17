@@ -9,6 +9,7 @@ import Editor from './Editor';
 import ComposeToolbar from './ComposeToolbar';
 import PreviewModal from './PreviewModal';
 import ContactPicker from './ContactPicker';
+import NasPicker from './NasPicker';
 
 const MODE_TITLE = {
   new: '메일 쓰기', self: '내게 쓰기', reply: '답장',
@@ -21,6 +22,7 @@ export default function ComposePage({ win }) {
   const c = useCompose();
   const accounts = useMail((s) => s.accounts);
   const picking = useContacts((st) => st.picking);
+  const [nasOpen, setNasOpen] = useState(false);
   const bodyRef = useRef(null);
   const fileRef = useRef(null);
   const [dragDepth, setDragDepth] = useState(0);
@@ -98,6 +100,11 @@ export default function ComposePage({ win }) {
             <input ref={fileRef} type="file" multiple hidden
               onChange={(e) => { c.addFiles(e.target.files); e.target.value = ''; }} />
 
+            {/* 사내 파일서버에서 바로 붙이기 — PC 로 내려받았다 다시 올리지 않는다 */}
+            <button type="button" className="act nas-attach" onClick={() => setNasOpen(true)}>
+              파일서버에서 첨부
+            </button>
+
             <div className="compose-file-list">
               {/* 예약에 이미 올려둔 첨부 — 여기서 빼면 저장할 때 서버에서도 지워진다 */}
               {win.kept?.map((a) => (
@@ -132,6 +139,16 @@ export default function ComposePage({ win }) {
                   <button className="cf-x" onClick={() => c.removeLarge(l.id)} aria-label="첨부 삭제">✕</button>
                 </span>
               ))}
+              {/* 파일서버 첨부 — 지금은 경로만 들고 있고, 보낼 때 서버가 읽어 붙인다 */}
+              {win.nasFiles?.map((f) => (
+                <span key={f.path} className="compose-file nas" title={f.path}>
+                  <Paperclip size={11} />
+                  <span className="cf-name">{f.name}</span>
+                  {f.size > 0 && <span className="cf-size">{formatSize(f.size)}</span>}
+                  <span className="cf-tag">파일서버</span>
+                  <button className="cf-x" onClick={() => c.removeNasFile(f.path)} aria-label="첨부 삭제">✕</button>
+                </span>
+              ))}
               {win.files.map((f, i) => (
                 <span key={`u${i}`} className="compose-file">
                   <Paperclip size={11} />
@@ -157,6 +174,7 @@ export default function ComposePage({ win }) {
       {dragDepth > 0 && <div className="compose-dropzone">여기에 놓으면 첨부됩니다</div>}
       {win.previewing && <PreviewModal account={account} />}
       {picking && <ContactPicker onClose={() => useContacts.setState({ picking: false })} />}
+      {nasOpen && <NasPicker onClose={() => setNasOpen(false)} />}
     </div>
   );
 }

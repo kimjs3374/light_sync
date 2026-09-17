@@ -1744,3 +1744,23 @@ body.is-splitting.row { cursor: row-resize; }
 .tour-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--chip-bg); }
 .tour-dots i.on { background: var(--primary); }
 .gear-btn { margin-left: 6px; font-size: 13px; font-weight: 700; }
+
+/* ── 사내 파일서버에서 첨부 ─────────────────────────────────────────── */
+.nas-attach { margin-left: 6px; border: 1px solid var(--border); border-radius: 7px; }
+.compose-file.nas .cf-tag { background: var(--chip-bg); color: var(--muted); }
+.nas-card { height: min(640px, 100%); }
+.nas-bar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
+  padding: 10px 20px; border-bottom: 1px solid var(--hairline); font-size: 12.5px;
+}
+.nas-crumb { border: 0; background: transparent; color: var(--muted); font-family: inherit;
+  font-size: 12.5px; padding: 3px 6px; border-radius: 6px; }
+.nas-crumb:hover { background: var(--hairline); color: var(--ink); }
+.nas-sep { color: var(--faint); }
+.nas-paste-btn { margin-left: auto; }
+.nas-paste { flex: 0 0 auto; padding: 10px 20px; border-bottom: 1px solid var(--hairline); background: var(--panel-soft); }
+.nas-paste .set-foot { margin-top: 8px; }
+.nas-list { flex: 1 1 auto; min-height: 120px; overflow: auto; padding: 0 12px; }
+.nas-list .contact-table td { cursor: pointer; }
+.nas-folder { font-size: 13px; }
+.nas-error { white-space: pre-line; text-align: left; }

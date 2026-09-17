@@ -17,6 +17,7 @@ export const SETTING_SECTIONS = [
   { key: 'forward', label: '자동 전달' },
   { key: 'rules', label: '자동 분류' },
   { key: 'spam', label: '스팸 · 수신차단' },
+  { key: 'nas', label: '파일서버' },
   { key: 'help', label: '단축키 · 도움말' },
 ];
 

@@ -172,6 +172,12 @@ export function buildComposer(mode, ctx = {}) {
         : null,
       draftUid: d.uid ?? null,
       draftFolder: folder || '',
+      /* 파일서버 첨부는 임시본에 **경로만** 적어 두었다(헤더 X-Mgnt-Nas-Files).
+         자동저장이 5초마다 도는데 그때마다 NAS 에서 큰 파일을 받아오면 사내망만
+         두드린다. 여기서 경로를 되살리고, 실제로 붙이는 것은 보낼 때 한 번이다. */
+      nasFiles: (d.nas_files || []).map((p) => ({
+        path: p, name: String(p).split('/').pop(), size: 0,
+      })),
     });
   }
 
@@ -201,6 +207,7 @@ export function draftSignature(w) {
     w.files.map((f) => [f.name, f.size]),
     w.largeFiles.filter((l) => l.status === 'done').map((l) => l.fileId),
     (w.kept || []).map((a) => a.index),
+    (w.nasFiles || []).map((f) => f.path),
   ]);
 }
 
