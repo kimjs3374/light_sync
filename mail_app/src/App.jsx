@@ -128,6 +128,16 @@ export default function App() {
   //  ② 보기 방식이 '기본(전체보기)' 일 때 — 그때는 누르면 늘 전체다
   const fullRead = (s.readerFull || s.prefs.layout === 'full') && !!s.openUid;
 
+  /* 보내려고 눌렀는데 첨부가 아직 올라가는 중이면, 창을 닫는 순간 그 메일은
+     나가지 못한다(브라우저가 올리는 중이라서). 닫기 전에 한 번 붙잡는다. */
+  const inFlight = useCompose((st) => !!st.flight);
+  useEffect(() => {
+    if (!inFlight) return undefined;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [inFlight]);
+
   // 새 메일이 오면 뱃지가 따라오도록 주기적으로 안읽음만 확인한다 (IMAP 왕복 1회)
   useEffect(() => {
     const id = setInterval(() => useMail.getState().refreshInboxUnread(), 60000);

@@ -81,6 +81,7 @@ function makeProgress(total, onUpdate) {
     }
     onUpdate({
       progress: total ? Math.min(100, Math.floor((loaded / total) * 100)) : 0,
+      loaded,
       speed,
       remain: speed > 0 ? Math.max(0, (total - loaded) / speed) : null,
     });
@@ -397,6 +398,18 @@ export function clearSignatureCache(accountId) {
    나가는 순간 감시가 끊겨서 **실패를 아무도 모른다** — 그래서 스토어가 들고 있다. */
 let sendTimer = null;
 let sendGen = 0;
+/* 첨부가 다 올라가기를 기다리는 타이머 — 같은 이유로 스토어가 들고 있다 */
+let uploadTimer = null;
+let uploadGen = 0;
+
+/** 발송 화면에 적을 요약 — 보내는 중·보냄·예약이 같은 것을 보여야 한다 */
+const sendSummary = (w) => ({
+  to: [...w.to], cc: [...w.cc], bcc: [...w.bcc],
+  subject: w.subject,
+  accountId: w.accountId,
+  attachments: w.files.length + (w.nasFiles || []).length
+    + w.largeFiles.filter((l) => l.status === 'done').length,
+});
 
 export const useCompose = create((set, get) => ({
   /** 작성 중인 메일 한 건. null 이면 목록 화면. */
@@ -707,6 +720,7 @@ export const useCompose = create((set, get) => ({
   /** 실패 — 보고 있었으면 그 화면에, 떠나 있었으면 쓰던 작성 화면을 되살려 적는다 */
   sendJobFailed(message) {
     clearTimeout(sendTimer); sendGen++;
+    clearTimeout(uploadTimer); uploadGen++;
     const msg = message || '보내지 못했습니다.';
     const d = get().done;
     set({ sendJob: null });
@@ -715,10 +729,18 @@ export const useCompose = create((set, get) => ({
       return;
     }
     /* 이미 다른 화면을 보고 있다. 조용히 넘기면 **보낸 줄 아는 메일이 안 나간 것**이
-       되므로, 쓰던 그대로 작성 화면을 되살리고 이유를 적는다. */
-    const w = get().pending;
+       되므로, 쓰던 그대로 작성 화면을 되살리고 이유를 적는다.
+       flight 가 가장 최신이다 — 올린 결과(fileId)가 들어 있다. */
+    const w = get().flight || get().pending;
     set({ notice: `메일을 보내지 못했습니다: ${msg}` });
-    if (w) set({ active: { ...w, sending: false, error: msg }, done: null, pending: null });
+    if (!w) return;
+    if (get().active) {
+      // 그 사이 새 메일을 쓰고 있다 — 그걸 밀어내지 않고 임시보관함에 넣는다
+      set({ flight: null, pending: null });
+      get()._stashDraft(w);
+      return;
+    }
+    set({ active: { ...w, sending: false, error: msg }, done: null, pending: null, flight: null });
   },
 
   /**
@@ -726,20 +748,35 @@ export const useCompose = create((set, get) => ({
    * 이게 없으면 큰 첨부 발송이 한 번 어그러질 때 쓴 것이 통째로 사라진다.
    */
   backToCompose() {
-    const w = get().pending;
     const msg = get().done?.error || '';
-    if (!w) { set({ done: null }); return; }
-    set({ active: { ...w, sending: false, error: msg }, done: null, pending: null });
+    // flight 가 가장 최신이다(올린 결과가 들어 있다). 없으면 넘길 때 떠 둔 것.
+    const w = get().flight || get().pending || get().active;
+    if (!w) { set({ done: null, pending: null, flight: null }); return; }
+    set({
+      active: { ...w, sending: false, error: msg },
+      done: null, pending: null, flight: null,
+    });
   },
 
   /** 결과 화면 닫기 — 보내는 중이면 원본은 그대로 쥐고 있는다 */
-  clearDone() { set({ done: null, ...(get().sendJob ? {} : { pending: null }) }); },
+  clearDone() {
+    set({ done: null, ...(get().sendJob || get().flight ? {} : { pending: null }) });
+  },
 
   /** 뒤에서 보내는 중인 메일의 원본 — 실패하면 이걸로 작성 화면을 되살린다 */
   pending: null,
 
   /** 뒤에서 도는 발송의 진행 상황 (null 이면 도는 것이 없다) */
   sendJob: null,
+
+  /**
+   * 첨부가 아직 올라가는 중인 **보낸다고 누른 메일**.
+   *
+   * 작성창(active)에서 여기로 옮겨 놓는다. 그래야 사람은 곧바로 다른 메일을
+   * 쓸 수 있고, 올라가던 것은 계속 올라간다 — 올리는 상황도 여기에 적힌다.
+   * 다 올라가면 이 메일이 나가고 이 칸은 비워진다.
+   */
+  flight: null,
 
   /** 화면 아래 띠로 잠깐 알리는 말 (나가면서 임시저장 등) */
   notice: '',
@@ -819,17 +856,28 @@ export const useCompose = create((set, get) => ({
     const id = ++largeSeq;
     const entry = {
       id, name: file.name, size: file.size, lastModified: file.lastModified,
-      status: 'uploading', progress: 0, speed: 0, remain: null,
+      status: 'uploading', progress: 0, loaded: 0, speed: 0, remain: null,
       fileId: null, tempPath: null, error: '', xhr: null,
     };
     set((s) => (s.active ? { active: { ...s.active, largeFiles: [...s.active.largeFiles, entry] } } : {}));
 
-    const patch = (p) => set((s) => (s.active
-      ? { active: { ...s.active, largeFiles: s.active.largeFiles.map((l) => (l.id === id ? { ...l, ...p } : l)) } }
-      : {}));
+    /* 작성창(active)에 있든, 보낸다고 눌러 옮겨간 메일(flight)에 있든 그 파일을
+       찾아 적는다. active 만 보면, 보내기를 누른 순간부터 진행률이 멈춰 버린다. */
+    const patch = (p) => set((s) => {
+      const fix = (w) => (w && w.largeFiles.some((l) => l.id === id)
+        ? { ...w, largeFiles: w.largeFiles.map((l) => (l.id === id ? { ...l, ...p } : l)) }
+        : w);
+      const a = fix(s.active);
+      const f = fix(s.flight);
+      return {
+        ...(a === s.active ? {} : { active: a }),
+        ...(f === s.flight ? {} : { flight: f }),
+      };
+    });
 
     const done = (r) => patch({
-      status: 'done', progress: 100, fileId: r.file_id, tempPath: r.temp_path, xhr: null,
+      status: 'done', progress: 100, loaded: file.size,
+      fileId: r.file_id, tempPath: r.temp_path, xhr: null,
     });
     const fail = (msg) => patch({ status: 'error', error: msg, xhr: null });
 
@@ -1127,12 +1175,57 @@ export const useCompose = create((set, get) => ({
       get().update({ error: '받는 사람을 입력하세요.' });
       return;
     }
-    if (w.largeFiles.some((l) => l.status === 'uploading')) {
-      get().update({ error: '대용량 첨부를 올리는 중입니다. 끝나면 보낼 수 있습니다.' });
-      return;
-    }
     get().update({ sending: true, error: '' });
 
+    /* 첨부가 아직 올라가는 중이어도 **보내기를 막지 않는다.**
+       발송 화면으로 넘겨서 거기서 올라가는 것을 보여 주고, 다 올라가는 순간
+       메일이 나간다. 예전에는 "끝나면 보낼 수 있습니다" 로 되돌려보냈는데,
+       그러면 사람이 화면을 지키고 앉아 끝나기를 기다렸다가 다시 눌러야 했다. */
+    if (get().active.largeFiles.some((l) => l.status === 'uploading')) {
+      const win = get().active;
+      set({
+        flight: win,
+        active: null,
+        pending: win,
+        done: { kind: 'sending', source: 'local', large: true, ...sendSummary(win) },
+      });
+      get()._awaitUploads();
+      return true;
+    }
+
+    return get()._postSend(get().active);
+  },
+
+  /**
+   * 첨부가 다 올라가기를 기다렸다가 보낸다.
+   *
+   * 보고 있는 것은 flight — 보낸다고 누른 그 메일이다. 작성창에서 옮겨 두었기에
+   * 사람은 그 사이 다른 메일을 써도 되고, 올라가던 것은 계속 올라간다.
+   */
+  _awaitUploads() {
+    clearTimeout(uploadTimer);
+    const gen = ++uploadGen;
+    const tick = () => {
+      if (gen !== uploadGen) return;
+      const w = get().flight;
+      if (!w) return;                       // 보낼 것이 없어졌다
+      const bad = w.largeFiles.find((l) => l.status === 'error');
+      if (bad) {
+        get().sendJobFailed(`${bad.name} — ${bad.error || '올리지 못했습니다.'}`);
+        return;
+      }
+      if (w.largeFiles.some((l) => l.status === 'uploading')) {
+        uploadTimer = setTimeout(tick, 400);
+        return;
+      }
+      get()._postSend(get().flight);
+    };
+    tick();
+  },
+
+  /** 진짜로 보내는 대목 — 첨부는 이미 다 올라가 있다 */
+  async _postSend(w) {
+    if (!w) return;
     const fd = get()._formData(w);
     // 임시저장해 둔 게 있으면 발송 후 그 임시본을 지우게 한다
     if (w.draftUid && w.draftFolder) {
@@ -1142,10 +1235,7 @@ export const useCompose = create((set, get) => ({
 
     try {
       const res = await api.json('/mail/api/send', { method: 'POST', body: fd });
-      if (res.error) {
-        get().update({ sending: false, error: res.error });
-        return;
-      }
+      if (res.error) { get()._sendFailed(res.error); return; }
 
       /* 큰 첨부가 있으면 서버가 **뒤에서** 옮기며 보낸다. 여기서는 일감 번호만 받는다.
          작성 화면을 붙들고 있지 않는다 — 곧장 발송 화면으로 넘어가 거기서 얼마나
@@ -1153,16 +1243,14 @@ export const useCompose = create((set, get) => ({
       if (res.job_id) {
         set({
           active: null,
+          flight: null,
           pending: w,
           done: {
             kind: 'sending',
+            source: 'server',
             job: { job_id: res.job_id, total_bytes: res.total_bytes, file_count: res.file_count },
-            to: [...w.to], cc: [...w.cc], bcc: [...w.bcc],
-            subject: w.subject,
-            accountId: w.accountId,
-            attachments: w.files.length + (w.nasFiles || []).length
-              + w.largeFiles.filter((l) => l.status === 'done').length,
             large: true,
+            ...sendSummary(w),
           },
         });
         get()._watchSend({
@@ -1174,18 +1262,17 @@ export const useCompose = create((set, get) => ({
       /* 보통 메일도 **발송 화면으로 넘긴다.** 작성 화면이 그냥 사라지면 나갔는지
          아닌지를 알 길이 없다 — 무엇을 누구에게 보냈는지 한 번 보여 준다.
          (close() 를 안 쓰는 이유: 옮겨간 임시파일을 지우면 안 된다) */
+      /* 발송 화면을 닫고 다른 것을 보고 있거나 새 메일을 쓰고 있으면, 보고 있던
+         것을 덮지 않는다 — 띠로만 알린다. */
+      const onPage = !!get().done && !get().active;
       set({
-        active: null,
+        active: get().flight ? get().active : null,   // 새로 쓰던 메일은 건드리지 않는다
+        flight: null,
         pending: null,
-        done: {
-          kind: 'sent',
-          to: [...w.to], cc: [...w.cc], bcc: [...w.bcc],
-          subject: w.subject,
-          accountId: w.accountId,
-          attachments: w.files.length + (w.nasFiles || []).length
-            + w.largeFiles.filter((l) => l.status === 'done').length,
-          large: w.largeFiles.some((l) => l.status === 'done'),
-        },
+        done: onPage
+          ? { kind: 'sent', large: w.largeFiles.some((l) => l.status === 'done'), ...sendSummary(w) }
+          : null,
+        ...(onPage ? {} : { notice: '메일을 보냈습니다.' }),
       });
       // 보낸편지함을 보고 있었다면 방금 보낸 메일이 바로 보여야 한다
       const m = useMail.getState();
@@ -1193,7 +1280,30 @@ export const useCompose = create((set, get) => ({
       m.loadFolders(true);
       return true;
     } catch (e) {
-      get().update({ sending: false, error: e.message || '발송에 실패했습니다.' });
+      get()._sendFailed(e.message || '발송에 실패했습니다.');
     }
+  },
+
+  /** 보내다 어그러졌다 — 보고 있는 화면에 맞춰 알린다 */
+  _sendFailed(message) {
+    const msg = message || '보내지 못했습니다.';
+    clearTimeout(uploadTimer); uploadGen++;
+    if (get().done?.kind === 'sending') { get().sendJobFailed(msg); return; }
+
+    const w = get().flight;
+    if (w && get().active) {
+      /* 그 사이 새 메일을 쓰고 있다 — 그걸 밀어내고 실패한 메일을 띄우면 더 나쁘다.
+         조용히 버릴 수는 없으니 임시보관함에 넣고 이유를 알린다. */
+      set({ flight: null, pending: null });
+      get()._stashDraft(w);
+      set({ notice: `메일을 보내지 못했습니다: ${msg} — 쓰시던 내용은 임시보관함에 넣었습니다.` });
+      return;
+    }
+    // 발송 화면을 닫고 다른 것을 보고 있었다 — 쓰던 작성창을 도로 꺼내고 이유를 적는다
+    set({
+      flight: null, done: null,
+      active: { ...(w || get().active), sending: false, error: msg },
+      notice: `메일을 보내지 못했습니다: ${msg}`,
+    });
   },
 }));
