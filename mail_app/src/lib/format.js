@@ -23,11 +23,31 @@ export function formatFullDate(iso) {
     + `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
+
+/**
+ * 용량 — 사람이 한눈에 읽는 크기로.
+ *
+ *   980 B · 184 KB · 1.4 MB · 24 MB · 2.1 GB
+ *
+ * 규칙 두 가지:
+ *  - **단위를 끝까지 올린다.** 예전엔 MB 에서 멈춰서 2GB 짜리가 `2048.0MB` 로 나왔다.
+ *  - **10 미만일 때만 소수 한 자리.** `1.4 MB` 는 쓸모 있지만 `24.3 MB` 의 .3 은
+ *    읽는 데 방해만 된다. 숫자와 단위는 띄운다(붙이면 `184KB` 처럼 뭉쳐 보인다).
+ */
 export function formatSize(bytes) {
-  if (!bytes) return '';
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1048576) return `${Math.round(bytes / 1024)}KB`;
-  return `${(bytes / 1048576).toFixed(1)}MB`;
+  const n = Number(bytes);
+  if (bytes === null || bytes === undefined || !Number.isFinite(n) || n < 0) return '';
+  if (n === 0) return '0 B';        // 빈 파일도 크기를 말해 준다 — 빈칸이면 모르는 것처럼 보인다
+
+  let v = n;
+  let i = 0;
+  while (v >= 1024 && i < SIZE_UNITS.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  const text = i === 0 || v >= 10 ? String(Math.round(v)) : v.toFixed(1);
+  return `${text} ${SIZE_UNITS[i]}`;
 }
 
 /** 보낸사람 표시: 이름이 있으면 이름, 없으면 주소의 로컬파트 */
@@ -61,8 +81,8 @@ export function splitSubject(subject) {
 /** 업로드 속도 — 12.3MB/s 처럼 */
 export function formatSpeed(bytesPerSec) {
   if (!bytesPerSec || bytesPerSec < 1) return '';
-  if (bytesPerSec < 1024 * 1024) return `${Math.round(bytesPerSec / 1024)}KB/s`;
-  return `${(bytesPerSec / 1048576).toFixed(1)}MB/s`;
+  // 용량과 같은 잣대로 적는다 — 한 화면에서 둘이 다른 모양이면 눈이 걸린다
+  return `${formatSize(bytesPerSec)}/s`;
 }
 
 /** 남은 시간 — 1분 미만은 초로, 그 위는 분으로 */

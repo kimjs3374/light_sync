@@ -1745,31 +1745,158 @@ body.is-splitting.row { cursor: row-resize; }
 .tour-dots i.on { background: var(--primary); }
 .gear-btn { margin-left: 6px; font-size: 13px; font-weight: 700; }
 
-/* ── 사내 파일서버에서 첨부 ─────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════
+   파일서버에서 첨부 — 윈도우 탐색기 모양
+   배울 것이 없어야 한다: 왼쪽에 공유폴더, 위에 ← → ↑ 와 주소줄,
+   가운데에 이름·수정한 날짜·유형·크기. 매일 보던 자리에 같은 것을 둔다.
+   ═══════════════════════════════════════════════════════════════════════ */
 .nas-attach { margin-left: 6px; border: 1px solid var(--border); border-radius: 7px; }
 .compose-file.nas .cf-tag { background: var(--chip-bg); color: var(--muted); }
-.nas-card { height: min(640px, 100%); }
-.nas-bar {
-  flex: 0 0 auto; display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
-  padding: 10px 20px; border-bottom: 1px solid var(--hairline); font-size: 12.5px;
+
+.exp {
+  width: min(980px, 100%); height: min(680px, 100%);
+  display: flex; flex-direction: column;
+  background: var(--surface); border-radius: var(--radius);
+  border: 1px solid var(--float-border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .3); overflow: hidden;
 }
-.nas-crumb { border: 0; background: transparent; color: var(--muted); font-family: inherit;
-  font-size: 12.5px; padding: 3px 6px; border-radius: 6px; }
-.nas-crumb:hover { background: var(--hairline); color: var(--ink); }
-.nas-sep { color: var(--faint); }
-.nas-paste-btn { margin-left: auto; }
-.nas-paste { flex: 0 0 auto; padding: 10px 20px; border-bottom: 1px solid var(--hairline); background: var(--panel-soft); }
-.nas-paste .set-foot { margin-top: 8px; }
-.nas-list { flex: 1 1 auto; min-height: 120px; overflow: auto; padding: 0 12px; }
-.nas-list .contact-table td { cursor: pointer; }
-.nas-folder { display: flex; color: var(--subtle); }
-/* 크기 칸 — 폴더 이름이 길어도 '184 KB' 가 잘리지 않을 만큼은 준다 */
-.nas-list .contact-table .col-count { width: 92px; }
-.nas-error { white-space: pre-line; text-align: left; }
-.nas-nav {
-  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
-  width: 26px; height: 26px; border-radius: 6px; font-size: 13px; line-height: 1;
+.exp-title {
+  flex: 0 0 auto; display: flex; align-items: center;
+  padding: 12px 16px; border-bottom: 1px solid var(--hairline);
 }
-.nas-nav:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
-.nas-nav:disabled { opacity: .35; cursor: default; }
-.nas-bar .nas-sep { width: 6px; }
+.exp-title h3 { flex: 1 1 auto; margin: 0; font-size: 15px; font-weight: 700; }
+.exp-title .icon-btn { box-shadow: none; background: var(--hairline); }
+
+/* 위 줄 */
+.exp-tools {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border-bottom: 1px solid var(--hairline); background: var(--panel-soft);
+}
+.exp-nav {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; flex: 0 0 auto;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--muted); font-size: 13px; line-height: 1;
+}
+.exp-nav:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.exp-nav:disabled { opacity: .35; cursor: default; }
+
+/* 주소줄 — 탐색기처럼 마디마다 누를 수 있다 */
+.exp-addr {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; flex-wrap: nowrap;
+  overflow-x: auto; white-space: nowrap;
+  height: 28px; padding: 0 8px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--surface);
+}
+.exp-addr::-webkit-scrollbar { height: 0; }
+.exp-crumb-wrap { display: inline-flex; align-items: center; }
+.exp-crumb {
+  border: 0; background: transparent; color: var(--muted);
+  font-family: inherit; font-size: 12px; padding: 2px 5px; border-radius: 4px;
+  white-space: nowrap;
+}
+.exp-crumb:hover { background: var(--hairline); color: var(--ink); }
+.exp-arrow { color: var(--faint); font-size: 12px; }
+
+.exp-find {
+  flex: 0 0 170px; display: flex; align-items: center; gap: 5px; height: 28px;
+  padding: 0 9px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--subtle);
+}
+.exp-find input {
+  width: 100%; border: 0; outline: none; background: transparent;
+  font-family: inherit; font-size: 12px; color: var(--ink);
+}
+
+.exp-paste {
+  flex: 0 0 auto; padding: 10px 14px;
+  border-bottom: 1px solid var(--hairline); background: var(--sunken);
+}
+.exp-paste .set-foot { margin-top: 8px; }
+
+/* 본문 두 칸 */
+.exp-body { flex: 1 1 auto; min-height: 0; display: flex; }
+.exp-side {
+  flex: 0 0 190px; overflow-y: auto; padding: 8px 6px;
+  border-right: 1px solid var(--hairline); background: var(--panel-soft);
+}
+.exp-side-title {
+  padding: 4px 8px 8px; font-size: 11px; font-weight: 700;
+  color: var(--subtle); letter-spacing: .04em;
+}
+.exp-side-item {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 7px 8px; border: 0; border-radius: 6px; background: transparent;
+  color: var(--label-ink); font-family: inherit; font-size: 12.5px; text-align: left;
+}
+.exp-side-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-side-item:hover { background: var(--hairline); color: var(--ink); }
+.exp-side-item.on { background: var(--hairline); color: var(--ink); font-weight: 700; }
+
+.exp-main { flex: 1 1 auto; min-width: 0; overflow: auto; }
+.exp-error {
+  margin: 10px 12px; padding: 9px 12px; border-radius: 7px;
+  background: var(--danger-soft); color: var(--danger);
+  font-size: 12px; white-space: pre-line;
+}
+
+/* 자세히 보기 표 — 줄바꿈하지 않는다. 길면 … 로 자른다 */
+.exp-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12.5px; }
+.exp-table th {
+  position: sticky; top: 0; z-index: 1;
+  padding: 8px 10px; text-align: left; background: var(--surface);
+  color: var(--subtle); font-size: 11.5px; font-weight: 700; white-space: nowrap;
+  border-bottom: 1px solid var(--hairline); cursor: pointer; user-select: none;
+}
+.exp-table th:hover { color: var(--ink); }
+.exp-table td {
+  padding: 6px 10px; border-bottom: 1px solid var(--hairline); color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.exp-table tbody tr { cursor: pointer; }
+.exp-table tbody tr:hover { background: var(--row-hover); }
+.exp-table tbody tr.on { background: var(--row-open); }
+.exp-c-pick { width: 34px; text-align: center; }
+.exp-c-pick input { accent-color: var(--primary); }
+.exp-c-name { display: flex; align-items: center; gap: 8px; }
+.exp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-c-time { width: 140px; color: var(--subtle); font-family: var(--mono); font-size: 11.5px; }
+.exp-c-kind { width: 104px; color: var(--muted); }
+.exp-c-size { width: 84px; text-align: right; color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
+
+/* 좁아지면 곁가지부터 접는다 — **이름이 끝까지 남아야 한다.**
+   파일을 고르는 화면에서 이름이 잘리면 무엇을 고르는지 알 수 없다. */
+@media (max-width: 1100px) {
+  .exp-c-kind, .exp-table th.exp-c-kind { display: none; }
+}
+@media (max-width: 900px) {
+  .exp-c-time, .exp-table th.exp-c-time { display: none; }
+  .exp-side { flex-basis: 150px; }
+}
+.exp-empty { text-align: center; color: var(--subtle); padding: 28px 0; white-space: normal; }
+
+.exp-picked {
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  max-height: 84px; overflow-y: auto;
+  padding: 9px 14px; border-top: 1px solid var(--hairline); background: var(--panel-soft);
+}
+.exp-picked .addr-tag { display: inline-flex; align-items: center; gap: 5px; }
+.exp-foot {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; border-top: 1px solid var(--hairline); background: var(--panel-soft);
+}
+.exp-count { flex: 1 1 auto; color: var(--subtle); font-size: 11.5px; }
+
+/* 파일 종류 아이콘 — 색은 종류를 가리는 데만 옅게 쓴다 */
+.fi { display: inline-flex; flex: 0 0 auto; color: var(--subtle); }
+.fi-folder { color: #eab308; }
+.fi-excel { color: #15803d; }
+.fi-word { color: #1d4ed8; }
+.fi-ppt { color: #c2410c; }
+.fi-pdf { color: #b91c1c; }
+.fi-hwp { color: #1e40af; }
+.fi-image { color: #7c3aed; }
+.fi-zip { color: #a16207; }
+.fi-cad { color: #0f766e; }
+.fi-video { color: #be185d; }
+.fi-mail { color: var(--primary); }
