@@ -111,7 +111,9 @@ export default function ComposeDone({ done }) {
           <p className="done-sub">
             {sending ? '다 올라가면 메일이 나갑니다. 파일이 크면 몇 분 걸립니다.'
               : failed ? (done.error || '알 수 없는 오류입니다.')
-                : '큰 첨부는 링크로 갔습니다. 받는 분은 링크를 눌러 내려받습니다.'}
+                : done.large
+                  ? '큰 첨부는 링크로 갔습니다. 받는 분은 링크를 눌러 내려받습니다.'
+                  : '보낸편지함에서 다시 보실 수 있습니다.'}
           </p>
 
           {sending && <SendProgress />}

@@ -1118,6 +1118,7 @@ export const useCompose = create((set, get) => ({
             accountId: w.accountId,
             attachments: w.files.length + (w.nasFiles || []).length
               + w.largeFiles.filter((l) => l.status === 'done').length,
+            large: true,
           },
         });
         get()._watchSend({
@@ -1126,7 +1127,22 @@ export const useCompose = create((set, get) => ({
         return true;
       }
 
-      set({ active: null, done: null });   // 옮겨간 임시파일을 지우면 안 되므로 close() 를 안 쓴다
+      /* 보통 메일도 **발송 화면으로 넘긴다.** 작성 화면이 그냥 사라지면 나갔는지
+         아닌지를 알 길이 없다 — 무엇을 누구에게 보냈는지 한 번 보여 준다.
+         (close() 를 안 쓰는 이유: 옮겨간 임시파일을 지우면 안 된다) */
+      set({
+        active: null,
+        pending: null,
+        done: {
+          kind: 'sent',
+          to: [...w.to], cc: [...w.cc], bcc: [...w.bcc],
+          subject: w.subject,
+          accountId: w.accountId,
+          attachments: w.files.length + (w.nasFiles || []).length
+            + w.largeFiles.filter((l) => l.status === 'done').length,
+          large: w.largeFiles.some((l) => l.status === 'done'),
+        },
+      });
       // 보낸편지함을 보고 있었다면 방금 보낸 메일이 바로 보여야 한다
       const m = useMail.getState();
       if (/sent/i.test(m.folder)) m.loadMessages();
