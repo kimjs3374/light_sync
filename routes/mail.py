@@ -4123,6 +4123,9 @@ LARGE_FILE_EXPIRE_DAYS = 30
 # 대용량 첨부 — 임시 보관 위치. 발송이 확정되면 mail-attachments/ 로 옮긴다.
 _TEMP_ATTACH_PREFIX = 'mail-temp'
 LARGE_FILE_THRESHOLD = 25 * 1024 * 1024   # 이보다 크면 링크 방식
+# 한 파일 한도. **저장소가 정한다** — supabase-storage 의 FILE_SIZE_LIMIT(지금 4GB).
+# 그 값을 올리면 여기와 synology.MAX_STREAM 도 같이 올린다.
+LARGE_FILE_MAX = 4 * 1024 * 1024 * 1024
 
 
 @mail_bp.route('/mail/api/upload-config')
@@ -4139,6 +4142,9 @@ def api_upload_config():
         'expire_days': LARGE_FILE_EXPIRE_DAYS,
         # Cloudflare 를 지나는 요청 하나의 크기. 넉넉히 작게 잡는다.
         'chunk_size': 8 * 1024 * 1024,
+        # 한 파일 한도 — 저장소(supabase-storage)의 FILE_SIZE_LIMIT 과 같은 값이어야
+        # 한다. 화면이 이 값으로 **붙이는 자리에서** 거른다(다 올린 뒤 튕기지 않게).
+        'max_size': LARGE_FILE_MAX,
     })
 
 

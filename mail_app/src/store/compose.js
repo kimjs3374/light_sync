@@ -43,8 +43,14 @@ async function loadUploadConfig() {
     const c = await api.json('/mail/api/upload-config', { optional: true });
     if (c?.threshold) LARGE_THRESHOLD = c.threshold;
     if (c?.chunk_size) CHUNK_SIZE = c.chunk_size;
+    if (c?.max_size) MAX_FILE = c.max_size;
   } catch { /* 기본값으로 간다 */ }
 }
+
+/* 한 파일 한도. 저장소(supabase-storage)가 이 위를 아예 안 받는다 —
+   다 올린 뒤에 튕기면 몇 GB 를 헛수고한 셈이라, 붙이는 자리에서 먼저 거른다.
+   서버가 upload-config 로 진짜 값을 알려준다. */
+let MAX_FILE = 4 * 1024 * 1024 * 1024;
 
 const hex = () => Math.random().toString(16).slice(2).padEnd(13, '0')
   + Date.now().toString(16);
@@ -788,10 +794,18 @@ export const useCompose = create((set, get) => ({
       ...cur.files.map(key),
       ...cur.largeFiles.map((l) => `${l.name}:${l.size}:${l.lastModified}`),
     ]);
+    const tooBig = [];
     for (const f of incoming) {
       if (have.has(key(f))) continue;
       have.add(key(f));
+      if (f.size > MAX_FILE) { tooBig.push(f); continue; }
       (f.size > LARGE_THRESHOLD ? big : small).push(f);
+    }
+    if (tooBig.length) {
+      const gb = Math.round(MAX_FILE / (1024 ** 3));
+      get().update({
+        error: `${tooBig.map((f) => f.name).join(', ')} — 한 파일 ${gb}GB 까지 붙일 수 있습니다.`,
+      });
     }
 
     if (small.length) {
