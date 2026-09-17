@@ -951,12 +951,23 @@ def cleanup_mail_files_cli():
     # 작성하다 만 대용량 첨부 — 올려만 두고 안 보낸 것들.
     # 정상 흐름에서는 발송 때 옮겨지거나 취소 때 지워지지만,
     # 탭을 그냥 닫으면 아무도 안 치운다.
+    #
+    # ※ 보낸 첨부도 여기(mail-temp)에 그대로 산다 — 발송 때 옮기지 않기 때문이다
+    #   (옮기면 GB 단위 복사로 발송이 수십 초 멈춘다). 그래서 **DB 에 기록이 있는
+    #   파일은 절대 건드리지 않는다.** 이 한 줄이 빠지면 하루 뒤 첨부가 사라진다.
     orphan = 0
     cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
+    with get_db() as db:
+        keep = {
+            r.storage_path for r in
+            db.query(MailLargeFile.storage_path).filter(MailLargeFile.is_deleted == False).all()
+        }
     for item in storage_adapter._list_prefix('mail-temp'):
         name = item.get('name')
         created = item.get('created_at') or item.get('updated_at') or ''
         if not name:
+            continue
+        if f'mail-temp/{name}' in keep:
             continue
         try:
             when = datetime.datetime.fromisoformat(str(created).replace('Z', '+00:00'))

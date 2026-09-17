@@ -4120,7 +4120,9 @@ LARGE_FILE_THRESHOLD = 25 * 1024 * 1024  # 25MB
 LARGE_FILE_EXPIRE_DAYS = 30
 
 
-# 대용량 첨부 — 임시 보관 위치. 발송이 확정되면 mail-attachments/ 로 옮긴다.
+# 대용량 첨부가 올라가는 자리. 발송이 확정되면 **옮기지 않고** mail_large_files 에
+# 이 경로를 그대로 적는다(옮기면 GB 단위 복사가 일어나 발송이 수십 초 멈춘다).
+# 보낸 것과 버려진 것을 가르는 것은 위치가 아니라 **DB 에 기록이 있느냐**다.
 _TEMP_ATTACH_PREFIX = 'mail-temp'
 LARGE_FILE_THRESHOLD = 25 * 1024 * 1024   # 이보다 크면 링크 방식
 # 한 파일 한도. **저장소가 정한다** — supabase-storage 의 FILE_SIZE_LIMIT(지금 4GB).
@@ -4567,6 +4569,14 @@ def _promote_large_files(db, items, user_id=None):
 
     items: [{file_id, filename, size, temp_path}]
     반환:  [{filename, size, download_url, expires_at}]
+
+    **파일은 옮기지 않는다.** 예전에는 mail-temp → mail-attachments 로 move 를
+    불렀는데, 저장소의 move 는 이름만 바꾸는 게 아니라 **바이트를 통째로 복사**한다.
+    1.3GB 를 옮기는 데 50초가 걸렸고, 그동안 화면은 「보내는 중」에 멈춰 있었다.
+    올라간 자리를 그대로 기록하면 그 50초가 통째로 없어진다.
+
+    그 대신 **청소 규칙이 이 기록을 봐야 한다** — app.py 의 cleanup-mail-files 는
+    mail_large_files 에 적힌 경로를 건너뛴다(안 그러면 하루 뒤 첨부가 사라진다).
     """
     out = []
     dl_domain = os.environ.get('FLASK_DOMAIN', 'work.mgnt.kr')
@@ -4579,19 +4589,12 @@ def _promote_large_files(db, items, user_id=None):
         if not file_id or not temp_path:
             continue
 
-        ext = os.path.splitext(temp_path)[1] or ''
-        final_path = f'mail-attachments/{file_id}{ext}'
-        ok, msg = storage_adapter.move_object(temp_path, final_path)
-        if not ok:
-            logger.error('대용량 첨부 이동 실패: %s → %s (%s)', temp_path, final_path, msg)
-            raise RuntimeError(f'첨부 처리 실패: {filename}')
-
         db.add(MailLargeFile(
             file_id=file_id,
             sender_user_id=user_id or _session_get('user_id'),
             original_filename=filename,
             file_size=int(it.get('size') or 0),
-            storage_path=final_path,
+            storage_path=temp_path,      # 올라간 그 자리 그대로 (복사하지 않는다)
             expires_at=expires_at,
         ))
         out.append({
