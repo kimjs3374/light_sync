@@ -129,10 +129,22 @@ function uploadTus(file, { onProgress, onDone, onError }) {
     }
     if (state.canceled) return;
 
-    const H = {
+    /* 토큰은 30분짜리다. 30GB 를 느린 회선으로 올리면 중간에 만료돼서
+       **다 올리고 마지막에 죽는다.** 그래서 나이를 재 두고 20분마다 새로 받는다.
+       (새로 받은 토큰의 file_id·경로는 버린다 — 올리던 자리는 그대로 쓴다) */
+    let H = {
       apikey: t.token,
       Authorization: `Bearer ${t.token}`,
       'Tus-Resumable': '1.0.0',
+    };
+    let tokenAt = Date.now();
+    const TOKEN_MAX_AGE = 20 * 60 * 1000;
+
+    const renewToken = async () => {
+      const t2 = await api.post('/mail/api/upload-token', { filename: file.name });
+      if (t2.error || !t2.token) throw new Error(t2.error || '업로드 토큰을 새로 받지 못했습니다.');
+      H = { apikey: t2.token, Authorization: `Bearer ${t2.token}`, 'Tus-Resumable': '1.0.0' };
+      tokenAt = Date.now();
     };
 
     // ① 업로드 자리 만들기
@@ -150,6 +162,9 @@ function uploadTus(file, { onProgress, onDone, onError }) {
           ].join(','),
         },
       });
+      if (res.status === 413) {
+        throw new Error('저장소가 이 크기의 파일을 받지 않습니다. 관리자에게 알려 주세요.');
+      }
       if (!res.ok) throw new Error(`자리 만들기 실패 (${res.status})`);
       const raw = res.headers.get('Location') || '';
       // Location 은 스토리지 내부 주소를 가리킨다 — 경로만 떼어 공개 주소에 붙인다
@@ -163,11 +178,14 @@ function uploadTus(file, { onProgress, onDone, onError }) {
     // ② 조각을 이어 붙인다 — 조각 안에서도 바이트 단위로 진행률을 낸다
     const report = makeProgress(file.size, onProgress);
     let offset = 0;
+    let tries = 0;
     while (offset < file.size) {
       if (state.canceled) return;
       const end = Math.min(offset + TUS_CHUNK, file.size);
       const base = offset;
       try {
+        if (Date.now() - tokenAt > TOKEN_MAX_AGE) await renewToken();
+        if (state.canceled) return;
         const res = await new Promise((resolve, reject) => {
           state.xhr = xhrSend(
             'PATCH', location, file.slice(offset, end),
@@ -176,17 +194,29 @@ function uploadTus(file, { onProgress, onDone, onError }) {
               onLoaded: (n) => report(base + n),
               onDone: (x) => (x.status >= 200 && x.status < 300
                 ? resolve(x)
-                : reject(new Error(`조각 전송 실패 (${x.status})`))),
+                : reject(Object.assign(new Error(`조각 전송 실패 (${x.status})`), { status: x.status }))),
               onFail: reject,
             },
           );
         });
         const next = parseInt(res.getResponseHeader('Upload-Offset') || String(end), 10);
         offset = Number.isFinite(next) ? next : end;
+        tries = 0;
         report(offset);
       } catch (e) {
-        if (!state.canceled) onError(e.message || '전송이 끊겼습니다.');
-        return;
+        if (state.canceled) return;
+        /* 한 조각이 어긋났다고 몇 GB 를 처음부터 다시 올리게 하지 않는다.
+           TUS 는 "어디까지 받았나"를 물어볼 수 있으므로, 거기서부터 이어 붙인다. */
+        if (++tries > 3) { onError(e.message || '전송이 끊겼습니다.'); return; }
+        try {
+          if (e.status === 401 || e.status === 403) await renewToken();
+          const head = await fetch(location, { method: 'HEAD', headers: H });
+          const got = parseInt(head.headers.get('Upload-Offset') || '', 10);
+          if (Number.isFinite(got)) { offset = got; report(offset); }
+        } catch {
+          /* 물어보는 것마저 안 되면 다음 바퀴에서 같은 자리로 다시 시도한다 */
+        }
+        await new Promise((r) => setTimeout(r, 1000 * tries));
       }
     }
 

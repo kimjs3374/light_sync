@@ -226,6 +226,11 @@ def upload_stream(object_path: str, chunks, total_size: int,
         resp = requests.post(endpoint, headers=headers, timeout=60)
     except Exception as e:
         return False, f"업로드를 시작하지 못했습니다: {e}"
+    if resp.status_code == 413:
+        # 저장소(storage-api)의 FILE_SIZE_LIMIT 에 걸렸다. 숫자를 모른 채
+        # "413" 만 보여주면 아무도 무엇을 해야 할지 모른다.
+        return False, ("저장소가 이 크기의 파일을 받지 않습니다. "
+                       "관리자에게 저장소 한 파일 한도(FILE_SIZE_LIMIT)를 올려 달라고 알려 주세요.")
     if resp.status_code not in (200, 201):
         return False, f"업로드 시작 실패 {resp.status_code} {resp.text[:200]}"
 
