@@ -41,6 +41,26 @@ from modules.db_context import get_db
 from modules.services.erp_tools import ALL_TOOLS
 
 ALL_TOOL_NAMES = {t[0] for t in ALL_TOOLS}          # 읽기전용 ERP 도구 화이트리스트
+
+# ── 날짜 기준표 주입 ──────────────────────────────────────────────
+# 상대날짜("지난달","다음주 월요일","지난 분기")를 LLM 이 직접 계산하면 요일·분기를
+# 자주 틀린다. 코드로 계산한 표를 시스템 프롬프트에 붙여 그대로 쓰게 한다.
+try:
+    from datectx import today_context as _today_context
+except Exception:
+    _today_context = None
+
+
+def _date_block() -> str:
+    """오늘 기준 날짜표. 실패해도 봇은 그대로 동작해야 하므로 예외를 삼킨다."""
+    if _today_context is None:
+        return ""
+    try:
+        return ("\n\n[오늘 기준 날짜표 - 도구 인자에 기간/날짜를 넣을 때는 반드시 이 표의 "
+                "값을 그대로 쓰고, 요일이나 분기를 직접 계산하지 마라]\n" + _today_context())
+    except Exception:
+        return ""
+
 MCP_CONFIG = os.path.join(APP_ROOT, "scripts", "mcp-erp-only.json")
 MCP_PREFIX = "mcp__light-sync-erp__"
 CLAUDE_MODEL = os.environ.get("KAKAO_CLAUDE_MODEL", "sonnet")
@@ -235,7 +255,7 @@ def ask_claude(question: str, resume_sid=None, new_sid=None, image_path=None, er
            "--model", CLAUDE_MODEL,
            "--mcp-config", MCP_CONFIG,
            "--dangerously-skip-permissions",
-           "--append-system-prompt", SYSTEM_PROMPT,
+           "--append-system-prompt", SYSTEM_PROMPT + _date_block(),
            "--output-format", "json"]
     if resume_sid:
         cmd += ["--resume", resume_sid]

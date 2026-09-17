@@ -18,6 +18,7 @@ import os
 import sys
 import json
 import time
+from datetime import date as _date
 import uuid
 import atexit
 import select
@@ -32,7 +33,7 @@ os.chdir(APP_ROOT)
 
 # kakao_brain 의 공용 로직 재사용(단일 출처): 신원 게이트/시스템프롬프트/MCP설정/모델/FAST_ENV.
 from kakao_brain import (  # noqa: E402
-    resolve, SYSTEM_PROMPT, FAST_ENV, CLAUDE_MODEL, BOT_CONFIG_DIR, _build_mcp_config,
+    resolve, SYSTEM_PROMPT, _date_block, FAST_ENV, CLAUDE_MODEL, BOT_CONFIG_DIR, _build_mcp_config,
 )
 
 SOCK_PATH = os.path.join(APP_ROOT, "scripts", "kakao_brain.sock")
@@ -61,9 +62,10 @@ class Worker:
         self.session_id = str(uuid.uuid4())
         self.turns = 0
         self.created = time.time()
+        self.created_day = _date.today()   # 날짜 바뀌면 날짜표가 낡으므로 폐기
         self.last_used = time.time()
         self.lock = threading.Lock()      # 같은 워커 동시 접근 방지(1턴씩 직렬)
-        sysprompt = SYSTEM_PROMPT + (
+        sysprompt = SYSTEM_PROMPT + _date_block() + (
             f"\n[현재 사용자 ERP 계정: {erp_user}] 이 사용자 본인의 정보/휴가만 처리한다."
         )
         cmd = ["claude", "-p",
@@ -85,7 +87,9 @@ class Worker:
         return self.proc.poll() is None
 
     def expired(self):
-        return (time.time() - self.created > WORKER_TTL) or (self.turns >= WORKER_MAX_TURNS)
+        return ((time.time() - self.created > WORKER_TTL)
+                or (self.turns >= WORKER_MAX_TURNS)
+                or (self.created_day != _date.today()))
 
     def ask(self, text):
         """한 턴 질의 → 최종 응답 텍스트. 실패 시 예외."""
