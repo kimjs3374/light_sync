@@ -3,6 +3,7 @@ import { useCompose } from '../store/compose';
 import { useMail } from '../store/mail';
 import { Paperclip, Close } from './Icons';
 import TimePicker from './TimePicker';
+import SendProgress from './SendProgress';
 
 const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const pad = (n) => String(n).padStart(2, '0');
@@ -24,6 +25,18 @@ function untilText(d) {
   return `${Math.round(hour / 24)}일 뒤`;
 }
 
+/**
+ * 보내기를 누른 뒤의 화면.
+ *
+ * 네 가지를 한 카드로 보여 준다:
+ *   scheduled  예약했습니다 (시각 변경·취소)
+ *   sending    큰 첨부를 올리는 중 — 진행률
+ *   sent       보냈습니다
+ *   failed     보내지 못했습니다 — 쓰던 것으로 되돌아갈 수 있다
+ *
+ * 큰 첨부는 올리는 데만 몇 분이 걸린다. 작성 화면 위에 창을 띄워 붙들어 두지 않고
+ * **곧장 이 화면으로 넘어와서** 얼마나 갔는지 보여 준다 — 그동안 메일함으로 가도 된다.
+ */
 export default function ComposeDone({ done }) {
   const c = useCompose();
   const accounts = useMail((s) => s.accounts);
@@ -52,6 +65,86 @@ export default function ComposeDone({ done }) {
     <div className="done-line"><span>{label}</span><b>{children}</b></div>
   );
 
+  /* 컴포넌트가 아니라 **그려 둔 조각**이다 — 컴포넌트로 두면 진행률이 1초마다
+     갱신될 때 이 덩어리가 통째로 다시 붙는다 */
+  const detail = (
+    <div className="done-detail">
+      <Line label="보내는사람">
+        {account?.display_name ? `${account.display_name} <${account.email}>` : account?.email}
+      </Line>
+      <Line label="받는사람">{done.to.join(', ')}</Line>
+      {done.cc.length > 0 && <Line label="참조">{done.cc.join(', ')}</Line>}
+      {done.bcc.length > 0 && <Line label="숨은참조">{done.bcc.join(', ')}</Line>}
+      <Line label="제목">{done.subject || '(제목 없음)'}</Line>
+      {done.attachments > 0 && (
+        <Line label="첨부">
+          <span className="done-attach"><Paperclip size={12} />{done.attachments}개 함께 보냅니다</span>
+        </Line>
+      )}
+    </div>
+  );
+
+  /* ── 보내는 중 · 보냈습니다 · 못 보냈습니다 ─────────────────────────── */
+  if (done.kind === 'sending' || done.kind === 'sent' || done.kind === 'failed') {
+    const sending = done.kind === 'sending';
+    const failed = done.kind === 'failed';
+    return (
+      <div className="compose-done">
+        <div className="done-card">
+          {/* 보내는 중에는 닫기를 두지 않는다 — 진행 중인 것을 지운 것처럼 보인다.
+              대신 아래 '메일함으로' 로 나가면 되고, 보내기는 그대로 계속된다. */}
+          {!sending && (
+            <button className="compose-close done-x" title="닫기" onClick={() => c.clearDone()}>
+              <Close size={16} />
+            </button>
+          )}
+
+          <div className={`done-mark${failed ? ' failed' : ''}`}>
+            {sending ? '보내는 중' : failed ? '보내지 못함' : '발송 완료'}
+          </div>
+
+          <h2 className="done-title">
+            {sending ? '큰 첨부를 올리고 있습니다'
+              : failed ? '메일을 보내지 못했습니다'
+                : '메일을 보냈습니다'}
+          </h2>
+          <p className="done-sub">
+            {sending ? '다 올라가면 메일이 나갑니다. 파일이 크면 몇 분 걸립니다.'
+              : failed ? (done.error || '알 수 없는 오류입니다.')
+                : '큰 첨부는 링크로 갔습니다. 받는 분은 링크를 눌러 내려받습니다.'}
+          </p>
+
+          {sending && <SendProgress />}
+
+          {detail}
+
+          {sending && (
+            /* 이 말이 없으면 화면을 떠나기가 무서워진다 — 실제로 계속 올라간다 */
+            <p className="done-keep">
+              이 화면을 떠나셔도 <b>보내기는 계속됩니다.</b>
+              <br />
+              메일함을 보고 계셔도 되고, 다른 메일을 쓰셔도 됩니다.
+            </p>
+          )}
+
+          <div className="done-actions">
+            <button className="btn-send" onClick={() => c.clearDone()}>메일함으로</button>
+            {failed && (
+              <button className="done-alt" onClick={() => c.backToCompose()}>
+                쓰던 메일로 돌아가기
+              </button>
+            )}
+            {!sending && !failed && (
+              <button className="done-more" onClick={() => { c.clearDone(); c.open('new'); }}>
+                새 메일 쓰기
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="compose-done">
       <div className="done-card">
@@ -75,20 +168,7 @@ export default function ComposeDone({ done }) {
           </>
         )}
 
-        <div className="done-detail">
-          <Line label="보내는사람">
-            {account?.display_name ? `${account.display_name} <${account.email}>` : account?.email}
-          </Line>
-          <Line label="받는사람">{done.to.join(', ')}</Line>
-          {done.cc.length > 0 && <Line label="참조">{done.cc.join(', ')}</Line>}
-          {done.bcc.length > 0 && <Line label="숨은참조">{done.bcc.join(', ')}</Line>}
-          <Line label="제목">{done.subject || '(제목 없음)'}</Line>
-          {done.attachments > 0 && (
-            <Line label="첨부">
-              <span className="done-attach"><Paperclip size={12} />{done.attachments}개 함께 보냅니다</span>
-            </Line>
-          )}
-        </div>
+        {detail}
 
         <div className="done-actions">
           <button className="btn-send" onClick={() => c.clearDone()}>메일함으로</button>

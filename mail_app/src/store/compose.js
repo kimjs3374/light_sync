@@ -357,6 +357,11 @@ export function clearSignatureCache(accountId) {
   else signatureCache.delete(String(accountId));
 }
 
+/* 뒤에서 도는 발송을 지켜보는 타이머. 화면(컴포넌트)에 두면 사람이 메일함으로
+   나가는 순간 감시가 끊겨서 **실패를 아무도 모른다** — 그래서 스토어가 들고 있다. */
+let sendTimer = null;
+let sendGen = 0;
+
 export const useCompose = create((set, get) => ({
   /** 작성 중인 메일 한 건. null 이면 목록 화면. */
   active: null,
@@ -612,30 +617,92 @@ export const useCompose = create((set, get) => ({
     if (!force && !get().canLeave()) return false;
     cancelAutosave();
     get()._cleanupLarge();   // 올려둔 임시 파일은 두고 가지 않는다
-    set({ active: null, done: null });
+    // 뒤에서 보내는 중이면 원본(pending)은 쥐고 있는다 — 어그러지면 되살려야 한다
+    set({ active: null, done: null, ...(get().sendJob ? {} : { pending: null }) });
     return true;
   },
 
-  /** 큰 첨부 발송이 끝났다 — 이제야 작성 화면을 치운다 */
+  /**
+   * 뒤에서 도는 발송을 1초마다 들여다본다.
+   *
+   * 화면이 아니라 스토어가 본다 — 진행률 화면을 닫고 메일함으로 가도 감시가
+   * 이어져야, 어그러졌을 때 조용히 없던 일이 되지 않는다.
+   */
+  _watchSend(job) {
+    clearTimeout(sendTimer);
+    const gen = ++sendGen;
+    set({
+      sendJob: {
+        ...job, status: 'uploading', phase: '', done_bytes: 0, done_files: 0,
+        total_bytes: job.total_bytes || 0, file_count: job.file_count || 0,
+      },
+    });
+    const tick = async () => {
+      if (gen !== sendGen) return;
+      try {
+        const r = await api.get(`/mail/api/send-job/${job.job_id}`);
+        if (gen !== sendGen) return;
+        if (r.error && !r.status) { get().sendJobFailed(r.error); return; }
+        set({ sendJob: { ...job, ...r } });
+        if (r.status === 'done') { get().sendJobDone(); return; }
+        if (r.status === 'error') { get().sendJobFailed(r.error || '보내지 못했습니다.'); return; }
+      } catch (e) {
+        if (gen === sendGen) get().sendJobFailed(e.message || '진행 상황을 읽지 못했습니다.');
+        return;
+      }
+      sendTimer = setTimeout(tick, 1000);
+    };
+    tick();
+  },
+
+  /** 큰 첨부 발송이 끝났다 — 보고 있던 발송 화면을 '보냈습니다' 로 바꾼다 */
   sendJobDone() {
-    const w = get().active;
-    set({ active: null, sendJob: null, done: null });
+    clearTimeout(sendTimer); sendGen++;
+    const d = get().done;
+    const watching = d && d.kind === 'sending';
+    set({ pending: null, sendJob: null, done: watching ? { ...d, kind: 'sent' } : d });
     const m = useMail.getState();
     if (/sent/i.test(m.folder)) m.loadMessages();
     m.loadFolders(true);
-    set({ notice: w ? '큰 첨부를 다 올리고 메일을 보냈습니다.' : '메일을 보냈습니다.' });
+    // 화면을 떠나 있었다면 끝난 줄을 모른다 — 띠로 알린다
+    if (!watching) set({ notice: '큰 첨부를 다 올리고 메일을 보냈습니다.' });
   },
 
-  /** 실패 — 작성 화면을 그대로 돌려준다. 여기서 닫으면 쓴 것이 사라진다 */
+  /** 실패 — 보고 있었으면 그 화면에, 떠나 있었으면 쓰던 작성 화면을 되살려 적는다 */
   sendJobFailed(message) {
+    clearTimeout(sendTimer); sendGen++;
+    const msg = message || '보내지 못했습니다.';
+    const d = get().done;
     set({ sendJob: null });
-    get().update({ sending: false, error: message || '보내지 못했습니다.' });
+    if (d && d.kind === 'sending') {
+      set({ done: { ...d, kind: 'failed', error: msg } });
+      return;
+    }
+    /* 이미 다른 화면을 보고 있다. 조용히 넘기면 **보낸 줄 아는 메일이 안 나간 것**이
+       되므로, 쓰던 그대로 작성 화면을 되살리고 이유를 적는다. */
+    const w = get().pending;
+    set({ notice: `메일을 보내지 못했습니다: ${msg}` });
+    if (w) set({ active: { ...w, sending: false, error: msg }, done: null, pending: null });
   },
 
-  /** 결과 화면 닫기 */
-  clearDone() { set({ done: null }); },
+  /**
+   * 실패한 발송을 다시 손보러 — 쓰던 그대로 작성 화면을 되살린다.
+   * 이게 없으면 큰 첨부 발송이 한 번 어그러질 때 쓴 것이 통째로 사라진다.
+   */
+  backToCompose() {
+    const w = get().pending;
+    const msg = get().done?.error || '';
+    if (!w) { set({ done: null }); return; }
+    set({ active: { ...w, sending: false, error: msg }, done: null, pending: null });
+  },
 
-  /** 큰 첨부를 올리며 보내는 중인 일감 (null 이면 없음) */
+  /** 결과 화면 닫기 — 보내는 중이면 원본은 그대로 쥐고 있는다 */
+  clearDone() { set({ done: null, ...(get().sendJob ? {} : { pending: null }) }); },
+
+  /** 뒤에서 보내는 중인 메일의 원본 — 실패하면 이걸로 작성 화면을 되살린다 */
+  pending: null,
+
+  /** 뒤에서 도는 발송의 진행 상황 (null 이면 도는 것이 없다) */
   sendJob: null,
 
   /** 화면 아래 띠로 잠깐 알리는 말 (나가면서 임시저장 등) */
@@ -1037,12 +1104,25 @@ export const useCompose = create((set, get) => ({
       }
 
       /* 큰 첨부가 있으면 서버가 **뒤에서** 옮기며 보낸다. 여기서는 일감 번호만 받는다.
-         작성 화면은 **닫지 않는다** — 실패하면 쓴 것을 그대로 돌려줘야 한다. */
+         작성 화면을 붙들고 있지 않는다 — 곧장 발송 화면으로 넘어가 거기서 얼마나
+         갔는지 보여 준다. 쓴 것은 pending 에 들고 있다가, 실패하면 그대로 되살린다. */
       if (res.job_id) {
         set({
-          sendJob: { job_id: res.job_id, total_bytes: res.total_bytes, file_count: res.file_count },
+          active: null,
+          pending: w,
+          done: {
+            kind: 'sending',
+            job: { job_id: res.job_id, total_bytes: res.total_bytes, file_count: res.file_count },
+            to: [...w.to], cc: [...w.cc], bcc: [...w.bcc],
+            subject: w.subject,
+            accountId: w.accountId,
+            attachments: w.files.length + (w.nasFiles || []).length
+              + w.largeFiles.filter((l) => l.status === 'done').length,
+          },
         });
-        get().update({ sending: true });   // 보내는 중이라 버튼은 잠가 둔다
+        get()._watchSend({
+          job_id: res.job_id, total_bytes: res.total_bytes, file_count: res.file_count,
+        });
         return true;
       }
 

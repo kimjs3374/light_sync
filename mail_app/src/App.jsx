@@ -13,7 +13,6 @@ import ContactsPage from './components/ContactsPage';
 import ContactEditModal from './components/ContactEditModal';
 import SettingsModal from './components/SettingsModal';
 import TourGuide from './components/TourGuide';
-import SendProgress from './components/SendProgress';
 import StaleBanner from './components/StaleBanner';
 import { useCompose } from './store/compose';
 import { useContacts } from './store/contacts';
@@ -122,8 +121,6 @@ export default function App() {
   const editingContact = useContacts((st) => !!st.editing);
   // 나가면서 임시보관함에 넣었을 때처럼, 묻지 않고 한 일은 띠로 알린다
   const notice = useCompose((st) => st.notice);
-  // 큰 첨부를 올리며 보내는 중 — 작성 화면 위에 진행률을 띄운다
-  const sendJob = useCompose((st) => st.sendJob);
   const settingsOpen = useSettings((st) => st.open);
   const tourOpen = useSettings((st) => st.tour);
   // 읽기창이 목록 자리까지 넓어지는 경우 두 가지:
@@ -193,13 +190,6 @@ export default function App() {
       {editingContact && <ContactEditModal />}
       {settingsOpen && <SettingsModal />}
       {tourOpen && <TourGuide onClose={() => useSettings.getState().endTour()} />}
-      {sendJob && (
-        <SendProgress
-          job={sendJob}
-          onDone={() => useCompose.getState().sendJobDone()}
-          onFail={(msg) => useCompose.getState().sendJobFailed(msg)}
-        />
-      )}
       <Notice text={notice} />
     </div>
   );

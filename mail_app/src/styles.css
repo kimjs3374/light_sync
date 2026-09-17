@@ -1902,12 +1902,8 @@ body.is-splitting.row { cursor: row-resize; }
 .fi-mail { color: var(--primary); }
 
 /* ── 큰 첨부 올리며 보내는 중 ─────────────────────────────────────────── */
-.sendp {
-  width: min(440px, 100%); padding: 22px 24px 18px;
-  background: var(--surface); border: 1px solid var(--float-border);
-  border-radius: var(--radius); box-shadow: 0 24px 60px rgba(0, 0, 0, .3);
-}
-.sendp-title { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
+/* 창이 아니라 발송 화면(.done-card) 안에 들어가는 조각이다 */
+.sendp-panel { margin: 22px 0 0; }
 .sendp-note { margin: 0 0 14px; font-size: 12.5px; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sendp-bar {
@@ -1923,5 +1919,9 @@ body.is-splitting.row { cursor: row-resize; }
 }
 .sendp-nums b { font-size: 15px; color: var(--ink); }
 .sendp-nums span { font-family: var(--mono); font-size: 11.5px; }
-.sendp-hint { margin: 14px 0 0; font-size: 11.5px; line-height: 1.7; color: var(--subtle); }
-.sendp-foot { display: flex; justify-content: flex-end; margin-top: 14px; }
+/* 보내는 중에는 상세를 붙여 놓아야 무엇을 보내는지가 한눈에 남는다 */
+.sendp-panel + .done-detail { margin-top: 20px; }
+.done-keep {
+  margin: -8px 0 22px; font-size: 11.5px; line-height: 1.7; color: var(--subtle);
+}
+.done-mark.failed { background: var(--danger-soft); color: var(--danger); }
