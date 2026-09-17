@@ -233,6 +233,29 @@ class MailNotifyState(Base):
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
+class MailSendJob(Base):
+    """큰 첨부를 올리며 보내는 중인 메일 한 건의 진행 상황.
+
+    진행률을 메모리에만 두면 gunicorn 워커가 8개라 **조회 요청이 다른 워커로 가면
+    그 작업을 모른다.** 그래서 DB 에 둔다.
+    """
+    __tablename__ = 'mail_send_jobs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(String(32), nullable=False, unique=True)
+    user_id = Column(Integer, nullable=False)
+    account_id = Column(Integer)
+    status = Column(String(20), nullable=False, default='uploading')
+    phase = Column(String(200))
+    total_bytes = Column(BigInteger, nullable=False, default=0)
+    done_bytes = Column(BigInteger, nullable=False, default=0)
+    file_count = Column(Integer, nullable=False, default=0)
+    done_files = Column(Integer, nullable=False, default=0)
+    error = Column(Text)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+
 class NasConfig(Base):
     """사내 파일서버(시놀로지) 접속 정보 — 한 줄만 쓴다.
 

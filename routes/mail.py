@@ -6,6 +6,7 @@
 
 import os
 import re
+import threading
 import time
 import json
 import logging
@@ -27,6 +28,7 @@ from modules.models.mail_entities import (
     MailAccount, MailSharedAccess, MailContact, MailReadReceipt, MailLargeFile,
     MailLabel, MailRule, MailAutoReply, MailAutoForward, MailScheduled,
     MailPin, MailTemplate, MailSharedRead, MailBlocklist, MailFolderPref, NasConfig,
+    MailSendJob,
 )
 from modules import storage_adapter
 from modules.models.procurement_entities import EmailHistory
@@ -115,13 +117,28 @@ def _account_allowed(db, account_id):
     return False   # 남의 개인 계정은 관리자도 여기서는 못 만진다
 
 
-def _get_mail_client(db, account_id=None):
+def _session_get(key, default=None):
+    """세션 값 — **요청 밖에서도 터지지 않게** 감싼다.
+
+    큰 첨부 발송은 요청이 끝난 뒤 뒷 실 thread 에서 이어 돈다. 거기서 session 을
+    그냥 건드리면 "Working outside of request context" 로 발송이 통째로 실패한다.
+    그런 자리는 user_id 를 인자로 받아 넘기고, 여기는 그 마지막 안전판이다.
+    """
+    try:
+        return session.get(key, default)
+    except RuntimeError:
+        return default
+
+
+def _get_mail_client(db, account_id=None, user_id=None, role=None):
     """현재 세션 사용자의 MailClient 인스턴스 생성.
     account_id가 주어지면 해당 계정, 없으면 개인 계정.
     공용계정은 shared_access 권한 확인.
+    user_id/role 을 주면 그것으로 본다 — 요청 밖(뒤에서 도는 발송)에서 쓴다.
     Returns: (MailClient, MailAccount, error_msg)
     """
-    user_id = session.get('user_id')
+    user_id = user_id or _session_get('user_id')
+    role = role or _session_get('role')
     if not user_id:
         return None, None, '로그인이 필요합니다.'
 
@@ -136,7 +153,7 @@ def _get_mail_client(db, account_id=None):
             access = db.query(MailSharedAccess).filter_by(
                 mail_account_id=account.id, user_id=user_id
             ).first()
-            if not access and session.get('role') != 'admin':
+            if not access and role != 'admin':
                 return None, None, '공용계정 접근 권한이 없습니다.'
     else:
         account = db.query(MailAccount).filter(
@@ -570,6 +587,120 @@ def api_message_detail(uid):
             return jsonify({'error': f'메일 조회 실패: {e}'}), 500
 
 
+def _deliver_mail(db, *, account_id, to, cc, bcc, subject, html_body, attachments,
+                  user_id, role=None, draft_replace_uid=None, draft_folder=None):
+    """실제로 보내는 마지막 한 걸음 — **두 길이 같은 일을 하도록** 한곳에 모았다.
+
+    보내는 길이 둘이다: 곧바로 보내는 길과, 큰 첨부를 올리며 뒤에서 보내는 길
+    (_run_send_job). 이 대목을 따로 두었더니 뒤에서 보낸 메일만 수신확인·평문 본문·
+    주소록 자동수집이 통째로 빠지고, 대용량 첨부 기록조차 커밋되지 않아 링크가 죽었다.
+
+    session 을 건드리지 않는다 — 뒤에서 도는 쪽에는 세션이 없다.
+    반환: (결과 dict, 오류 문구 또는 '', HTTP 상태)
+    """
+    client, account, err = _get_mail_client(db, account_id, user_id=user_id, role=role)
+    if err:
+        return None, err, 400
+    if not client:
+        return None, '메일 계정 미설정', 404
+
+    # 공용계정 발송 권한 확인
+    if account.is_shared:
+        access = db.query(MailSharedAccess).filter_by(
+            mail_account_id=account.id, user_id=user_id
+        ).first()
+        if (not access or not access.can_send) and role != 'admin':
+            return None, '이 공용계정으로 발송할 권한이 없습니다.', 403
+
+    try:
+        # 수신확인 트래킹 픽셀 삽입
+        tracking_id = uuid.uuid4().hex[:16]
+        domain = os.environ.get('FLASK_DOMAIN', 'work.mgnt.kr')
+        pixel_url = f'https://{domain}/mail/t/{tracking_id}.gif'
+        pixel_tag = f'<img src="{pixel_url}" width="1" height="1" style="display:none;" alt="">'
+        html_body_with_tracking = html_body + pixel_tag
+
+        # HTML에서 text/plain 본문 자동 생성 (스팸 점수 개선)
+        import re as _re
+        _plain = _re.sub(r'<br\s*/?\s*>', '\n', html_body)
+        _plain = _re.sub(r'<[^>]+>', '', _plain)
+        _plain = _re.sub(r'&nbsp;', ' ', _plain)
+        _plain = _re.sub(r'&amp;', '&', _plain)
+        _plain = _re.sub(r'&lt;', '<', _plain)
+        _plain = _re.sub(r'&gt;', '>', _plain)
+        _plain = _re.sub(r'\n{3,}', '\n\n', _plain).strip()
+
+        with client:
+            result = client.send_message(
+                from_addr=account.email,
+                to=to, cc=cc or None, bcc=bcc or None,
+                subject=subject,
+                html_body=html_body_with_tracking,
+                text_body=_plain,
+                attachments=attachments or None,
+                from_name=account.display_name,
+            )
+
+        # 수신확인 레코드 저장
+        db.add(MailReadReceipt(
+            tracking_id=tracking_id,
+            sender_user_id=user_id,
+            mail_account_id=account.id,
+            to_email=to[0],
+            subject=subject,
+        ))
+
+        # 수신자 주소록 자동 수집 (사내 직원 제외, 중복 제외)
+        all_recipients = list(to) + list(cc or []) + list(bcc or [])
+        _domain = os.environ.get('MAILCOW_DOMAIN', 'mgnt.kr')
+        internal_emails = {f'{u.username.lower()}@{_domain}' for u in db.query(User.username).all()}
+        existing_contacts = {
+            c.email.lower()
+            for c in db.query(MailContact.email).filter_by(user_id=user_id).all()
+        }
+        for addr in all_recipients:
+            addr_lower = addr.strip().lower()
+            if addr_lower and addr_lower not in internal_emails and addr_lower not in existing_contacts:
+                db.add(MailContact(
+                    user_id=user_id,
+                    name=addr_lower.split('@')[0],
+                    email=addr_lower,
+                ))
+                existing_contacts.add(addr_lower)
+
+        # **여기서 커밋해야 한다** — 대용량 첨부 기록(MailLargeFile)도 같은 세션에 얹혀
+        # 있어서, 커밋을 빠뜨리면 메일은 나가고 링크만 죽는다.
+        db.commit()
+
+        # 임시보관함에서 이어쓴 메일이면 원본 임시본 삭제 (발송 완료 후)
+        if draft_replace_uid and draft_folder:
+            try:
+                with client:
+                    client.delete_messages([draft_replace_uid], folder=draft_folder)
+            except Exception as e:
+                logger.warning("발송 후 임시본 삭제 실패(uid=%s): %s", draft_replace_uid, e)
+
+        result['_summary'] = {
+            'from_email': account.email,
+            'from_name': account.display_name or '',
+            'account_id': account.id,
+            'to': to[:20],
+            'to_count': len(to),
+            'cc': (cc or [])[:20],
+            'cc_count': len(cc or []),
+            'bcc_count': len(bcc or []),
+            'subject': subject or '(제목 없음)',
+            'attachment_count': len(attachments or []),
+            'is_self': (len(to) == 1 and not cc and not bcc
+                        and to[0].strip().lower() == account.email.lower()),
+            'sent_at': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        }
+        return result, '', 200
+    except Exception as e:
+        logger.error("메일 발송 실패: %s", e)
+        return None, f'메일 발송 실패: {e}', 500
+
+
 @mail_bp.route('/mail/api/send', methods=['POST'])
 @login_required
 def api_send():
@@ -625,8 +756,59 @@ def api_send():
                 return jsonify({'error': str(e)}), 500
 
         if nas_paths:
+            # 큰 것과 작은 것을 가른다. 큰 것이 하나라도 있으면 **뒤에서** 옮기며 보낸다 —
+            # 여기서 붙들고 있으면 앞단이 먼저 끊고 사람은 멈춘 화면만 본다.
+            from modules.services import synology
             try:
-                html_body, _n = _attach_nas_files(db, nas_paths, attachments, html_body)
+                cfg = _nas_cfg(db)
+                if not cfg:
+                    raise RuntimeError('파일서버가 설정돼 있지 않습니다.')
+                big, small = [], []
+                for p in nas_paths:
+                    info = synology.stat(cfg, synology.check_path(cfg, p))
+                    if info['is_dir']:
+                        continue
+                    if info['size'] > LARGE_FILE_THRESHOLD:
+                        big.append({'path': info['path'], 'name': info['name'], 'size': info['size']})
+                    else:
+                        small.append(info['path'])
+            except Exception as e:
+                logger.error('파일서버 첨부 확인 실패: %s', e)
+                return jsonify({'error': f'파일서버에서 첨부를 확인하지 못했습니다: {e}'}), 502
+
+            if big:
+                job_id = uuid.uuid4().hex
+                db.add(MailSendJob(
+                    job_id=job_id, user_id=session['user_id'], account_id=account_id,
+                    status='uploading', phase=f"{big[0]['name']} 올리는 중",
+                    total_bytes=sum(b['size'] for b in big), file_count=len(big),
+                ))
+                db.commit()
+                payload = {
+                    'account_id': account_id, 'to': to, 'cc': cc, 'bcc': bcc,
+                    'subject': subject, 'html_body': html_body,
+                    'big_files': big, 'small_nas': small,
+                    # 브라우저가 올린 작은 첨부는 이미 손에 있다 — 그대로 넘긴다
+                    'small_attachments': attachments,
+                    # 뒤에서 돌 때는 세션이 없다 — 권한 판단에 쓸 신원을 들려 보낸다
+                    'role': session.get('role'),
+                    # 이어쓴 메일이면 보낸 뒤 임시본을 치워야 한다
+                    'draft_replace_uid': draft_replace_uid,
+                    'draft_folder': draft_folder,
+                }
+                threading.Thread(
+                    target=_run_send_job,
+                    args=(current_app._get_current_object(), job_id, session['user_id'], payload),
+                    name=f'send-{job_id[:8]}', daemon=True,
+                ).start()
+                logger.info('큰 첨부 발송 시작: job=%s user=%s %s건 %s바이트',
+                            job_id, session['user_id'], len(big), sum(b['size'] for b in big))
+                return jsonify({'success': True, 'job_id': job_id,
+                                'total_bytes': sum(b['size'] for b in big),
+                                'file_count': len(big)})
+
+            try:
+                html_body, _n = _attach_nas_files(db, small, attachments, html_body)
             except Exception as e:
                 # 파일서버에서 못 읽었는데 그냥 보내면 첨부 없는 메일이 나간다
                 logger.error('파일서버 첨부 실패: %s', e)
@@ -647,107 +829,18 @@ def api_send():
                                 attachments.append((fname, data))
             except Exception as e:
                 logger.error("전달 첨부파일 로드 실패: %s", e)
-        client, account, err = _get_mail_client(db, account_id)
+        result, err, status = _deliver_mail(
+            db, account_id=account_id, to=to, cc=cc, bcc=bcc,
+            subject=subject, html_body=html_body, attachments=attachments,
+            user_id=session['user_id'], role=session.get('role'),
+            draft_replace_uid=draft_replace_uid, draft_folder=draft_folder,
+        )
         if err:
-            return jsonify({'error': err}), 400
-        if not client:
-            return jsonify({'error': '메일 계정 미설정'}), 404
+            return jsonify({'error': err}), status
 
-        # 공용계정 발송 권한 확인
-        if account.is_shared:
-            access = db.query(MailSharedAccess).filter_by(
-                mail_account_id=account.id, user_id=session['user_id']
-            ).first()
-            if not access or not access.can_send:
-                if session.get('role') != 'admin':
-                    return jsonify({'error': '이 공용계정으로 발송할 권한이 없습니다.'}), 403
-
-        try:
-            # 수신확인 트래킹 픽셀 삽입
-            tracking_id = uuid.uuid4().hex[:16]
-            domain = os.environ.get('FLASK_DOMAIN', 'work.mgnt.kr')
-            pixel_url = f'https://{domain}/mail/t/{tracking_id}.gif'
-            pixel_tag = f'<img src="{pixel_url}" width="1" height="1" style="display:none;" alt="">'
-            html_body_with_tracking = html_body + pixel_tag
-
-            # HTML에서 text/plain 본문 자동 생성 (스팸 점수 개선)
-            import re as _re
-            _plain = _re.sub(r'<br\s*/?\s*>', '\n', html_body)
-            _plain = _re.sub(r'<[^>]+>', '', _plain)
-            _plain = _re.sub(r'&nbsp;', ' ', _plain)
-            _plain = _re.sub(r'&amp;', '&', _plain)
-            _plain = _re.sub(r'&lt;', '<', _plain)
-            _plain = _re.sub(r'&gt;', '>', _plain)
-            _plain = _re.sub(r'\n{3,}', '\n\n', _plain).strip()
-
-            with client:
-                result = client.send_message(
-                    from_addr=account.email,
-                    to=to, cc=cc or None, bcc=bcc or None,
-                    subject=subject,
-                    html_body=html_body_with_tracking,
-                    text_body=_plain,
-                    attachments=attachments or None,
-                    from_name=account.display_name,
-                )
-
-            # 수신확인 레코드 저장
-            receipt = MailReadReceipt(
-                tracking_id=tracking_id,
-                sender_user_id=session['user_id'],
-                mail_account_id=account.id,
-                to_email=to[0],
-                subject=subject,
-            )
-            db.add(receipt)
-
-            # 수신자 주소록 자동 수집 (사내 직원 제외, 중복 제외)
-            all_recipients = list(to) + list(cc or []) + list(bcc or [])
-            import os as _os
-            _domain = _os.environ.get('MAILCOW_DOMAIN', 'mgnt.kr')
-            internal_emails = {f'{u.username.lower()}@{_domain}' for u in db.query(User.username).all()}
-            existing_contacts = {c.email.lower() for c in db.query(MailContact.email).filter_by(user_id=session['user_id']).all()}
-            for addr in all_recipients:
-                addr_lower = addr.strip().lower()
-                if addr_lower and addr_lower not in internal_emails and addr_lower not in existing_contacts:
-                    db.add(MailContact(
-                        user_id=session['user_id'],
-                        name=addr_lower.split('@')[0],
-                        email=addr_lower,
-                    ))
-                    existing_contacts.add(addr_lower)
-
-            db.commit()
-
-            # 임시보관함에서 이어쓴 메일이면 원본 임시본 삭제 (발송 완료 후)
-            if draft_replace_uid and draft_folder:
-                try:
-                    with client:
-                        client.delete_messages([draft_replace_uid], folder=draft_folder)
-                except Exception as e:
-                    logger.warning("발송 후 임시본 삭제 실패(uid=%s): %s", draft_replace_uid, e)
-
-            # 발송완료 페이지에서 보여줄 요약 (쿠키 크기 고려해 주소는 20건까지)
-            session['mail_sent_result'] = {
-                'from_email': account.email,
-                'from_name': account.display_name or '',
-                'account_id': account.id,
-                'to': to[:20],
-                'to_count': len(to),
-                'cc': cc[:20],
-                'cc_count': len(cc),
-                'bcc_count': len(bcc),
-                'subject': subject or '(제목 없음)',
-                'attachment_count': len(attachments),
-                'is_self': (len(to) == 1 and not cc and not bcc
-                            and to[0].strip().lower() == account.email.lower()),
-                'sent_at': datetime.now().strftime('%Y-%m-%d %H:%M'),
-            }
-
-            return jsonify(result)
-        except Exception as e:
-            logger.error("메일 발송 실패: %s", e)
-            return jsonify({'error': f'메일 발송 실패: {e}'}), 500
+        # 발송완료 페이지에서 보여줄 요약 (쿠키 크기 고려해 주소는 20건까지)
+        session['mail_sent_result'] = result.pop('_summary', None) or {}
+        return jsonify(result)
 
 
 @mail_bp.route('/mail/api/draft', methods=['POST'])
@@ -1357,7 +1450,129 @@ def api_nas_resolve():
     return jsonify({'files': out, 'errors': errors})
 
 
-def _attach_nas_files(db, paths, attachments, html_body):
+# ---------------------------------------------------------------------------
+# 큰 첨부를 올리며 보내기 — 뒤에서 돌리고 화면에는 진행률
+# ---------------------------------------------------------------------------
+# 30GB 짜리를 붙이면 NAS → Storage 로 옮기는 데만 몇 분이 걸린다. 그동안 보내기
+# 요청을 붙들고 있으면 앞단(Cloudflare 등)이 먼저 끊고, 사람은 멈춘 화면만 본다.
+# 그래서 **일감을 만들어 바로 돌려주고**, 옮기는 일은 뒤에서 하며 진행률을 적는다.
+#
+# 진행률을 메모리에 두지 않는 이유: 워커가 8개라 조회 요청이 다른 워커로 가면
+# 그 일감을 모른다. DB 에 적어야 누가 받아도 같은 답을 준다.
+# ---------------------------------------------------------------------------
+
+def _job_update(job_id, **fields):
+    """일감 진행 상황 갱신 — 짧게 열고 바로 닫는다(오래 쥐면 다른 요청이 막힌다)."""
+    try:
+        with get_db() as db:
+            row = db.query(MailSendJob).filter_by(job_id=job_id).first()
+            if not row:
+                return
+            for k, v in fields.items():
+                setattr(row, k, v)
+            row.updated_at = datetime.now()
+            db.commit()
+    except Exception as e:
+        logger.warning('발송 진행 기록 실패 (%s): %s', job_id, e)
+
+
+def _run_send_job(app, job_id, user_id, payload):
+    """뒤에서 도는 실제 작업: 큰 파일을 흘려보내고 → 링크를 만들고 → 메일을 보낸다."""
+    from modules.services import synology
+
+    with app.app_context():
+        try:
+            with get_db() as db:
+                cfg = _nas_cfg(db)
+            if not cfg:
+                raise RuntimeError('파일서버가 설정돼 있지 않습니다.')
+
+            big_items = []
+            done_before = 0
+            for i, item in enumerate(payload['big_files']):
+                path = item['path']
+                _job_update(job_id, phase=f"{item['name']} 올리는 중", done_files=i)
+                name, size, chunks = synology.open_stream(cfg, path)
+
+                file_id = uuid.uuid4().hex
+                ext = os.path.splitext(name)[1] or ''
+                temp_path = f'{_TEMP_ATTACH_PREFIX}/{file_id}{ext}'
+
+                last = [0]
+
+                def on_progress(done, _base=done_before, _last=last):
+                    # 한 조각마다 DB 를 두드리면 8MB 마다 쓰기다 — 40MB 마다로 묶는다
+                    if done - _last[0] >= 40 * 1024 * 1024 or done >= size:
+                        _last[0] = done
+                        _job_update(job_id, done_bytes=_base + done)
+
+                ok, msg = storage_adapter.upload_stream(
+                    temp_path, chunks, size, progress=on_progress)
+                if not ok:
+                    raise RuntimeError(f'{name}: {msg}')
+
+                done_before += size
+                big_items.append({'file_id': file_id, 'filename': name,
+                                  'size': size, 'temp_path': temp_path})
+                _job_update(job_id, done_bytes=done_before, done_files=i + 1)
+
+            _job_update(job_id, status='sending', phase='메일 보내는 중')
+            with get_db() as db:
+                html_body = payload['html_body']
+                if big_items:
+                    html_body += _large_files_html(
+                        _promote_large_files(db, big_items, user_id=user_id))
+                # 작은 파일은 붙여 보낸다(이미 바이트로 들고 있다)
+                attachments = [(n, d) for n, d in payload['small_attachments']]
+                if payload['small_nas']:
+                    html_body, _n = _attach_nas_files(
+                        db, payload['small_nas'], attachments, html_body, user_id=user_id)
+
+                # 곧바로 보내는 길과 **똑같은** 마무리를 탄다 — 수신확인·평문 본문·
+                # 주소록 수집·커밋이 여기에 다 들어 있다.
+                _res, err, _st = _deliver_mail(
+                    db, account_id=payload['account_id'],
+                    to=payload['to'], cc=payload['cc'], bcc=payload['bcc'],
+                    subject=payload['subject'], html_body=html_body,
+                    attachments=attachments, user_id=user_id, role=payload.get('role'),
+                    draft_replace_uid=payload.get('draft_replace_uid'),
+                    draft_folder=payload.get('draft_folder'),
+                )
+                if err:
+                    raise RuntimeError(err)
+            _job_update(job_id, status='done', phase='보냈습니다', done_bytes=done_before)
+            logger.info('큰 첨부 발송 완료: job=%s user=%s %s건', job_id, user_id, len(big_items))
+        except Exception as e:
+            logger.error('큰 첨부 발송 실패: job=%s %s', job_id, e)
+            _job_update(job_id, status='error', error=str(e)[:500], phase='')
+
+
+@mail_bp.route('/mail/api/send-job/<job_id>')
+@login_required
+def api_send_job(job_id):
+    """진행률 보기 — 화면이 1초마다 묻는다."""
+    with get_db() as db:
+        row = db.query(MailSendJob).filter_by(job_id=job_id, user_id=session['user_id']).first()
+        if not row:
+            return jsonify({'error': '진행 중인 발송을 찾을 수 없습니다.'}), 404
+        # 워커가 죽으면 일감이 영영 '올리는 중' 으로 남는다 — 오래 멈춰 있으면 그렇게 적는다.
+        # 시각은 DB 가 timestamptz 로 돌려주기도 해서(기본값 now()) 두 가지가 섞인다.
+        # 그냥 빼면 TypeError 로 진행률 조회 자체가 터지므로 tzinfo 를 벗겨 맞춘다.
+        _at = row.updated_at or row.created_at
+        if _at is not None and _at.tzinfo is not None:
+            _at = _at.astimezone().replace(tzinfo=None)
+        stale = bool(_at) and (datetime.now() - _at).total_seconds() > 300
+        return jsonify({
+            'job_id': row.job_id,
+            'status': 'error' if (stale and row.status in ('uploading', 'sending')) else row.status,
+            'phase': row.phase or '',
+            'total_bytes': row.total_bytes, 'done_bytes': row.done_bytes,
+            'file_count': row.file_count, 'done_files': row.done_files,
+            'error': row.error or ('오래 멈춰 있습니다. 서버에서 발송이 끊긴 것 같습니다.' if stale else ''),
+        })
+
+
+def _attach_nas_files(db, paths, attachments, html_body, user_id=None):
     """NAS 파일을 첨부로 붙인다. 큰 것은 Storage 로 올려 링크로 바꾼다.
 
     반환: (바뀐 html_body, 붙인 개수)
@@ -1376,7 +1591,8 @@ def _attach_nas_files(db, paths, attachments, html_body):
     count = 0
     for path in paths:
         name, data = synology.download(cfg, path)
-        logger.info('파일서버 첨부: user=%s %s (%s바이트)', session.get('user_id'), path, len(data))
+        logger.info('파일서버 첨부: user=%s %s (%s바이트)',
+                    user_id or _session_get('user_id'), path, len(data))
         count += 1
         if len(data) <= LARGE_FILE_THRESHOLD:
             attachments.append((name, data))
@@ -4340,7 +4556,7 @@ def api_upload_temp_delete(file_id):
     return jsonify({'success': True})
 
 
-def _promote_large_files(db, items):
+def _promote_large_files(db, items, user_id=None):
     """대용량 첨부 2단계 — 임시 위치에서 첨부 보관함으로 옮기고 링크를 만든다.
 
     items: [{file_id, filename, size, temp_path}]
@@ -4366,7 +4582,7 @@ def _promote_large_files(db, items):
 
         db.add(MailLargeFile(
             file_id=file_id,
-            sender_user_id=session.get('user_id'),
+            sender_user_id=user_id or _session_get('user_id'),
             original_filename=filename,
             file_size=int(it.get('size') or 0),
             storage_path=final_path,

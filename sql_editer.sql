@@ -1938,3 +1938,29 @@ CREATE TABLE IF NOT EXISTS light_sync.nas_config (
     updated_by         INTEGER,
     updated_at         TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ============================================================
+-- 2026-09-17 : 큰 첨부 발송 진행 상황
+-- ------------------------------------------------------------
+-- 파일서버의 큰 파일(최대 30GB)을 붙여 보낼 때, 보내기를 누른 뒤
+-- NAS → 서버 → Storage 로 흘려보내는 동안 화면에 진행률을 보여준다.
+-- 진행률을 메모리에만 두면 gunicorn 워커가 8개라 **다른 워커가 받은 조회 요청이
+-- 그 작업을 모른다.** 그래서 DB 에 둔다.
+-- 되돌리기: DROP TABLE light_sync.mail_send_jobs;
+-- ============================================================
+CREATE TABLE IF NOT EXISTS light_sync.mail_send_jobs (
+    id          SERIAL PRIMARY KEY,
+    job_id      VARCHAR(32) NOT NULL UNIQUE,
+    user_id     INTEGER NOT NULL,
+    account_id  INTEGER,
+    status      VARCHAR(20) NOT NULL DEFAULT 'uploading',  -- uploading|sending|done|error
+    phase       VARCHAR(200),
+    total_bytes BIGINT NOT NULL DEFAULT 0,
+    done_bytes  BIGINT NOT NULL DEFAULT 0,
+    file_count  INTEGER NOT NULL DEFAULT 0,
+    done_files  INTEGER NOT NULL DEFAULT 0,
+    error       TEXT,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_mail_send_jobs_user ON light_sync.mail_send_jobs (user_id, created_at DESC);

@@ -30,7 +30,10 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 SESSION_TTL = 20 * 60          # sid 를 들고 있는 시간
 TIMEOUT = (5, 60)              # (연결, 읽기) — 큰 파일은 읽기가 길다
-MAX_DOWNLOAD = 200 * 1024 * 1024
+# 통째로 메모리에 올려도 되는 한도. 이보다 크면 흘려보낸다(open_stream).
+MAX_DOWNLOAD = 25 * 1024 * 1024
+# 첨부로 받아줄 최대 크기. 흘려보내므로 메모리와 무관하다 — 디스크도 안 쓴다.
+MAX_STREAM = 30 * 1024 * 1024 * 1024
 
 _sid_cache = {'sid': None, 'at': 0}
 _lock = threading.Lock()
@@ -174,22 +177,30 @@ def stat(cfg, path):
     if not files:
         raise NasError('파일을 찾지 못했습니다.')
     f = files[0]
+    # 없는 경로를 물어도 getinfo 는 success:true 를 준다 — 대신 줄 안에 code(408)만
+    # 들어 있고 이름·크기가 없다. 이걸 안 보면 "크기 0" 으로 통과해서, 한참 뒤
+    # 내려받기에서 502 로 터진다(사람에게는 영문도 모를 오류로 보인다).
+    if f.get('code') or not f.get('name'):
+        raise NasError('파일을 찾지 못했습니다.')
     return {'name': f.get('name'), 'path': f.get('path'),
             'is_dir': bool(f.get('isdir')),
             'size': (f.get('additional') or {}).get('size') or 0}
 
 
+def _download_response(cfg, path):
+    return _call(cfg, {'api': 'SYNO.FileStation.Download', 'version': 2, 'method': 'download',
+                       'path': json.dumps([path]), 'mode': 'download'}, stream=True)
+
+
 def download(cfg, path):
-    """파일 내용을 바이트로. 큰 파일은 여기서 막는다."""
+    """작은 파일만 — 바이트로 통째로. 큰 것은 open_stream 으로 흘려보낸다."""
     info = stat(cfg, path)
     if info['is_dir']:
         raise NasError('폴더는 첨부할 수 없습니다.')
     if info['size'] > MAX_DOWNLOAD:
-        raise NasError(f"파일이 너무 큽니다 ({info['size'] // (1024 * 1024)}MB). "
-                       f"{MAX_DOWNLOAD // (1024 * 1024)}MB 까지 붙일 수 있습니다.")
+        raise NasError(f"이 길로는 {MAX_DOWNLOAD // (1024 * 1024)}MB 까지만 받습니다.")
 
-    r = _call(cfg, {'api': 'SYNO.FileStation.Download', 'version': 2, 'method': 'download',
-                    'path': json.dumps([path]), 'mode': 'download'}, stream=True)
+    r = _download_response(cfg, path)
     chunks, total = [], 0
     for chunk in r.iter_content(1024 * 256):
         total += len(chunk)
@@ -197,6 +208,23 @@ def download(cfg, path):
             raise NasError('파일이 너무 큽니다.')
         chunks.append(chunk)
     return info['name'], b''.join(chunks)
+
+
+def open_stream(cfg, path):
+    """큰 파일 — **메모리에 담지 않고** 조금씩 내주는 반복자를 돌려준다.
+
+    반환: (파일이름, 크기, 조각 반복자)
+    받는 쪽(storage_adapter.upload_stream)이 조각을 받는 즉시 Storage 로 넘기므로,
+    30GB 짜리를 붙여도 서버가 한 번에 손에 드는 것은 조각 하나뿐이다.
+    """
+    info = stat(cfg, path)
+    if info['is_dir']:
+        raise NasError('폴더는 첨부할 수 없습니다.')
+    if info['size'] > MAX_STREAM:
+        raise NasError(f"파일이 너무 큽니다 ({info['size'] // (1024 ** 3)}GB). "
+                       f"{MAX_STREAM // (1024 ** 3)}GB 까지 붙일 수 있습니다.")
+    r = _download_response(cfg, path)
+    return info['name'], info['size'], r.iter_content(1024 * 1024)
 
 
 def check_path(cfg, path):

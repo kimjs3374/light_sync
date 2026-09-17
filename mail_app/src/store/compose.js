@@ -616,8 +616,27 @@ export const useCompose = create((set, get) => ({
     return true;
   },
 
+  /** 큰 첨부 발송이 끝났다 — 이제야 작성 화면을 치운다 */
+  sendJobDone() {
+    const w = get().active;
+    set({ active: null, sendJob: null, done: null });
+    const m = useMail.getState();
+    if (/sent/i.test(m.folder)) m.loadMessages();
+    m.loadFolders(true);
+    set({ notice: w ? '큰 첨부를 다 올리고 메일을 보냈습니다.' : '메일을 보냈습니다.' });
+  },
+
+  /** 실패 — 작성 화면을 그대로 돌려준다. 여기서 닫으면 쓴 것이 사라진다 */
+  sendJobFailed(message) {
+    set({ sendJob: null });
+    get().update({ sending: false, error: message || '보내지 못했습니다.' });
+  },
+
   /** 결과 화면 닫기 */
   clearDone() { set({ done: null }); },
+
+  /** 큰 첨부를 올리며 보내는 중인 일감 (null 이면 없음) */
+  sendJob: null,
 
   /** 화면 아래 띠로 잠깐 알리는 말 (나가면서 임시저장 등) */
   notice: '',
@@ -1016,6 +1035,17 @@ export const useCompose = create((set, get) => ({
         get().update({ sending: false, error: res.error });
         return;
       }
+
+      /* 큰 첨부가 있으면 서버가 **뒤에서** 옮기며 보낸다. 여기서는 일감 번호만 받는다.
+         작성 화면은 **닫지 않는다** — 실패하면 쓴 것을 그대로 돌려줘야 한다. */
+      if (res.job_id) {
+        set({
+          sendJob: { job_id: res.job_id, total_bytes: res.total_bytes, file_count: res.file_count },
+        });
+        get().update({ sending: true });   // 보내는 중이라 버튼은 잠가 둔다
+        return true;
+      }
+
       set({ active: null, done: null });   // 옮겨간 임시파일을 지우면 안 되므로 close() 를 안 쓴다
       // 보낸편지함을 보고 있었다면 방금 보낸 메일이 바로 보여야 한다
       const m = useMail.getState();
