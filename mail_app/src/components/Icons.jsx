@@ -69,6 +69,12 @@ export const Collapse = ({ size = 15 }) => (
   </svg>
 );
 
+export const Folder = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-label="폴더">
+    <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l1.8 2h9A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" />
+  </svg>
+);
+
 export const Gear = ({ size = 15 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-label="환경설정">
     <circle cx="12" cy="12" r="3" />

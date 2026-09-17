@@ -1762,5 +1762,14 @@ body.is-splitting.row { cursor: row-resize; }
 .nas-paste .set-foot { margin-top: 8px; }
 .nas-list { flex: 1 1 auto; min-height: 120px; overflow: auto; padding: 0 12px; }
 .nas-list .contact-table td { cursor: pointer; }
-.nas-folder { font-size: 13px; }
+.nas-folder { display: flex; color: var(--subtle); }
+/* 크기 칸 — 폴더 이름이 길어도 '184 KB' 가 잘리지 않을 만큼은 준다 */
+.nas-list .contact-table .col-count { width: 92px; }
 .nas-error { white-space: pre-line; text-align: left; }
+.nas-nav {
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  width: 26px; height: 26px; border-radius: 6px; font-size: 13px; line-height: 1;
+}
+.nas-nav:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.nas-nav:disabled { opacity: .35; cursor: default; }
+.nas-bar .nas-sep { width: 6px; }

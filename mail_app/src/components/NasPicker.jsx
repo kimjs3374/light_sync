@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { mailApi } from '../api/client';
 import { useCompose } from '../store/compose';
 import { formatSize } from '../lib/format';
-import { Close } from './Icons';
+import { Close, Folder } from './Icons';
 
 /**
  * 사내 파일서버(NAS)에서 첨부 고르기.
@@ -17,7 +17,12 @@ import { Close } from './Icons';
  *      그래서 "PC에서 첨부하면 경로를 보고 판단" 은 브라우저 안에서 불가능하다)
  */
 export default function NasPicker({ onClose }) {
-  const [path, setPath] = useState('');          // '' 면 공유폴더 목록
+  /* 탐색기처럼 다녀온 길을 들고 있는다 — 뒤로/앞으로가 있어야 폴더를 잘못 열었을 때
+     처음부터 다시 찾아 들어가지 않는다. 브라우저 뒤로가기는 쓰지 않는다:
+     그건 메일 화면 자체를 떠나 버려서, 쓰던 메일이 사라진 것처럼 보인다. */
+  const [hist, setHist] = useState(['']);        // 다녀온 경로들 ('' = 공유폴더 목록)
+  const [idx, setIdx] = useState(0);
+  const path = hist[idx];
   const [items, setItems] = useState(null);
   const [error, setError] = useState('');
   const [picked, setPicked] = useState([]);      // [{path,name,size}]
@@ -25,11 +30,40 @@ export default function NasPicker({ onClose }) {
   const [pasteText, setPasteText] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const canBack = idx > 0;
+  const canFwd = idx < hist.length - 1;
+  const parent = path ? (path.split('/').slice(0, -1).join('/') || '') : null;
+
+  /** 새 폴더로 — 앞으로 갈 길은 여기서 끊긴다(탐색기와 같다) */
+  const go = (p) => {
+    if (p === path) return;
+    setHist((h) => [...h.slice(0, idx + 1), p]);
+    setIdx((i) => i + 1);
+  };
+  const back = () => canBack && setIdx((i) => i - 1);
+  const fwd = () => canFwd && setIdx((i) => i + 1);
+  const up = () => parent !== null && go(parent);
+
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      // 경로를 적는 칸에서는 글자를 지우는 일이 먼저다
+      const typing = ['INPUT', 'TEXTAREA'].includes((e.target.tagName || '').toUpperCase());
+      if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); back(); }
+      else if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); fwd(); }
+      else if (e.key === 'Backspace' && !typing) { e.preventDefault(); up(); }
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose, idx, hist, path]);
+
+  /* 마우스 옆버튼(뒤로/앞으로)도 받는다. 막지 않으면 브라우저가 메일 화면을 떠난다. */
+  const onMouseNav = (e) => {
+    if (e.button !== 3 && e.button !== 4) return;
+    e.preventDefault();
+    if (e.button === 3) back(); else fwd();
+  };
 
   useEffect(() => {
     let alive = true;
@@ -77,6 +111,7 @@ export default function NasPicker({ onClose }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="contact-card wide nas-card" onClick={(e) => e.stopPropagation()}
+        onMouseDown={onMouseNav} onAuxClick={onMouseNav}
         role="dialog" aria-label="파일서버에서 첨부">
         <div className="contact-card-head">
           <h3>파일서버에서 첨부</h3>
@@ -84,12 +119,19 @@ export default function NasPicker({ onClose }) {
         </div>
 
         <div className="nas-bar">
-          <button className="nas-crumb" onClick={() => setPath('')}>파일서버</button>
+          <button className="nas-nav" onClick={back} disabled={!canBack}
+            title="뒤로 (Alt+←, 마우스 옆버튼)">←</button>
+          <button className="nas-nav" onClick={fwd} disabled={!canFwd}
+            title="앞으로 (Alt+→)">→</button>
+          <button className="nas-nav" onClick={up} disabled={parent === null}
+            title="위 폴더로 (Backspace)">↑</button>
+          <span className="nas-sep" />
+          <button className="nas-crumb" onClick={() => go('')}>파일서버</button>
           {crumbs.map((c, i) => (
             <span key={i}>
               <span className="nas-sep">/</span>
               <button className="nas-crumb"
-                onClick={() => setPath('/' + crumbs.slice(0, i + 1).join('/'))}>{c}</button>
+                onClick={() => go('/' + crumbs.slice(0, i + 1).join('/'))}>{c}</button>
             </span>
           ))}
           <button className="set-btn nas-paste-btn" onClick={() => setPasteOpen((v) => !v)}>
@@ -126,9 +168,9 @@ export default function NasPicker({ onClose }) {
                     {items.map((it) => (
                       <tr key={it.path}
                         className={has(it.path) ? 'picked' : ''}
-                        onClick={() => (it.is_dir ? setPath(it.path) : toggle(it))}>
+                        onClick={() => (it.is_dir ? go(it.path) : toggle(it))}>
                         <td className="col-pick">
-                          {it.is_dir ? <span className="nas-folder">📁</span>
+                          {it.is_dir ? <span className="nas-folder"><Folder /></span>
                             : <input type="checkbox" checked={has(it.path)} readOnly />}
                         </td>
                         <td title={it.name}>{it.name}</td>
