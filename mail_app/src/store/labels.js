@@ -65,6 +65,14 @@ export function labelKeyword(label) {
  * **서버가 대답을 주긴 했는데 그게 error 인 경우(권한 없음 403 등)에는 물러서지
  * 않는다.** 그때 조용히 다른 길로 가면 남의 계정을 찔렀다는 사실이 화면 어디에도
  * 안 남고, 빈 목록만 보인다.
+ *
+ * 서버가 이 주소를 갖춘 뒤에도 폴백을 안 지운 이유: 이 저장소는 static(dist)이
+ * **즉시** 올라가고 파이썬은 restart 해야 반영된다(.claude/deploy.md). 그래서
+ * 새 화면이 옛 서버와 만나는 창이 배포 때마다 다시 열린다.
+ *
+ * 함정 하나: 토큰이 끊긴 401 도 api.get 이 던지므로 이 catch 로 들어와 folders 를
+ * 한 번 더 부른다. 그 호출도 401 이라 헛걸음이지만, 401 자리에서 client.js 가
+ * 이미 로그인 화면으로 보내고 있어 그대로 둔다.
  */
 async function fetchLabels(accountId) {
   let r;
